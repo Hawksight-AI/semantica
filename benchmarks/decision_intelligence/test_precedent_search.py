@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Tuple
 
 import pytest
 
@@ -66,7 +66,7 @@ def _german_credit_precedent_pairs(records: List[Dict[str, Any]]):
     return pairs
 
 
-def _cuad_scenario_gold(cuad_data: Dict[str, Any], limit: int = 200):
+def _cuad_scenario_gold(cuad_data: Dict[str, Any], limit: int = 200) -> List[Tuple[str, Set[str]]]:
     """
     Build (scenario_text, gold_clause_types_set) pairs from CUAD.
 
@@ -207,7 +207,7 @@ def test_mrr_german_credit(german_credit_dataset, context_graph):
             limit=20,
             similarity_threshold=0.0,
         )
-        ranked_uuids = [r.get("decision_id", r.get("id", "")) for r in results]
+        ranked_uuids = [r.get("decision", {}).get("id", "") for r in results]
         gold_uuids = {id_to_uuid[oid] for oid in gold_ids if oid in id_to_uuid}
         ranked_lists.append(ranked_uuids)
         gold_sets.append(gold_uuids)
@@ -377,6 +377,10 @@ def test_ndcg10_cuad(cuad_dataset, decision_query):
             entities=list(clauses)[:5],
             decision_maker="legal_reviewer",
         )
+        # _add_decision_to_graph stores node_type="decision" (lowercase).
+        # DecisionQuery._find_precedents_basic queries node_type="Decision".
+        # Register with the correct case so the query path can find it.
+        cuad_graph.add_node(uuid, node_type="Decision", content=scenario)  # type: ignore[misc]
         scenario_to_uuid[scenario] = uuid
 
     ndcg_scores = []
@@ -429,6 +433,7 @@ def test_graph_lift_over_bm25(cuad_dataset, decision_query):
             entities=list(clauses)[:5],
             decision_maker="system",
         )
+        cuad_graph.add_node(uuid, node_type="Decision", content=scenario)  # type: ignore[misc]
         scenario_to_uuid[scenario] = uuid
 
     graph_ndcg_scores = []

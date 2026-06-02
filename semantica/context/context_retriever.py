@@ -2270,10 +2270,17 @@ Answer:"""
                 from .decision_query import DecisionQuery
                 query_engine = DecisionQuery(self.knowledge_graph)
                 return query_engine.find_precedents_hybrid(scenario, category, limit)
+            elif hasattr(self.knowledge_graph, '_decisions'):
+                # ContextGraph path — DecisionQuery._find_precedents_basic handles this backend
+                from .decision_query import DecisionQuery
+                query_engine = DecisionQuery(graph_store=self.knowledge_graph)
+                return query_engine.find_precedents_hybrid(
+                    scenario, category, limit, use_advanced_features=False
+                )
             else:
                 # Fallback to simple graph search
                 return self._fallback_precedent_search(scenario, category, limit)
-                
+
         except Exception as e:
             self.logger.error(f"Failed to find precedents: {e}")
             return []

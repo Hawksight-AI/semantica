@@ -49,6 +49,14 @@ def _evaluate_compliance_batch(
     """
     Run check_compliance() on every record and compute TP/TN/FP/FN.
 
+    Positive class = violation (non-compliant decision).
+      TP: expected violation,  predicted violation   — correctly caught
+      TN: expected compliant,  predicted compliant   — correctly cleared
+      FP: expected compliant,  predicted violation   — false alarm
+      FN: expected violation,  predicted compliant   — missed violation (drives FNR hard gate)
+
+    FNR = FN / (FN + TP) = missed_violations / total_actual_violations
+
     records: list of {"decision": Decision, "is_compliant": bool}
     """
     tp = tn = fp = fn = 0
@@ -61,14 +69,14 @@ def _evaluate_compliance_batch(
         except Exception:
             predicted_compliant = False  # Treat errors as non-compliant (conservative)
 
-        if expected_compliant and predicted_compliant:
-            tp += 1
-        elif not expected_compliant and not predicted_compliant:
-            tn += 1
+        if not expected_compliant and not predicted_compliant:
+            tp += 1  # correctly caught violation
+        elif expected_compliant and predicted_compliant:
+            tn += 1  # correctly cleared compliant decision
         elif expected_compliant and not predicted_compliant:
-            fp += 1
+            fp += 1  # false alarm — compliant flagged as violation
         else:  # not expected_compliant and predicted_compliant
-            fn += 1
+            fn += 1  # missed violation — non-compliant passed as clean
 
     total = tp + tn + fp + fn
     accuracy = (tp + tn) / total if total > 0 else 0.0
