@@ -137,6 +137,8 @@ const FA2_SETTINGS = {
   },
 };
 
+const FULL_GRAPH_LAYOUT_SETTLE_MS = 4_500;
+
 const GROUPED_FA2_SETTINGS = {
   iterations: GRAPH_THEME.grouped.layout.iterations,
   settings: {
@@ -1302,6 +1304,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const layoutSyncFrameRef = useRef<number | null>(null);
     const layoutSyncTickRef = useRef(0);
     const deferredFocusFrameRef = useRef<number | null>(null);
+    const fullGraphLayoutSettleTimeoutRef = useRef<number | null>(null);
     const groupedLayoutSettleTimeoutRef = useRef<number | null>(null);
     const reducerWarningStateRef = useRef<{ missingEdges: Set<string>; missingNodes: Set<string> }>({
       missingEdges: new Set<string>(),
@@ -2416,6 +2419,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
       if (!isLayoutRunning) {
         fa2Ref.current?.stop();
+        if (fullGraphLayoutSettleTimeoutRef.current !== null) {
+          window.clearTimeout(fullGraphLayoutSettleTimeoutRef.current);
+          fullGraphLayoutSettleTimeoutRef.current = null;
+        }
         if (groupedLayoutSettleTimeoutRef.current !== null) {
           window.clearTimeout(groupedLayoutSettleTimeoutRef.current);
           groupedLayoutSettleTimeoutRef.current = null;
@@ -2450,6 +2457,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         window.clearTimeout(groupedLayoutSettleTimeoutRef.current);
         groupedLayoutSettleTimeoutRef.current = null;
       }
+      if (fullGraphLayoutSettleTimeoutRef.current !== null) {
+        window.clearTimeout(fullGraphLayoutSettleTimeoutRef.current);
+        fullGraphLayoutSettleTimeoutRef.current = null;
+      }
 
       if (usingGroupedOwnedLayout) {
         groupedLayoutSettleTimeoutRef.current = window.setTimeout(() => {
@@ -2463,6 +2474,19 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             size: displayGraphRef.current.size,
           });
         }, GRAPH_THEME.grouped.layout.settleMs);
+      } else {
+        fullGraphLayoutSettleTimeoutRef.current = window.setTimeout(() => {
+          fa2Ref.current?.stop();
+          fullGraphLayoutSettleTimeoutRef.current = null;
+          onLayoutRunningChange?.(false);
+          debugGraphRuntime("full-layout-auto-settled", {
+            graphVersion: graphVersionRef.current,
+            viewMode: viewModeRef.current,
+            layoutMode: displayMetaRef.current.layoutMode,
+            order: displayGraphRef.current.order,
+            size: displayGraphRef.current.size,
+          });
+        }, FULL_GRAPH_LAYOUT_SETTLE_MS);
       }
 
       if (displayMeta.layoutMode === "mirrored" && sigma) {
@@ -2494,6 +2518,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
         return () => {
           disposed = true;
+          if (fullGraphLayoutSettleTimeoutRef.current !== null) {
+            window.clearTimeout(fullGraphLayoutSettleTimeoutRef.current);
+            fullGraphLayoutSettleTimeoutRef.current = null;
+          }
           if (groupedLayoutSettleTimeoutRef.current !== null) {
             window.clearTimeout(groupedLayoutSettleTimeoutRef.current);
             groupedLayoutSettleTimeoutRef.current = null;
@@ -2507,6 +2535,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       }
 
       return () => {
+        if (fullGraphLayoutSettleTimeoutRef.current !== null) {
+          window.clearTimeout(fullGraphLayoutSettleTimeoutRef.current);
+          fullGraphLayoutSettleTimeoutRef.current = null;
+        }
         if (groupedLayoutSettleTimeoutRef.current !== null) {
           window.clearTimeout(groupedLayoutSettleTimeoutRef.current);
           groupedLayoutSettleTimeoutRef.current = null;
@@ -2517,6 +2549,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
     useEffect(() => {
       return () => {
+        if (fullGraphLayoutSettleTimeoutRef.current !== null) {
+          window.clearTimeout(fullGraphLayoutSettleTimeoutRef.current);
+          fullGraphLayoutSettleTimeoutRef.current = null;
+        }
         if (groupedLayoutSettleTimeoutRef.current !== null) {
           window.clearTimeout(groupedLayoutSettleTimeoutRef.current);
           groupedLayoutSettleTimeoutRef.current = null;

@@ -1148,7 +1148,6 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
   const sceneRef = useRef<GraphSceneHandle>(null);
   const lastExternalFocusTokenRef = useRef<number | undefined>(undefined);
   const pluginRuntimeRef = useRef<GraphSceneRuntime | null>(null);
-  const settlingOverlayTimeoutRef = useRef<number | null>(null);
   const pluginInteractionStateRef = useRef<GraphInteractionState>({
     hoveredNodeId: null,
     selectedNodeId: "",
@@ -1175,10 +1174,6 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
       setGraphReady(true);
       setGraphVersion((current) => current + 1);
       setIsLayoutRunning(!graphSummary.layoutReady);
-      if (settlingOverlayTimeoutRef.current !== null) {
-        window.clearTimeout(settlingOverlayTimeoutRef.current);
-        settlingOverlayTimeoutRef.current = null;
-      }
 
       if (graphSummary.layoutReady) {
         setLoadingProgress(null);
@@ -1197,21 +1192,17 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
         layoutSource: graphSummary.layoutSource,
         layoutState: "bootstrapping",
       }));
-      settlingOverlayTimeoutRef.current = window.setTimeout(() => {
-        setLoadingProgress((current) => (current?.phase === "stabilizing_layout" ? null : current));
-        settlingOverlayTimeoutRef.current = null;
-      }, 900);
     },
     onProgress: handleLoadProgress,
   });
 
   useEffect(() => {
-    return () => {
-      if (settlingOverlayTimeoutRef.current !== null) {
-        window.clearTimeout(settlingOverlayTimeoutRef.current);
-      }
-    };
-  }, []);
+    if (isLayoutRunning) {
+      return;
+    }
+
+    setLoadingProgress((current) => (current?.phase === "stabilizing_layout" ? null : current));
+  }, [isLayoutRunning]);
 
   useEffect(() => {
     let cancelled = false;
