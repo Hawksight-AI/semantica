@@ -174,6 +174,16 @@ function debugGraphWorkspace(message: string, payload?: Record<string, unknown>)
   console.debug(`[GraphWorkspace] ${message}`, payload ?? {});
 }
 
+function getGraphSummarySignature(summary: GraphLoadSummary): string {
+  return [
+    summary.nodeCount,
+    summary.edgeCount,
+    summary.layoutSource ?? "unknown",
+    summary.layoutReady ? "ready" : "runtime",
+    summary.loadTimeMs,
+  ].join(":");
+}
+
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
   useEffect(() => {
@@ -1148,6 +1158,7 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
   const sceneRef = useRef<GraphSceneHandle>(null);
   const lastExternalFocusTokenRef = useRef<number | undefined>(undefined);
   const pluginRuntimeRef = useRef<GraphSceneRuntime | null>(null);
+  const appliedGraphSummarySignatureRef = useRef<string | null>(null);
   const pluginInteractionStateRef = useRef<GraphInteractionState>({
     hoveredNodeId: null,
     selectedNodeId: "",
@@ -1168,31 +1179,39 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     }
   }, []);
 
+  const applyGraphReadySummary = useCallback((graphSummary: GraphLoadSummary) => {
+    const signature = getGraphSummarySignature(graphSummary);
+    if (appliedGraphSummarySignatureRef.current === signature) {
+      return;
+    }
+
+    appliedGraphSummarySignatureRef.current = signature;
+    setGraphReady(true);
+    setGraphVersion((current) => current + 1);
+    setIsLayoutRunning(!graphSummary.layoutReady);
+
+    if (graphSummary.layoutReady) {
+      setLoadingProgress(null);
+      return;
+    }
+
+    setLoadingProgress(createGraphLoadProgress({
+      phase: "stabilizing_layout",
+      progressKind: "indeterminate",
+      nodesLoaded: graphSummary.nodeCount,
+      nodesTotal: graphSummary.nodeCount,
+      edgesLoaded: graphSummary.edgeCount,
+      edgesTotal: graphSummary.edgeCount,
+      message: "Settling runtime layout",
+      showGraphBehind: true,
+      layoutSource: graphSummary.layoutSource,
+      layoutState: "bootstrapping",
+    }));
+  }, []);
+
   const { data: summary, isLoading, isFetching } = useLoadGraph({
     enabled: true,
-    onGraphReady: (graphSummary) => {
-      setGraphReady(true);
-      setGraphVersion((current) => current + 1);
-      setIsLayoutRunning(!graphSummary.layoutReady);
-
-      if (graphSummary.layoutReady) {
-        setLoadingProgress(null);
-        return;
-      }
-
-      setLoadingProgress(createGraphLoadProgress({
-        phase: "stabilizing_layout",
-        progressKind: "indeterminate",
-        nodesLoaded: graphSummary.nodeCount,
-        nodesTotal: graphSummary.nodeCount,
-        edgesLoaded: graphSummary.edgeCount,
-        edgesTotal: graphSummary.edgeCount,
-        message: "Settling runtime layout",
-        showGraphBehind: true,
-        layoutSource: graphSummary.layoutSource,
-        layoutState: "bootstrapping",
-      }));
-    },
+    onGraphReady: applyGraphReadySummary,
     onProgress: handleLoadProgress,
   });
 
@@ -1203,6 +1222,14 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
 
     setLoadingProgress((current) => (current?.phase === "stabilizing_layout" ? null : current));
   }, [isLayoutRunning]);
+
+  useEffect(() => {
+    if (!summary || graphReady) {
+      return;
+    }
+
+    applyGraphReadySummary(summary);
+  }, [applyGraphReadySummary, graphReady, summary]);
 
   useEffect(() => {
     let cancelled = false;
