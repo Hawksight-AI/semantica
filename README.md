@@ -23,6 +23,18 @@
 
 > **Most AI agents act without a trail. Semantica adds the layer your stack is missing: structured context graphs, auditable decision records, and full provenance from every output back to its source — so your AI isn't just powerful, it's accountable.**
 
+<p align="center">
+  <img
+    src="docs/assets/img/semantica-knowledge-explorer-demo.gif"
+    alt="Semantica Knowledge Explorer demo showing MTOR search, distance heatmap, and focused graph neighborhood"
+    width="960"
+  />
+</p>
+
+<p align="center">
+  <em>Search dense knowledge graphs, reveal distance intelligence, and focus local context in seconds.</em>
+</p>
+
 🌍 [🇺🇸 English](https://readme-i18n.com/Hawksight-AI/semantica?lang=en) · [🇩🇪 Deutsch](https://readme-i18n.com/Hawksight-AI/semantica?lang=de) · [🇫🇷 Français](https://readme-i18n.com/Hawksight-AI/semantica?lang=fr) · [🇪🇸 Español](https://readme-i18n.com/Hawksight-AI/semantica?lang=es) · [🇮🇹 Italiano](https://readme-i18n.com/Hawksight-AI/semantica?lang=it) · [🇵🇹 Português](https://readme-i18n.com/Hawksight-AI/semantica?lang=pt) · [🇸🇦 العربية](https://readme-i18n.com/Hawksight-AI/semantica?lang=ar) · [🇵🇰 اردو](https://readme-i18n.com/Hawksight-AI/semantica?lang=ur) · [🇮🇳 हिन्दी](https://readme-i18n.com/Hawksight-AI/semantica?lang=hi) · [🇨🇳 中文](https://readme-i18n.com/Hawksight-AI/semantica?lang=zh) · [🇯🇵 日本語](https://readme-i18n.com/Hawksight-AI/semantica?lang=ja) · [🇰🇷 한국어](https://readme-i18n.com/Hawksight-AI/semantica?lang=ko)
 
 </div>
