@@ -179,7 +179,7 @@ monitoring = [
 # ---- Visualization ----
 viz = [
   "pyvis>=0.3.0",
-  "graphviz>=0.20.0",
+  "graphviz>=0.21",
   "d3blocks>=1.0.0"
 ]
 
