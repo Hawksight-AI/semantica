@@ -9,8 +9,8 @@ from rich.rule import Rule
 
 console = Console()
 
-
-def _discover_modules() -> list[str]:
+from typing import List
+def _discover_modules() -> List[str]:
     benchmarks_dir = "benchmarks"
     _excluded = {"results", "__pycache__"}
     return sorted(
