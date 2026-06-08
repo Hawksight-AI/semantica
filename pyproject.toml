@@ -117,7 +117,7 @@ llm-all = [
 parse-docling = ["docling>=1.0.0"]
 
 # ---- Database Connectors ----
-db-snowflake = ["snowflake-connector-python>=3.0.0", "cryptography>=3.4.0"]
+db-snowflake = ["snowflake-connector-python>=4.5.0", "cryptography>=48.0.0"]
 db-arrow = ["pyarrow>=10.0.0"]
 ingest-parquet = ["pyarrow>=10.0.0"]
 
