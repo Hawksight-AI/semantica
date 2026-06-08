@@ -106,7 +106,7 @@ llm-gemini = ["google-genai>=0.1.0"]
 llm-anthropic = ["anthropic>=0.18.0"]
 llm-ollama = ["ollama>=0.1.0"]
 llm-deepseek = ["openai>=1.0.0"]
-llm-litellm = ["litellm>=1.0.0"]
+llm-litellm = ["litellm>=1.83.9"]
 llm-instructor = ["instructor>=1.0.0"]
 
 llm-all = [
