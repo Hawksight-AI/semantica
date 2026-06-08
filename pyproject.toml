@@ -173,7 +173,7 @@ monitoring = [
   "opentelemetry-api>=1.30.0,<2.0.0",
   "opentelemetry-sdk>=1.30.0,<2.0.0",
   "opentelemetry-semantic-conventions>=0.58b0,<0.62",
-  "opentelemetry-instrumentation>=0.58b0,<0.62"
+  "opentelemetry-instrumentation>=0.62b1,<0.62"
 ]
 
 # ---- Visualization ----
