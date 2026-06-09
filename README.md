@@ -40,17 +40,6 @@
 **[Watch on YouTube →](https://www.youtube.com/watch?v=QfnNZg4-dZA)**  
 *Knowledge Explorer · Context Graphs · Reasoning Engine · Decision Intelligence · Ontology Hub*
 
-<br/>
-
-### Knowledge Explorer in Action
-
-<img
-  src="docs/assets/img/semantica-knowledge-explorer-demo.gif"
-  alt="Semantica Knowledge Explorer — MTOR search, distance heatmap, and focused graph neighborhood"
-  width="960"
-/>
-
-*Search dense knowledge graphs, reveal distance intelligence, and focus local context in seconds.*
 
 </div>
 
