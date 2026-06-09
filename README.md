@@ -23,17 +23,36 @@
 
 > **Most AI agents act without a trail. Semantica adds the layer your stack is missing: structured context graphs, auditable decision records, and full provenance from every output back to its source — so your AI isn't just powerful, it's accountable.**
 
-<p align="center">
+## 🎬 See Semantica in Action
+
+<div align="center">
+
+### ▶️ Full Platform Walkthrough
+
+<a href="https://www.youtube.com/watch?v=QfnNZg4-dZA" target="_blank">
   <img
-    src="docs/assets/img/semantica-knowledge-explorer-demo.gif"
-    alt="Semantica Knowledge Explorer demo showing MTOR search, distance heatmap, and focused graph neighborhood"
+    src="https://img.youtube.com/vi/QfnNZg4-dZA/maxresdefault.jpg"
+    alt="▶ Semantica Knowledge Explorer Tour — Click to Watch on YouTube"
     width="960"
   />
-</p>
+</a>
 
-<p align="center">
-  <em>Search dense knowledge graphs, reveal distance intelligence, and focus local context in seconds.</em>
-</p>
+**[Watch on YouTube →](https://www.youtube.com/watch?v=QfnNZg4-dZA)**  
+*Knowledge Explorer · Context Graphs · Reasoning Engine · Decision Intelligence · Ontology Hub*
+
+<br/>
+
+### Knowledge Explorer in Action
+
+<img
+  src="docs/assets/img/semantica-knowledge-explorer-demo.gif"
+  alt="Semantica Knowledge Explorer — MTOR search, distance heatmap, and focused graph neighborhood"
+  width="960"
+/>
+
+*Search dense knowledge graphs, reveal distance intelligence, and focus local context in seconds.*
+
+</div>
 
 🌍 [🇺🇸 English](https://readme-i18n.com/Hawksight-AI/semantica?lang=en) · [🇩🇪 Deutsch](https://readme-i18n.com/Hawksight-AI/semantica?lang=de) · [🇫🇷 Français](https://readme-i18n.com/Hawksight-AI/semantica?lang=fr) · [🇪🇸 Español](https://readme-i18n.com/Hawksight-AI/semantica?lang=es) · [🇮🇹 Italiano](https://readme-i18n.com/Hawksight-AI/semantica?lang=it) · [🇵🇹 Português](https://readme-i18n.com/Hawksight-AI/semantica?lang=pt) · [🇸🇦 العربية](https://readme-i18n.com/Hawksight-AI/semantica?lang=ar) · [🇵🇰 اردو](https://readme-i18n.com/Hawksight-AI/semantica?lang=ur) · [🇮🇳 हिन्दी](https://readme-i18n.com/Hawksight-AI/semantica?lang=hi) · [🇨🇳 中文](https://readme-i18n.com/Hawksight-AI/semantica?lang=zh) · [🇯🇵 日本語](https://readme-i18n.com/Hawksight-AI/semantica?lang=ja) · [🇰🇷 한국어](https://readme-i18n.com/Hawksight-AI/semantica?lang=ko)
 
