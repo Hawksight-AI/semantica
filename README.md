@@ -14,8 +14,6 @@
 [![Docs](https://img.shields.io/badge/Docs-docs.getsemantica.ai-0099FF?logo=readthedocs&logoColor=white)](https://docs.getsemantica.ai/)
 [![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-FF3B30?logo=github&logoColor=white)](https://openclaw.ai)
 
-**6,000× faster search** &nbsp;·&nbsp; **10× embedding cache** &nbsp;·&nbsp; **27 modules** &nbsp;·&nbsp; **109 REST endpoints** &nbsp;·&nbsp; **40+ cookbook examples**
-
 **[Website](https://getsemantica.ai/)** &nbsp;·&nbsp; **[Docs](https://docs.getsemantica.ai/)** &nbsp;·&nbsp; **[Discord](https://discord.gg/sV34vps5hH)** &nbsp;·&nbsp; **[Twitter/X](https://x.com/BuildSemantica)** &nbsp;·&nbsp; **[YouTube](https://www.youtube.com/watch?v=QfnNZg4-dZA)** &nbsp;·&nbsp; **[PyPI](https://pypi.org/project/semantica/)** &nbsp;·&nbsp; **[Changelog](CHANGELOG.md)**
 
 </div>
@@ -730,11 +728,13 @@ On-premises deployment · Private cloud · Custom domain implementations · SLA-
 
 ## Star History
 
-<div align="center">
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Hawksight-AI/semantica&type=Date)](https://star-history.com/#Hawksight-AI/semantica&Date)
-
-</div>
+<a href="https://www.star-history.com/?repos=semantica-agi%2Fsemantica&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ---
 
@@ -742,7 +742,7 @@ On-premises deployment · Private cloud · Custom domain implementations · SLA-
 
 <div align="center">
 
-[![Contributors](https://contrib.rocks/image?repo=Hawksight-AI/semantica)](https://github.com/Hawksight-AI/semantica/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=semantica-agi/semantica&max=500)](https://github.com/semantica-agi/semantica/graphs/contributors)
 
 </div>
 
