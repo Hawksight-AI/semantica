@@ -10,15 +10,13 @@
 [![Total Downloads](https://static.pepy.tech/badge/semantica?style=flat-square)](https://pepy.tech/project/semantica)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg?style=flat-square)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![CI](https://img.shields.io/github/actions/workflow/status/Hawksight-AI/semantica/ci.yml?style=flat-square&label=CI)](https://github.com/Hawksight-AI/semantica/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/ci.yml?style=flat-square&label=CI)](https://github.com/semantica-agi/semantica/actions)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/sV34vps5hH)
 [![Docs](https://img.shields.io/badge/Docs-docs.getsemantica.ai-0099FF?style=flat-square&logo=readthedocs&logoColor=white)](https://docs.getsemantica.ai/)
 
 **[Website](https://getsemantica.ai/)** &nbsp;·&nbsp; **[Docs](https://docs.getsemantica.ai/)** &nbsp;·&nbsp; **[Discord](https://discord.gg/sV34vps5hH)** &nbsp;·&nbsp; **[Twitter/X](https://x.com/BuildSemantica)** &nbsp;·&nbsp; **[YouTube](https://www.youtube.com/watch?v=QfnNZg4-dZA)** &nbsp;·&nbsp; **[PyPI](https://pypi.org/project/semantica/)** &nbsp;·&nbsp; **[Changelog](CHANGELOG.md)**
 
 </div>
-
----
 
 > Most AI agents act without a trail.
 >
@@ -35,11 +33,7 @@
 - **Reasoning Engines** — forward chaining, Rete network, Datalog, SPARQL — explainable paths, not black boxes
 - **Drop-in Integrations** — Agno native, 12-tool MCP server, 50+ CLI commands, 109 REST endpoints, plugins for 8 editors
 
----
-
 **[Quick Start](#quick-start)** &nbsp;·&nbsp; **[Why Semantica](#why-semantica)** &nbsp;·&nbsp; **[Architecture](#architecture)** &nbsp;·&nbsp; **[Context Graphs](#context-graphs)** &nbsp;·&nbsp; **[Decision Intelligence](#decision-intelligence)** &nbsp;·&nbsp; **[Module Showcase](#module-showcase)** &nbsp;·&nbsp; **[CLI](#cli)** &nbsp;·&nbsp; **[Integrations](#integrations)** &nbsp;·&nbsp; **[Performance](#performance)** &nbsp;·&nbsp; **[Install](#installation)**
-
----
 
 ## See It in Action
 
@@ -64,8 +58,6 @@
 *Knowledge Explorer · Context Graphs · Reasoning Engine · Decision Intelligence · Ontology Hub*
 
 </div>
-
----
 
 ## Quick Start
 
@@ -98,11 +90,9 @@ compliant = graph.check_decision_rules({"category": "vendor_selection"})  # poli
 
 If Semantica solves a real problem for you, a star helps others find it.
 
-**[⭐ Star on GitHub](https://github.com/Hawksight-AI/semantica)** &nbsp;·&nbsp; **[Join Discord](https://discord.gg/sV34vps5hH)**
+**[⭐ Star on GitHub](https://github.com/semantica-agi/semantica)** &nbsp;·&nbsp; **[Join Discord](https://discord.gg/sV34vps5hH)**
 
 </div>
-
----
 
 ## Why Semantica
 
@@ -120,10 +110,6 @@ If Semantica solves a real problem for you, a star helps others find it.
 | **Multi-agent context** | Separate per agent | Separate per agent | Single shared intelligence layer |
 
 Semantica does not replace your LLM or your vector store — it adds the structured intelligence and accountability layer they cannot provide.
-
-
-
----
 
 ## Context Graphs
 
@@ -164,8 +150,6 @@ retrieved = ctx.retrieve("who approved the Acme contract?")
 - Every node carries provenance — you can always ask *"where did this come from?"*
 - Conflicts are detected and flagged before they corrupt your knowledge base
 - Point-in-time snapshots let you replay history without reprocessing
-
----
 
 ## Decision Intelligence
 
@@ -222,8 +206,6 @@ impact    = graph.analyze_decision_impact(uw_id)
 compliant = graph.check_decision_rules({"category": "loan_underwriting", "confidence": 0.94})
 ```
 
----
-
 ## Module Showcase
 
 Semantica is a full platform. Every module is independently importable and composable. Below are working examples for each.
@@ -251,8 +233,6 @@ rows = DBIngestor().ingest_database(
     max_rows_per_table=50_000,
 )
 ```
-
----
 
 ### `semantica.semantic_extract` — NER, Relations, Events, Triplets
 
@@ -282,8 +262,6 @@ triplets  = TripletExtractor().extract_triplets(text)
 # → [("Anthropic", "valuation", "$61.5B"), ("Dario Amodei", "is_ceo_of", "Anthropic"), ...]
 ```
 
----
-
 ### `semantica.kg` — Knowledge Graph Construction & Analysis
 
 Build a production knowledge graph from documents and run graph algorithms over it.
@@ -305,8 +283,6 @@ communities = analyzer.detect_communities(kg, method="louvain")  # natural clust
 bridges     = analyzer.identify_bridges(kg)                      # single points of failure
 paths       = analyzer.find_shortest_path(kg, "alice", "contract_001")
 ```
-
----
 
 ### `semantica.reasoning` — Forward Chaining, Rete, Datalog, SPARQL
 
@@ -357,8 +333,6 @@ ancestors = engine.query("ancestor(tom, ?X)")
 # → [{"X": "bob"}, {"X": "ann"}, {"X": "pat"}]
 ```
 
----
-
 ### `semantica.vector_store` — Hybrid & Filtered Semantic Search
 
 Drop-in vector store with 7 backends, hybrid search, and decision-aware retrieval.
@@ -391,8 +365,6 @@ hits = hs.search("high-risk transactions 2024")
 explanation = vs.explain_decision(results[0]["id"])
 ```
 
----
-
 ### `semantica.provenance` — W3C PROV-O Lineage
 
 Every fact linked to its source — no black boxes, no mystery outputs.
@@ -421,8 +393,6 @@ lineage = prov.get_lineage("acme_corp")
 trail   = prov.trace_lineage("alice_chen")   # full ancestor chain
 entry   = prov.get_provenance("acme_corp")
 ```
-
----
 
 ### `semantica.ontology` — OWL Generation, SHACL Validation
 
@@ -453,8 +423,6 @@ report    = validator.validate(ontology)
 # → ValidationResult(conforms=True, errors=[], warnings=[])
 ```
 
----
-
 ### `semantica.deduplication` — Entity Resolution at Scale
 
 Block, cluster, and merge duplicates with semantic similarity — **6.98× faster** than baseline.
@@ -478,8 +446,6 @@ merger = EntityMerger(preserve_provenance=True)
 ops    = merger.merge_duplicates(entities, strategy="keep_most_complete")
 history = merger.get_merge_history()
 ```
-
----
 
 ### `semantica.pipeline` — Pipeline DSL
 
@@ -511,8 +477,6 @@ status = engine.get_status(pipeline)
 progress = engine.get_progress(pipeline)
 ```
 
----
-
 ### `semantica.temporal` — Bi-Temporal Graphs & Time Travel
 
 Track when facts were true *in the world* vs. when they were *recorded* — and query either axis.
@@ -539,8 +503,6 @@ fact = BiTemporalFact(
     recorded_at=datetime(2024, 3, 5),
 )
 ```
-
----
 
 ### `semantica.export` — RDF, OWL, Parquet, Cypher, JSON-LD
 
@@ -569,8 +531,6 @@ JSONExporter().export_knowledge_graph(kg, "kg.json")
 LPGExporter().export(kg, "kg_import.cypher", method="cypher")
 ```
 
----
-
 ### `semantica.visualization` — Interactive Graph Workbench
 
 Render force-directed graphs, community maps, ontology hierarchies, and temporal dashboards.
@@ -593,8 +553,6 @@ import numpy as np
 emb_viz = EmbeddingVisualizer()
 emb_viz.visualize_2d_projection(embeddings=np.array([...]), labels=["..."], method="umap")
 ```
-
----
 
 ### Multi-Agent Shared Context with Agno
 
@@ -632,9 +590,7 @@ team = Team(agents=[researcher, analyst], mode="coordinate")
 # Researcher's findings are instantly available to the Analyst — no copy, no sync
 ```
 
-→ [40+ runnable notebooks in the cookbook](https://github.com/Hawksight-AI/semantica/tree/main/cookbook)
-
----
+→ [40+ runnable notebooks in the cookbook](https://github.com/semantica-agi/semantica/tree/main/cookbook)
 
 ## Performance
 
@@ -646,8 +602,6 @@ Benchmarks from v0.5.0 on a 118,000-node production graph:
 | Embedding cache hit | cold load | revision-based cache | **10×** throughput |
 | Semantic deduplication | baseline | optimized candidate gen | **6.98×** faster |
 | Candidate generation | baseline | blocking strategy | **63.6%** faster |
-
----
 
 ## CLI
 
@@ -715,8 +669,6 @@ $ semantica doctor
 **Command groups:** `ingest` · `parse` · `extract` · `kg` · `reason` · `decision` · `temporal` · `provenance` · `ontology` · `embed` · `deduplicate` · `validate` · `export` · `visualize` · `pipeline` · `server` · `explorer` · `mcp` · `doctor` · `shell`
 
 → [Full CLI reference](https://docs.getsemantica.ai/)
-
----
 
 ## Integrations
 
@@ -898,8 +850,6 @@ python -m semantica.mcp_server
 
 Bundles for Claude Code, Cursor, Codex, Windsurf, Cline, Continue, VS Code, and OpenClaw in [`plugins/`](plugins/).
 
----
-
 ## Knowledge Explorer
 
 A browser-based graph workbench — pan and zoom live graphs, scrub the timeline, review every decision's causal chain, resolve duplicates, author your ontology visually. Built on React 19 + Sigma.js.
@@ -921,8 +871,6 @@ cd explorer && npm install && npm run dev  # UI on port 5173
 
 → [`explorer/README.md`](explorer/README.md)
 
----
-
 ## Modules
 
 | Module | What it provides |
@@ -943,8 +891,6 @@ cd explorer && npm install && npm run dev  # UI on port 5173
 | `semantica.visualization` | KG, ontology, embedding, temporal, and community graph visualization |
 | [`explorer/`](explorer/) | React 19 + Sigma.js browser workbench |
 
----
-
 ## Features
 
 | Capability | Highlights |
@@ -961,8 +907,6 @@ cd explorer && npm install && npm run dev  # UI on port 5173
 | **Graph Databases** | Neo4j · FalkorDB · Apache AGE · AWS Neptune |
 | **LLM Providers** | 100+ models via LiteLLM — OpenAI · Anthropic · Groq · Ollama · Azure · Bedrock |
 
----
-
 ## What's New in v0.5.0
 
 - **Distance Intelligence** — 10× embedding cache, N×N semantic distance matrix, Ego Mode explorer, 5 new API endpoints
@@ -972,8 +916,6 @@ cd explorer && npm install && npm run dev  # UI on port 5173
 - **6,000× search speedup** — O(log n) inverted index; 118k-node graphs: 24ms → 0.004ms
 
 → [Full release notes](RELEASE_NOTES.md) · [Changelog](CHANGELOG.md)
-
----
 
 ## Built for High-Stakes Domains
 
@@ -985,8 +927,6 @@ Semantica is designed for environments where AI outputs must be explainable, aud
 - **Cybersecurity** — threat attribution, incident response timelines, IOC provenance tracking
 - **Government** — policy decision records, classified information governance, regulatory reporting
 - **Autonomous Systems** — decision logs, safety validation, explainable AI for certification
-
----
 
 ## Installation
 
@@ -1010,11 +950,9 @@ pip install semantica[watch]               # Directory file watcher
 From source:
 
 ```bash
-git clone https://github.com/Hawksight-AI/semantica.git
+git clone https://github.com/semantica-agi/semantica.git
 cd semantica && pip install -e ".[dev]" && pytest tests/
 ```
-
----
 
 ## Enterprise
 
@@ -1022,20 +960,16 @@ On-premises deployment · Private cloud · Custom domain implementations · SLA-
 
 **[getsemantica.ai](https://getsemantica.ai/)** for enterprise solutions and pricing.
 
----
-
 ## Community & Support
 
 | | |
 | --- | --- |
 | **Discord** | [discord.gg/sV34vps5hH](https://discord.gg/sV34vps5hH) — real-time help, showcases, announcements |
-| **GitHub Discussions** | [Q&A and feature requests](https://github.com/Hawksight-AI/semantica/discussions) |
-| **GitHub Issues** | [Bug reports](https://github.com/Hawksight-AI/semantica/issues) |
+| **GitHub Discussions** | [Q&A and feature requests](https://github.com/semantica-agi/semantica/discussions) |
+| **GitHub Issues** | [Bug reports](https://github.com/semantica-agi/semantica/issues) |
 | **Documentation** | [docs.getsemantica.ai](https://docs.getsemantica.ai/) |
-| **Cookbook** | [40+ runnable Jupyter notebooks](https://github.com/Hawksight-AI/semantica/tree/main/cookbook) |
+| **Cookbook** | [40+ runnable Jupyter notebooks](https://github.com/semantica-agi/semantica/tree/main/cookbook) |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) · [Release Notes](RELEASE_NOTES.md) |
-
----
 
 ## Star History
 
@@ -1047,8 +981,6 @@ On-premises deployment · Private cloud · Custom domain implementations · SLA-
  </picture>
 </a>
 
----
-
 ## Contributors
 
 <div align="center">
@@ -1056,8 +988,6 @@ On-premises deployment · Private cloud · Custom domain implementations · SLA-
 [![Contributors](https://contrib.rocks/image?repo=semantica-agi/semantica&max=500)](https://github.com/semantica-agi/semantica/graphs/contributors)
 
 </div>
-
----
 
 ## Contributing
 
@@ -1070,13 +1000,11 @@ All contributions welcome — bug fixes, features, tests, and docs.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
----
-
 <div align="center">
 
-MIT License · Built by [Hawksight AI](https://github.com/Hawksight-AI)
+MIT License · Built by [Semantica](https://github.com/semantica-agi)
 
-[GitHub](https://github.com/Hawksight-AI/semantica) &nbsp;·&nbsp;
+[GitHub](https://github.com/semantica-agi/semantica) &nbsp;·&nbsp;
 [Discord](https://discord.gg/sV34vps5hH) &nbsp;·&nbsp;
 [Twitter/X](https://x.com/BuildSemantica) &nbsp;·&nbsp;
 [Website](https://getsemantica.ai/) &nbsp;·&nbsp;
@@ -1085,8 +1013,8 @@ MIT License · Built by [Hawksight AI](https://github.com/Hawksight-AI)
 
 If this project helps you build better AI, a star means a lot.
 
-**[⭐ Star on GitHub →](https://github.com/Hawksight-AI/semantica)**
+**[⭐ Star on GitHub →](https://github.com/semantica-agi/semantica)**
 
-[English](https://readme-i18n.com/Hawksight-AI/semantica?lang=en) · [Deutsch](https://readme-i18n.com/Hawksight-AI/semantica?lang=de) · [Français](https://readme-i18n.com/Hawksight-AI/semantica?lang=fr) · [Español](https://readme-i18n.com/Hawksight-AI/semantica?lang=es) · [Italiano](https://readme-i18n.com/Hawksight-AI/semantica?lang=it) · [Português](https://readme-i18n.com/Hawksight-AI/semantica?lang=pt) · [العربية](https://readme-i18n.com/Hawksight-AI/semantica?lang=ar) · [اردو](https://readme-i18n.com/Hawksight-AI/semantica?lang=ur) · [हिन्दी](https://readme-i18n.com/Hawksight-AI/semantica?lang=hi) · [中文](https://readme-i18n.com/Hawksight-AI/semantica?lang=zh) · [日本語](https://readme-i18n.com/Hawksight-AI/semantica?lang=ja) · [한국어](https://readme-i18n.com/Hawksight-AI/semantica?lang=ko)
+[English](https://readme-i18n.com/semantica-agi/semantica?lang=en) · [Deutsch](https://readme-i18n.com/semantica-agi/semantica?lang=de) · [Français](https://readme-i18n.com/semantica-agi/semantica?lang=fr) · [Español](https://readme-i18n.com/semantica-agi/semantica?lang=es) · [Italiano](https://readme-i18n.com/semantica-agi/semantica?lang=it) · [Português](https://readme-i18n.com/semantica-agi/semantica?lang=pt) · [العربية](https://readme-i18n.com/semantica-agi/semantica?lang=ar) · [اردو](https://readme-i18n.com/semantica-agi/semantica?lang=ur) · [हिन्दी](https://readme-i18n.com/semantica-agi/semantica?lang=hi) · [中文](https://readme-i18n.com/semantica-agi/semantica?lang=zh) · [日本語](https://readme-i18n.com/semantica-agi/semantica?lang=ja) · [한국어](https://readme-i18n.com/semantica-agi/semantica?lang=ko)
 
 </div>
