@@ -92,6 +92,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **17 regression tests** added in `tests/test_issue_554_fixes.py` covering all bug paths, including harshalizode's exact gateway configuration.
 
+### Security
+
+- **GitHub Actions workflow permissions hardened** — added explicit `permissions: contents: read` + `security-events: write` block to `defender-for-devops.yml`, resolving CodeQL alert [actions/missing-workflow-permissions](https://github.com/semantica-agi/semantica/security/code-scanning/25) (CWE: principle of least privilege).
+
+- **DOMPurify upgraded to 3.4.0+ via npm overrides** — `monaco-editor` pinned `dompurify` at 3.2.7; added `overrides` in `explorer/package.json` to force `^3.4.0` (resolved to 3.4.10). Fixes 6 Dependabot alerts:
+  - Prototype pollution → XSS bypass via `CUSTOM_ELEMENT_HANDLING` fallback (CVE-2026-41238 / GHSA-v9jr-rg53-9pgp)
+  - Mutation-XSS via re-contextualization into raw-text wrappers (GHSA-h8r8-wccr-v5f2)
+  - `SAFE_FOR_TEMPLATES` bypass in `RETURN_DOM` mode (CVE-2026-41239 / GHSA-crv5-9vww-q3g8)
+  - `ADD_TAGS` function-predicate bypasses `FORBID_TAGS` (GHSA-39q2-94rc-95cp / GHSA-h7mw-gpvr-xq4m)
+  - `ADD_ATTR` predicate skips URI validation, allowing `javascript:` URLs (GHSA-cjmm-f4jc-qw8r)
+  - `USE_PROFILES` prototype pollution allows event handlers (GHSA-cj63-jhhr-wcxv)
+
+- **`uuid` upgraded to 13.0.1+ via npm overrides** — bumped from 13.0.0 to 13.0.2, fixing missing buffer bounds check in `v3`/`v5`/`v6` APIs that allowed silent partial writes into caller-provided buffers (CVE-2026-41907 / GHSA-w5hq-g745-h8pq).
+
+- **Vite upgraded from 5.x to 6.4.3** — resolves path traversal in optimised-deps `.map` handling (CVE-2026-39365 / GHSA-4w7w-66w2-5vf9) and the esbuild dev-server CORS issue (GHSA-4w7w-66w2-5vf9). Bundled esbuild updated from 0.21.5 → 0.25.12.
+
 ---
 
 ## [0.5.0] - 2026-05-11
