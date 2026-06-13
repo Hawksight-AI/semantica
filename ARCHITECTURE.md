@@ -64,7 +64,7 @@ flowchart TD
     %% ── OUTPUTS ──────────────────────────────────────────────────────
     VS & GS --> EXP["📦 Export  (semantica.export)\nRDF Turtle · JSON-LD · N-Triples · OWL · SHACL\nParquet · Cypher · ArangoDB AQL · GraphML · CSV · HTML"]
     VS & GS --> VIZ["📊 Visualize  (semantica.visualization)\nKGVisualizer · OntologyVisualizer\nEmbeddingVisualizer · TemporalVisualizer"]
-    EKG --> SVC["🔌 Services\nREST API 109 ep · MCP Server 12 tools\nCLI 50+ cmds · Knowledge Explorer"]
+    EKG --> SVC["🔌 Services\nREST API 100+ endpoints · MCP Server 10+ tools\nCLI 50+ commands · Knowledge Explorer"]
 ```
 
 ---
