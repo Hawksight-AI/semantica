@@ -138,6 +138,8 @@ Resources:
       IamAuthEnabled: true
       StorageEncrypted: true
       DeletionProtection: false
+      EnableCloudwatchLogsExports:
+        - audit
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-cluster

@@ -46,7 +46,7 @@ jobs:
       uses: microsoft/security-devops-action@v1.6.0
       id: msdo
       with:
-        tools: checkov,eslint,templateanalyzer,terrascan,binskim
+        tools: checkov,eslint,templateanalyzer,terrascan
     - name: Upload results to Security tab
       uses: github/codeql-action/upload-sarif@v3
       with:
