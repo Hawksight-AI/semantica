@@ -108,6 +108,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Vite upgraded from 5.x to 6.4.3** — resolves path traversal in optimised-deps `.map` handling (CVE-2026-39365 / GHSA-4w7w-66w2-5vf9) and the esbuild dev-server CORS issue (GHSA-4w7w-66w2-5vf9). Bundled esbuild updated from 0.21.5 → 0.25.12.
 
+- **esbuild forced to 0.28.1+ via npm override** — vite 6.4.3 bundles esbuild 0.25.12 which is vulnerable to missing binary integrity verification in the Deno distribution module (GHSA-gv7w-rqvm-qjhr); added `"esbuild": "^0.28.1"` to `overrides` in `explorer/package.json`. `npm audit` now reports 0 vulnerabilities (Dependabot #15).
+
+- **Leaked Groq API keys removed from cookbook notebooks** — 6 hardcoded `GROQ_API_KEY` values (`gsk_...`) stripped from configuration cells in `supply_chain/01`, `intelligence/01`, `cybersecurity/01`, `cybersecurity/02`, `finance/01`, and `blockchain/02`; fallback replaced with empty string (secret scanning alerts #1–#6). Keys were already publicly exposed — rotate them in the Groq console.
+
 ---
 
 ## [0.5.0] - 2026-05-11
