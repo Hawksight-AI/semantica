@@ -45,6 +45,8 @@ jobs:
     - name: Run Microsoft Security DevOps
       uses: microsoft/security-devops-action@v1.6.0
       id: msdo
+      with:
+        tools: checkov,eslint,templateanalyzer,terrascan,binskim
     - name: Upload results to Security tab
       uses: github/codeql-action/upload-sarif@v3
       with:
