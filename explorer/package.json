@@ -52,6 +52,7 @@
   },
   "overrides": {
     "dompurify": "^3.4.0",
-    "uuid": "^13.0.1"
+    "uuid": "^13.0.1",
+    "esbuild": "^0.28.1"
   }
 }
