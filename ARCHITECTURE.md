@@ -104,3 +104,5 @@ flowchart LR
 ---
 
 *→ [README](README.md) · [Docs](https://docs.getsemantica.ai/) · [Cookbook](https://github.com/semantica-agi/semantica/tree/main/cookbook)*
+
+> Note: `Docs` and `Cookbook` are external resources maintained outside this file and may change over time. If a link is unavailable, refer to the repository `README.md` and in-repo documentation as canonical fallbacks.
