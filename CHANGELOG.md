@@ -112,6 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Leaked Groq API keys removed from cookbook notebooks** — 6 hardcoded `GROQ_API_KEY` values (`gsk_...`) stripped from configuration cells in `supply_chain/01`, `intelligence/01`, `cybersecurity/01`, `cybersecurity/02`, `finance/01`, and `blockchain/02`; fallback replaced with empty string (secret scanning alerts #1–#6). Keys were already publicly exposed — rotate them in the Groq console.
 
+- **Leaked Groq API keys removed from additional cookbook notebooks** — 6 distinct hardcoded `GROQ_API_KEY` values stripped from 4 additional notebooks: `advanced_rag/01_GraphRAG_Complete`, `advanced_rag/02_RAG_vs_GraphRAG_Comparison`, `blockchain/01_DeFi_Protocol_Intelligence`, and `biomedical/01_Drug_Discovery_Pipeline` (secret scanning alerts #1–#6). Affected keys: `gsk_SLLE0...`, `gsk_S4dBVJ...`, `gsk_SLOv6...`, `gsk_lR6Qcj...`, `gsk_ToJis6...`, `gsk_LmbQBr...`; all publicly exposed since Dec 2025 — revoke in the Groq console and close the GitHub secret scanning alerts as "Revoked" in the Security tab.
+
 ---
 
 ## [0.5.0] - 2026-05-11
