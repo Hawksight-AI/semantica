@@ -154,28 +154,22 @@ Every component is independently importable. Use one module or all of them.
 
 ### How Semantica Compares
 
-Most AI frameworks are built for retrieval. Semantica is built for accountability. The table below covers the capabilities that matter most in production, regulated, and multi-agent environments.
+Most AI frameworks are built for retrieval. Semantica is built for accountability. The comparison below focuses on the intelligence capabilities that define the difference.
 
-| Capability | LangChain | LlamaIndex | MS GraphRAG | Mem0 | Zep | **Semantica** |
+| | LangChain | LlamaIndex | MS GraphRAG | Mem0 | Zep | **Semantica** |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Knowledge Graph construction** | ⚡ Plugin | ✅ PropertyGraph | ✅ Community KG | ❌ | ❌ | ✅ **Native, full-stack** |
-| **Decision tracking** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **First-class objects** |
-| **Full audit trail** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **W3C PROV-O, exportable** |
-| **Explainable reasoning** | ❌ LLM only | ❌ LLM only | ❌ LLM only | ❌ | ❌ | ✅ **Rete · Datalog · SPARQL** |
-| **Ontology (OWL / SHACL)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **Visual editor + validation** |
-| **Conflict detection & resolution** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **5 resolution strategies** |
-| **Bi-temporal graph** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **Allen interval algebra** |
-| **Entity resolution** | ❌ | ⚡ Partial | ⚡ Partial | ❌ | ⚡ Partial | ✅ **Blocking + semantic dedup** |
-| **Multi-agent shared context** | ⚡ LangGraph | ⚡ Partial | ❌ | ✅ | ⚡ Partial | ✅ **Single shared graph** |
-| **Policy enforcement** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **SHACL + rule engine** |
-| **Compliance export** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **PROV-O · OWL · RDF · SHACL** |
-| **Point-in-time snapshots** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **Time travel queries** |
-| **Native MCP server** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **12 tools, zero config** |
-| **Production REST API** | ❌ | ❌ | ❌ | ✅ Cloud | ✅ | ✅ **109 self-hosted endpoints** |
-| **Vector store** | ✅ 20+ integrations | ✅ 20+ integrations | ✅ | ✅ | ✅ | ✅ **7 backends, hybrid search** |
-| **LLM providers (all supported today)** | ✅ | ✅ | ⚡ Partial | ✅ | ✅ | ✅ **OpenAI · Anthropic · Gemini · Mistral · Llama · Groq · Cohere · Azure · Bedrock · Ollama · DeepSeek · HuggingFace · and more** |
+| **Knowledge Graph construction** | ⚡ Plugin | ⚡ PropertyGraph | ⚡ Community KG | ❌ | ❌ | ✅ Native, full-stack |
+| **Decision tracking** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ First-class objects |
+| **Audit trail & provenance** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ W3C PROV-O, exportable |
+| **Explainable reasoning** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Rete · Datalog · SPARQL |
+| **Ontology (OWL / SHACL)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Generation + visual editor |
+| **Conflict detection** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ 5 resolution strategies |
+| **Bi-temporal graph & time travel** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Point-in-time snapshots |
+| **Entity resolution** | ❌ | ⚡ Partial | ⚡ Partial | ❌ | ⚡ Partial | ✅ Blocking + semantic dedup |
+| **Multi-agent shared context** | ⚡ LangGraph | ⚡ Partial | ❌ | ✅ | ⚡ Partial | ✅ Single shared graph |
+| **Policy enforcement** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ SHACL + rule engine |
 
-> ✅ Full support &nbsp; ⚡ Partial / via integration &nbsp; ❌ Not supported
+> ✅ Full support &nbsp;&nbsp; ⚡ Partial / via plugin &nbsp;&nbsp; ❌ Not supported
 
 **The key distinction:** LangChain, LlamaIndex, and MS GraphRAG are excellent retrieval and orchestration layers. Mem0 and Zep excel at personal agent memory. None of them answer *"prove what your AI decided, why, and whether it complied with policy."* Semantica is built specifically for that question.
 
