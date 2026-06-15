@@ -107,7 +107,7 @@ llm-anthropic = ["anthropic>=0.18.0"]
 llm-ollama = ["ollama>=0.1.0"]
 llm-deepseek = ["openai>=1.0.0"]
 llm-litellm = ["litellm>=1.83.9"]
-llm-instructor = ["instructor>=1.0.0"]
+llm-instructor = ["instructor>=1.15.3"]
 
 llm-all = [
   "semantica[llm-openai,llm-groq,llm-gemini,llm-anthropic,llm-ollama,llm-deepseek,llm-litellm,llm-instructor]"
