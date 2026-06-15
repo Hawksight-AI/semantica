@@ -157,17 +157,6 @@ def create_app(session: Optional[GraphSession] = None) -> FastAPI:
             "status": "active",
         }
 
-    @app.get("/", include_in_schema=False)
-    async def root():
-        index_path = Path(__file__).resolve().parent.parent / "static" / "index.html"
-        if index_path.is_file():
-            return FileResponse(index_path)
-        return HTMLResponse(
-            '<!doctype html><html lang="en"><head><meta charset="UTF-8">'
-            '<title>Semantica Knowledge Explorer</title></head>'
-            '<body><div id="root"></div></body></html>'
-        )
-
     static_dir = Path(__file__).resolve().parent.parent / "static"
     if static_dir.is_dir():
         assets_dir = static_dir / "assets"
