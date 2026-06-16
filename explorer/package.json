@@ -33,7 +33,7 @@
     "vis-timeline": "^8.5.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.0",
+    "@babel/core": "^7.29.6",
     "@eslint/js": "^9.39.4",
     "@types/babel__core": "^7.20.5",
     "@types/node": "^24.12.0",
