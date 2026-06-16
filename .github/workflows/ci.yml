@@ -34,3 +34,20 @@ jobs:
           npm run build
       - run: pip install build
       - run: python -m build
+      - name: Verify Explorer frontend is packaged
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          wheels = list(Path("dist").glob("*.whl"))
+          assert wheels, "No wheel was built"
+
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              names = set(wheel.namelist())
+
+          assert "semantica/static/index.html" in names, "Explorer index.html missing from wheel"
+          assert any(name.startswith("semantica/static/assets/") for name in names), "Explorer assets missing from wheel"
+
+          print("Explorer frontend is packaged")
+          PY

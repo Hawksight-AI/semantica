@@ -97,10 +97,56 @@ def client():
 
 
 class TestHealthInfo:
-    def test_root_serves_spa(self, client):
+    def test_root_without_frontend_bundle_shows_diagnostic(self, tmp_path, monkeypatch, client):
+        from semantica.explorer import app as app_module
+
+        package_dir = tmp_path / "semantica"
+        (package_dir / "explorer").mkdir(parents=True)
+
+        class FakeAppPath:
+            def __init__(self, *_args, **_kwargs):
+                self.path = package_dir / "explorer" / "app.py"
+
+            def resolve(self):
+                return self.path.resolve()
+
+        monkeypatch.setattr(app_module, "Path", FakeAppPath)
+
         response = client.get("/")
+
+        assert response.status_code == 200
+        assert "Explorer UI not available" in response.text
+        assert "frontend bundle was not found" in response.text
+        assert "/docs" in response.text
+
+    def test_root_serves_built_spa_when_bundle_exists(self, tmp_path, monkeypatch):
+        from starlette.testclient import TestClient
+        from semantica.explorer import app as app_module
+        from semantica.explorer.app import create_app
+
+        package_dir = tmp_path / "semantica"
+        static_dir = package_dir / "static"
+        static_dir.mkdir(parents=True)
+        (static_dir / "index.html").write_text(
+            '<!doctype html><html><body><div id="root"></div><script src="/assets/app.js"></script></body></html>',
+            encoding="utf-8",
+        )
+
+        class FakeAppPath:
+            def __init__(self, *_args, **_kwargs):
+                self.path = package_dir / "explorer" / "app.py"
+
+            def resolve(self):
+                return self.path.resolve()
+
+        monkeypatch.setattr(app_module, "Path", FakeAppPath)
+
+        with TestClient(create_app()) as test_client:
+            response = test_client.get("/")
+
         assert response.status_code == 200
         assert '<div id="root"></div>' in response.text
+        assert '<script src="/assets/app.js"></script>' in response.text
 
     def test_health(self, client):
         response = client.get("/api/health")
