@@ -17,6 +17,10 @@ export default defineConfig({
     outDir: path.resolve(__dirname, '../semantica/static'),
     emptyOutDir: true,
     chunkSizeWarningLimit: 650,
+    // Explicit target avoids esbuild attempting to lower syntax that all
+    // modern browsers already support natively, which breaks with the
+    // esbuild >=0.28 override when running under Vite 6 on Linux CI.
+    target: 'esnext',
     rollupOptions: {
       output: {
         manualChunks(id) {
