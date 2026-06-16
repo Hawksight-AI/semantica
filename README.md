@@ -1369,12 +1369,17 @@ A browser-based graph workbench. Pan and zoom live graphs, scrub the timeline, r
 | **Ontology Hub** | SHACL Studio, visual editor, cross-ontology alignments, SKOS browser |
 | **Lineage** | W3C PROV-O provenance visualization for any entity |
 
+Quickest way to start (no Node.js required):
+
 ```bash
-python -m semantica.server              # backend on port 8000
-cd explorer && npm install && npm run dev  # UI on port 5173
+pip install "semantica[explorer]"
+semantica-explorer --graph my_graph.json
+# Dashboard opens at http://127.0.0.1:8000
 ```
 
-→ [`explorer/README.md`](explorer/README.md)
+For contributor / dev-server setup, see the full local setup guide:
+
+→ **[explorer/README.md — Local Setup Guide](explorer/README.md)**
 
 ---
 

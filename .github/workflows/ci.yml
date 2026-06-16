@@ -22,5 +22,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: explorer/package-lock.json
+      - name: Build Explorer frontend
+        working-directory: explorer
+        run: |
+          npm ci
+          npm run build
       - run: pip install build
       - run: python -m build

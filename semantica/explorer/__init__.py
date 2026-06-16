@@ -80,6 +80,16 @@ def main(argv=None):
     app = create_app(session=session)
 
     url = f"http://{args.host}:{args.port}"
+
+    _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+    if args.host not in _LOOPBACK_HOSTS:
+        _err.print(
+            f"[bold yellow]Warning:[/bold yellow] Binding to "
+            f"[cyan]{args.host}[/cyan] exposes the Explorer to the network. "
+            "The API has no authentication — all graph data will be readable "
+            "and writable by any host that can reach this port."
+        )
+
     if not args.no_browser:
         import threading
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
