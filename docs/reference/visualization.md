@@ -1,15 +1,15 @@
----
+﻿---
 title: "Visualization Module"
 description: "Interactive and static knowledge graph, ontology, embedding, and temporal visualization."
 icon: "chart-bar"
 ---
 
-**`semantica.visualization`** renders knowledge graphs, ontologies, embedding spaces, and temporal data as **interactive HTML or static images** — without launching the full Explorer server:
+**`semantica.visualization`** renders knowledge graphs, ontologies, embedding spaces, and temporal data as **interactive HTML or static images**: without launching the full Explorer server:
 
-- `KGVisualizer` — interactive network with force, hierarchical, and circular layouts
-- `EmbeddingVisualizer` — 2D/3D UMAP or t-SNE projections with cluster labels
-- `TemporalVisualizer` — timeline views and graph evolution across snapshots
-- `AnalyticsVisualizer` — centrality scores, community structure, degree distribution charts
+- `KGVisualizer`: interactive network with force, hierarchical, and circular layouts
+- `EmbeddingVisualizer`: 2D/3D UMAP or t-SNE projections with cluster labels
+- `TemporalVisualizer`: timeline views and graph evolution across snapshots
+- `AnalyticsVisualizer`: centrality scores, community structure, degree distribution charts
 
 Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` or `graphviz`.
 
@@ -34,7 +34,7 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
 
     viz = KGVisualizer(layout="force", color_scheme="default")
 
-    # Interactive — opens in browser, supports hover and click
+    # Interactive: opens in browser, supports hover and click
     viz.visualize_network(graph, output="interactive")
     ```
   </Step>
@@ -52,10 +52,10 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
   </Step>
   <Step title="Export to static formats">
     ```python
-    # Static PNG — for reports and embedding in documents
+    # Static PNG: for reports and embedding in documents
     viz.visualize_network(graph, output="png", file_path="graph.png")
 
-    # Vector SVG — for publications and scalable diagrams
+    # Vector SVG: for publications and scalable diagrams
     viz.visualize_network(graph, output="svg", file_path="graph.svg")
     ```
   </Step>
@@ -72,7 +72,7 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
 
     viz = KGVisualizer(layout="force", color_scheme="default")
 
-    # Interactive — opens in browser
+    # Interactive: opens in browser
     viz.visualize_network(graph, output="interactive")
 
     # Save as HTML file
@@ -98,7 +98,7 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
 
     | Layout | Description | Best For |
     | :------ | :----------- | :-------- |
-    | `force` | Physics simulation — clusters emerge naturally | General graphs |
+    | `force` | Physics simulation: clusters emerge naturally | General graphs |
     | `hierarchical` | Top-down tree layout | Taxonomies, org charts |
     | `circular` | Nodes on a circle, edges as chords | Small dense graphs |
   </Tab>
@@ -160,7 +160,7 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
     # Timeline of entity/relationship changes
     viz.visualize_timeline(temporal_data, output="interactive")
 
-    # Animated network evolution — one frame per time step
+    # Animated network evolution: one frame per time step
     viz.visualize_network_evolution(temporal_kg, output="html", file_path="evolution.html")
 
     # Side-by-side snapshot comparison
@@ -171,7 +171,7 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
     }
     viz.visualize_snapshot_comparison(snapshots, output="html", file_path="diff.html")
 
-    # Temporal patterns — pass a list of pattern dicts
+    # Temporal patterns: pass a list of pattern dicts
     viz.visualize_temporal_patterns(patterns, output="html", file_path="patterns.html")
 
     # Metrics evolution over time
@@ -179,7 +179,7 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
     ```
   </Tab>
   <Tab title="AnalyticsVisualizer">
-    Visualize graph analytics results — centrality, communities, and degree distribution:
+    Visualize graph analytics results: centrality, communities, and degree distribution:
 
     ```python
     from semantica.visualization import AnalyticsVisualizer

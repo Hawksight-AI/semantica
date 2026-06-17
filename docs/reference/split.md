@@ -1,4 +1,4 @@
----
+﻿---
 title: "Split Module"
 description: "Text chunking with recursive, semantic, entity-aware, relation-aware, structural, and sliding window splitting."
 icon: "scissors"
@@ -27,9 +27,9 @@ Semantica's chunking methods are designed to avoid these failure modes.
 
 | Class | Role |
 | :--- | :--- |
-| `TextSplitter` | Unified entry point — swap `method=` without changing downstream code |
+| `TextSplitter` | Unified entry point: swap `method=` without changing downstream code |
 | `Chunk` | `{text, start_index, end_index, metadata, id}` |
-| `SemanticChunker` | Embedding-based topic-shift detection — splits only when content actually changes |
+| `SemanticChunker` | Embedding-based topic-shift detection: splits only when content actually changes |
 | `StructuralChunker` | Heading/section-based splits using structural text analysis |
 | `EntityAwareChunker` | Prevents named entity mentions from being split across chunk boundaries |
 | `RelationAwareChunker` | Keeps subject-predicate-object triplets intact within a single chunk |
@@ -39,7 +39,7 @@ Semantica's chunking methods are designed to avoid these failure modes.
 
 | Method | Best for |
 | :--- | :--- |
-| `recursive` | General text — splits on paragraphs, sentences, words in order |
+| `recursive` | General text: splits on paragraphs, sentences, words in order |
 | `sentence` | Conversational text, QA |
 | `paragraph` | Long-form text where paragraph integrity matters |
 | `token` | LLM context window enforcement |
@@ -53,13 +53,13 @@ Semantica's chunking methods are designed to avoid these failure modes.
 
 <CardGroup cols={2}>
   <Card title="TextSplitter" icon="scissors">
-    Unified interface for 11 chunking strategies — swap methods without changing downstream code.
+    Unified interface for 11 chunking strategies: swap methods without changing downstream code.
   </Card>
   <Card title="Semantic Chunking" icon="brain">
-    Embedding-based topic shift detection — splits only when the topic actually changes.
+    Embedding-based topic shift detection: splits only when the topic actually changes.
   </Card>
   <Card title="Entity-Aware Chunking" icon="user">
-    Entity spans never cross chunk boundaries — guaranteed by boundary adjustment.
+    Entity spans never cross chunk boundaries: guaranteed by boundary adjustment.
   </Card>
   <Card title="Relation-Aware Chunking" icon="arrows-left-right">
     Subject–predicate–object triplets kept within a single chunk for KG pipelines.
@@ -96,7 +96,7 @@ Semantica's chunking methods are designed to avoid these failure modes.
   <Step title="Or split a document object">
     ```python
     # split_documents() accepts any object with a .text attribute,
-    # or a plain string — no specific document class required.
+    # or a plain string: no specific document class required.
     class Doc:
         def __init__(self, text, metadata=None):
             self.text = text
@@ -127,7 +127,7 @@ Semantica's chunking methods are designed to avoid these failure modes.
 | Method | How It Splits | Best For |
 | :------ | :------------- | :-------- |
 | `recursive` | Paragraph → sentence → word (cascading fallback) | General-purpose default |
-| `semantic_transformer` | Embeds sentences, splits at cosine similarity drops | RAG — topic coherence matters |
+| `semantic_transformer` | Embeds sentences, splits at cosine similarity drops | RAG: topic coherence matters |
 | `entity_aware` | Adjusts boundaries so entity spans are never cut | NER pipelines |
 | `relation_aware` | Keeps subject–predicate–object triplets within one chunk | KG construction |
 | `sentence` | Sentence boundary detection (regex, NLTK, spaCy) | Short documents, Q&A |
@@ -158,7 +158,7 @@ Use this decision tree before picking a method:
 from semantica.split import TextSplitter
 
 splitter = TextSplitter(
-    method="semantic_transformer",   # chunking strategy — see Splitting Methods table
+    method="semantic_transformer",   # chunking strategy: see Splitting Methods table
     chunk_size=1000,                 # target size in characters
     chunk_overlap=200,               # character overlap between adjacent chunks
     similarity_threshold=0.7,        # cosine similarity cutoff (semantic_transformer only)
@@ -171,19 +171,19 @@ splitter = TextSplitter(
 | Parameter | Type | Default | Description |
 | :--------- | :---- | :------- | :----------- |
 | `method` | `str \| list[str]` | `"recursive"` | Chunking strategy, or list of methods as fallback chain |
-| `chunk_size` | `int` | `1000` | Target size in **characters** (not tokens — if you were using token-based sizing before, multiply by ~4 to approximate the same boundary) |
+| `chunk_size` | `int` | `1000` | Target size in **characters** (not tokens: if you were using token-based sizing before, multiply by ~4 to approximate the same boundary) |
 | `chunk_overlap` | `int` | `200` | Character overlap between adjacent chunks |
-| `similarity_threshold` | `float` | `0.7` | Cosine similarity cutoff for `semantic_transformer` — lower = more splits |
+| `similarity_threshold` | `float` | `0.7` | Cosine similarity cutoff for `semantic_transformer`: lower = more splits |
 | `model` | `str` | `"all-MiniLM-L6-v2"` | Sentence-transformers model name for `semantic_transformer` |
 | `ner_method` | `str` | `"ml"` | NER method for `entity_aware`: `"pattern"` \| `"regex"` \| `"ml"` \| `"huggingface"` \| `"llm"` |
 | `relation_method` | `str` | `"ml"` | Relation extraction method for `relation_aware`: `"ml"` \| `"llm"` \| `"huggingface"` |
-| `tokenizer` | `str` | `"gpt-4"` | tiktoken model name for `token` method — unrecognised names fall back to `cl100k_base` |
+| `tokenizer` | `str` | `"gpt-4"` | tiktoken model name for `token` method: unrecognised names fall back to `cl100k_base` |
 
 ## Splitting Method Details
 
 <Tabs>
   <Tab title="Recursive (default)">
-    Tries paragraph breaks first, then sentence boundaries, then word boundaries — falling back only when the chunk exceeds `chunk_size`:
+    Tries paragraph breaks first, then sentence boundaries, then word boundaries: falling back only when the chunk exceeds `chunk_size`:
 
     ```python
     splitter = TextSplitter(method="recursive", chunk_size=1000, chunk_overlap=200)
@@ -192,7 +192,7 @@ splitter = TextSplitter(
 
     **Key behaviours:**
     - Preserves paragraph and sentence structure wherever possible
-    - Falls back gracefully — never produces chunks larger than `chunk_size`
+    - Falls back gracefully: never produces chunks larger than `chunk_size`
     - Overlap ensures context continuity across chunk boundaries
     - Good starting point when you're unsure which method to use
   </Tab>
@@ -207,14 +207,14 @@ splitter = TextSplitter(
         model="all-MiniLM-L6-v2",      # any sentence-transformers model name
         similarity_threshold=0.7,       # 0.6 = more splits, 0.8 = fewer splits
         chunk_size=800,
-        chunk_overlap=0,                # not needed — chunks are already coherent
+        chunk_overlap=0,                # not needed: chunks are already coherent
     )
     chunks = splitter.split(text)
     ```
 
     **Key behaviours:**
-    - Requires the `sentence-transformers` package — uses `all-MiniLM-L6-v2` by default, configurable via `model=`
-    - Produces variable-length chunks — some topics are short, others long
+    - Requires the `sentence-transformers` package: uses `all-MiniLM-L6-v2` by default, configurable via `model=`
+    - Produces variable-length chunks: some topics are short, others long
     - Falls back to sentence splitting if `sentence-transformers` is not installed
     - Slower than `recursive` due to embedding computation; cache embeddings for repeated splits
   </Tab>
@@ -241,13 +241,13 @@ splitter = TextSplitter(
     ```
 
     **Key behaviours:**
-    - NER is run internally — entity extraction happens automatically inside the splitter
+    - NER is run internally: entity extraction happens automatically inside the splitter
     - Entity objects are available in `chunk.metadata["entities"]` for each chunk
-    - Chunk sizes vary slightly from `chunk_size` — boundary adjustments are ≤ one sentence
+    - Chunk sizes vary slightly from `chunk_size`: boundary adjustments are ≤ one sentence
     - Works with all entity types: PERSON, ORGANIZATION, LOCATION, DATE, custom types
   </Tab>
   <Tab title="Relation-Aware">
-    Keeps subject–predicate–object triplets within the same chunk — critical for KG pipelines:
+    Keeps subject–predicate–object triplets within the same chunk: critical for KG pipelines:
 
     ```python
     from semantica.split import TextSplitter
@@ -268,9 +268,9 @@ splitter = TextSplitter(
     ```
 
     **Key behaviours:**
-    - Relation extraction is run internally — no pre-computed entities or triplets needed
+    - Relation extraction is run internally: no pre-computed entities or triplets needed
     - Relation objects are available in `chunk.metadata["relationships"]` for each chunk
-    - Implies entity-aware behaviour — both entities in a triplet are kept whole too
+    - Implies entity-aware behaviour: both entities in a triplet are kept whole too
     - Best used as the split step in a `Parse → Split → Extract → Build KG` pipeline
   </Tab>
   <Tab title="Structural">
@@ -288,7 +288,7 @@ splitter = TextSplitter(
     ```
 
     **Key behaviours:**
-    - Operates on plain text — no structural document format required
+    - Operates on plain text: no structural document format required
     - Respects heading hierarchy (lines starting with `#` or all-caps headings) and paragraph breaks  
     - Uses `max_chunk_size=` parameter instead of the standard `chunk_size=` for maximum size control
     - Falls back to `recursive` if `StructuralChunker` is unavailable
@@ -306,7 +306,7 @@ class Chunk:
     text:        str                    # the chunk's text content
     start_index: int                    # character offset of start in source text
     end_index:   int                    # character offset of end in source text
-    metadata:    Dict[str, Any]         # method-specific fields — see table below
+    metadata:    Dict[str, Any]         # method-specific fields: see table below
     id:          Optional[str] = None   # optional chunk identifier
 ```
 
@@ -322,7 +322,7 @@ Metadata keys vary by method. Only keys that are actually set by the implementat
 | `sentence_count` | `int` | `sentence`, `semantic_transformer`, spaCy path | Number of sentences in this chunk |
 | `paragraph_count` | `int` | `paragraph` | Number of paragraphs in this chunk |
 | `word_count` | `int` | `word` | Number of words in this chunk |
-| `token_count` | `int` | `token`; `sentence`/`semantic_transformer` when spaCy is available | Token count — not always present |
+| `token_count` | `int` | `token`; `sentence`/`semantic_transformer` when spaCy is available | Token count: not always present |
 | `entity_count` | `int` | `entity_aware` | Number of entities whose boundaries fall in this chunk |
 | `entities` | `list` | `entity_aware` | Entity objects whose boundaries fall in this chunk |
 | `relation_count` | `int` | `relation_aware` | Number of relation triplets in this chunk |
@@ -348,7 +348,7 @@ If `tiktoken` is not installed, the `token` method falls back to splitting by wh
 
 ## Pipeline Integration
 
-`TextSplitter` can be used standalone or composed manually with other Semantica modules. The example below shows a sequential pattern — parse a file, split the text, then extract entities from each chunk:
+`TextSplitter` can be used standalone or composed manually with other Semantica modules. The example below shows a sequential pattern: parse a file, split the text, then extract entities from each chunk:
 
 ```python
 from semantica.parse import DocumentParser
@@ -376,7 +376,7 @@ For the full pipeline orchestration API, see the [Pipeline reference](pipeline).
 ## Tips and Common Pitfalls
 
 <Warning>
-  **`chunk_overlap` too small.** Without overlap, a fact that spans a chunk boundary is invisible in both chunks. A 10–20% overlap relative to `chunk_size` is a safe minimum — for `chunk_size=1000`, set `chunk_overlap=100` to `200`.
+  **`chunk_overlap` too small.** Without overlap, a fact that spans a chunk boundary is invisible in both chunks. A 10–20% overlap relative to `chunk_size` is a safe minimum: for `chunk_size=1000`, set `chunk_overlap=100` to `200`.
 </Warning>
 
 <Warning>
@@ -384,12 +384,12 @@ For the full pipeline orchestration API, see the [Pipeline reference](pipeline).
 </Warning>
 
 <Tip>
-  **Semantic splitting needs enough sentences.** `semantic_transformer` needs several sentences to detect topic shifts. On documents shorter than ~300 words it behaves like `sentence` splitting — use `recursive` instead.
+  **Semantic splitting needs enough sentences.** `semantic_transformer` needs several sentences to detect topic shifts. On documents shorter than ~300 words it behaves like `sentence` splitting: use `recursive` instead.
 </Tip>
 
 <CardGroup cols={2}>
   <Card title="Parse" icon="file-lines" href="parse">
-    Parse documents before chunking — produces sections and metadata.
+    Parse documents before chunking: produces sections and metadata.
   </Card>
   <Card title="Embeddings" icon="vector-square" href="embeddings">
     Embed chunks for vector search and semantic chunking.

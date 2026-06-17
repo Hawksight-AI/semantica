@@ -1,6 +1,6 @@
----
+﻿---
 title: "Getting Started"
-description: "The context and intelligence layer for AI — turning raw data into explainable, auditable knowledge graphs."
+description: "The context and intelligence layer for AI: turning raw data into explainable, auditable knowledge graphs."
 icon: "rocket"
 ---
 
@@ -58,7 +58,7 @@ icon: "rocket"
   </Step>
 
   <Step title="Choose your path">
-    Pick the track that matches what you're building — each starts with a focused 5-minute example.
+    Pick the track that matches what you're building: each starts with a focused 5-minute example.
 
     | Track | You want to... | Start with |
     | :----- | :-------------- | :--------- |
@@ -70,10 +70,10 @@ icon: "rocket"
   </Step>
 
   <Step title="Run the pipeline">
-    The full 6-step pipeline — ingest, parse, extract, build, visualize, export — is in the [Quickstart](quickstart). Takes under 5 minutes with pattern-based extraction (no API key required).
+    The full 6-step pipeline: ingest, parse, extract, build, visualize, export: is in the [Quickstart](quickstart). Takes under 5 minutes with pattern-based extraction (no API key required).
 
     <Note>
-      An LLM API key is **optional** for the quickstart. Pattern-based extraction works out of the box — upgrade to LLM extraction for higher accuracy when you're ready.
+      An LLM API key is **optional** for the quickstart. Pattern-based extraction works out of the box: upgrade to LLM extraction for higher accuracy when you're ready.
     </Note>
   </Step>
 </Steps>
@@ -145,7 +145,7 @@ icon: "rocket"
   </Tab>
 
   <Tab title="GraphRAG">
-    Ground every LLM response in your knowledge graph — no floating assertions.
+    Ground every LLM response in your knowledge graph: no floating assertions.
 
     ```python
     from semantica.context import AgentContext, ContextGraph
@@ -175,7 +175,7 @@ icon: "rocket"
   </Tab>
 
   <Tab title="MCP Integration">
-    Use Semantica from Claude Desktop, VS Code, Cursor, or any MCP client — no Python code required after setup.
+    Use Semantica from Claude Desktop, VS Code, Cursor, or any MCP client: no Python code required after setup.
 
     ```bash
     pip install semantica
@@ -202,7 +202,7 @@ icon: "rocket"
 
 ## Core Architecture
 
-Semantica uses a modular, layered architecture — import only what you need.
+Semantica uses a modular, layered architecture: import only what you need.
 
 <CardGroup cols={3}>
   <Card title="Input Layer" icon="database" href="reference/ingest">

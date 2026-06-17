@@ -1,10 +1,10 @@
----
+﻿---
 title: "Community"
 description: "Get help, connect with contributors, and share what you build with Semantica."
 icon: "users"
 ---
 
-Semantica is built in the open, with contributions from researchers, engineers, and practitioners across many domains. Whether you're filing a bug, sharing a project, or reviewing a PR — you're part of the ecosystem.
+Semantica is built in the open, with contributions from researchers, engineers, and practitioners across many domains. Whether you're filing a bug, sharing a project, or reviewing a PR: you're part of the ecosystem.
 
 
 ## Get Help
@@ -20,7 +20,7 @@ Semantica is built in the open, with contributions from researchers, engineers, 
     Browse open contributions and submit your own.
   </Card>
   <Card title="Security Issues" icon="shield" href="https://github.com/semantica-agi/semantica/security/advisories/new">
-    Report vulnerabilities privately — never in public issues.
+    Report vulnerabilities privately: never in public issues.
   </Card>
 </CardGroup>
 
@@ -29,10 +29,10 @@ Semantica is built in the open, with contributions from researchers, engineers, 
 
 We follow the [Contributor Covenant Code of Conduct](https://github.com/semantica-agi/semantica/blob/main/CODE_OF_CONDUCT.md). The community is built on four principles:
 
-- **Respect** — treat everyone with kindness and patience, regardless of experience level
-- **Inclusion** — welcome all backgrounds, domains, and approaches
-- **Collaboration** — work toward better solutions together rather than competing on approaches
-- **Learning** — share knowledge openly, ask questions without hesitation, and help others grow
+- **Respect**: treat everyone with kindness and patience, regardless of experience level
+- **Inclusion**: welcome all backgrounds, domains, and approaches
+- **Collaboration**: work toward better solutions together rather than competing on approaches
+- **Learning**: share knowledge openly, ask questions without hesitation, and help others grow
 
 To report unacceptable behavior, open a GitHub issue with the `[CoC]` prefix. Every report is investigated.
 
@@ -70,10 +70,10 @@ See the [Contributing Guide](contributing-guide) for the full development workfl
 
 ## Stay Connected
 
-- **[GitHub](https://github.com/semantica-agi/semantica)** — source code, releases, and the public roadmap
-- **[PyPI](https://pypi.org/project/semantica/)** — package releases and download stats
-- **[Discord](https://discord.gg/sV34vps5hH)** — real-time community chat
-- **[X / Twitter](https://x.com/BuildSemantica)** — announcements and release highlights
+- **[GitHub](https://github.com/semantica-agi/semantica)**: source code, releases, and the public roadmap
+- **[PyPI](https://pypi.org/project/semantica/)**: package releases and download stats
+- **[Discord](https://discord.gg/sV34vps5hH)**: real-time community chat
+- **[X / Twitter](https://x.com/BuildSemantica)**: announcements and release highlights
 
 
 ## See Also

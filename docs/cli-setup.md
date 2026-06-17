@@ -1,6 +1,6 @@
----
+﻿---
 title: "CLI Setup"
-description: "The five Semantica executables — what each one does, when to use it, and how to confirm it is working."
+description: "The five Semantica executables: what each one does, when to use it, and how to confirm it is working."
 icon: "terminal"
 ---
 
@@ -139,7 +139,7 @@ python -c "import semantica; print(semantica.__version__)"
     See [Explorer Setup](explorer-setup) for the full walkthrough including how to build and save a graph file.
   </Tab>
   <Tab title="Python module form">
-    Every command also runs as a Python module — useful when the script directory is not on `PATH`:
+    Every command also runs as a Python module: useful when the script directory is not on `PATH`:
 
     ```bash
     python -m semantica.mcp_server
@@ -201,7 +201,7 @@ If you have multiple Python environments, make sure you are installing into the 
 python -m pip install semantica
 ```
 
-### `semantica-explorer` — "uvicorn is required"
+### `semantica-explorer`: "uvicorn is required"
 
 The Explorer extras are not included in the base install:
 

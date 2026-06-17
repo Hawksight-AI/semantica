@@ -1,10 +1,10 @@
----
+﻿---
 title: "Explorer Setup"
 description: "Install the Explorer extras, save a ContextGraph to JSON, and launch the interactive browser dashboard."
 icon: "map"
 ---
 
-**`semantica-explorer`** is an **interactive browser dashboard** for knowledge graph exploration. You give it a graph file, it starts a local server, and opens a browser tab where you can search nodes, find paths, inspect provenance, and run analytics — no code required after launch.
+**`semantica-explorer`** is an **interactive browser dashboard** for knowledge graph exploration. You give it a graph file, it starts a local server, and opens a browser tab where you can search nodes, find paths, inspect provenance, and run analytics: no code required after launch.
 
 This page covers everything needed to go from zero to a running Explorer. For the full REST API reference and endpoint catalogue, see [Explorer Reference](reference/explorer).
 
@@ -60,7 +60,7 @@ curl http://127.0.0.1:8000/api/health
 ```
 
 
-## Step 1 — Build and Save a ContextGraph
+## Step 1: Build and Save a ContextGraph
 
 Explorer loads a graph from a JSON file on disk. You need to create that file first.
 
@@ -113,7 +113,7 @@ Explorer loads a graph from a JSON file on disk. You need to create that file fi
 </Tip>
 
 
-## Step 2 — Launch Explorer
+## Step 2: Launch Explorer
 
 ```bash
 semantica-explorer --graph my_graph.json
@@ -122,7 +122,7 @@ semantica-explorer --graph my_graph.json
 The startup sequence prints:
 
 ```
-✓ Graph loaded — 3 nodes, 2 edges
+✓ Graph loaded: 3 nodes, 2 edges
 ╭─ Semantica Explorer · http://127.0.0.1:8000 ─╮
 │  API docs  http://127.0.0.1:8000/docs         │
 │  Health    http://127.0.0.1:8000/api/health   │
@@ -140,15 +140,15 @@ The browser opens automatically at `http://127.0.0.1:8000` shortly after the ser
 | :---- | :----- | :------- | :----------- |
 | `--graph` | `-g` | *(**required**)* | Path to a ContextGraph JSON file |
 | `--port` | `-p` | `8000` | Port to bind the server |
-| `--host` | — | `127.0.0.1` | Host to bind the server |
-| `--no-browser` | — | off | Do not open a browser tab automatically |
+| `--host` |: | `127.0.0.1` | Host to bind the server |
+| `--no-browser` |: | off | Do not open a browser tab automatically |
 
 There are no flags for authentication, log level, or TLS. Those are not implemented in the CLI.
 
 ### Examples
 
 ```bash
-# Minimal — local only, port 8000, browser opens automatically
+# Minimal: local only, port 8000, browser opens automatically
 semantica-explorer --graph my_graph.json
 
 # Short flags
@@ -157,7 +157,7 @@ semantica-explorer -g my_graph.json -p 8080
 # Expose on the network so other machines can connect
 semantica-explorer --graph my_graph.json --host 0.0.0.0 --port 8080
 
-# Headless — skip the auto-open and navigate manually
+# Headless: skip the auto-open and navigate manually
 semantica-explorer --graph my_graph.json --no-browser
 ```
 
@@ -173,8 +173,8 @@ Once the server is running:
 | URL | What you get |
 | :--- | :------------ |
 | `http://127.0.0.1:8000` | Interactive dashboard |
-| `http://127.0.0.1:8000/docs` | Swagger UI — every REST endpoint, interactive |
-| `http://127.0.0.1:8000/api/health` | Health check — `{"status": "healthy"}` |
+| `http://127.0.0.1:8000/docs` | Swagger UI: every REST endpoint, interactive |
+| `http://127.0.0.1:8000/api/health` | Health check: `{"status": "healthy"}` |
 
 The browser tab opens shortly after startup. If it does not open, navigate to the URL manually or pass `--no-browser` and open it yourself.
 
@@ -241,12 +241,12 @@ This is expected in headless, SSH, and container environments. Add `--no-browser
 
 Once running, Explorer exposes a REST API and dashboard for:
 
-- **Node and edge search** — indexed search across all nodes by ID, type, and content
-- **Neighborhood expansion** — inspect neighbors up to configurable hop depth
-- **Path finding** — BFS shortest path between any two nodes
-- **Graph analytics** — centrality, community detection, connectivity
-- **Decisions and provenance** — query recorded decisions and their causal chains
-- **Import / export** — upload JSON or CSV to extend the graph; download the current state
+- **Node and edge search**: indexed search across all nodes by ID, type, and content
+- **Neighborhood expansion**: inspect neighbors up to configurable hop depth
+- **Path finding**: BFS shortest path between any two nodes
+- **Graph analytics**: centrality, community detection, connectivity
+- **Decisions and provenance**: query recorded decisions and their causal chains
+- **Import / export**: upload JSON or CSV to extend the graph; download the current state
 
 The full endpoint catalogue is documented in the Swagger UI at `/docs` and in the reference page below.
 
@@ -258,7 +258,7 @@ The full endpoint catalogue is documented in the Swagger UI at `/docs` and in th
     All five Semantica executables and when to use each one.
   </Card>
   <Card title="Context Module" icon="brain" href="reference/context">
-    Full documentation for ContextGraph — build, query, save, and load.
+    Full documentation for ContextGraph: build, query, save, and load.
   </Card>
   <Card title="Quickstart" icon="rocket" href="quickstart">
     End-to-end pipeline: ingest → extract → build graph → export.

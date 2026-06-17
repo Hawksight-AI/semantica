@@ -1,6 +1,6 @@
----
+﻿---
 title: "License"
-description: "Semantica is open source under the MIT License — free for personal and commercial use."
+description: "Semantica is open source under the MIT License: free for personal and commercial use."
 icon: "file-contract"
 ---
 
@@ -38,7 +38,7 @@ SOFTWARE.
 
 **You can:**
 
-<Check>Use Semantica commercially — free for business use</Check>
+<Check>Use Semantica commercially: free for business use</Check>
 <Check>Modify the source code</Check>
 <Check>Distribute copies or derivatives</Check>
 <Check>Use in proprietary software</Check>
@@ -48,7 +48,7 @@ SOFTWARE.
 - Keep the copyright notice in copies
 - Include the MIT license text in distributions
 
-<Warning>**No warranty** — the authors are not responsible for damages or liable for how you use the software.</Warning>
+<Warning>**No warranty**: the authors are not responsible for damages or liable for how you use the software.</Warning>
 
 
 ## Commercial Use

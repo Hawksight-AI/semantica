@@ -1,10 +1,10 @@
----
+﻿---
 title: "Docling Integration"
 description: "Native Docling integration for high-fidelity PDF, DOCX, and PPTX parsing with table extraction and OCR."
 icon: "file-lines"
 ---
 
-> Parse complex documents — PDFs, DOCX, PPTX, HTML — with high-fidelity table extraction and built-in OCR.
+> Parse complex documents: PDFs, DOCX, PPTX, HTML: with high-fidelity table extraction and built-in OCR.
 
 
 ## Overview

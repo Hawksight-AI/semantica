@@ -1,4 +1,4 @@
----
+﻿---
 title: "Vector Store Module"
 description: "Unified interface for FAISS, Pinecone, Weaviate, Qdrant, Milvus, and PgVector with hybrid search."
 icon: "database"
@@ -6,7 +6,7 @@ icon: "database"
 
 `semantica.vector_store` provides a unified API for storing and searching vector embeddings across all major backends:
 
-- Swap backends with a one-line change — no application code changes needed
+- Swap backends with a one-line change: no application code changes needed
 - `HybridSearch` fuses dense vector similarity with metadata filtering via RRF or weighted average
 - `NamespaceManager` for multi-tenant structural isolation
 - `FAISSStore` with flat, ivf, hnsw, and pq index types
@@ -20,13 +20,13 @@ icon: "database"
 | `VectorStore` | Unified interface: `store_vectors`, `search_vectors`, `update_vectors`, `delete_vectors` |
 | `HybridSearch` | Fuses dense vector similarity with metadata filtering via RRF or weighted average |
 | `MetadataFilter` | Chainable filter builder: `.eq("type", "person").gt("year", 2020).in_list("tag", [...])` |
-| `NamespaceManager` | Multi-tenant isolation — separate index namespaces per project or user |
-| `FAISSStore` | Local disk or in-memory — flat, ivf, hnsw, and pq index types |
+| `NamespaceManager` | Multi-tenant isolation: separate index namespaces per project or user |
+| `FAISSStore` | Local disk or in-memory: flat, ivf, hnsw, and pq index types |
 | `WeaviateStore` | Cloud or self-hosted, schema-aware |
 | `QdrantStore` | Cloud or self-hosted with payload-based filtering |
 | `PineconeStore` | Managed cloud vector database with serverless and pod modes |
 | `MilvusStore` | Scalable self-hosted vector database |
-| `PgVectorStore` | PostgreSQL with `pgvector` extension — no extra infrastructure |
+| `PgVectorStore` | PostgreSQL with `pgvector` extension: no extra infrastructure |
 | `MetadataStore` | Standalone metadata indexing and querying |
 | `SearchRanker` | RRF and weighted-average result fusion |
 
@@ -35,7 +35,7 @@ icon: "database"
 <CardGroup cols={2}>
   <Card title="VectorStore" icon="database">
     - Unified interface across FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector
-    - One-line backend swap — no application code changes
+    - One-line backend swap: no application code changes
     - `add_documents()` auto-embeds; `store_vectors()` for pre-computed embeddings
   </Card>
   <Card title="HybridSearch" icon="magnifying-glass">
@@ -73,7 +73,7 @@ icon: "database"
 ```python
 from semantica.vector_store import VectorStore
 
-# In-memory (development / testing — no persistence)
+# In-memory (development / testing: no persistence)
 store = VectorStore(backend="inmemory", dimension=384)
 
 # FAISS (local, persists to disk via save/load)
@@ -88,7 +88,7 @@ ids = store.add_documents(
 # Search by text query (auto-embedded)
 results = store.search("technology company founders", limit=5)
 for r in results:
-    print(f"{r['id']} — score: {r['score']:.3f}")
+    print(f"{r['id']}: score: {r['score']:.3f}")
 ```
 
 ## Quick Start
@@ -129,7 +129,7 @@ for r in results:
     results = store.search_vectors(query_vector, k=10)
 
     for r in results:
-        print(f"{r['id']} — score: {r['score']:.3f}")
+        print(f"{r['id']}: score: {r['score']:.3f}")
     ```
   </Step>
   <Step title="Filter results by metadata">
@@ -138,7 +138,7 @@ for r in results:
 
     mf = MetadataFilter().eq("category", "research").gt("year", 2022)
 
-    # Pass vector_store to the constructor — search() resolves vectors automatically
+    # Pass vector_store to the constructor: search() resolves vectors automatically
     search  = HybridSearch(vector_store=store)
     results = search.search(query=query_vector, k=10, metadata_filter=mf)
     ```
@@ -151,10 +151,10 @@ for r in results:
   <Tab title="In-memory / FAISS">
 
 ```python
-# In-memory — no persistence, for development and testing
+# In-memory: no persistence, for development and testing
 store = VectorStore(backend="inmemory", dimension=384)
 
-# FAISS — local disk persistence via save() / load()
+# FAISS: local disk persistence via save() / load()
 store = VectorStore(backend="faiss", dimension=384)
 store.save("./my_store")   # save to directory
 store.load("./my_store")   # restore from directory
@@ -228,7 +228,7 @@ store = VectorStore(
 )
 ```
 
-`connection_string` is required — the store raises `ValueError` at construction if it is absent.
+`connection_string` is required: the store raises `ValueError` at construction if it is absent.
 
   </Tab>
   <Tab title="Milvus">
@@ -269,7 +269,7 @@ store = VectorStore(
 ```python
 from semantica.vector_store import HybridSearch, MetadataFilter
 
-# With vector_store — search() pulls vectors from the store automatically
+# With vector_store: search() pulls vectors from the store automatically
 search = HybridSearch(vector_store=store)
 mf     = MetadataFilter().eq("category", "research").gt("year", 2022)
 
@@ -280,7 +280,7 @@ results = search.search(
 )
 
 for r in results:
-    print(f"{r['id']} — score: {r['score']:.3f}  metadata: {r['metadata']}")
+    print(f"{r['id']}: score: {r['score']:.3f}  metadata: {r['metadata']}")
 ```
 
 Without a `vector_store`, pass vectors explicitly:
@@ -309,7 +309,7 @@ fused = search.multi_source_search(query_vector, sources, k=10)
 
 ## Metadata Filtering
 
-`MetadataFilter` supports chained conditions — all conditions are ANDed:
+`MetadataFilter` supports chained conditions: all conditions are ANDed:
 
 ```python
 from semantica.vector_store import MetadataFilter
@@ -320,7 +320,7 @@ mf = MetadataFilter().gt("year", 2022).lte("year", 2024)  # range
 mf = MetadataFilter().in_list("tag", ["ai", "ml"])        # set membership
 mf = MetadataFilter().contains("title", "neural")         # substring / list contains
 
-# Multiple conditions — all must match (AND)
+# Multiple conditions: all must match (AND)
 mf = (
     MetadataFilter()
     .eq("category", "research")
@@ -349,19 +349,19 @@ mf = (
 ```python
 from semantica.vector_store import SearchRanker
 
-# Reciprocal Rank Fusion — robust to score scale differences
+# Reciprocal Rank Fusion: robust to score scale differences
 ranker  = SearchRanker(strategy="reciprocal_rank_fusion")
 fused   = ranker.rank([results_list_1, results_list_2])
 
-# Weighted average — requires normalised scores on the same scale
+# Weighted average: requires normalised scores on the same scale
 ranker  = SearchRanker(strategy="weighted_average")
 fused   = ranker.rank([results_list_1, results_list_2], weights=[0.7, 0.3])
 ```
 
 | Fusion strategy | Description |
 | :--------------- | :----------- |
-| `reciprocal_rank_fusion` | Rank-based combination via RRF — robust to score scale differences (default) |
-| `weighted_average` | Weighted sum of scores — pass `weights=[...]` to `rank()` |
+| `reciprocal_rank_fusion` | Rank-based combination via RRF: robust to score scale differences (default) |
+| `weighted_average` | Weighted sum of scores: pass `weights=[...]` to `rank()` |
 
 ## Namespace Isolation
 
@@ -397,7 +397,7 @@ ns_manager.delete_namespace("tenant_a")
 ## Batch Operations
 
 ```python
-# Batch add text documents — parallel embedding with configurable workers
+# Batch add text documents: parallel embedding with configurable workers
 ids = store.add_documents(
     documents=large_doc_list,
     metadata=large_meta_list,
@@ -424,7 +424,7 @@ store.update_vectors(
 store = VectorStore(backend="faiss", dimension=384)
 store.add_documents(documents=docs, metadata=meta)
 
-# Save to a directory — creates index.bin and store_data.pkl
+# Save to a directory: creates index.bin and store_data.pkl
 store.save("./vector_store_backup")
 
 # Restore in a new process
@@ -449,7 +449,7 @@ meta_store = MetadataStore()
 meta_store.store_metadata("doc1", {"author": "Alice", "year": 2024, "category": "research"})
 meta_store.store_metadata("doc2", {"author": "Bob",   "year": 2023, "category": "review"})
 
-# Query — returns List[str] of matching vector IDs
+# Query: returns List[str] of matching vector IDs
 ids = meta_store.query_metadata({"category": "research", "year": 2024})
 
 # OR query
@@ -476,16 +476,16 @@ from semantica.vector_store import FAISSStore
 
 store = FAISSStore(dimension=384)
 
-# flat — brute-force exact search
+# flat: brute-force exact search
 store.create_index(index_type="flat", metric="L2")
 
-# ivf — inverted file index
+# ivf: inverted file index
 store.create_index(index_type="ivf", metric="L2", nlist=100)
 
-# hnsw — hierarchical navigable small world graph
+# hnsw: hierarchical navigable small world graph
 store.create_index(index_type="hnsw", metric="L2", M=32)
 
-# pq — product quantization for memory efficiency
+# pq: product quantization for memory efficiency
 store.create_index(index_type="pq", metric="L2", m=8)
 ```
 
@@ -577,11 +577,11 @@ store.create_index(index_type="pq", metric="L2", m=8)
 ## Tips and Common Pitfalls
 
 <Warning>
-  **Match vector dimension to your embedding model.** The `dimension` parameter must exactly match your embedding model's output size — `BAAI/bge-small-en-v1.5` = 384, `all-MiniLM-L6-v2` = 384, `all-mpnet-base-v2` = 768, `bge-large-en-v1.5` = 1024. A mismatch raises an error at insert time.
+  **Match vector dimension to your embedding model.** The `dimension` parameter must exactly match your embedding model's output size: `BAAI/bge-small-en-v1.5` = 384, `all-MiniLM-L6-v2` = 384, `all-mpnet-base-v2` = 768, `bge-large-en-v1.5` = 1024. A mismatch raises an error at insert time.
 </Warning>
 
 <Warning>
-  **FAISS index type names are lowercase.** The `FAISSStore.create_index()` method expects `"flat"`, `"ivf"`, `"hnsw"`, `"pq"` — not `"Flat"`, `"IVF"`, `"HNSW"`, `"PQ"`. Uppercase values raise `ValidationError`.
+  **FAISS index type names are lowercase.** The `FAISSStore.create_index()` method expects `"flat"`, `"ivf"`, `"hnsw"`, `"pq"`: not `"Flat"`, `"IVF"`, `"HNSW"`, `"PQ"`. Uppercase values raise `ValidationError`.
 </Warning>
 
 <Warning>
@@ -589,7 +589,7 @@ store.create_index(index_type="pq", metric="L2", m=8)
 </Warning>
 
 <Tip>
-  **Use `HybridSearch(vector_store=store)` to avoid passing raw vectors on every call.** When `vector_store` is set, `search()` pulls vectors and metadata from the store automatically — you only need to pass the query and filter.
+  **Use `HybridSearch(vector_store=store)` to avoid passing raw vectors on every call.** When `vector_store` is set, `search()` pulls vectors and metadata from the store automatically: you only need to pass the query and filter.
 </Tip>
 
 <Tip>

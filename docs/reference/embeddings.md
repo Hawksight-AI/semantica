@@ -1,6 +1,6 @@
----
+﻿---
 title: "Embeddings Module"
-description: "Text and graph embedding generation — FastEmbed, Sentence-Transformers, OpenAI, BGE — with pooling strategies and provider-agnostic API."
+description: "Text and graph embedding generation: FastEmbed, Sentence-Transformers, OpenAI, BGE: with pooling strategies and provider-agnostic API."
 icon: "vector-square"
 ---
 
@@ -15,41 +15,41 @@ icon: "vector-square"
 
 ## Why Embeddings Matter
 
-Raw text can't be compared mathematically. Embeddings translate meaning into geometry — two semantically similar sentences produce vectors that are close together in high-dimensional space, even when they share no words.
+Raw text can't be compared mathematically. Embeddings translate meaning into geometry: two semantically similar sentences produce vectors that are close together in high-dimensional space, even when they share no words.
 
 Semantica uses embeddings for:
 
-- **Semantic search** — find knowledge graph nodes by meaning, not just keywords
-- **Entity resolution** — detect that "Apple Inc." and "Apple Computer" refer to the same entity
-- **Deduplication** — `semantic_v2` strategy measures entity similarity via embedding distance
-- **GraphRAG retrieval** — hybrid vector + graph traversal for grounded LLM answers
-- **Semantic chunking** — detect topic shift boundaries in `TextSplitter(method="semantic_transformer")`
+- **Semantic search**: find knowledge graph nodes by meaning, not just keywords
+- **Entity resolution**: detect that "Apple Inc." and "Apple Computer" refer to the same entity
+- **Deduplication**: `semantic_v2` strategy measures entity similarity via embedding distance
+- **GraphRAG retrieval**: hybrid vector + graph traversal for grounded LLM answers
+- **Semantic chunking**: detect topic shift boundaries in `TextSplitter(method="semantic_transformer")`
 
 ## Exported Classes
 
 | Class | Role |
 | :--- | :--- |
-| `EmbeddingGenerator` | Provider-agnostic entry point — handles batching and provider selection |
+| `EmbeddingGenerator` | Provider-agnostic entry point: handles batching and provider selection |
 | `TextEmbedder` | Text embedding with automatic batch processing; default uses FastEmbed |
 | `GraphEmbeddingManager` | Embed KG nodes and edges for GraphRAG and graph databases |
 | `VectorEmbeddingManager` | Prepare and format embeddings for vector database backends |
 | `OpenAIStore` | OpenAI `text-embedding-3-small` / `text-embedding-3-large` provider |
 | `BGEStore` | BAAI/bge models via `sentence-transformers` |
-| `FastEmbedStore` | ONNX-accelerated local embeddings — no CUDA **required** |
-| `LlamaStore` | Placeholder store — not production-ready; do not use for embeddings |
-| `MeanPooling` | Default pooling strategy — best for retrieval and clustering |
+| `FastEmbedStore` | ONNX-accelerated local embeddings: no CUDA **required** |
+| `LlamaStore` | Placeholder store: not production-ready; do not use for embeddings |
+| `MeanPooling` | Default pooling strategy: best for retrieval and clustering |
 
 ## What You Get
 
 <CardGroup cols={2}>
   <Card title="EmbeddingGenerator" icon="vector-square">
-    Main entry point — provider-agnostic, handles batching automatically across all backends.
+    Main entry point: provider-agnostic, handles batching automatically across all backends.
   </Card>
   <Card title="TextEmbedder" icon="text-size">
     Text-specific with automatic batching and progress tracking. Default method is FastEmbed.
   </Card>
   <Card title="GraphEmbeddingManager" icon="diagram-project">
-    Node and edge embeddings for graph databases — Neo4j, NetworkX, FalkorDB.
+    Node and edge embeddings for graph databases: Neo4j, NetworkX, FalkorDB.
   </Card>
   <Card title="VectorEmbeddingManager" icon="database">
     Prepare, normalize, and format embeddings for FAISS, Weaviate, Qdrant, and Milvus.
@@ -58,7 +58,7 @@ Semantica uses embeddings for:
     `OpenAIStore`, `BGEStore`, `FastEmbedStore`, and `ProviderStoreFactory`.
   </Card>
   <Card title="Pooling Strategies" icon="layer-group">
-    Mean, Max, CLS, Attention, and Hierarchical — control token-to-vector aggregation.
+    Mean, Max, CLS, Attention, and Hierarchical: control token-to-vector aggregation.
   </Card>
 </CardGroup>
 
@@ -75,7 +75,7 @@ Semantica uses embeddings for:
     ```python
     from semantica.embeddings import EmbeddingGenerator
 
-    # FastEmbed is the default — no config needed
+    # FastEmbed is the default: no config needed
     generator = EmbeddingGenerator()
     embedding = generator.generate_embeddings("Text about AI")
     ```
@@ -159,12 +159,12 @@ providers = check_available_providers()
 
 ## Getting Started
 
-`EmbeddingGenerator` is the fastest path to embeddings — the default method is FastEmbed (ONNX, no GPU needed):
+`EmbeddingGenerator` is the fastest path to embeddings: the default method is FastEmbed (ONNX, no GPU needed):
 
 ```python
 from semantica.embeddings import EmbeddingGenerator
 
-# Default — FastEmbed with BAAI/bge-small-en-v1.5
+# Default: FastEmbed with BAAI/bge-small-en-v1.5
 generator = EmbeddingGenerator()
 
 # Embed a single text
@@ -173,7 +173,7 @@ embedding = generator.generate_embeddings("Text about AI")
 # Embed a batch
 embeddings = generator.generate_embeddings(["Text about AI", "Machine learning concepts"])
 
-# Compare two embeddings (cosine similarity — 0.0 to 1.0)
+# Compare two embeddings (cosine similarity: 0.0 to 1.0)
 score = generator.compare_embeddings(embeddings[0], embeddings[1], method="cosine")
 print(f"Similarity: {score:.3f}")
 ```
@@ -195,7 +195,7 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
     ```python
     from semantica.embeddings import EmbeddingGenerator
 
-    # Default — FastEmbed, free, runs locally with no GPU
+    # Default: FastEmbed, free, runs locally with no GPU
     generator = EmbeddingGenerator()
 
     # Use sentence-transformers instead
@@ -213,7 +213,7 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
   </Step>
   <Step title="Compute similarity">
     ```python
-    # Cosine similarity — 0.0 (unrelated) to 1.0 (identical meaning)
+    # Cosine similarity: 0.0 (unrelated) to 1.0 (identical meaning)
     score = generator.compare_embeddings(embeddings[0], embeddings[1], method="cosine")
     print(f"Similarity: {score:.3f}")
     ```
@@ -240,7 +240,7 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
 
 | Provider | Model | Dimension | Speed | Best For |
 | :-------- | :----- | :--------- | :----- | :-------- |
-| `fastembed` | `BAAI/bge-small-en-v1.5` | 384 | Very fast | **Default** — CPU-optimised, no GPU **required** |
+| `fastembed` | `BAAI/bge-small-en-v1.5` | 384 | Very fast | **Default**: CPU-optimised, no GPU **required** |
 | `sentence_transformers` | `all-MiniLM-L6-v2` | 384 | Fast | Good balance of speed and quality |
 | `sentence_transformers` | `all-mpnet-base-v2` | 768 | Medium | Higher retrieval quality |
 | `sentence_transformers` | `BAAI/bge-large-en-v1.5` | 1024 | Medium | State-of-the-art retrieval accuracy |
@@ -254,13 +254,13 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
     ```python
     from semantica.embeddings import EmbeddingGenerator
 
-    # Default — FastEmbed with BAAI/bge-small-en-v1.5
+    # Default: FastEmbed with BAAI/bge-small-en-v1.5
     generator = EmbeddingGenerator()
     embeddings = generator.generate_embeddings(texts)
     similarity = generator.compare_embeddings(embeddings[0], embeddings[1])
     ```
 
-    **Best for:** CPU-only production, lowest latency without GPU. Default — works out of the box.
+    **Best for:** CPU-only production, lowest latency without GPU. Default: works out of the box.
   </Tab>
   <Tab title="Sentence-Transformers">
     ```python
@@ -315,7 +315,7 @@ Direct text embedding with batch processing:
 ```python
 from semantica.embeddings import TextEmbedder
 
-# Default — FastEmbed with BAAI/bge-small-en-v1.5
+# Default: FastEmbed with BAAI/bge-small-en-v1.5
 embedder = TextEmbedder()
 
 # Single text → 1D array
@@ -341,7 +341,7 @@ dim = embedder.get_embedding_dimension()
 | `normalize` | `bool` | `True` | L2-normalize output vectors |
 
 **Key behaviours:**
-- If FastEmbed or sentence-transformers is unavailable, falls back to a 128-dimensional hash-based embedding. Hash embeddings are deterministic but not semantic — do not use in production.
+- If FastEmbed or sentence-transformers is unavailable, falls back to a 128-dimensional hash-based embedding. Hash embeddings are deterministic but not semantic: do not use in production.
 - Large batches are chunked internally by the underlying library to avoid OOM.
 
 ## Provider Stores
@@ -359,28 +359,28 @@ import os
 store     = OpenAIStore(api_key=os.getenv("OPENAI_API_KEY"), model="text-embedding-3-small")
 embedding = store.embed("Hello world")
 
-# BGE (Sentence-Transformers wrapper) — pass model_name= not model=
+# BGE (Sentence-Transformers wrapper): pass model_name= not model=
 store     = BGEStore(model_name="BAAI/bge-large-en-v1.5")
 embedding = store.embed("Hello world")
 
-# FastEmbed — ONNX runtime, no CUDA required
+# FastEmbed: ONNX runtime, no CUDA required
 store     = FastEmbedStore(model_name="BAAI/bge-small-en-v1.5")
 embedding = store.embed("Hello world")
 # FastEmbedStore also has an efficient batch method
 embeddings = store.embed_batch(["text1", "text2", "text3"])
 
-# Auto-select from a name string — useful in config-driven pipelines
+# Auto-select from a name string: useful in config-driven pipelines
 # Supported providers: "openai", "bge", "fastembed"
 store = ProviderStoreFactory.create(provider="bge", model_name="BAAI/bge-large-en-v1.5")
 ```
 
 <Note>
-  `LlamaStore` exists in the module but is a placeholder — it does not connect to Ollama and always raises `ProcessingError` at embed time. Do not use it in production.
+  `LlamaStore` exists in the module but is a placeholder: it does not connect to Ollama and always raises `ProcessingError` at embed time. Do not use it in production.
 </Note>
 
 ## Pooling Strategies
 
-Pooling aggregates a set of embeddings into a single vector — useful when you have multiple chunk embeddings to combine:
+Pooling aggregates a set of embeddings into a single vector: useful when you have multiple chunk embeddings to combine:
 
 <Tabs>
   <Tab title="MeanPooling (default)">
@@ -391,7 +391,7 @@ Pooling aggregates a set of embeddings into a single vector — useful when you 
     pooled = pooler.pool(token_embeddings)   # shape: (hidden_dim,)
     ```
 
-    **Best for:** retrieval, semantic search, and clustering — averages all contributions.
+    **Best for:** retrieval, semantic search, and clustering: averages all contributions.
   </Tab>
   <Tab title="MaxPooling">
     ```python
@@ -401,7 +401,7 @@ Pooling aggregates a set of embeddings into a single vector — useful when you 
     pooled = pooler.pool(token_embeddings)
     ```
 
-    **Best for:** capturing the presence of any feature — takes the max activation per dimension.
+    **Best for:** capturing the presence of any feature: takes the max activation per dimension.
   </Tab>
   <Tab title="CLSPooling">
     ```python
@@ -422,7 +422,7 @@ Pooling aggregates a set of embeddings into a single vector — useful when you 
     pooled = pooler.pool(token_embeddings, chunk_size=10)
     ```
 
-    **Best for:** long documents — chunk-level mean pooling, then global mean pooling across chunks.
+    **Best for:** long documents: chunk-level mean pooling, then global mean pooling across chunks.
   </Tab>
   <Tab title="Strategy Comparison">
 
@@ -518,7 +518,7 @@ combined = manager.batch_prepare([embeddings_a, embeddings_b], backend="qdrant")
         "Amazon was started by Jeff Bezos.",
     ]
 
-    # All at once — more efficient than calling embed_text() per item
+    # All at once: more efficient than calling embed_text() per item
     embeddings = embedder.embed_batch(texts)
     print(f"Shape: {embeddings.shape}")   # (3, 384)
     ```
@@ -579,7 +579,7 @@ combined = manager.batch_prepare([embeddings_a, embeddings_b], backend="qdrant")
 ```python
 from semantica.embeddings import calculate_similarity
 
-# Cosine similarity — direction only, not magnitude; most common for text
+# Cosine similarity: direction only, not magnitude; most common for text
 score = calculate_similarity(embedding_a, embedding_b, method="cosine")
 # → 0.0 (orthogonal / unrelated) to 1.0 (identical direction)
 
@@ -595,7 +595,7 @@ from semantica.embeddings import (
     pool_embeddings, check_available_providers,
 )
 
-# Single text — fastest path
+# Single text: fastest path
 emb = embed_text("Hello world", method="sentence_transformers")
 
 # Batch
@@ -624,15 +624,15 @@ providers = check_available_providers()
 </Warning>
 
 <Warning>
-  **FastEmbed ignores the `device` parameter.** FastEmbed uses ONNX Runtime and manages its own execution providers — passing `device="cuda"` has no effect. Switch to `method="sentence_transformers"` if you need explicit GPU control.
+  **FastEmbed ignores the `device` parameter.** FastEmbed uses ONNX Runtime and manages its own execution providers: passing `device="cuda"` has no effect. Switch to `method="sentence_transformers"` if you need explicit GPU control.
 </Warning>
 
 <Tip>
-  **Always use the same model for indexing and querying.** Vectors from different models are not comparable — they live in different vector spaces. Switching models requires re-embedding your entire corpus.
+  **Always use the same model for indexing and querying.** Vectors from different models are not comparable: they live in different vector spaces. Switching models requires re-embedding your entire corpus.
 </Tip>
 
 <Tip>
-  **Fallback embeddings are not semantic.** If neither FastEmbed nor sentence-transformers loads successfully, TextEmbedder silently falls back to 128-dimensional SHA-256 hash embeddings. These are deterministic but carry no semantic meaning. Check `embedder.get_method()` — if it returns `"fallback"`, install your intended provider.
+  **Fallback embeddings are not semantic.** If neither FastEmbed nor sentence-transformers loads successfully, TextEmbedder silently falls back to 128-dimensional SHA-256 hash embeddings. These are deterministic but carry no semantic meaning. Check `embedder.get_method()`: if it returns `"fallback"`, install your intended provider.
 </Tip>
 
 <CardGroup cols={2}>

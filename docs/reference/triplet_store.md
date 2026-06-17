@@ -1,6 +1,6 @@
----
+﻿---
 title: "Triplet Store Module"
-description: "RDF triple storage with SPARQL queries and bulk loading — Blazegraph, Apache Jena, and RDF4J."
+description: "RDF triple storage with SPARQL queries and bulk loading: Blazegraph, Apache Jena, and RDF4J."
 icon: "table"
 ---
 
@@ -13,15 +13,15 @@ icon: "table"
 | `TripletStore` | Unified interface: `add_triplet`, `add_triplets`, `get_triplets`, `delete_triplet`, `execute_query` |
 | `QueryEngine` | **SPARQL 1.1** execution with query optimization and result caching |
 | `BulkLoader` | High-volume RDF loading with batching, retries, and progress tracking |
-| `BlazegraphStore` | Blazegraph REST API — SPARQL 1.1 Update, namespace management |
-| `JenaStore` | Apache Jena — rdflib-backed, SPARQL read support via remote endpoint |
-| `RDF4JStore` | Eclipse RDF4J — REST API, transaction support |
+| `BlazegraphStore` | Blazegraph REST API: SPARQL 1.1 Update, namespace management |
+| `JenaStore` | Apache Jena: rdflib-backed, SPARQL read support via remote endpoint |
+| `RDF4JStore` | Eclipse RDF4J: REST API, transaction support |
 
 ## What You Get
 
 <CardGroup cols={2}>
   <Card title="TripletStore" icon="server">
-    Unified interface across Blazegraph, Apache Jena, and RDF4J — swap backends with one parameter.
+    Unified interface across Blazegraph, Apache Jena, and RDF4J: swap backends with one parameter.
   </Card>
   <Card title="SPARQL" icon="magnifying-glass">
     Full SPARQL SELECT, ASK, CONSTRUCT, and UPDATE query support via `execute_query()`.
@@ -61,7 +61,7 @@ t = Triplet(
 )
 store.add_triplet(t)
 
-# Query with SPARQL — returns a QueryResult with a .bindings list
+# Query with SPARQL: returns a QueryResult with a .bindings list
 result = store.execute_query("""
     PREFIX ex: <http://example.org/>
     SELECT ?person ?company WHERE {
@@ -105,7 +105,7 @@ for row in result.bindings:
   </Step>
   <Step title="Query with SPARQL">
     ```python
-    # execute_query returns a QueryResult — iterate result.bindings
+    # execute_query returns a QueryResult: iterate result.bindings
     result = store.execute_query("""
         PREFIX ex: <http://example.org/>
         SELECT ?person ?company WHERE {
@@ -224,7 +224,7 @@ t = Triplet(
 | `get_triplets(subject, predicate, object)` | `List[Triplet]` | Retrieve triplets matching subject/predicate/object filters |
 | `delete_triplet(triplet)` | `dict` | Delete a `Triplet` from the store |
 | `update_triplet(old_triplet, new_triplet)` | `dict` | Atomic delete + add |
-| `execute_query(query, parameters, graph, graphs)` | `QueryResult` | Execute a SPARQL query — returns `QueryResult` with `.bindings`, `.variables`, `.execution_time` |
+| `execute_query(query, parameters, graph, graphs)` | `QueryResult` | Execute a SPARQL query: returns `QueryResult` with `.bindings`, `.variables`, `.execution_time` |
 | `store(knowledge_graph, ontology)` | `dict` | Convert a KG + ontology dict to RDF triples and bulk-load them |
 | `add_skos_concept(concept_uri, scheme_uri, pref_label, ...)` | `dict` | Add a SKOS concept with optional alt labels, broader/narrower/related |
 | `get_skos_concepts(scheme_uri)` | `List[dict]` | Retrieve all SKOS concepts, optionally filtered by scheme URI |
@@ -233,14 +233,14 @@ t = Triplet(
 
 ## SPARQL Queries
 
-`execute_query()` is the single entry point for all SPARQL operations. It returns a `QueryResult` — access results via `.bindings`:
+`execute_query()` is the single entry point for all SPARQL operations. It returns a `QueryResult`: access results via `.bindings`:
 
 ```python
 from semantica.triplet_store import TripletStore
 
 store = TripletStore(backend="blazegraph", endpoint="http://localhost:9999/blazegraph/sparql")
 
-# SELECT — iterate result.bindings
+# SELECT: iterate result.bindings
 result = store.execute_query("""
     PREFIX ex: <http://example.org/>
     SELECT ?person ?company WHERE {
@@ -252,7 +252,7 @@ for row in result.bindings:
     print(row.get("person",  {}).get("value"))
     print(row.get("company", {}).get("value"))
 
-# ASK, CONSTRUCT, UPDATE — same method, different SPARQL form
+# ASK, CONSTRUCT, UPDATE: same method, different SPARQL form
 result = store.execute_query("""
     PREFIX ex: <http://example.org/>
     ASK { ex:apple_inc ex:founded_by ex:steve_jobs . }
@@ -304,7 +304,7 @@ while True:
 Blazegraph and RDF4J support named graphs. Scope `execute_query()` to a named graph with the `graph=` parameter:
 
 ```python
-# Add a triplet — named graph stored in metadata or backend-specific API
+# Add a triplet: named graph stored in metadata or backend-specific API
 from semantica.semantic_extract.types import Triplet
 
 t = Triplet(
@@ -471,7 +471,7 @@ for row in result.bindings:
 ## Tips and Common Pitfalls
 
 <Tip>
-  **Use Apache Jena for development, Blazegraph for production.** Jena initializes with rdflib in-memory — no server required for local testing. Switch to Blazegraph for high-throughput persistent workloads by changing `backend=`.
+  **Use Apache Jena for development, Blazegraph for production.** Jena initializes with rdflib in-memory: no server required for local testing. Switch to Blazegraph for high-throughput persistent workloads by changing `backend=`.
 </Tip>
 
 <Warning>
@@ -479,7 +479,7 @@ for row in result.bindings:
 </Warning>
 
 <Warning>
-  **`add_triplet()` takes a `Triplet` object, not keyword arguments.** Use `Triplet(subject=..., predicate=..., object=...)` from `semantica.semantic_extract.types` and pass the object — not `subject=`, `predicate=`, `obj=` to `add_triplet`.
+  **`add_triplet()` takes a `Triplet` object, not keyword arguments.** Use `Triplet(subject=..., predicate=..., object=...)` from `semantica.semantic_extract.types` and pass the object: not `subject=`, `predicate=`, `obj=` to `add_triplet`.
 </Warning>
 
 <Warning>

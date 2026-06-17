@@ -1,4 +1,4 @@
----
+﻿---
 title: "Pipeline Module"
 description: "Pipeline DSL with parallel workers, retry policies, failure handling, and progress tracking."
 icon: "gear"
@@ -7,10 +7,10 @@ icon: "gear"
 **`semantica.pipeline`** lets you chain Semantica components into **reproducible, fault-tolerant workflows**:
 
 - Per-step failure strategies: `skip`, `retry`, `abort`, or `fallback`
-- Parallel workers via `ParallelismManager` — thread or process pool
+- Parallel workers via `ParallelismManager`: thread or process pool
 - `PipelineValidator` catches cycles, missing handlers, and config errors before running
 - Pre-built templates: `"document_processing"`, `"rag_pipeline"`, `"kg_construction"`, `"ontology_generation"`
-- Pipelines are serializable to YAML — save and reload in any environment
+- Pipelines are serializable to YAML: save and reload in any environment
 
 
 ## Exported Classes
@@ -19,7 +19,7 @@ icon: "gear"
 | :--- | :--- |
 | `PipelineBuilder` | DSL for wiring steps: `add_step`, `connect_steps`, `set_parallel`, `build` |
 | `ExecutionEngine` | Runs a built pipeline: `execute_pipeline(pipeline, data)` → `ExecutionResult` |
-| `ExecutionResult` | `{success, output, metadata, metrics, errors}` — full run summary |
+| `ExecutionResult` | `{success, output, metadata, metrics, errors}`: full run summary |
 | `FailureHandler` | Per-step strategy: `skip`, `retry`, `abort`, or `fallback` on failure |
 | `ParallelismManager` | Thread or process pool for concurrent step execution with configurable workers |
 | `PipelineValidator` | Catches dependency cycles, missing handlers, and config errors before running |
@@ -154,7 +154,7 @@ result   = engine.execute_pipeline(pipeline, data="data/")
     result = engine.execute_pipeline(pipeline, data="data/")
     ```
 
-    Best for transient API errors and rate limits — waits longer with each retry, giving upstream services time to recover.
+    Best for transient API errors and rate limits: waits longer with each retry, giving upstream services time to recover.
   </Tab>
   <Tab title="Linear backoff">
     ```python
@@ -167,7 +167,7 @@ result   = engine.execute_pipeline(pipeline, data="data/")
     )
     ```
 
-    Use when the delay between retries should grow predictably — e.g., waiting for a database lock to release.
+    Use when the delay between retries should grow predictably: e.g., waiting for a database lock to release.
   </Tab>
   <Tab title="Fixed backoff">
     ```python
@@ -188,8 +188,8 @@ result   = engine.execute_pipeline(pipeline, data="data/")
 
 | Strategy | Behaviour | When to Use |
 | :-------- | :--------- | :----------- |
-| `"skip"` | Log failure, continue to next document | Production — one bad doc shouldn't stop 10k |
-| `"stop"` | Raise exception immediately | Development — surface errors fast |
+| `"skip"` | Log failure, continue to next document | Production: one bad doc shouldn't stop 10k |
+| `"stop"` | Raise exception immediately | Development: surface errors fast |
 | `"retry"` | Retry via `RetryPolicy`, then skip | When failures are likely transient |
 
 <Warning>
@@ -227,7 +227,7 @@ result   = engine.execute_pipeline(pipeline, data="data/")
     while t.is_alive():
         progress = engine.get_progress(pipeline.name)
         if progress:
-            print(f"  {progress['completed_steps']}/{progress['total_steps']} steps — {progress['status']}")
+            print(f"  {progress['completed_steps']}/{progress['total_steps']} steps: {progress['status']}")
         time.sleep(2)
     ```
 
@@ -244,7 +244,7 @@ from semantica.pipeline import PipelineBuilder, ExecutionEngine
 
 builder = PipelineBuilder()
 
-# Add steps — step_type is a string label, handler is the callable invoked at runtime
+# Add steps: step_type is a string label, handler is the callable invoked at runtime
 builder.add_step("ingest",      "file_ingest",    handler=ingestor.ingest_file)
 builder.add_step("parse",       "document_parse", handler=parser.parse)
 builder.add_step("normalize",   "text_normalize", handler=normalizer.normalize)
@@ -291,12 +291,12 @@ result = ExecutionEngine().execute_pipeline(restored, data="data/")
 ```
 
 <Tip>
-  Serialized pipelines capture step names, types, and config — but not handler functions (callables can't be serialized). Re-register handlers on the restored steps before executing.
+  Serialized pipelines capture step names, types, and config: but not handler functions (callables can't be serialized). Re-register handlers on the restored steps before executing.
 </Tip>
 
 ## Pre-Built Templates
 
-`PipelineTemplateManager` wires common workflows with the correct step order — no manual wiring required:
+`PipelineTemplateManager` wires common workflows with the correct step order: no manual wiring required:
 
 ```python
 from semantica.pipeline import PipelineTemplateManager
@@ -320,7 +320,7 @@ The `create_pipeline_from_template(name)` method returns a configured `PipelineB
   <Card title="rag_pipeline" icon="magnifying-glass">
     **Ingest → Chunk → Embed → Store Vectors**
 
-    RAG pipeline for question answering — builds a vector-indexed store.
+    RAG pipeline for question answering: builds a vector-indexed store.
 
     ```python
     builder  = manager.create_pipeline_from_template("rag_pipeline")
@@ -351,7 +351,7 @@ The `create_pipeline_from_template(name)` method returns a configured `PipelineB
 
 ## ExecutionEngine
 
-Fine-grained control over pipeline execution — pause, resume, cancel, and inspect live progress:
+Fine-grained control over pipeline execution: pause, resume, cancel, and inspect live progress:
 
 ```python
 from semantica.pipeline import ExecutionEngine
@@ -394,7 +394,7 @@ validator = PipelineValidator()
 result    = validator.validate_pipeline(pipeline)
 
 if result.valid:
-    print("Pipeline is valid — safe to run")
+    print("Pipeline is valid: safe to run")
 else:
     for error in result.errors:     # errors is List[str]
         print(f"Error: {error}")
@@ -403,10 +403,10 @@ else:
 ```
 
 Checks performed:
-- **Dependency cycle detection** — A depends on B, B depends on A
-- **Step type validation** — each step type must be registered
-- **Connection integrity** — referenced step names must exist
-- **Configuration completeness** — required parameters must be present
+- **Dependency cycle detection**: A depends on B, B depends on A
+- **Step type validation**: each step type must be registered
+- **Connection integrity**: referenced step names must exist
+- **Configuration completeness**: required parameters must be present
 
 ## ParallelismManager
 
@@ -556,7 +556,7 @@ from semantica.pipeline import StepStatus
 StepStatus.PENDING    # Not yet started
 StepStatus.RUNNING    # Currently executing
 StepStatus.COMPLETED  # Finished successfully
-StepStatus.FAILED     # Error occurred — check step.error
+StepStatus.FAILED     # Error occurred: check step.error
 StepStatus.SKIPPED    # Skipped due to FailureHandler "skip" strategy
 ```
 
@@ -578,7 +578,7 @@ StepStatus.SKIPPED    # Skipped due to FailureHandler "skip" strategy
 </Warning>
 
 <Tip>
-  **Use templates from `PipelineTemplateManager` for common patterns.** `create_pipeline_from_template("kg_construction")` wires normalization, deduplication, conflict detection, and graph construction in the correct order — saving you from common mistakes like deduplicating before normalizing.
+  **Use templates from `PipelineTemplateManager` for common patterns.** `create_pipeline_from_template("kg_construction")` wires normalization, deduplication, conflict detection, and graph construction in the correct order: saving you from common mistakes like deduplicating before normalizing.
 </Tip>
 
 <Tip>

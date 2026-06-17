@@ -1,4 +1,4 @@
----
+﻿---
 title: "Explorer"
 description: "Interactive FastAPI dashboard for knowledge graph exploration, ontology management, and graph analytics."
 icon: "map"
@@ -6,11 +6,11 @@ icon: "map"
 
 **`semantica.explorer`** is a **browser-based dashboard** for exploring knowledge graphs, managing ontologies, and running visual analyses:
 
-- Indexed search: 0.004ms on 118k nodes — no full scans
+- Indexed search: 0.004ms on 118k nodes: no full scans
 - Ontology Hub: visual editor, SHACL Studio, alignment authoring, and health dashboard
 - Bidirectional path finding between any two nodes
 - WebSocket progress streaming for live pipeline monitoring
-- No code required after launch — full graph exploration in the browser
+- No code required after launch: full graph exploration in the browser
 
 
 ## Getting Started
@@ -37,7 +37,7 @@ graph.save_to_file("my_graph.json")
 # 2. Launch the Explorer
 semantica-explorer --graph my_graph.json
 # → Loading graph...
-# → Graph loaded — 2 nodes, 1 edges
+# → Graph loaded: 2 nodes, 1 edges
 # → Semantica Explorer · http://127.0.0.1:8000
 #     API docs  http://127.0.0.1:8000/docs
 #     Health    http://127.0.0.1:8000/api/health
@@ -96,8 +96,8 @@ The `semantica-explorer` command accepts exactly four flags:
 | :---- | :----- | :------- | :----------- |
 | `--graph` | `-g` | *(**required**)* | Path to a ContextGraph JSON file to load |
 | `--port` | `-p` | `8000` | Port to bind the server |
-| `--host` | — | `127.0.0.1` | Host to bind the server — use `0.0.0.0` to expose on the network |
-| `--no-browser` | — | off | Skip auto-opening the browser tab |
+| `--host` |: | `127.0.0.1` | Host to bind the server: use `0.0.0.0` to expose on the network |
+| `--no-browser` |: | off | Skip auto-opening the browser tab |
 
 <Note>
   There are no flags for authentication, CORS, or log level in the CLI. CORS allowed origins are configured via the `EXPLORER_CORS_ORIGINS` environment variable (comma-separated, default: `http://localhost:5173,http://127.0.0.1:5173`).
@@ -122,7 +122,7 @@ EXPLORER_CORS_ORIGINS="http://myapp.example.com" \
     Degree centrality, community detection, connectivity analysis, graph validation, and distance matrices.
   </Card>
   <Card title="REST API" icon="code">
-    All features available as a REST API — fully documented at `/docs`.
+    All features available as a REST API: fully documented at `/docs`.
   </Card>
   <Card title="WebSocket Updates" icon="bolt">
     Real-time graph mutation events streamed over WebSocket at `/ws/graph-updates`.
@@ -138,42 +138,42 @@ EXPLORER_CORS_ORIGINS="http://myapp.example.com" \
   <Tab title="Graph Explorer">
     Core dashboard for navigating knowledge graphs:
 
-    - **Indexed search** — POST to `/api/graph/search` with a query; 0.004ms on 118k-node graphs
-    - **Path finding** — BFS or Dijkstra between any two nodes via `GET /api/graph/path?source=&target=`
-    - **Neighbor expansion** — `GET /api/graph/node/{id}/neighbors?depth=2`
-    - **Filter by entity type** — `GET /api/graph/nodes?type=Person`
-    - **Semantic neighborhood** — `GET /api/graph/semantic-neighborhood?node_id=&top_k=20`
-    - **Distance matrix** — `POST /api/graph/distance-matrix`
+    - **Indexed search**: POST to `/api/graph/search` with a query; 0.004ms on 118k-node graphs
+    - **Path finding**: BFS or Dijkstra between any two nodes via `GET /api/graph/path?source=&target=`
+    - **Neighbor expansion**: `GET /api/graph/node/{id}/neighbors?depth=2`
+    - **Filter by entity type**: `GET /api/graph/nodes?type=Person`
+    - **Semantic neighborhood**: `GET /api/graph/semantic-neighborhood?node_id=&top_k=20`
+    - **Distance matrix**: `POST /api/graph/distance-matrix`
   </Tab>
   <Tab title="Ontology Hub">
     Ontology lifecycle management in the browser:
 
-    - **Registry** — `GET /api/ontology/registry` — list loaded ontologies
-    - **SKOS vocabularies** — `GET /api/ontology/skos/schemes`, `GET /api/ontology/skos/concept/{uri}`
-    - **SHACL** — `POST /api/ontology/shacl/generate`, `POST /api/ontology/shacl/validate`
-    - **Alignments** — `GET/POST /api/ontology/alignments`, `POST /api/ontology/suggest-alignments`
-    - **Proposals & versioning** — `POST /api/ontology/propose`, `GET /api/ontology/versions/{uri}`
-    - **Health** — `GET /api/ontology/health`
+    - **Registry**: `GET /api/ontology/registry`: list loaded ontologies
+    - **SKOS vocabularies**: `GET /api/ontology/skos/schemes`, `GET /api/ontology/skos/concept/{uri}`
+    - **SHACL**: `POST /api/ontology/shacl/generate`, `POST /api/ontology/shacl/validate`
+    - **Alignments**: `GET/POST /api/ontology/alignments`, `POST /api/ontology/suggest-alignments`
+    - **Proposals & versioning**: `POST /api/ontology/propose`, `GET /api/ontology/versions/{uri}`
+    - **Health**: `GET /api/ontology/health`
   </Tab>
   <Tab title="Analytics">
     Graph metrics running against the loaded graph:
 
-    - **Combined metrics** — `GET /api/analytics?metrics=centrality,community,connectivity`
-    - **Graph validation** — `GET /api/analytics/validation`
-    - **Enrich: link prediction** — `POST /api/enrich/links`
-    - **Enrich: deduplication** — `POST /api/enrich/dedup`
-    - **Enrich: entity extraction** — `POST /api/enrich/extract`
-    - **Temporal** — `GET /api/temporal/snapshot`, `GET /api/temporal/diff`, `GET /api/temporal/bounds`
+    - **Combined metrics**: `GET /api/analytics?metrics=centrality,community,connectivity`
+    - **Graph validation**: `GET /api/analytics/validation`
+    - **Enrich: link prediction**: `POST /api/enrich/links`
+    - **Enrich: deduplication**: `POST /api/enrich/dedup`
+    - **Enrich: entity extraction**: `POST /api/enrich/extract`
+    - **Temporal**: `GET /api/temporal/snapshot`, `GET /api/temporal/diff`, `GET /api/temporal/bounds`
   </Tab>
   <Tab title="Decisions & Provenance">
     Decision tracking and provenance queries:
 
-    - **Decisions** — `GET /api/decisions`, `GET /api/decisions/{id}`, `GET /api/decisions/{id}/chain`
-    - **Precedents** — `GET /api/decisions/{id}/precedents`
-    - **Causal distance** — `GET /api/decisions/causal-distance?source=&target=`
-    - **Compliance** — `GET /api/decisions/{id}/compliance`
-    - **Provenance** — `GET /api/provenance?node_id=`, `GET /api/provenance/report?node_id=`
-    - **Annotations** — `GET/POST /api/annotations`, `DELETE /api/annotations/{id}`
+    - **Decisions**: `GET /api/decisions`, `GET /api/decisions/{id}`, `GET /api/decisions/{id}/chain`
+    - **Precedents**: `GET /api/decisions/{id}/precedents`
+    - **Causal distance**: `GET /api/decisions/causal-distance?source=&target=`
+    - **Compliance**: `GET /api/decisions/{id}/compliance`
+    - **Provenance**: `GET /api/provenance?node_id=`, `GET /api/provenance/report?node_id=`
+    - **Annotations**: `GET/POST /api/annotations`, `DELETE /api/annotations/{id}`
   </Tab>
 </Tabs>
 
@@ -187,14 +187,14 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     | Endpoint | Method | Description |
     | :-------- | :------ | :----------- |
     | `/api/graph/stats` | `GET` | Node count, edge count, entity type distribution |
-    | `/api/graph/nodes` | `GET` | List nodes — `?type=&search=&skip=&limit=&cursor=&bbox=` |
+    | `/api/graph/nodes` | `GET` | List nodes: `?type=&search=&skip=&limit=&cursor=&bbox=` |
     | `/api/graph/node/{id}` | `GET` | Fetch a single node with all properties |
-    | `/api/graph/node/{id}/neighbors` | `GET` | Neighbors of a node — `?depth=1` (1–5) |
-    | `/api/graph/edges` | `GET` | List edges — `?type=&source=&target=&skip=&limit=&cursor=` |
-    | `/api/graph/path` | `GET` | Shortest path — `?source=&target=&algorithm=bfs&directed=true` |
-    | `/api/graph/search` | `POST` | Indexed search — body: `{query, limit, filters, anchor_node}` |
-    | `/api/graph/distance-matrix` | `POST` | Pairwise distances — body: `{node_ids, metric}` (max 50 nodes) |
-    | `/api/graph/semantic-neighborhood` | `GET` | Semantic neighbors — `?node_id=&top_k=20&min_similarity=0.0` |
+    | `/api/graph/node/{id}/neighbors` | `GET` | Neighbors of a node: `?depth=1` (1–5) |
+    | `/api/graph/edges` | `GET` | List edges: `?type=&source=&target=&skip=&limit=&cursor=` |
+    | `/api/graph/path` | `GET` | Shortest path: `?source=&target=&algorithm=bfs&directed=true` |
+    | `/api/graph/search` | `POST` | Indexed search: body: `{query, limit, filters, anchor_node}` |
+    | `/api/graph/distance-matrix` | `POST` | Pairwise distances: body: `{node_ids, metric}` (max 50 nodes) |
+    | `/api/graph/semantic-neighborhood` | `GET` | Semantic neighbors: `?node_id=&top_k=20&min_similarity=0.0` |
 
   </Accordion>
   <Accordion title="Analytics, Enrich & Temporal">
@@ -203,7 +203,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
 
     | Endpoint | Method | Description |
     | :-------- | :------ | :----------- |
-    | `/api/analytics` | `GET` | Graph metrics — `?metrics=centrality,community,connectivity` |
+    | `/api/analytics` | `GET` | Graph metrics: `?metrics=centrality,community,connectivity` |
     | `/api/analytics/validation` | `GET` | Graph validation report |
 
     **Enrich:**
@@ -221,10 +221,10 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     | Endpoint | Method | Description |
     | :-------- | :------ | :----------- |
     | `/api/temporal/snapshot` | `GET` | Graph snapshot at `?at=ISO8601` (defaults to now) |
-    | `/api/temporal/diff` | `GET` | Diff between two times — `?from_time=&to_time=` |
+    | `/api/temporal/diff` | `GET` | Diff between two times: `?from_time=&to_time=` |
     | `/api/temporal/patterns` | `GET` | Temporal activity patterns |
     | `/api/temporal/bounds` | `GET` | Earliest and latest temporal bounds in graph |
-    | `/api/temporal/distance-history` | `GET` | Distance history — `?source=&target=` |
+    | `/api/temporal/distance-history` | `GET` | Distance history: `?source=&target=` |
 
   </Accordion>
   <Accordion title="Ontology, Vocabulary & SPARQL">
@@ -236,7 +236,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     | `/api/ontology/registry` | `GET` | List loaded ontologies |
     | `/api/ontology/load` | `POST` | Load an ontology from URL or content |
     | `/api/ontology/create` | `POST` | Create a new ontology |
-    | `/api/ontology/search` | `GET` | Search ontology entities — `?q=term` |
+    | `/api/ontology/search` | `GET` | Search ontology entities: `?q=term` |
     | `/api/ontology/health` | `GET` | Ontology health and coverage metrics |
     | `/api/ontology/alignments` | `GET/POST` | List or create ontology alignments |
     | `/api/ontology/suggest-alignments` | `POST` | AI-suggested alignments |
@@ -252,7 +252,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     | Endpoint | Method | Description |
     | :-------- | :------ | :----------- |
     | `/api/vocabulary/schemes` | `GET` | SKOS schemes via TripletStore |
-    | `/api/vocabulary/concepts` | `GET` | Concepts in a scheme — `?scheme=URI` |
+    | `/api/vocabulary/concepts` | `GET` | Concepts in a scheme: `?scheme=URI` |
     | `/api/vocabulary/hierarchy` | `GET` | Concept hierarchy tree |
     | `/api/vocabulary/import` | `POST` | Import SKOS/RDF vocabulary file |
 
@@ -274,20 +274,20 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     | `/api/decisions/{id}/chain` | `GET` | Causal chain for a decision |
     | `/api/decisions/{id}/precedents` | `GET` | Similar past decisions |
     | `/api/decisions/{id}/compliance` | `GET` | Policy compliance check |
-    | `/api/decisions/causal-distance` | `GET` | Causal distance — `?source=&target=` |
+    | `/api/decisions/causal-distance` | `GET` | Causal distance: `?source=&target=` |
 
     **Provenance:**
 
     | Endpoint | Method | Description |
     | :-------- | :------ | :----------- |
-    | `/api/provenance` | `GET` | Entity provenance lineage — `?node_id=` |
-    | `/api/provenance/report` | `GET` | Provenance export report — `?node_id=` |
+    | `/api/provenance` | `GET` | Entity provenance lineage: `?node_id=` |
+    | `/api/provenance/report` | `GET` | Provenance export report: `?node_id=` |
 
     **Annotations:**
 
     | Endpoint | Method | Description |
     | :-------- | :------ | :----------- |
-    | `/api/annotations` | `GET` | List annotations — `?node_id=` (optional) |
+    | `/api/annotations` | `GET` | List annotations: `?node_id=` (optional) |
     | `/api/annotations` | `POST` | Create annotation (returns 201) |
     | `/api/annotations/{id}` | `DELETE` | Delete annotation (returns 204) |
 
@@ -295,7 +295,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
 
     | Endpoint | Method | Description |
     | :-------- | :------ | :----------- |
-    | `/api/export` | `POST` | Export graph as JSON or CSV — body: `{format, node_ids}` |
+    | `/api/export` | `POST` | Export graph as JSON or CSV: body: `{format, node_ids}` |
     | `/api/export/distance-enriched` | `POST` | Export pairwise distances as CSV or JSONL |
     | `/api/import` | `POST` | Import nodes/edges from `.json` or `.csv` file (max 50 MB) |
 
@@ -306,7 +306,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     | :-------- | :------ | :----------- |
     | `/api/health` | `GET` | Returns `{"status": "healthy"}` |
     | `/api/info` | `GET` | Server name, version, status |
-    | `/docs` | `GET` | Interactive Swagger UI — all endpoints |
+    | `/docs` | `GET` | Interactive Swagger UI: all endpoints |
 
   </Accordion>
 </AccordionGroup>
@@ -395,7 +395,7 @@ Session state is in-memory only. Use `POST /api/export` to save a JSON snapshot 
 ## Tips and Common Pitfalls
 
 <Warning>
-  **Filter large graphs before saving to JSON.** The CLI loads the entire JSON file into memory. For graphs > 10k nodes, filter to the relevant subgraph before exporting — the force-directed layout becomes unusable on very large graphs.
+  **Filter large graphs before saving to JSON.** The CLI loads the entire JSON file into memory. For graphs > 10k nodes, filter to the relevant subgraph before exporting: the force-directed layout becomes unusable on very large graphs.
 </Warning>
 
 <Warning>
@@ -403,7 +403,7 @@ Session state is in-memory only. Use `POST /api/export` to save a JSON snapshot 
 </Warning>
 
 <Tip>
-  **Use the REST API for automation, Explorer UI for exploration.** Explorer's REST endpoints are a stable programmatic API — pipe them into scripts to automate batch annotation, SPARQL querying, or exports.
+  **Use the REST API for automation, Explorer UI for exploration.** Explorer's REST endpoints are a stable programmatic API: pipe them into scripts to automate batch annotation, SPARQL querying, or exports.
 </Tip>
 
 <Tip>

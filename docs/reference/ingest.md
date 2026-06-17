@@ -1,4 +1,4 @@
----
+﻿---
 title: "Ingest Module"
 description: "Universal data ingestion from files, Parquet, XML, web, public APIs, feeds, streams, repositories, email, and databases."
 icon: "database"
@@ -9,7 +9,7 @@ icon: "database"
 - 15+ ingestion adapters: files, web, SQL, Snowflake, Kafka, MCP, Git repos, email
 - PyArrow Parquet with column selection and partitioned dataset support
 - XXE-safe lxml XML with optional XSD schema validation
-- `ingest()` unified dispatcher — auto-detects source type from path or URL
+- `ingest()` unified dispatcher: auto-detects source type from path or URL
 - Each ingestor returns its own typed object (`FileObject`, `WebContent`, `TableData`, etc.)
 
 
@@ -17,26 +17,26 @@ icon: "database"
 
 | Class | Role |
 | :--- | :--- |
-| `FileIngestor` | PDF, DOCX, HTML, JSON, CSV, Excel, PPTX, ZIP/TAR — type auto-detected from extension |
+| `FileIngestor` | PDF, DOCX, HTML, JSON, CSV, Excel, PPTX, ZIP/TAR: type auto-detected from extension |
 | `CloudStorageIngestor` | Unified client for AWS S3, Google Cloud Storage, and Azure Blob Storage |
 | `WebIngestor` | Web scraping and crawling with `ingest_url`, `crawl_sitemap`, `crawl_domain` |
 | `RESTIngestor` | Generic REST API ingestion with headers, params, retries, and pagination |
 | `PublicAPIIngestor` | No-auth public API ingestion with pre-configured examples and rate limiting |
 | `FeedIngestor` | RSS/Atom feed ingestion with live monitoring via `FeedMonitor` |
 | `StreamIngestor` | Real-time ingestion from Kafka, RabbitMQ, AWS Kinesis, and Apache Pulsar |
-| `RepoIngestor` | Git repositories — source files, commit history, and metadata |
-| `DBIngestor` | SQL databases via SQLAlchemy — tables, views, and custom queries |
+| `RepoIngestor` | Git repositories: source files, commit history, and metadata |
+| `DBIngestor` | SQL databases via SQLAlchemy: tables, views, and custom queries |
 | `SnowflakeIngestor` | Snowflake data warehouse queries and table exports |
 | `ParquetIngestor` | Apache Parquet files and partitioned datasets with column selection |
 | `XMLIngestor` | XXE-safe XML parsing with optional XSD schema validation |
 | `EmailIngestor` | IMAP/POP3 email ingestion with attachment extraction |
 | `OntologyIngestor` | OWL/RDF/Turtle ontology file ingestion |
 | `MCPIngestor` | Model Context Protocol (MCP) resource ingestion |
-| `ingest()` | Unified dispatcher — detects source type automatically from path or URL |
+| `ingest()` | Unified dispatcher: detects source type automatically from path or URL |
 
 ## Getting Started
 
-Use **`FileIngestor`** for local files — it **auto-detects format** from the file extension and handles archives:
+Use **`FileIngestor`** for local files: it **auto-detects format** from the file extension and handles archives:
 
 ```python
 from semantica.ingest import FileIngestor
@@ -64,13 +64,13 @@ from semantica.ingest import WebIngestor
 wc = WebIngestor(delay=1.0, respect_robots=True).ingest_url("https://example.com")
 print(wc.title, wc.text)
 
-# Database — constructor takes no required args; pass connection_string to methods
+# Database: constructor takes no required args; pass connection_string to methods
 from semantica.ingest import DBIngestor
 db = DBIngestor()
 result = db.ingest_database("postgresql://user:pass@localhost/db")
 # result["tables"]["documents"]["rows"] contains the rows
 
-# Unified dispatcher — auto-detects source type
+# Unified dispatcher: auto-detects source type
 from semantica.ingest import ingest
 result = ingest("data/report.pdf")          # -> {"files": [FileObject]}
 result = ingest("https://example.com")      # -> {"content": WebContent}
@@ -87,7 +87,7 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
 
     ingestor = FileIngestor()
 
-    # Single file — type auto-detected from extension
+    # Single file: type auto-detected from extension
     file_obj = ingestor.ingest_file("data/report.pdf")
 
     # Recursive directory scan
@@ -157,7 +157,7 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
     # Single file
     file_obj = ingestor.ingest_file("data/report.pdf")
 
-    # Directory — returns List[FileObject]
+    # Directory: returns List[FileObject]
     files = ingestor.ingest_directory("data/", recursive=True)
 
     # ingest() dispatches to ingest_file or ingest_directory automatically
@@ -185,7 +185,7 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
     # Partitioned directory (year=2024/month=01/...)
     data = ingestor.ingest_directory("data/partitioned/")
 
-    # Load only specific columns — pass as kwarg
+    # Load only specific columns: pass as kwarg
     from semantica.ingest import ingest_parquet
     data = ingest_parquet("data/events.parquet", columns=["id", "text", "timestamp"])
 
@@ -206,7 +206,7 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
     ingestor = XMLIngestor()
     data = ingestor.ingest_file("data/records.xml")
 
-    # With XSD validation — pass schema_path as kwarg
+    # With XSD validation: pass schema_path as kwarg
     from semantica.ingest import ingest_xml
     data = ingest_xml("data/records.xml", schema_path="schema.xsd")
 
@@ -295,7 +295,7 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
 
     ### RepoIngestor
 
-    Ingest Git repositories — source code, commit history, and dependency graphs:
+    Ingest Git repositories: source code, commit history, and dependency graphs:
 
     ```python
     from semantica.ingest import RepoIngestor
@@ -347,7 +347,7 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
     from semantica.ingest import CloudStorageIngestor
     import os
 
-    # AWS S3 — list and download objects
+    # AWS S3: list and download objects
     ingestor = CloudStorageIngestor(
         provider="s3",
         access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
@@ -424,7 +424,7 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
   <Tab title="Stream">
     ### StreamIngestor
 
-    Real-time ingestion from message brokers — each method returns a typed processor:
+    Real-time ingestion from message brokers: each method returns a typed processor:
 
     ```python
     from semantica.ingest import StreamIngestor
@@ -604,7 +604,7 @@ result = ingest_file("source_path", method="my_format")
 ## Tips and Common Pitfalls
 
 <Warning>
-  **`DBIngestor()` takes no connection string in its constructor.** Pass the connection string to `ingest_database()`, `execute_query()`, or `export_table()` as the first positional argument — not to `DBIngestor()` itself.
+  **`DBIngestor()` takes no connection string in its constructor.** Pass the connection string to `ingest_database()`, `execute_query()`, or `export_table()` as the first positional argument: not to `DBIngestor()` itself.
 </Warning>
 
 <Tip>
@@ -612,11 +612,11 @@ result = ingest_file("source_path", method="my_format")
 </Tip>
 
 <Tip>
-  **Use `ParquetIngestor` instead of `FileIngestor` for structured analytical data.** Parquet ingestion preserves column types (int, float, datetime) that CSV reading loses. Use `columns=["id", "text"]` to avoid loading unused columns — critical for wide tables with hundreds of columns.
+  **Use `ParquetIngestor` instead of `FileIngestor` for structured analytical data.** Parquet ingestion preserves column types (int, float, datetime) that CSV reading loses. Use `columns=["id", "text"]` to avoid loading unused columns: critical for wide tables with hundreds of columns.
 </Tip>
 
 <Warning>
-  **`XMLIngestor` is XXE-safe by default.** Do not use standard `xml.etree.ElementTree` to pre-parse XML before passing to Semantica — it does not block XXE attacks. `XMLIngestor` uses lxml with `resolve_entities=False` to safely parse untrusted XML.
+  **`XMLIngestor` is XXE-safe by default.** Do not use standard `xml.etree.ElementTree` to pre-parse XML before passing to Semantica: it does not block XXE attacks. `XMLIngestor` uses lxml with `resolve_entities=False` to safely parse untrusted XML.
 </Warning>
 
 <Tip>

@@ -1,4 +1,4 @@
----
+﻿---
 title: "Knowledge Graph Module"
 description: "Graph construction, temporal models, analytics, similarity scoring, and structural embeddings."
 icon: "diagram-project"
@@ -17,11 +17,11 @@ icon: "diagram-project"
 
 | Class | Role |
 | :--- | :--- |
-| `KnowledgeGraph` | Core graph data structure — nodes, edges, properties, temporal validity |
+| `KnowledgeGraph` | Core graph data structure: nodes, edges, properties, temporal validity |
 | `GraphBuilder` | Construct from entities + relationships; pass `merge_entities=True` to enable deduplication |
 | `GraphBuilderWithProvenance` | Wraps `GraphBuilder` with optional provenance tracking; pass `provenance=True` to enable |
 | `EntityResolver` | Entity deduplication and merging during graph construction |
-| `GraphAnalyzer` | Unified analytics wrapper — runs centrality, community detection, and connectivity in one call |
+| `GraphAnalyzer` | Unified analytics wrapper: runs centrality, community detection, and connectivity in one call |
 | `ConnectivityAnalyzer` | Connected component detection, bridge identification, density, and degree statistics |
 | `TemporalGraphQuery` | Point-in-time snapshots, temporal diffs, and all 13 Allen interval queries |
 | `CentralityCalculator` | PageRank, degree, betweenness, closeness, eigenvector centrality |
@@ -41,7 +41,7 @@ icon: "diagram-project"
 
 ## GraphBuilder
 
-**`GraphBuilder`** constructs knowledge graphs from extracted entities and relationships. `merge_entities` defaults to `False` — pass **`True`** to enable entity deduplication during construction:
+**`GraphBuilder`** constructs knowledge graphs from extracted entities and relationships. `merge_entities` defaults to `False`: pass **`True`** to enable entity deduplication during construction:
 
 ```python
 from semantica.kg import GraphBuilder
@@ -83,7 +83,7 @@ kg = builder.build(sources=[
     }
 ])
 
-# Point-in-time snapshot — TemporalGraphQuery takes no positional graph arg;
+# Point-in-time snapshot: TemporalGraphQuery takes no positional graph arg;
 # pass the graph into each query method instead.
 query         = TemporalGraphQuery()
 snapshot_2021 = query.reconstruct_at_time(kg, "2021-06-15")
@@ -93,7 +93,7 @@ snapshot_2023 = query.reconstruct_at_time(kg, "2023-01-01")
 range_result = query.query_time_range(kg, "", "2020-01-01", "2023-01-01")
 print(f"Relationships in range: {range_result['num_relationships']}")
 
-# Versioned snapshots — author and description are required
+# Versioned snapshots: author and description are required
 versioner = TemporalVersionManager()
 versioner.create_snapshot(kg, version_label="2024-Q1",
                           author="user@example.com",
@@ -125,7 +125,7 @@ calc  = SimilarityCalculator()
 score = calc.cosine_similarity(embeddings["Apple Inc."], embeddings["Google"])
 print(f"Apple–Google structural similarity: {score:.3f}")
 
-# Find structurally similar nodes — returns List[str] of node IDs
+# Find structurally similar nodes: returns List[str] of node IDs
 similar = embedder.find_similar_nodes(kg, "Apple Inc.", top_k=5)
 for node_id in similar:
     print(node_id)
@@ -171,10 +171,10 @@ for node_id in similar:
 
     detector = CommunityDetector()
 
-    # Louvain — fast, high quality (default)
+    # Louvain: fast, high quality (default)
     communities = detector.detect_communities(graph, algorithm="louvain")
 
-    # Leiden — higher quality, slower
+    # Leiden: higher quality, slower
     communities = detector.detect_communities_leiden(graph, resolution=1.2)
 
     # Evaluate community quality
@@ -185,10 +185,10 @@ for node_id in similar:
 
     | Algorithm | Strength |
     | :--------- | :-------- |
-    | Louvain | Fast, good modularity — use for large graphs |
-    | Leiden | Best modularity — use when quality matters more than speed |
-    | Label Propagation | Near-linear time — use for very large graphs |
-    | K-Clique | Overlapping communities — nodes can belong to multiple groups |
+    | Louvain | Fast, good modularity: use for large graphs |
+    | Leiden | Best modularity: use when quality matters more than speed |
+    | Label Propagation | Near-linear time: use for very large graphs |
+    | K-Clique | Overlapping communities: nodes can belong to multiple groups |
   </Tab>
   <Tab title="Path Finding">
     Find shortest paths and route alternatives between any two nodes.
@@ -211,9 +211,9 @@ for node_id in similar:
 
     | Algorithm | Use case |
     | :--------- | :-------- |
-    | Dijkstra | Weighted shortest path — standard routing |
-    | A\* | Heuristic-guided search — faster on large sparse graphs |
-    | BFS | Unweighted shortest path — hop count only |
+    | Dijkstra | Weighted shortest path: standard routing |
+    | A\* | Heuristic-guided search: faster on large sparse graphs |
+    | BFS | Unweighted shortest path: hop count only |
     | K-Shortest | Multiple alternative routes |
   </Tab>
   <Tab title="Link Prediction">
@@ -239,7 +239,7 @@ for node_id in similar:
     | Common Neighbors | Nodes with shared connections |
     | Jaccard | Normalized common-neighbor overlap |
     | Adamic-Adar | Weighted common neighbors (penalizes hubs) |
-    | Resource Allocation | Conservative — ignores high-degree intermediaries |
+    | Resource Allocation | Conservative: ignores high-degree intermediaries |
   </Tab>
   <Tab title="Node Embeddings">
     Compute structural embeddings with Node2Vec, then find similar nodes or feed into downstream ML.
@@ -265,7 +265,7 @@ for node_id in similar:
     ```
 
     <Note>
-      `find_similar_nodes` returns `List[str]` — a list of node IDs, not node objects. Look up full node data via `graph["nodes"]`.
+      `find_similar_nodes` returns `List[str]`: a list of node IDs, not node objects. Look up full node data via `graph["nodes"]`.
     </Note>
   </Tab>
 </Tabs>
@@ -286,7 +286,7 @@ for node_id in similar:
 
 ## GraphValidator
 
-Validates graph structure — checks required fields, duplicate IDs, dangling edges, and optionally detects cycles and orphan nodes:
+Validates graph structure: checks required fields, duplicate IDs, dangling edges, and optionally detects cycles and orphan nodes:
 
 ```python
 from semantica.kg import GraphValidator
@@ -333,8 +333,8 @@ kg:
 
 ### Cookbooks
 
-- [Building Knowledge Graphs](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb) — fundamentals of KG construction · Beginner
-- [Your First Knowledge Graph](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/08_Your_First_Knowledge_Graph.ipynb) — entity extraction to visualization · Beginner
-- [Graph Analytics](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/10_Graph_Analytics.ipynb) — centrality and community detection · Intermediate
-- [Advanced Graph Analytics](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/02_Advanced_Graph_Analytics.ipynb) — PageRank, Louvain, shortest path · Advanced
-- [Temporal Knowledge Graphs](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/10_Temporal_Knowledge_Graphs.ipynb) — temporal logic and graph evolution · Advanced
+- [Building Knowledge Graphs](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb): fundamentals of KG construction · Beginner
+- [Your First Knowledge Graph](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/08_Your_First_Knowledge_Graph.ipynb): entity extraction to visualization · Beginner
+- [Graph Analytics](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/10_Graph_Analytics.ipynb): centrality and community detection · Intermediate
+- [Advanced Graph Analytics](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/02_Advanced_Graph_Analytics.ipynb): PageRank, Louvain, shortest path · Advanced
+- [Temporal Knowledge Graphs](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/10_Temporal_Knowledge_Graphs.ipynb): temporal logic and graph evolution · Advanced

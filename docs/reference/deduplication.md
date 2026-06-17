@@ -1,6 +1,6 @@
----
+﻿---
 title: "Deduplication Module"
-description: "Entity deduplication — similarity scoring, blocking, merging, and cluster-based batch processing."
+description: "Entity deduplication: similarity scoring, blocking, merging, and cluster-based batch processing."
 icon: "copy"
 ---
 
@@ -10,23 +10,23 @@ icon: "copy"
 - `ClusterBuilder` uses Union-Find and hierarchical clustering for batch deduplication at scale
 - `EntityMerger` preserves original source provenance on every merged entity
 - `MergeStrategyManager` supports per-property rules and conflict resolution
-- All workflows operate on plain Python dicts — no ORM or schema required
+- All workflows operate on plain Python dicts: no ORM or schema required
 
 
 ## Exported Classes
 
 | Class | Role |
 | :--- | :--- |
-| `DuplicateDetector` | Pairwise and batch detection — returns `DuplicateCandidate` or `DuplicateGroup` lists |
-| `EntityMerger` | Merge duplicate groups — returns `List[MergeOperation]` |
+| `DuplicateDetector` | Pairwise and batch detection: returns `DuplicateCandidate` or `DuplicateGroup` lists |
+| `EntityMerger` | Merge duplicate groups: returns `List[MergeOperation]` |
 | `SimilarityCalculator` | Multi-factor similarity: string, property, relationship, and embedding |
 | `ClusterBuilder` | Union-Find and hierarchical clustering for large-scale batch deduplication |
 | `MergeStrategy` | Enum of merge strategies: `KEEP_FIRST`, `KEEP_LAST`, `KEEP_MOST_COMPLETE`, `KEEP_HIGHEST_CONFIDENCE`, `MERGE_ALL` |
 | `PropertyMergeRule` | Dataclass holding per-property merge rule: `{property_name, strategy, conflict_resolution, priority}` |
 | `MergeStrategyManager` | Manage and apply named merge strategies; accepts per-property rules |
-| `detect_duplicates()` | Convenience function — `detect_duplicates(entities, method="pairwise", similarity_threshold=0.7)` |
-| `merge_entities()` | Convenience function — `merge_entities(entities, method="keep_most_complete")` |
-| `calculate_similarity()` | Convenience function — `calculate_similarity(entity_a, entity_b, method="multi_factor")` |
+| `detect_duplicates()` | Convenience function: `detect_duplicates(entities, method="pairwise", similarity_threshold=0.7)` |
+| `merge_entities()` | Convenience function: `merge_entities(entities, method="keep_most_complete")` |
+| `calculate_similarity()` | Convenience function: `calculate_similarity(entity_a, entity_b, method="multi_factor")` |
 
 ## What You Get
 
@@ -35,19 +35,19 @@ icon: "copy"
     Pairwise, batch, incremental, and group detection modes. Returns scored candidates with reasons.
   </Card>
   <Card title="EntityMerger" icon="code-merge">
-    Five merge strategies — keep first, last, most complete, highest confidence, or merge all fields.
+    Five merge strategies: keep first, last, most complete, highest confidence, or merge all fields.
   </Card>
   <Card title="SimilarityCalculator" icon="equals">
     Multi-factor scoring across string edit distance, property overlap, relationship overlap, and embeddings.
   </Card>
   <Card title="ClusterBuilder" icon="diagram-project">
-    Union-Find and hierarchical clustering for batch deduplication at scale — handles 100k+ entity sets.
+    Union-Find and hierarchical clustering for batch deduplication at scale: handles 100k+ entity sets.
   </Card>
   <Card title="MergeStrategyManager" icon="sliders">
     Per-property merge rules with conflict resolution priorities. Apply different strategies to different fields.
   </Card>
   <Card title="v2 Strategies" icon="bolt">
-    `blocking_v2`, `hybrid_v2`, `semantic_v2` — up to 7× faster than v1 for large entity sets.
+    `blocking_v2`, `hybrid_v2`, `semantic_v2`: up to 7× faster than v1 for large entity sets.
   </Card>
 </CardGroup>
 
@@ -63,13 +63,13 @@ entities = [
     {"id": "3", "name": "Microsoft",    "type": "Company"},
 ]
 
-# 1. Detect duplicates — returns List[DuplicateCandidate]
+# 1. Detect duplicates: returns List[DuplicateCandidate]
 detector   = DuplicateDetector(similarity_threshold=0.7)
 candidates = detector.detect_duplicates(entities)
 
 for dup in candidates:
     print(
-        "{} vs {} — sim: {:.2f}, confidence: {:.2f}".format(
+        "{} vs {}: sim: {:.2f}, confidence: {:.2f}".format(
             dup.entity1.get("name"),
             dup.entity2.get("name"),
             dup.similarity_score,
@@ -77,7 +77,7 @@ for dup in candidates:
         )
     )
 
-# 2. Merge duplicates — returns List[MergeOperation]
+# 2. Merge duplicates: returns List[MergeOperation]
 merger     = EntityMerger()
 operations = merger.merge_duplicates(entities, strategy="keep_most_complete")
 
@@ -95,11 +95,11 @@ Find duplicate entity pairs:
 from semantica.deduplication import DuplicateDetector
 
 detector = DuplicateDetector(
-    similarity_threshold=0.7,    # default 0.7 — minimum score to include a candidate
-    confidence_threshold=0.6,    # default 0.6 — minimum confidence to include a candidate
-    max_results=100,             # optional — hard cap on total candidates returned
-    top_k_per_entity=3,          # optional — max candidates per entity
-    min_similarity=0.75,         # optional — additional floor applied after sorting
+    similarity_threshold=0.7,    # default 0.7: minimum score to include a candidate
+    confidence_threshold=0.6,    # default 0.6: minimum confidence to include a candidate
+    max_results=100,             # optional: hard cap on total candidates returned
+    top_k_per_entity=3,          # optional: max candidates per entity
+    min_similarity=0.75,         # optional: additional floor applied after sorting
     sort_by="confidence",        # "confidence" (default) | "similarity_score"
 )
 
@@ -115,11 +115,11 @@ for c in candidates:
 # Detect duplicate groups with union-find (returns List[DuplicateGroup])
 groups = detector.detect_duplicate_groups(entities)
 for g in groups:
-    print("Group of {} — confidence: {:.2f} — representative: {}".format(
+    print("Group of {}: confidence: {:.2f}: representative: {}".format(
         len(g.entities), g.confidence, g.representative and g.representative.get("name")
     ))
 
-# Incremental — compare new entities against existing (returns List[DuplicateCandidate])
+# Incremental: compare new entities against existing (returns List[DuplicateCandidate])
 new_entities = [{"id": "4", "name": "Apple Corp.", "type": "Company"}]
 candidates   = detector.incremental_detect(new_entities, entities)
 ```
@@ -198,7 +198,7 @@ Pass as a string to `strategy=` on `merge_duplicates()` or `merge_entity_group()
 | `"keep_last"` | Keep the most recently seen entity |
 | `"keep_most_complete"` | Keep the entity with the most non-null properties + relationships |
 | `"keep_highest_confidence"` | Keep the entity with the highest `.confidence` value |
-| `"merge_all"` | Combine all properties — conflicts resolved to lists |
+| `"merge_all"` | Combine all properties: conflicts resolved to lists |
 
 ### Per-property merge rules
 
@@ -262,7 +262,7 @@ print(result.components["property"])        # property overlap component
 print(result.components["relationship"])    # relationship jaccard component
 # result.components["embedding"] is present only when embeddings are supplied
 
-# String similarity methods — method= accepts "levenshtein", "jaro_winkler", "cosine"
+# String similarity methods: method= accepts "levenshtein", "jaro_winkler", "cosine"
 lev  = calc.calculate_string_similarity("Apple Inc.", "Apple Inc",  method="levenshtein")
 jaro = calc.calculate_string_similarity("Steve Jobs", "Steven Jobs", method="jaro_winkler")
 cos  = calc.calculate_string_similarity("apple",     "apples",      method="cosine")
@@ -301,7 +301,7 @@ result = builder.build_clusters(entities)
 
 print("Clusters found:", len(result.clusters))
 for cluster in result.clusters:
-    print("  [{}] {} entities — quality: {:.2f}".format(
+    print("  [{}] {} entities: quality: {:.2f}".format(
         cluster.cluster_id,
         len(cluster.entities),
         cluster.quality_score,
@@ -327,7 +327,7 @@ print("Quality metrics:", result.quality_metrics)
 ```python
 from semantica.deduplication import detect_duplicates, merge_entities, calculate_similarity
 
-# Detect — method= accepts "pairwise" (default), "batch", "incremental", "group"
+# Detect: method= accepts "pairwise" (default), "batch", "incremental", "group"
 candidates = detect_duplicates(
     entities,
     method="pairwise",
@@ -335,11 +335,11 @@ candidates = detect_duplicates(
     confidence_threshold=0.6,
 )
 
-# Merge — method= accepts the strategy strings, same as EntityMerger
+# Merge: method= accepts the strategy strings, same as EntityMerger
 operations = merge_entities(entities, method="keep_most_complete", preserve_provenance=True)
 # Returns List[MergeOperation]; access .merged_entity on each
 
-# Similarity — method= accepts "exact", "levenshtein", "jaro_winkler", "cosine",
+# Similarity: method= accepts "exact", "levenshtein", "jaro_winkler", "cosine",
 #              "property", "relationship", "embedding", "multi_factor" (default)
 result = calculate_similarity(entity_a, entity_b, method="multi_factor")
 print(result.score)
@@ -402,7 +402,7 @@ result = calculate_similarity(entity_a, entity_b, method="drug_name")
     ```python
     from semantica.deduplication import ClusterBuilder, EntityMerger
 
-    # Build clusters first — more efficient for large entity sets
+    # Build clusters first: more efficient for large entity sets
     builder = ClusterBuilder(similarity_threshold=0.8, min_cluster_size=2)
     result  = builder.build_clusters(entities)
 
@@ -430,7 +430,7 @@ result = calculate_similarity(entity_a, entity_b, method="drug_name")
 ## Tips and Common Pitfalls
 
 <Warning>
-  **`DuplicateCandidate` fields are `entity1`, `entity2`, `similarity_score` — not `entity_a`, `entity_b`, `similarity`.** Accessing the wrong field names raises `AttributeError`.
+  **`DuplicateCandidate` fields are `entity1`, `entity2`, `similarity_score`: not `entity_a`, `entity_b`, `similarity`.** Accessing the wrong field names raises `AttributeError`.
 </Warning>
 
 <Warning>
@@ -446,7 +446,7 @@ result = calculate_similarity(entity_a, entity_b, method="drug_name")
 </Tip>
 
 <Tip>
-  **Use `detect_duplicate_groups()` when you need to merge.** The `"group"` detection strategy uses union-find to form transitive clusters — if A≈B and B≈C, all three land in the same group. Plain `detect_duplicates()` returns individual pairs without transitivity.
+  **Use `detect_duplicate_groups()` when you need to merge.** The `"group"` detection strategy uses union-find to form transitive clusters: if A≈B and B≈C, all three land in the same group. Plain `detect_duplicates()` returns individual pairs without transitivity.
 </Tip>
 
 <Tip>

@@ -1,4 +1,4 @@
----
+﻿---
 title: "Use Cases"
 description: "Real-world applications of Semantica across domains, with linked cookbook notebooks for each."
 icon: "briefcase"
@@ -18,8 +18,8 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `ingest` (PubMed RSS), `semantic_extract`, `kg`, `deduplication`, `context`
 
     **Notebooks:**
-    - [Drug Discovery Pipeline](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/01_Drug_Discovery_Pipeline.ipynb) — Intermediate
-    - [Genomic Variant Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/02_Genomic_Variant_Analysis.ipynb) — Intermediate
+    - [Drug Discovery Pipeline](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/01_Drug_Discovery_Pipeline.ipynb): Intermediate
+    - [Genomic Variant Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/02_Genomic_Variant_Analysis.ipynb): Intermediate
   </Card>
   <Card title="GraphRAG for Research" icon="magnifying-glass" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb">
     Ground LLM answers in structured scientific literature with hybrid retrieval, logical inference, and source attribution on every claim.
@@ -27,8 +27,8 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `context`, `vector_store`, `kg`, `reasoning`, `llms`
 
     **Notebooks:**
-    - [GraphRAG Complete](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb) — Advanced
-    - [RAG vs. GraphRAG Comparison](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/02_RAG_vs_GraphRAG_Comparison.ipynb) — Advanced
+    - [GraphRAG Complete](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb): Advanced
+    - [RAG vs. GraphRAG Comparison](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/02_RAG_vs_GraphRAG_Comparison.ipynb): Advanced
   </Card>
 </CardGroup>
 
@@ -38,12 +38,12 @@ Semantica is purpose-built for environments where AI outputs must be explainable
 
 <CardGroup cols={2}>
   <Card title="Financial Data Integration" icon="chart-line" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/01_Financial_Data_Integration_MCP.ipynb">
-    Unify financial data from APIs, MCP servers, and real-time streams into a single queryable knowledge graph — with conflict detection when sources disagree.
+    Unify financial data from APIs, MCP servers, and real-time streams into a single queryable knowledge graph: with conflict detection when sources disagree.
 
     **Key modules:** `ingest` (API, MCP, stream), `normalize`, `kg`, `conflicts`, `provenance`
 
     **Notebooks:**
-    - [Financial Data Integration (MCP)](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/01_Financial_Data_Integration_MCP.ipynb) — Intermediate
+    - [Financial Data Integration (MCP)](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/01_Financial_Data_Integration_MCP.ipynb): Intermediate
   </Card>
   <Card title="Fraud Detection" icon="shield-halved" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/02_Fraud_Detection.ipynb">
     Detect complex fraud rings using temporal graphs and pattern detection over transaction, device, and user data. Temporal edges let you query: "what connections existed during this window?"
@@ -51,7 +51,7 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `kg` (temporal), `conflicts`, `reasoning`, `visualization`
 
     **Notebooks:**
-    - [Fraud Detection](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/02_Fraud_Detection.ipynb) — Advanced
+    - [Fraud Detection](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/02_Fraud_Detection.ipynb): Advanced
   </Card>
   <Card title="Blockchain Analytics" icon="link" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/01_DeFi_Protocol_Intelligence.ipynb">
     Map transaction flows, analyze DeFi protocols, and detect illicit activity. Graph algorithms (centrality, community detection) surface high-risk actors that linear transaction analysis misses.
@@ -59,8 +59,8 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `kg`, `reasoning`, `visualization`
 
     **Notebooks:**
-    - [DeFi Protocol Intelligence](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/01_DeFi_Protocol_Intelligence.ipynb) — Intermediate
-    - [Transaction Network Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/02_Transaction_Network_Analysis.ipynb) — Intermediate
+    - [DeFi Protocol Intelligence](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/01_DeFi_Protocol_Intelligence.ipynb): Intermediate
+    - [Transaction Network Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/02_Transaction_Network_Analysis.ipynb): Intermediate
   </Card>
 </CardGroup>
 
@@ -75,8 +75,8 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `ingest` (stream, feed), `kg` (temporal), `context`, `reasoning`, `export`
 
     **Notebooks:**
-    - [Real-Time Anomaly Detection](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/01_Real_Time_Anomaly_Detection.ipynb) — Advanced
-    - [Threat Intelligence Hybrid RAG](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/02_Threat_Intelligence_Hybrid_RAG.ipynb) — Advanced
+    - [Real-Time Anomaly Detection](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/01_Real_Time_Anomaly_Detection.ipynb): Advanced
+    - [Threat Intelligence Hybrid RAG](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/02_Threat_Intelligence_Hybrid_RAG.ipynb): Advanced
   </Card>
   <Card title="Criminal Network Analysis" icon="users" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/01_Criminal_Network_Analysis.ipynb">
     Build knowledge graphs from police reports, court records, and OSINT feeds to identify key players, communities, and suspicious patterns. Network centrality surfaces actors text search alone would miss.
@@ -84,7 +84,7 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `ingest`, `semantic_extract`, `kg`, `visualization` (community detection)
 
     **Notebooks:**
-    - [Criminal Network Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/01_Criminal_Network_Analysis.ipynb) — Intermediate
+    - [Criminal Network Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/01_Criminal_Network_Analysis.ipynb): Intermediate
   </Card>
   <Card title="Intelligence Analysis Orchestrator" icon="network-wired" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/02_Intelligence_Analysis_Orchestrator_Worker.ipynb">
     Process multiple intelligence sources in parallel with an orchestrator-worker pipeline. Multi-source conflict detection flags disagreements rather than silently discarding minority reports.
@@ -92,7 +92,7 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `pipeline`, `ingest`, `conflicts`, `provenance`, `export`
 
     **Notebooks:**
-    - [Intelligence Analysis Orchestrator-Worker](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/02_Intelligence_Analysis_Orchestrator_Worker.ipynb) — Intermediate
+    - [Intelligence Analysis Orchestrator-Worker](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/02_Intelligence_Analysis_Orchestrator_Worker.ipynb): Intermediate
   </Card>
 </CardGroup>
 
@@ -107,7 +107,7 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `ingest`, `kg`, `reasoning`, `visualization`, `export` (Parquet for analytics)
 
     **Notebooks:**
-    - [Supply Chain Data Integration](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/supply_chain/01_Supply_Chain_Data_Integration.ipynb) — Intermediate
+    - [Supply Chain Data Integration](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/supply_chain/01_Supply_Chain_Data_Integration.ipynb): Intermediate
   </Card>
   <Card title="Renewable Energy Management" icon="bolt" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/renewable_energy/01_Energy_Market_Analysis.ipynb">
     Connect sensor data, weather forecasts, and maintenance logs to predict equipment failures and optimize grid operations. Temporal graphs track asset states over time and correlate maintenance events with performance degradation.
@@ -115,7 +115,7 @@ Semantica is purpose-built for environments where AI outputs must be explainable
     **Key modules:** `ingest` (stream, API), `kg` (temporal), `reasoning`, `visualization`
 
     **Notebooks:**
-    - [Energy Market Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/renewable_energy/01_Energy_Market_Analysis.ipynb) — Intermediate
+    - [Energy Market Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/renewable_energy/01_Energy_Market_Analysis.ipynb): Intermediate
   </Card>
 </CardGroup>
 
@@ -133,8 +133,8 @@ Semantica is purpose-built for environments where AI outputs must be explainable
 
 | Semantica capability | Compliance role |
 | :-------------------- | :-------------- |
-| W3C PROV-O provenance | Full lineage from raw data to inference — required for FDA audit trails |
-| SHA-256 checksums | Tamper detection on every snapshot — supports electronic record integrity |
+| W3C PROV-O provenance | Full lineage from raw data to inference: required for FDA audit trails |
+| SHA-256 checksums | Tamper detection on every snapshot: supports electronic record integrity |
 | Decision tracking | Every AI-assisted recommendation is recorded with causal chain and confidence |
 | Temporal graphs | Point-in-time queries for retrospective safety analysis |
 | SHACL validation | Schema enforcement before data enters the knowledge graph |
@@ -147,10 +147,10 @@ Semantica is purpose-built for environments where AI outputs must be explainable
 
 | Semantica capability | Compliance role |
 | :-------------------- | :-------------- |
-| Decision audit trail | Full record of model decisions with reasoning — required for model risk management |
+| Decision audit trail | Full record of model decisions with reasoning: required for model risk management |
 | Conflict detection | Flags when two sources disagree on a valuation or risk figure |
-| Version control | SHA-256 snapshot history — supports point-in-time reconstruction for audits |
-| Provenance export | RDF with PROV-O inline — submittable to regulatory bodies as structured evidence |
+| Version control | SHA-256 snapshot history: supports point-in-time reconstruction for audits |
+| Provenance export | RDF with PROV-O inline: submittable to regulatory bodies as structured evidence |
 
 </Accordion>
 
@@ -160,7 +160,7 @@ Semantica is purpose-built for environments where AI outputs must be explainable
 
 | Semantica capability | Operational role |
 | :-------------------- | :--------------- |
-| Local LLM support | `HuggingFaceLLM` and Ollama via LiteLLM — fully air-gapped deployments |
+| Local LLM support | `HuggingFaceLLM` and Ollama via LiteLLM: fully air-gapped deployments |
 | Provenance chains | Every intelligence claim traceable to source document and extraction event |
 | Conflict resolution | Multiple-source disagreement resolved with auditable strategy |
 | Temporal intelligence | Historical queries over evolving intelligence graphs |

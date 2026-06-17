@@ -1,4 +1,4 @@
----
+﻿---
 title: "Agno Integration"
 description: "Wire Semantica's semantic intelligence stack into Agno multi-agent teams via five focused components."
 icon: "robot"
@@ -26,19 +26,19 @@ pip install "semantica[agno,graph-neo4j,vectorstore-pgvector]"
 
 <CardGroup cols={2}>
   <Card title="AgnoContextStore" icon="database">
-    `AgentMemory(db=…)` — Replaces Agno's flat storage with hybrid vector + context graph memory. Adds decision tracking and precedent search to any agent.
+    `AgentMemory(db=…)`: Replaces Agno's flat storage with hybrid vector + context graph memory. Adds decision tracking and precedent search to any agent.
   </Card>
   <Card title="AgnoKnowledgeGraph" icon="diagram-project">
-    `Agent(knowledge=…)` — Documents flow through the full Semantica extraction pipeline into a queryable `ContextGraph` with multi-hop GraphRAG.
+    `Agent(knowledge=…)`: Documents flow through the full Semantica extraction pipeline into a queryable `ContextGraph` with multi-hop GraphRAG.
   </Card>
   <Card title="AgnoDecisionKit" icon="list-check">
-    `Agent(tools=[…])` — 6 decision intelligence tools: record decisions, find precedents, trace causal chains, analyze impact, check policies, summarize history.
+    `Agent(tools=[…])`: 6 decision intelligence tools: record decisions, find precedents, trace causal chains, analyze impact, check policies, summarize history.
   </Card>
   <Card title="AgnoKGToolkit" icon="wrench">
-    `Agent(tools=[…])` — 7 KG construction tools: extract entities, extract relations, add to graph, query graph, find related, infer facts, export subgraph.
+    `Agent(tools=[…])`: 7 KG construction tools: extract entities, extract relations, add to graph, query graph, find related, infer facts, export subgraph.
   </Card>
   <Card title="AgnoSharedContext" icon="users">
-    Team-level — A single `ContextGraph` shared across all agents. Each agent gets a role-scoped view via `bind_agent()`. Writes are tagged by role.
+    Team-level: A single `ContextGraph` shared across all agents. Each agent gets a role-scoped view via `bind_agent()`. Writes are tagged by role.
   </Card>
 </CardGroup>
 
@@ -224,11 +224,11 @@ from integrations.agno import (
     AgnoDecisionKit,     # Decision intelligence Toolkit
     AgnoKGToolkit,       # Knowledge graph Toolkit
     AgnoSharedContext,   # Team-level shared context
-    AGNO_AVAILABLE,      # bool — True if agno is installed
+    AGNO_AVAILABLE,      # bool: True if agno is installed
 )
 ```
 
-All five classes are usable without `agno` installed — they carry the full Semantica API and degrade gracefully.
+All five classes are usable without `agno` installed: they carry the full Semantica API and degrade gracefully.
 
 
 ## See Also

@@ -1,12 +1,12 @@
----
+﻿---
 title: "Seed Module"
-description: "Bootstrap Knowledge Graphs from verified, structured sources — taxonomies, reference tables, product catalogs, and domain anchors."
+description: "Bootstrap Knowledge Graphs from verified, structured sources: taxonomies, reference tables, product catalogs, and domain anchors."
 icon: "database"
 ---
 
 **`semantica.seed`** gives your knowledge graph a **reliable, verified starting point**:
 
-- Load verified reference data first — ISO codes, employee rosters, product catalogs, domain taxonomies
+- Load verified reference data first: ISO codes, employee rosters, product catalogs, domain taxonomies
 - `SeedDataManager` merges freshly extracted data onto foundation nodes without creating duplicates
 - Supports JSON, CSV, and programmatic registration of seed sources
 - Deterministic test graph generation from structured seed data
@@ -80,7 +80,7 @@ icon: "database"
         for warning in report["warnings"]:
             print(f"Warning: {warning}")
     else:
-        print(f"Validated {report['metrics']['entity_count']} entities — no issues found")
+        print(f"Validated {report['metrics']['entity_count']} entities: no issues found")
     ```
   </Step>
   <Step title="Merge with extracted data">
@@ -190,7 +190,7 @@ Different strategies for resolving conflicts during `integrate_with_extracted()`
 
 <Tabs>
   <Tab title="seed_first">
-    **Seed data wins conflicts** — preserves curated relationships over extracted ones.
+    **Seed data wins conflicts**: preserves curated relationships over extracted ones.
 
     ```python
     final_kg = manager.integrate_with_extracted(
@@ -203,7 +203,7 @@ Different strategies for resolving conflicts during `integrate_with_extracted()`
     Use when seed data is high-confidence and extraction is exploratory.
   </Tab>
   <Tab title="extracted_first">
-    **Extracted data wins conflicts** — overwrites seed with fresh information.
+    **Extracted data wins conflicts**: overwrites seed with fresh information.
 
     ```python
     final_kg = manager.integrate_with_extracted(
@@ -216,7 +216,7 @@ Different strategies for resolving conflicts during `integrate_with_extracted()`
     Use for rapid prototyping when extraction quality is known to be good.
   </Tab>
   <Tab title="merge">
-    **Intelligent conflict resolution** — merges complementary attributes, deduplicates entities.
+    **Intelligent conflict resolution**: merges complementary attributes, deduplicates entities.
 
     ```python
     final_kg = manager.integrate_with_extracted(
@@ -282,7 +282,7 @@ manager.export_seed_data("output/enriched_kg.json", format="json")
 
 ## YAML Configuration
 
-Define sources in YAML for production deployments — no code changes needed to switch environments:
+Define sources in YAML for production deployments: no code changes needed to switch environments:
 
 ```yaml
 seed:
@@ -318,7 +318,7 @@ export SEMANTICA_SEED_MERGE_STRATEGY=seed_first
 ## Tips and Common Pitfalls
 
 <Warning>
-  **Load seed data before extracted data.** Seed data is your ground truth — normalised, curated, and already de-duplicated. Load it first with `create_foundation_graph()`, then merge extracted entities on top. Merging in the wrong order lets noisy extracted data overwrite trusted reference values.
+  **Load seed data before extracted data.** Seed data is your ground truth: normalised, curated, and already de-duplicated. Load it first with `create_foundation_graph()`, then merge extracted entities on top. Merging in the wrong order lets noisy extracted data overwrite trusted reference values.
 </Warning>
 
 <Tip>
@@ -326,7 +326,7 @@ export SEMANTICA_SEED_MERGE_STRATEGY=seed_first
 </Tip>
 
 <Warning>
-  **Validate before loading.** `manager.validate_quality(seed_data)` catches missing required fields, type inconsistencies, and duplicate IDs before they corrupt your graph. Running validation after loading means you'll need to roll back. Validation is fast — always run it first.
+  **Validate before loading.** `manager.validate_quality(seed_data)` catches missing required fields, type inconsistencies, and duplicate IDs before they corrupt your graph. Running validation after loading means you'll need to roll back. Validation is fast: always run it first.
 </Warning>
 
 <Tip>

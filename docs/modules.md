@@ -1,6 +1,6 @@
----
+﻿---
 title: "Modules"
-description: "Every Semantica module works independently — use only what you need."
+description: "Every Semantica module works independently: use only what you need."
 icon: "puzzle-piece"
 ---
 
@@ -8,7 +8,7 @@ icon: "puzzle-piece"
   Looking for a quick reference? Jump to the [Module Index](#module-index) at the bottom.
 </Tip>
 
-Semantica is organized into **27 modules** across six logical layers. Each module is independently importable — you never pay for what you don't use.
+Semantica is organized into **27 modules** across six logical layers. Each module is independently importable: you never pay for what you don't use.
 
 ## Architecture Overview
 
@@ -51,7 +51,7 @@ documents = ingestor.ingest_directory("data/")
 web_ingestor = WebIngestor()
 pages = web_ingestor.ingest_urls(["https://example.com"])
 
-# Parquet — single file, partitioned directory, Hive-style (v0.5.0)
+# Parquet: single file, partitioned directory, Hive-style (v0.5.0)
 parquet = ParquetIngestor()
 sources = parquet.ingest("data/events.parquet")
 
@@ -69,7 +69,7 @@ Extracts structured text and layout metadata from raw documents.
 ```python
 from semantica.parse import DocumentParser, DoclingParser
 
-# Standard parser — all common formats
+# Standard parser: all common formats
 parser = DocumentParser()
 parsed = parser.parse_document("document.pdf")
 
@@ -183,13 +183,13 @@ engine.apply_transitivity("located_in")
 engine.apply_symmetry("knows")
 result = engine.infer()
 
-# Datalog — recursive Horn clause rules (v0.4.0)
+# Datalog: recursive Horn clause rules (v0.4.0)
 datalog = DatalogEngine()
 datalog.add_rule("ancestor(X, Z) :- parent(X, Y), ancestor(Y, Z).")
 results = datalog.query("ancestor(alice, ?)")
 ```
 
-**Engines:** forward chaining, Rete network, deductive, abductive, SPARQL, Datalog — all produce explainable inference paths
+**Engines:** forward chaining, Rete network, deductive, abductive, SPARQL, Datalog: all produce explainable inference paths
 
 
 ## Storage
@@ -442,11 +442,11 @@ Exposes Semantica as an MCP stdio server for IDE and agent integrations.
 python -m semantica.mcp_server
 ```
 
-**Integrations:** Claude Desktop, VS Code, Cursor, Windsurf, Cline — 12 MCP tools exposed
+**Integrations:** Claude Desktop, VS Code, Cursor, Windsurf, Cline: 12 MCP tools exposed
 
 ### Seed
 
-Bootstrap knowledge graphs from verified structured sources — fixed-point reference data, controlled vocabularies, and domain anchors.
+Bootstrap knowledge graphs from verified structured sources: fixed-point reference data, controlled vocabularies, and domain anchors.
 
 ```python
 from semantica.seed import SeedManager
@@ -499,7 +499,7 @@ from semantica.core import Semantica, PluginRegistry, ConfigManager
 sem = Semantica(config_path="config.yaml")
 sem.initialize()
 
-# Plugin registry — register custom components
+# Plugin registry: register custom components
 registry = PluginRegistry()
 registry.register("my_ingestor", MyCustomIngestor)
 
@@ -548,7 +548,7 @@ graph         = GraphBuilder(merge_entities=True).build(
   </Tab>
 
   <Tab title="GraphRAG">
-    Ground every LLM response in a knowledge graph — structured retrieval with source attribution.
+    Ground every LLM response in a knowledge graph: structured retrieval with source attribution.
 
     **Pipeline:** `KG` + `VectorStore` → `AgentContext` → GraphRAG query → grounded answer
 
@@ -604,7 +604,7 @@ precedents = context.find_precedents("model selection", limit=5)
   </Tab>
 
   <Tab title="Compliance Pipeline">
-    Full provenance from raw data to final inference — W3C PROV-O, SHA-256 checksums, audit trail.
+    Full provenance from raw data to final inference: W3C PROV-O, SHA-256 checksums, audit trail.
 
     **Pipeline:** `Ingest` → `Parse` → `Extract` → `KG` → `Provenance` → `ChangeManagement` → `Export`
 
@@ -654,7 +654,7 @@ for page in pages:
   </Tab>
 
   <Tab title="Temporal Analysis">
-    Track how facts change over time — point-in-time queries, snapshots, and versioning.
+    Track how facts change over time: point-in-time queries, snapshots, and versioning.
 
     **Pipeline:** `KG (Temporal)` → `TemporalGraphQuery` → `VersionManager` → `ChangeManagement`
 

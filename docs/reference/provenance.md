@@ -1,12 +1,12 @@
----
+﻿---
 title: "Provenance Module"
 description: "W3C PROV-O lineage tracking, source attribution, tamper-evident checksums, and audit trails across all modules."
 icon: "link"
 ---
 
-`semantica.provenance` tracks the full lineage of every fact — from raw ingestion through extraction, chunking, and relationship building:
+`semantica.provenance` tracks the full lineage of every fact: from raw ingestion through extraction, chunking, and relationship building:
 
-- W3C PROV-O compliant — suitable for HIPAA, SOX, GDPR, FDA 21 CFR Part 11 audit trails
+- W3C PROV-O compliant: suitable for HIPAA, SOX, GDPR, FDA 21 CFR Part 11 audit trails
 - SHA-256 checksums for tamper detection on every stored `ProvenanceEntry`
 - `SQLiteStorage` for persistence across restarts; `InMemoryStorage` for development
 - `ProvenanceManager` provides `track_entity`, `track_relationship`, `track_chunk`, and `get_lineage`
@@ -21,8 +21,8 @@ icon: "link"
 | `ProvenanceEntry` | Single lineage record: `{entity_id, entity_type, activity_id, source_document, confidence, checksum, ...}` |
 | `SourceReference` | Rich source pointer: `{document, page, section, line, confidence, metadata}` |
 | `ProvenanceStorage` | Abstract storage interface |
-| `InMemoryStorage` | Default backend — fast, not persisted across restarts |
-| `SQLiteStorage` | Persistent backend — persists to a local SQLite file |
+| `InMemoryStorage` | Default backend: fast, not persisted across restarts |
+| `SQLiteStorage` | Persistent backend: persists to a local SQLite file |
 | `compute_checksum` | Returns SHA-256 fingerprint of a `ProvenanceEntry` |
 | `verify_checksum` | Detects tampering by comparing stored vs recomputed hash |
 
@@ -30,7 +30,7 @@ icon: "link"
 
 <Tabs>
   <Tab title="In-Memory (default)">
-    Zero configuration — fast, no disk writes. Use for notebooks, testing, and single-run scripts.
+    Zero configuration: fast, no disk writes. Use for notebooks, testing, and single-run scripts.
 
     ```python
     from semantica.provenance import ProvenanceManager, compute_checksum, verify_checksum
@@ -46,7 +46,7 @@ icon: "link"
     )
 
     print(entry.checksum)        # SHA-256 hex auto-computed
-    print(verify_checksum(entry))  # True — tamper detection
+    print(verify_checksum(entry))  # True: tamper detection
     ```
 
     <Note>
@@ -62,7 +62,7 @@ icon: "link"
     # Option 1: explicit storage instance
     manager = ProvenanceManager(storage=SQLiteStorage("provenance.db"))
 
-    # Option 2: shorthand — equivalent to above
+    # Option 2: shorthand: equivalent to above
     manager = ProvenanceManager(storage_path="provenance.db")
 
     entry = manager.track_entity(
@@ -72,7 +72,7 @@ icon: "link"
         confidence=0.98,
     )
 
-    # Retrieve lineage after restart — entries persist in provenance.db
+    # Retrieve lineage after restart: entries persist in provenance.db
     lineage = manager.get_lineage("apple_inc")
     print(f"{len(lineage)} provenance entries for apple_inc")
     ```
@@ -92,7 +92,7 @@ icon: "link"
 ```python
 ProvenanceManager(
     storage=None,        # ProvenanceStorage instance; defaults to InMemoryStorage
-    storage_path=None,   # str path — creates SQLiteStorage if provided
+    storage_path=None,   # str path: creates SQLiteStorage if provided
 )
 ```
 
@@ -169,7 +169,7 @@ count = manager.track_chunks_batch(chunks, source_document="doc_1")
 ### Retrieving Lineage
 
 ```python
-# get_lineage returns a dict — not a ProvenanceEntry
+# get_lineage returns a dict: not a ProvenanceEntry
 lineage = manager.get_lineage("apple_inc")
 
 print(lineage["entity_id"])        # "apple_inc"
@@ -233,23 +233,23 @@ from semantica.provenance import ProvenanceEntry
 
 # All fields with their types and defaults
 entry = ProvenanceEntry(
-    entity_id="entity_001",           # str — required
-    entity_type="entity",             # str — required (entity, chunk, relationship, property)
-    activity_id="ner_extraction",     # str — required
-    agent_id="semantica",             # str — default "semantica"
-    source_document="report.pdf",     # str — default ""
-    source_location="Page 4",         # Optional[str] — default None
-    source_quote="Relevant text...",  # Optional[str] — default None
-    timestamp="2024-01-01T12:00:00",  # str — auto-set to utcnow()
-    first_seen=None,                  # Optional[str] — ISO timestamp
-    last_updated=None,                # Optional[str] — ISO timestamp
-    confidence=0.9,                   # float — default 1.0
-    checksum=None,                    # Optional[str] — set by compute_checksum()
-    parent_entity_id=None,            # Optional[str] — prov:wasDerivedFrom
-    used_entities=[],                 # List[str] — prov:used
-    start_index=None,                 # Optional[int] — for chunks
-    end_index=None,                   # Optional[int] — for chunks
-    credibility=None,                 # Optional[float] — source credibility
+    entity_id="entity_001",           # str: required
+    entity_type="entity",             # str: required (entity, chunk, relationship, property)
+    activity_id="ner_extraction",     # str: required
+    agent_id="semantica",             # str: default "semantica"
+    source_document="report.pdf",     # str: default ""
+    source_location="Page 4",         # Optional[str]: default None
+    source_quote="Relevant text...",  # Optional[str]: default None
+    timestamp="2024-01-01T12:00:00",  # str: auto-set to utcnow()
+    first_seen=None,                  # Optional[str]: ISO timestamp
+    last_updated=None,                # Optional[str]: ISO timestamp
+    confidence=0.9,                   # float: default 1.0
+    checksum=None,                    # Optional[str]: set by compute_checksum()
+    parent_entity_id=None,            # Optional[str]: prov:wasDerivedFrom
+    used_entities=[],                 # List[str]: prov:used
+    start_index=None,                 # Optional[int]: for chunks
+    end_index=None,                   # Optional[int]: for chunks
+    credibility=None,                 # Optional[float]: source credibility
     metadata={},                      # Dict[str, Any]
     version="1.0",                    # str
 )
@@ -269,12 +269,12 @@ entry2 = ProvenanceEntry.from_dict(d)
 from semantica.provenance import SourceReference
 
 ref = SourceReference(
-    document="DOI:10.1038/s41586-021-03371-z",  # str — required (DOI, URL, file path)
+    document="DOI:10.1038/s41586-021-03371-z",  # str: required (DOI, URL, file path)
     page=4,                                       # Optional[int]
     section="Table S4",                           # Optional[str]
     line=None,                                    # Optional[int]
     timestamp=None,                               # Optional[datetime]
-    confidence=0.92,                              # float — default 1.0
+    confidence=0.92,                              # float: default 1.0
     metadata={"credibility": "peer-reviewed"},    # Dict[str, Any]
 )
 
@@ -387,7 +387,7 @@ prov_manager = ProvenanceManager(storage=SQLiteStorage("provenance.db"))
 builder = GraphBuilderWithProvenance(provenance_manager=prov_manager)
 kg = builder.build_single_source(graph_data)
 
-# Retrieve lineage — get_lineage returns a dict
+# Retrieve lineage: get_lineage returns a dict
 lineage = prov_manager.get_lineage("apple_inc")
 print(lineage["source_documents"])  # list of source document IDs
 print(lineage["first_seen"])        # ISO timestamp

@@ -1,4 +1,4 @@
----
+﻿---
 title: "Cookbook"
 description: "Interactive Jupyter notebooks covering everything from your first knowledge graph to production GraphRAG systems."
 icon: "flask"
@@ -6,9 +6,9 @@ icon: "flask"
 
 <Tip>
   **Where to start:**
-  - **New to Semantica** — begin with [Core Tutorials](#core-tutorials)
-  - **Building an application** — see [Advanced Concepts](#advanced-concepts) or [Industry Use Cases](#industry-use-cases)
-  - **Need installation help** — see the [Installation Guide](installation)
+  - **New to Semantica**: begin with [Core Tutorials](#core-tutorials)
+  - **Building an application**: see [Advanced Concepts](#advanced-concepts) or [Industry Use Cases](#industry-use-cases)
+  - **Need installation help**: see the [Installation Guide](installation)
 </Tip>
 
 <Note>

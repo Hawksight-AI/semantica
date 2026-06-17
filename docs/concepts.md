@@ -1,6 +1,6 @@
----
+﻿---
 title: "Core Concepts"
-description: "The fundamental ideas behind Semantica — knowledge graphs, reasoning, provenance, and temporal intelligence explained."
+description: "The fundamental ideas behind Semantica: knowledge graphs, reasoning, provenance, and temporal intelligence explained."
 icon: "book-open"
 ---
 
@@ -8,9 +8,9 @@ icon: "book-open"
   New here? Start with [Getting Started](getting-started) for hands-on examples, then return here for deeper understanding.
 </Tip>
 
-Semantica transforms unstructured data — documents, web pages, reports, databases — into **knowledge graphs**: structured representations that AI systems can query, reason about, and trace back to sources.
+Semantica transforms unstructured data: documents, web pages, reports, databases: into **knowledge graphs**: structured representations that AI systems can query, reason about, and trace back to sources.
 
-At its core, Semantica adds a **context and accountability layer** on top of your existing AI stack. It doesn't replace LangChain, LlamaIndex, or your LLM provider — it makes their outputs **grounded**, **traceable**, and **auditable**.
+At its core, Semantica adds a **context and accountability layer** on top of your existing AI stack. It doesn't replace LangChain, LlamaIndex, or your LLM provider: it makes their outputs **grounded**, **traceable**, and **auditable**.
 
 <CardGroup cols={3}>
   <Card title="Context Layer" icon="diagram-project">
@@ -20,7 +20,7 @@ At its core, Semantica adds a **context and accountability layer** on top of you
     Provenance tracking, decision intelligence, conflict detection, and W3C PROV-O compliance make every claim in your AI stack auditable and explainable.
   </Card>
   <Card title="Extension Layer" icon="plug">
-    `PluginRegistry` and `MethodRegistry` let you replace or augment any component — ingestors, extractors, reasoning engines, backends — without changing framework code.
+    `PluginRegistry` and `MethodRegistry` let you replace or augment any component: ingestors, extractors, reasoning engines, backends: without changing framework code.
   </Card>
 </CardGroup>
 
@@ -31,11 +31,11 @@ At its core, Semantica adds a **context and accountability layer** on top of you
 
 The foundation of everything in Semantica. A knowledge graph stores information as three building blocks:
 
-- **Nodes (entities)** — people, companies, locations, events, concepts
-- **Edges (relationships)** — `works_for`, `located_in`, `founded_by`
-- **Properties** — name, date, confidence score, source URL
+- **Nodes (entities)**: people, companies, locations, events, concepts
+- **Edges (relationships)**: `works_for`, `located_in`, `founded_by`
+- **Properties**: name, date, confidence score, source URL
 
-This structure makes knowledge **searchable**, **connectable**, **queryable**, and — critically — **explainable**: every answer can be traced back to the facts and relationships that produced it.
+This structure makes knowledge **searchable**, **connectable**, **queryable**, and: critically: **explainable**: every answer can be traced back to the facts and relationships that produced it.
 
 
 ## Entity Extraction (NER)
@@ -58,9 +58,9 @@ Each entity gets a type, confidence score, and a link to its source document. Th
 
 | Method | Speed | Accuracy | Requirements |
 | :------ | :----- | :-------- | :------------ |
-| `"pattern"` | ⚡ Very fast | Moderate | No API key — regex-based |
+| `"pattern"` | ⚡ Very fast | Moderate | No API key: regex-based |
 | `"ml"` | Fast | High | Local ML model |
-| `"llm"` | Medium | Highest | LLM provider — all 9 supported |
+| `"llm"` | Medium | Highest | LLM provider: all 9 supported |
 
 ## Relationship Extraction
 
@@ -75,12 +75,12 @@ Finding how entities connect to each other:
 }
 ```
 
-Relationships can be extracted via rule-based methods, ML models, or LLMs — each producing typed triplets with confidence scores and source attribution.
+Relationships can be extracted via rule-based methods, ML models, or LLMs: each producing typed triplets with confidence scores and source attribution.
 
 
 ## Knowledge Graph vs. Vector Store
 
-Both store information for AI retrieval — but they're built for different jobs.
+Both store information for AI retrieval: but they're built for different jobs.
 
 <Tabs>
   <Tab title="Knowledge Graph">
@@ -89,7 +89,7 @@ Both store information for AI retrieval — but they're built for different jobs
     | Strength | Why it matters |
     | :-------- | :------------- |
     | **Traversal** | Multi-hop queries: "Who founded companies that Apple alumni later joined?" |
-    | **Explainability** | Every answer traces back to specific nodes and edges — no black-box retrieval |
+    | **Explainability** | Every answer traces back to specific nodes and edges: no black-box retrieval |
     | **Temporal reasoning** | Point-in-time queries, `valid_from`/`valid_until` windows, historical snapshots |
     | **Conflict detection** | Two sources disagreeing on the same fact is surfaced and resolvable |
     | **Schema enforcement** | SHACL validation catches constraint violations before they corrupt results |
@@ -106,14 +106,14 @@ Both store information for AI retrieval — but they're built for different jobs
   </Tab>
 
   <Tab title="Vector Store">
-    Stores **dense embeddings** of text chunks. Answers questions by finding semantically similar passages — useful when the structure of the answer isn't known in advance.
+    Stores **dense embeddings** of text chunks. Answers questions by finding semantically similar passages: useful when the structure of the answer isn't known in advance.
 
     | Strength | Why it matters |
     | :-------- | :------------- |
     | **Fuzzy similarity** | Finds relevant content even when exact words don't match |
     | **Speed** | Sub-millisecond approximate nearest-neighbor search at scale |
     | **Unstructured text** | Works directly on paragraphs, sentences, and raw documents |
-    | **Simplicity** | No schema design required — embed and index |
+    | **Simplicity** | No schema design required: embed and index |
 
     **Use when:** you need fast semantic search over large text corpora.
 
@@ -127,7 +127,7 @@ Both store information for AI retrieval — but they're built for different jobs
   </Tab>
 
   <Tab title="GraphRAG (Both)">
-    Semantica combines both — vector search seeds the graph traversal, and the graph provides structure and provenance the vector store cannot.
+    Semantica combines both: vector search seeds the graph traversal, and the graph provides structure and provenance the vector store cannot.
 
     | Step | What happens |
     | :---- | :----------- |
@@ -136,7 +136,7 @@ Both store information for AI retrieval — but they're built for different jobs
     | **Context assembly** | Facts + relationships are assembled with source attribution for each claim |
     | **LLM generation** | LLM generates an answer grounded in the retrieved structured context |
 
-    **Result:** every claim in the response links back to a specific graph node — no hallucination from training data, full audit trail.
+    **Result:** every claim in the response links back to a specific graph node: no hallucination from training data, full audit trail.
 
     ```python
     from semantica.context import AgentContext, ContextGraph
@@ -154,15 +154,15 @@ Both store information for AI retrieval — but they're built for different jobs
 
 ## Embeddings
 
-Embeddings convert text into numerical vectors so AI systems can measure semantic similarity — finding related concepts even when the exact words differ.
+Embeddings convert text into numerical vectors so AI systems can measure semantic similarity: finding related concepts even when the exact words differ.
 
 Semantica uses embeddings for:
 
-- **Semantic search** — retrieve by meaning, not just keywords
-- **Entity resolution** — match the same entity across different sources
-- **Precedent search** — find similar past decisions
-- **GraphRAG retrieval** — hybrid vector + graph traversal
-- **Distance Intelligence** — N×N semantic distance matrices between any node set
+- **Semantic search**: retrieve by meaning, not just keywords
+- **Entity resolution**: match the same entity across different sources
+- **Precedent search**: find similar past decisions
+- **GraphRAG retrieval**: hybrid vector + graph traversal
+- **Distance Intelligence**: N×N semantic distance matrices between any node set
 
 **Supported models:** Sentence-Transformers, FastEmbed, OpenAI, BGE, Ollama local embeddings.
 
@@ -178,13 +178,13 @@ GraphRAG (Graph-Augmented Retrieval Augmented Generation) enhances LLM responses
     The query is embedded and used to seed both vector search and graph traversal simultaneously.
   </Step>
   <Step title="Hybrid context retrieval">
-    Semantica retrieves relevant graph context — entities, typed relationships, and multi-hop reasoning paths — alongside vector-similar text chunks.
+    Semantica retrieves relevant graph context: entities, typed relationships, and multi-hop reasoning paths: alongside vector-similar text chunks.
   </Step>
   <Step title="Context building">
     Retrieved facts and reasoning paths are assembled into a structured prompt context, each fact tagged with its source node and confidence.
   </Step>
   <Step title="LLM generates a grounded response">
-    The LLM produces an answer where every claim links back to a source node in the graph — no floating assertions, no hallucinations from training data.
+    The LLM produces an answer where every claim links back to a source node in the graph: no floating assertions, no hallucinations from training data.
   </Step>
 </Steps>
 
@@ -195,7 +195,7 @@ GraphRAG (Graph-Augmented Retrieval Augmented Generation) enhances LLM responses
 
 ## Ontology
 
-An ontology defines the schema and rules for your knowledge — what entity types exist, which relationships are valid, and what constraints apply.
+An ontology defines the schema and rules for your knowledge: what entity types exist, which relationships are valid, and what constraints apply.
 
 ```python
 ontology = {
@@ -239,7 +239,7 @@ Inferred: Steve Jobs has a connection to Cupertino
     ```
   </Tab>
   <Tab title="Rete Network">
-    Efficient pattern matching for large rule sets — the Rete algorithm avoids re-evaluating rules whose preconditions haven't changed. Best for thousands of rules over millions of facts.
+    Efficient pattern matching for large rule sets: the Rete algorithm avoids re-evaluating rules whose preconditions haven't changed. Best for thousands of rules over millions of facts.
 
     ```python
     from semantica.reasoning import ReteEngine
@@ -250,9 +250,9 @@ Inferred: Steve Jobs has a connection to Cupertino
     ```
   </Tab>
   <Tab title="Deductive & Abductive">
-    **Deductive** — classical syllogistic reasoning from premises to guaranteed conclusions.
+    **Deductive**: classical syllogistic reasoning from premises to guaranteed conclusions.
 
-    **Abductive** — infers the most likely explanation for observed evidence. Best for diagnostic and investigative use cases.
+    **Abductive**: infers the most likely explanation for observed evidence. Best for diagnostic and investigative use cases.
 
     ```python
     from semantica.reasoning import GraphReasoner
@@ -263,7 +263,7 @@ Inferred: Steve Jobs has a connection to Cupertino
     ```
   </Tab>
   <Tab title="Datalog (v0.4.0)">
-    Recursive Horn clause rules with fixpoint semantics — handles transitive closure and recursive relationships that forward chaining cannot express.
+    Recursive Horn clause rules with fixpoint semantics: handles transitive closure and recursive relationships that forward chaining cannot express.
 
     ```python
     from semantica.reasoning import DatalogReasoner, DatalogFact, DatalogRule
@@ -289,7 +289,7 @@ Inferred: Steve Jobs has a connection to Cupertino
   </Tab>
 </Tabs>
 
-All engines produce **explainable inference paths** — not black-box conclusions. Every derived fact includes the rules and premises that produced it.
+All engines produce **explainable inference paths**: not black-box conclusions. Every derived fact includes the rules and premises that produced it.
 
 
 ## Temporal Intelligence
@@ -313,7 +313,7 @@ snapshot = query_engine.query_at_time(kg, query="", at_time=datetime(2021, 6, 15
 
 ## Distance Intelligence
 
-Explore the semantic neighborhood of any entity in your graph — useful for understanding what's conceptually close, detecting clusters, and visualizing knowledge topology.
+Explore the semantic neighborhood of any entity in your graph: useful for understanding what's conceptually close, detecting clusters, and visualizing knowledge topology.
 
 ```python
 from semantica.kg import SimilarityCalculator
@@ -329,7 +329,7 @@ The [Visualization module](reference/visualization) renders distance matrices as
 
 ## Deduplication & Entity Resolution
 
-Real-world data contains the same entity under many names — "Apple", "Apple Inc.", "Apple Computer Inc." Semantica's deduplication pipeline detects these, merges attributes, resolves conflicts, and preserves the original source provenance.
+Real-world data contains the same entity under many names: "Apple", "Apple Inc.", "Apple Computer Inc." Semantica's deduplication pipeline detects these, merges attributes, resolves conflicts, and preserves the original source provenance.
 
 <Tabs>
   <Tab title="Strategies">
@@ -337,7 +337,7 @@ Real-world data contains the same entity under many names — "Apple", "Apple In
     | Strategy | Algorithm | Best For |
     | :-------- | :--------- | :-------- |
     | `v1` | Jaro-Winkler string similarity | Small datasets, fast baseline |
-    | `blocking_v2` | Candidate blocking + similarity | Large corpora — reduces O(n²) comparisons |
+    | `blocking_v2` | Candidate blocking + similarity | Large corpora: reduces O(n²) comparisons |
     | `hybrid_v2` | Blocking + semantic embedding match | Mixed structured/unstructured entity names |
     | `semantic_v2` | Pure embedding-based resolution | Up to 7× faster than v1; handles abbreviations and aliases |
 
@@ -366,7 +366,7 @@ Every fact in Semantica links back to:
 - The **reasoning steps** that produced any inferred fact
 
 <Note>
-  This is W3C PROV-O compliant lineage — suitable for regulated industries that require audit trails (HIPAA, SOX, GDPR, FDA 21 CFR Part 11). Use `RDFExporter(include_provenance=True)` to embed provenance inline in any RDF export.
+  This is W3C PROV-O compliant lineage: suitable for regulated industries that require audit trails (HIPAA, SOX, GDPR, FDA 21 CFR Part 11). Use `RDFExporter(include_provenance=True)` to embed provenance inline in any RDF export.
 </Note>
 
 ```python
@@ -384,7 +384,7 @@ print(f"Checksum:  {lineage.checksum}")
 
 ## Decision Intelligence
 
-Every agent decision is a first-class object in Semantica — recorded, causally linked, and searchable by precedent. This is the **accountability layer** for AI pipelines: decisions are no longer ephemeral log messages, they are queryable knowledge graph nodes.
+Every agent decision is a first-class object in Semantica: recorded, causally linked, and searchable by precedent. This is the **accountability layer** for AI pipelines: decisions are no longer ephemeral log messages, they are queryable knowledge graph nodes.
 
 ```python
 decision_id = context.record_decision(
@@ -403,7 +403,7 @@ influence  = context.analyze_decision_influence(decision_id)
 ```
 
 <Tip>
-  **Use `find_precedents()` before every high-stakes decision.** Hybrid similarity search over all recorded decisions surfaces past reasoning that may apply — reducing inconsistency across agent runs and enabling genuine organisational learning from AI decision history.
+  **Use `find_precedents()` before every high-stakes decision.** Hybrid similarity search over all recorded decisions surfaces past reasoning that may apply: reducing inconsistency across agent runs and enabling genuine organisational learning from AI decision history.
 </Tip>
 
 
@@ -413,20 +413,20 @@ When multiple sources disagree on the same fact, Semantica flags and resolves th
 
 **Resolution strategies:**
 
-- **Recency** — prefer the most recent source
-- **Source credibility** — prefer the most reliable source (configurable credibility scores)
-- **Majority vote** — aggregate across all sources with ≥ 2 agreeing
-- **Manual review** — flag for human arbitration; continue pipeline without blocking
+- **Recency**: prefer the most recent source
+- **Source credibility**: prefer the most reliable source (configurable credibility scores)
+- **Majority vote**: aggregate across all sources with ≥ 2 agreeing
+- **Manual review**: flag for human arbitration; continue pipeline without blocking
 
 See the [Conflicts reference](reference/conflicts) for `ConflictResolver`, `SourceTracker`, and `InvestigationGuideGenerator`.
 
 
 ## Custom Plugin Development
 
-Semantica is designed for extension. Any component — ingestor, extractor, graph builder, reasoning engine — can be replaced or augmented with a custom implementation registered at runtime.
+Semantica is designed for extension. Any component: ingestor, extractor, graph builder, reasoning engine: can be replaced or augmented with a custom implementation registered at runtime.
 
 <AccordionGroup>
-  <Accordion title="PluginRegistry — replace any component by name">
+  <Accordion title="PluginRegistry: replace any component by name">
 
     `PluginRegistry` provides dynamic plugin discovery, registration, and loading across all modules. Register your own class under a string key; Semantica will use it wherever that key is referenced in config or pipeline steps.
 
@@ -447,7 +447,7 @@ Semantica is designed for extension. Any component — ingestor, extractor, grap
     plugin = registry.load_plugin("my_sql_ingestor", connection_string="postgresql://...")
     result = plugin.execute("SELECT * FROM documents")
 
-    # Reference by name in pipeline YAML — no code changes needed
+    # Reference by name in pipeline YAML: no code changes needed
     ```
 
     ```yaml
@@ -461,9 +461,9 @@ Semantica is designed for extension. Any component — ingestor, extractor, grap
     **Extension points available:** ingestors, parsers, normalizers, extractors, reasoning engines, export formats, vector store backends, graph store backends, visualization renderers.
 
   </Accordion>
-  <Accordion title="MethodRegistry — add domain-specific graph operations">
+  <Accordion title="MethodRegistry: add domain-specific graph operations">
 
-    `MethodRegistry` lets you register custom methods on knowledge graph objects by name — useful for adding domain-specific graph operations without subclassing.
+    `MethodRegistry` lets you register custom methods on knowledge graph objects by name: useful for adding domain-specific graph operations without subclassing.
 
     ```python
     from semantica.kg import MethodRegistry

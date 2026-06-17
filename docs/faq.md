@@ -1,6 +1,6 @@
----
+﻿---
 title: "FAQ"
-description: "Common questions about Semantica — installation, features, integrations, and troubleshooting."
+description: "Common questions about Semantica: installation, features, integrations, and troubleshooting."
 icon: "circle-question"
 ---
 
@@ -12,13 +12,13 @@ icon: "circle-question"
 
 | Question | Answer |
 | :-------- | :------ |
-| License? | MIT — free forever, no paywalled features |
+| License? | MIT: free forever, no paywalled features |
 | Python version? | 3.8+ (3.11+ recommended) |
-| API key required? | Optional — pattern extraction works with no keys |
-| Works with LangChain / LlamaIndex? | Yes — Semantica is a layer on top, not a replacement |
-| Production-ready? | Yes — 1,000+ tests, v0.5.0 ships with 12 security fixes |
+| API key required? | Optional: pattern extraction works with no keys |
+| Works with LangChain / LlamaIndex? | Yes: Semantica is a layer on top, not a replacement |
+| Production-ready? | Yes: 1,000+ tests, v0.5.0 ships with 12 security fixes |
 | Latest version? | **v0.5.0** (May 2026) |
-| Local LLMs? | Yes — Ollama via LiteLLM, HuggingFaceLLM for air-gapped |
+| Local LLMs? | Yes: Ollama via LiteLLM, HuggingFaceLLM for air-gapped |
 
 
 ## General
@@ -27,9 +27,9 @@ icon: "circle-question"
 
 <Accordion title="What is Semantica?" icon="info-circle">
 
-Semantica is an open-source framework for building context graphs and decision intelligence layers for AI. It transforms unstructured data — documents, APIs, databases — into structured knowledge graphs with full provenance tracking, making AI systems explainable and auditable.
+Semantica is an open-source framework for building context graphs and decision intelligence layers for AI. It transforms unstructured data: documents, APIs, databases: into structured knowledge graphs with full provenance tracking, making AI systems explainable and auditable.
 
-It's not a replacement for LangChain or LlamaIndex. It's the **accountability layer** that goes on top — recording decisions, tracing facts to sources, and making reasoning transparent.
+It's not a replacement for LangChain or LlamaIndex. It's the **accountability layer** that goes on top: recording decisions, tracing facts to sources, and making reasoning transparent.
 
 </Accordion>
 
@@ -46,7 +46,7 @@ It's not a replacement for LangChain or LlamaIndex. It's the **accountability la
 
 <Accordion title="What makes Semantica different from LangChain or LlamaIndex?" icon="scale-balanced">
 
-Most frameworks stop at retrieval or generation. Semantica adds an **accountability layer**: every decision is recorded, every fact links to a source, and every reasoning step is explainable. It's designed for environments where you need to audit *why* an AI reached a conclusion — not just what it said.
+Most frameworks stop at retrieval or generation. Semantica adds an **accountability layer**: every decision is recorded, every fact links to a source, and every reasoning step is explainable. It's designed for environments where you need to audit *why* an AI reached a conclusion: not just what it said.
 
 Semantica works alongside these frameworks, not against them.
 
@@ -54,13 +54,13 @@ Semantica works alongside these frameworks, not against them.
 
 <Accordion title="Is Semantica free?" icon="tag">
 
-Yes — MIT licensed, no vendor lock-in, no paywalled features. Some capabilities require third-party API keys (e.g., OpenAI embeddings, Groq inference), but Semantica itself is always free and open source.
+Yes: MIT licensed, no vendor lock-in, no paywalled features. Some capabilities require third-party API keys (e.g., OpenAI embeddings, Groq inference), but Semantica itself is always free and open source.
 
 </Accordion>
 
 <Accordion title="What's the latest version?" icon="star">
 
-**v0.5.0** — released May 2026.
+**v0.5.0**: released May 2026.
 
 Highlights: Ontology Hub, Distance Intelligence, Parquet/XML ingestion, 12 security fixes, Graph Explorer redesign, NER gateway fix.
 
@@ -95,7 +95,7 @@ Python **3.8 or higher**. Python 3.11+ is recommended for best performance and c
 
 <Accordion title="The [all] extra fails on Windows" icon="windows">
 
-This was a known bug — fixed in **v0.5.0**. Upgrade:
+This was a known bug: fixed in **v0.5.0**. Upgrade:
 
 ```bash
 pip install --upgrade semantica
@@ -141,10 +141,10 @@ If you're on an older version, install extras individually: `pip install "semant
 
 Yes. Semantica supports:
 
-- **Custom NER and extraction models** — register via `method_registry`
-- **Custom embedding models** — any model with a `.encode()` interface
-- **Custom LLM providers** — via LiteLLM (100+ models) or direct provider integration
-- **Custom pipeline processors** — register via `PluginRegistry`
+- **Custom NER and extraction models**: register via `method_registry`
+- **Custom embedding models**: any model with a `.encode()` interface
+- **Custom LLM providers**: via LiteLLM (100+ models) or direct provider integration
+- **Custom pipeline processors**: register via `PluginRegistry`
 
 </Accordion>
 
@@ -162,10 +162,10 @@ This includes PyTorch with CUDA, FAISS GPU, and CuPy.
 
 <Accordion title="How does Semantica handle large datasets?" icon="layer-group">
 
-- **Batching** — process documents in configurable chunks to control memory usage
-- **Parallel processing** — `Pipeline(workers=N)` runs extraction steps concurrently
-- **Delta processing** — update graphs incrementally without full recompute on new data
-- **Persistent backends** — swap in-memory NetworkX for Neo4j, FalkorDB, or Apache AGE for large-scale production graphs
+- **Batching**: process documents in configurable chunks to control memory usage
+- **Parallel processing**: `Pipeline(workers=N)` runs extraction steps concurrently
+- **Delta processing**: update graphs incrementally without full recompute on new data
+- **Persistent backends**: swap in-memory NetworkX for Neo4j, FalkorDB, or Apache AGE for large-scale production graphs
 
 </Accordion>
 
@@ -187,13 +187,13 @@ Available since v0.4.0.
 
 <Accordion title="What is the Ontology Hub?" icon="sitemap">
 
-A visual browser UI for the full ontology lifecycle — launched via `semantica.explorer`. Includes:
+A visual browser UI for the full ontology lifecycle: launched via `semantica.explorer`. Includes:
 
-- **Visual editor** — create and edit classes, properties, and relationships
-- **SHACL Studio** — author, validate, and export SHACL shapes
-- **Alignment authoring** — map concepts across ontologies
-- **Health dashboard** — coverage, consistency, and constraint violation metrics
-- **Version control** — diff and history for ontology changes
+- **Visual editor**: create and edit classes, properties, and relationships
+- **SHACL Studio**: author, validate, and export SHACL shapes
+- **Alignment authoring**: map concepts across ontologies
+- **Health dashboard**: coverage, consistency, and constraint violation metrics
+- **Version control**: diff and history for ontology changes
 
 Available since v0.5.0.
 
@@ -231,11 +231,11 @@ pip install --upgrade semantica
 
 <Accordion title="What graph databases are supported?" icon="diagram-project">
 
-- **Neo4j** — industry standard, Cypher query language
-- **FalkorDB** — Redis-protocol, ultra-low latency
-- **Apache AGE** — PostgreSQL extension, OpenCypher
-- **Amazon Neptune** — managed AWS, SPARQL and Gremlin
-- **NetworkX** — in-memory, for development and small graphs
+- **Neo4j**: industry standard, Cypher query language
+- **FalkorDB**: Redis-protocol, ultra-low latency
+- **Apache AGE**: PostgreSQL extension, OpenCypher
+- **Amazon Neptune**: managed AWS, SPARQL and Gremlin
+- **NetworkX**: in-memory, for development and small graphs
 
 </Accordion>
 
@@ -247,7 +247,7 @@ RDF (Turtle, JSON-LD, N-Triples, XML), Apache Parquet, ArangoDB AQL, Apache Arro
 
 <Accordion title="What vector stores are supported?" icon="server">
 
-FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector, and in-memory. All backends share the same `VectorStore` API — swap with one line change.
+FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector, and in-memory. All backends share the same `VectorStore` API: swap with one line change.
 
 </Accordion>
 

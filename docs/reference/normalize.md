@@ -1,6 +1,6 @@
----
+﻿---
 title: "Normalize Module"
-description: "Text cleaning, entity canonicalization, date normalization, number conversion, language detection, and encoding repair — before extraction runs."
+description: "Text cleaning, entity canonicalization, date normalization, number conversion, language detection, and encoding repair: before extraction runs."
 icon: "broom"
 ---
 
@@ -19,10 +19,10 @@ All normalizers expose convenience functions (one-liners) and stateful class ins
 
 Unstructured data is inconsistent by nature. Without normalization, the same real-world entity appears as dozens of variants in your graph:
 
-- `"Apple Inc."`, `"Apple Computer Inc."`, `"APPLE INC."` — multiple nodes, one company
-- `"Jan 1st, 2020"`, `"01/01/2020"`, `"2020-01-01"` — three formats, one date
-- `"$1.2B"`, `"1,200,000,000"`, `"1.2 billion USD"` — three strings, one number
-- `"Hello World"` vs `"Hello\u00a0World"` — a non-breaking space that breaks string matching
+- `"Apple Inc."`, `"Apple Computer Inc."`, `"APPLE INC."`: multiple nodes, one company
+- `"Jan 1st, 2020"`, `"01/01/2020"`, `"2020-01-01"`: three formats, one date
+- `"$1.2B"`, `"1,200,000,000"`, `"1.2 billion USD"`: three strings, one number
+- `"Hello World"` vs `"Hello\u00a0World"`: a non-breaking space that breaks string matching
 
 Normalization collapses these variants before any extractor, deduplicator, or graph builder sees the data.
 
@@ -49,7 +49,7 @@ from semantica.normalize import (
     EncodingHandler,
 )
 
-# Text — normalize unicode, collapse whitespace, replace smart quotes
+# Text: normalize unicode, collapse whitespace, replace smart quotes
 normalizer = TextNormalizer()
 clean = normalizer.normalize_text("  Hello,\u00a0 World\u2026  ")
 # → "Hello, World..."
@@ -64,12 +64,12 @@ num_norm = NumberNormalizer()
 num = num_norm.normalize_number("$1.2B")
 # → 1200000000.0
 
-# Language — returns a language code string
+# Language: returns a language code string
 detector = LanguageDetector()
 lang = detector.detect("Bonjour le monde")
 # → "fr"
 
-# Encoding — returns (encoding_name, confidence) tuple
+# Encoding: returns (encoding_name, confidence) tuple
 handler = EncodingHandler()
 encoding, confidence = handler.detect(raw_bytes)
 utf8_text = handler.convert_to_utf8(raw_bytes)
@@ -78,7 +78,7 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
 ## Recommended Processing Order
 
 <Steps>
-  <Step title="EncodingHandler — fix encoding first">
+  <Step title="EncodingHandler: fix encoding first">
     Broken bytes corrupt everything downstream. Always run this before anything else.
 
     ```python
@@ -91,7 +91,7 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
     utf8_text = handler.convert_to_utf8(raw_bytes)
     ```
   </Step>
-  <Step title="TextNormalizer — unicode, whitespace, special chars">
+  <Step title="TextNormalizer: unicode, whitespace, special chars">
     ```python
     from semantica.normalize import TextNormalizer
 
@@ -104,7 +104,7 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
     )
     ```
   </Step>
-  <Step title="EntityNormalizer — canonicalize entity names">
+  <Step title="EntityNormalizer: canonicalize entity names">
     ```python
     from semantica.normalize import EntityNormalizer
 
@@ -119,7 +119,7 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
     # → "Apple Inc." (if the alias_map contains it, else title-cased input)
     ```
   </Step>
-  <Step title="DateNormalizer and NumberNormalizer — parse structured values">
+  <Step title="DateNormalizer and NumberNormalizer: parse structured values">
     ```python
     from semantica.normalize import DateNormalizer, NumberNormalizer
 
@@ -134,7 +134,7 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
     # → 1200000000.0
     ```
   </Step>
-  <Step title="LanguageDetector — detect language on clean text">
+  <Step title="LanguageDetector: detect language on clean text">
     ```python
     from semantica.normalize import LanguageDetector
 
@@ -153,7 +153,7 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
 
 ## Convenience Functions
 
-The fastest path — one import, one call:
+The fastest path: one import, one call:
 
 ```python
 from semantica.normalize import (
@@ -205,7 +205,7 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
         line_break_type="unix",   # "unix" | "windows"
     )
 
-    # HTML stripping and text cleaning — separate clean_text() method
+    # HTML stripping and text cleaning: separate clean_text() method
     cleaned = normalizer.clean_text(html_text, remove_html=True)
 
     # Batch normalization
@@ -231,9 +231,9 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
 
     | Form | Use When |
     | :---- | :-------- |
-    | `NFC` | Default — best for storage and display |
-    | `NFKC` | Search indexing — normalises ligatures, fullwidth chars, and fractions |
-    | `NFD` | Stripping diacritics — split é → e + combining accent, then strip accents |
+    | `NFC` | Default: best for storage and display |
+    | `NFKC` | Search indexing: normalises ligatures, fullwidth chars, and fractions |
+    | `NFD` | Stripping diacritics: split é → e + combining accent, then strip accents |
     | `NFKD` | Same as NFD but also decomposes compatibility characters |
 
     **Sub-normalizers for fine-grained control:**
@@ -262,7 +262,7 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     ```python
     from semantica.normalize import EntityNormalizer
 
-    # With alias map — resolves exact matches (lowercase key lookup)
+    # With alias map: resolves exact matches (lowercase key lookup)
     normalizer = EntityNormalizer(alias_map={
         "apple computer inc.": "Apple Inc.",
         "ms": "Microsoft",
@@ -272,21 +272,21 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     normalizer.normalize_entity("Apple Computer Inc.", entity_type="Organization")
     # → "Apple Inc."
 
-    # Without alias map — only whitespace/format cleanup
+    # Without alias map: only whitespace/format cleanup
     normalizer2 = EntityNormalizer()
     normalizer2.normalize_entity("apple inc", entity_type="Organization")
     # → "apple inc"  (no built-in suffix expansion)
 
-    # Person — title-cased
+    # Person: title-cased
     normalizer2.normalize_entity("john doe", entity_type="Person")
     # → "John Doe"
     ```
 
     **Key behaviours:**
-    - Alias map uses **lowercase key lookup** — register aliases in lowercase
+    - Alias map uses **lowercase key lookup**: register aliases in lowercase
     - `entity_type="Person"` activates `title()` casing on the name
     - There is no built-in corporate suffix normalization (Inc → Incorporated etc.)
-      — add these mappings to `alias_map` manually if needed
+     : add these mappings to `alias_map` manually if needed
 
     **Sub-normalizers:**
 
@@ -350,7 +350,7 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     utc_dt = tz_norm.convert_to_utc(dt_naive)
     tz_dt  = tz_norm.normalize_timezone(dt_naive, target_timezone="America/New_York")
 
-    # RelativeDateProcessor — reference_date is passed to process_relative_expression(),
+    # RelativeDateProcessor: reference_date is passed to process_relative_expression(),
     # not to the constructor
     processor = RelativeDateProcessor()
     ref = datetime(2025, 1, 15)
@@ -416,7 +416,7 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     results = detector.detect_multiple("This might be mixed", top_n=3)
     # → [("en", 0.85), ...]
 
-    # Batch — returns List[str]
+    # Batch: returns List[str]
     codes = detector.detect_batch(["Hello", "Hola", "Bonjour", "Ciao"])
 
     # Check specific language
@@ -452,17 +452,17 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     ```
 
     **Key behaviours:**
-    - `detect()` uses `chardet` internally — accuracy improves with longer input
+    - `detect()` uses `chardet` internally: accuracy improves with longer input
     - `convert_to_utf8()` auto-detects encoding if `source_encoding` is not provided,
       then falls back through `latin-1`, `cp1252`, `iso-8859-1`
-    - Always run `EncodingHandler` first — broken bytes cause cascading failures
+    - Always run `EncodingHandler` first: broken bytes cause cascading failures
       in every downstream normalizer
   </Tab>
 </Tabs>
 
 ## DataCleaner
 
-Cleans structured record sets — useful before loading into a vector store or graph:
+Cleans structured record sets: useful before loading into a vector store or graph:
 
 ```python
 from semantica.normalize import DataCleaner, DataValidator, DuplicateDetector

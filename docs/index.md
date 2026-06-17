@@ -1,19 +1,19 @@
----
+﻿---
 title: "Semantica"
-description: "The Accountability and Context Layer for AI — Context Graphs · Decision Intelligence · Full Provenance"
+description: "The Accountability and Context Layer for AI: Context Graphs · Decision Intelligence · Full Provenance"
 ---
 
 <Info>
-  **v0.5.0 is live** — Ontology Hub, Distance Intelligence, SHACL Studio, Parquet & XML ingestion, 12 security fixes. [What's new →](#whats-new)
+  **v0.5.0 is live**: Ontology Hub, Distance Intelligence, SHACL Studio, Parquet & XML ingestion, 12 security fixes. [What's new →](#whats-new)
 </Info>
 
 Your AI agent just made a decision. Now someone needs to explain it.
 
-*What did it know at the time? Which facts shaped the outcome? Where did those facts come from? Has it made the same call before — and did that go well?*
+*What did it know at the time? Which facts shaped the outcome? Where did those facts come from? Has it made the same call before: and did that go well?*
 
-If your stack can't answer those questions with a traceable record, you have a gap. Not a capability gap — an **accountability gap**. It's the reason AI hasn't landed at scale in healthcare, finance, legal, and government. And it's why teams building for those markets keep rebuilding the same guardrails from scratch.
+If your stack can't answer those questions with a traceable record, you have a gap. Not a capability gap: an **accountability gap**. It's the reason AI hasn't landed at scale in healthcare, finance, legal, and government. And it's why teams building for those markets keep rebuilding the same guardrails from scratch.
 
-**Semantica closes that gap.** It's the context and accountability layer that sits beneath your existing agent framework — not a replacement for LangChain or LlamaIndex, but the infrastructure that makes their outputs trustworthy.
+**Semantica closes that gap.** It's the context and accountability layer that sits beneath your existing agent framework: not a replacement for LangChain or LlamaIndex, but the infrastructure that makes their outputs trustworthy.
 
 <CardGroup cols={4}>
   <Card title="1,000+ Tests" icon="circle-check">
@@ -50,7 +50,7 @@ Powerful agents aren't automatically trustworthy ones. Five structural blind spo
   </Card>
   <Card title="No provenance" icon="link-slash">
     Outputs can't be traced to source facts.
-    - In healthcare, finance, and legal — this is a hard compliance blocker
+    - In healthcare, finance, and legal: this is a hard compliance blocker
     - No lineage from inference back to the original document
     - Impossible to demonstrate what the agent actually relied on
   </Card>
@@ -69,7 +69,7 @@ Powerful agents aren't automatically trustworthy ones. Five structural blind spo
 </CardGroup>
 
 <Note>
-  These aren't edge cases. They're why enterprise AI pilots stall — and why your compliance team keeps saying *not yet*.
+  These aren't edge cases. They're why enterprise AI pilots stall: and why your compliance team keeps saying *not yet*.
 </Note>
 
 
@@ -80,7 +80,7 @@ Semantica gives every agent the infrastructure it needs to be accountable. Drop 
 <CardGroup cols={2}>
   <Card title="Context Graphs" icon="diagram-project">
     A structured, queryable graph of everything your agent knows, decides, and reasons about.
-    - Persistent across agent runs — no context loss between sessions
+    - Persistent across agent runs: no context loss between sessions
     - Queryable with SPARQL and full graph algorithms
     - Temporal model with `valid_from` / `valid_until` on nodes and edges
     - Point-in-time snapshots of the full knowledge state
@@ -100,15 +100,15 @@ Semantica gives every agent the infrastructure it needs to be accountable. Drop 
     - Audit-ready for HIPAA, SOX, GDPR, FDA 21 CFR Part 11
   </Card>
   <Card title="Reasoning Engines" icon="microchip">
-    Explainable reasoning paths — not black boxes.
+    Explainable reasoning paths: not black boxes.
     - Forward chaining, Rete, deductive, abductive
     - SPARQL query-based inference over RDF graphs
     - Datalog with recursive Horn clause rules
     - Every conclusion backed by a traceable derivation path
   </Card>
   <Card title="Temporal Intelligence" icon="clock">
-    Your graph knows not just *what* — but *when*.
-    - Allen interval algebra — all 13 temporal relations
+    Your graph knows not just *what*: but *when*.
+    - Allen interval algebra: all 13 temporal relations
     - Point-in-time queries over historical graph states
     - Temporal provenance stamping on every fact
     - OWL-Time export for standards-compliant archiving
@@ -123,7 +123,7 @@ Semantica gives every agent the infrastructure it needs to be accountable. Drop 
 </CardGroup>
 
 <Tip>
-  Works alongside any LLM provider and any agent framework — add it to an existing stack without changing your architecture.
+  Works alongside any LLM provider and any agent framework: add it to an existing stack without changing your architecture.
 </Tip>
 
 <img src="/assets/img/diagrams/architecture-overview.svg" alt="Semantica four-layer architecture: Ingestion → Processing → Intelligence → Application" style={{ width: '100%', borderRadius: '12px', margin: '24px 0' }} />
@@ -203,7 +203,7 @@ context = AgentContext(
     llm=LiteLLM(model="ollama/llama3.2", base_url="http://localhost:11434"),
 )
 
-# Fully local — no data leaves your infrastructure
+# Fully local: no data leaves your infrastructure
 context.store("Local LLMs enable air-gapped compliance deployments")
 
 decision_id = context.record_decision(
@@ -292,7 +292,7 @@ Semantica was designed for domains where every decision must be explainable and 
   </Step>
   <Step title="Learn the mental model">
     [Core Concepts](concepts) covers:
-    - Knowledge graphs vs. vector stores — when to use each
+    - Knowledge graphs vs. vector stores: when to use each
     - What GraphRAG is and how Semantica implements it
     - How provenance and decision tracking work together
     - The accountability layer architecture
@@ -328,15 +328,15 @@ Semantica was designed for domains where every decision must be explainable and 
 
 <AccordionGroup>
 
-<Accordion title="v0.5.0 — Ontology Hub & Distance Intelligence" icon="star" defaultOpen={true}>
+<Accordion title="v0.5.0: Ontology Hub & Distance Intelligence" icon="star" defaultOpen={true}>
 
 Released **May 11, 2026**
 
 | Area | Highlights |
 | :------ | :------------ |
-| **Ontology Hub** | Visual editor, SHACL Studio, alignment authoring, health dashboard, version control — full ontology lifecycle in the browser |
+| **Ontology Hub** | Visual editor, SHACL Studio, alignment authoring, health dashboard, version control: full ontology lifecycle in the browser |
 | **Distance Intelligence** | Semantic neighborhoods, N×N distance matrices, ego-mode visualization, distance band classification, embedding cache optimization |
-| **Parquet Ingestion** | `ParquetIngestor` with PyArrow — single file, partitioned directories, Hive-style discovery, selective column reading |
+| **Parquet Ingestion** | `ParquetIngestor` with PyArrow: single file, partitioned directories, Hive-style discovery, selective column reading |
 | **XML Ingestion** | `XMLIngestor` with XXE-safe lxml backend, XSD/DTD validation, namespace handling, directory scanning |
 | **Graph Explorer** | Landing page redesign, bidirectional path finding, indexed search (0.004ms on 118k nodes) |
 | **Security** | 12 vulnerability fixes: eval injection, pickle deserialization, SQL injection, XXE, SSRF, ReDoS, path traversal |
@@ -348,12 +348,12 @@ pip install semantica==0.5.0
 
 </Accordion>
 
-<Accordion title="v0.4.0 — Temporal Intelligence & Knowledge Explorer" icon="clock">
+<Accordion title="v0.4.0: Temporal Intelligence & Knowledge Explorer" icon="clock">
 
 | Area | Highlights |
 | :------ | :------------ |
 | **Temporal Intelligence** | 6-PR system: temporal data model, point-in-time queries, Allen interval algebra (all 13 relations), OWL-Time export |
-| **Knowledge Explorer API** | Full FastAPI backend — 99 tests, 12 export formats, WebSocket progress, thread-safe sessions, audit trail |
+| **Knowledge Explorer API** | Full FastAPI backend: 99 tests, 12 export formats, WebSocket progress, thread-safe sessions, audit trail |
 | **Ontology Foundations** | SHACL generation/validation, SKOS vocabulary, ontology alignment API, diff & migration tooling |
 | **Datalog Reasoning** | Pure-Python bottom-up semi-naive fixpoint, recursive Horn clause rules, guaranteed termination |
 | **Agno Integration** | 5 components: graph-backed memory, multi-hop GraphRAG, decision toolkit, KG toolkit, shared team context; 110 tests |
@@ -374,7 +374,7 @@ pip install semantica==0.5.0
 - Structured, persistent graph of entities, relationships, and decisions
 - Temporal model with `valid_from` / `valid_until` on every node and edge
 - Point-in-time queries across historical graph states
-- Distance Intelligence — semantic neighborhoods and N×N distance matrices
+- Distance Intelligence: semantic neighborhoods and N×N distance matrices
 
 ### Decision Tracking
 
@@ -389,16 +389,16 @@ pip install semantica==0.5.0
 
 ### Entity & Relation Extraction
 
-- Named entity recognition — pattern, ML, or LLM methods
+- Named entity recognition: pattern, ML, or LLM methods
 - Typed triplet extraction via LLM or rule-based pipelines
 - Event extraction with temporal and causal linking
 
 ### Ontology & Schema
 
-- Ontology Hub — visual editor, SHACL Studio, alignments, health dashboard
-- Deduplication v2 — `blocking_v2`, `hybrid_v2`, `semantic_v2` — up to 7x faster
-- Datalog reasoning — recursive Horn clause rules with fixpoint semantics
-- SPARQL reasoning — query-based inference over RDF graphs
+- Ontology Hub: visual editor, SHACL Studio, alignments, health dashboard
+- Deduplication v2: `blocking_v2`, `hybrid_v2`, `semantic_v2`: up to 7x faster
+- Datalog reasoning: recursive Horn clause rules with fixpoint semantics
+- SPARQL reasoning: query-based inference over RDF graphs
 
 </Accordion>
 
@@ -406,17 +406,17 @@ pip install semantica==0.5.0
 
 ### Lineage Tracking
 
-- W3C PROV-O lineage across all modules — every fact has a source
+- W3C PROV-O lineage across all modules: every fact has a source
 - `recorded_at` stamping with full OWL-Time export
 - Change management with SHA-256 checksums and version control
 - Full audit trails from ingestion event to final inference
 
 ### Compliance Infrastructure
 
-- HIPAA — patient data handling with audit-ready provenance chains
-- SOX / MiFID II — financial decision records with full traceability
-- GDPR — data lineage for subject access and right-to-erasure workflows
-- FDA 21 CFR Part 11 — electronic records and signature compliance
+- HIPAA: patient data handling with audit-ready provenance chains
+- SOX / MiFID II: financial decision records with full traceability
+- GDPR: data lineage for subject access and right-to-erasure workflows
+- FDA 21 CFR Part 11: electronic records and signature compliance
 
 </Accordion>
 
@@ -458,25 +458,25 @@ pip install semantica==0.5.0
 | `semantica.reasoning` | Forward chaining, Rete, deductive, abductive, SPARQL, Datalog |
 | `semantica.ontology` | SHACL, SKOS, alignments, diff/migration, auto-generation, OWL/RDF |
 | `semantica.explorer` | FastAPI Knowledge Explorer, Ontology Hub, Distance Intelligence, SHACL Studio |
-| `semantica.mcp_server` | MCP stdio server — 12 tools for Claude Desktop, VS Code, Cursor, Windsurf, Cline |
+| `semantica.mcp_server` | MCP stdio server: 12 tools for Claude Desktop, VS Code, Cursor, Windsurf, Cline |
 | `semantica.vector_store` | FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector |
 | `semantica.graph_store` | Neo4j, FalkorDB, Apache AGE, Amazon Neptune |
 | `semantica.triplet_store` | In-memory and persistent RDF triple store with SPARQL |
 | `semantica.ingest` | Files, web, feeds, databases, Snowflake, Parquet, XML, MCP |
-| `semantica.parse` | Document parsing — PDF, DOCX, HTML, PPTX, Docling layout analysis |
-| `semantica.split` | Text chunking — sentence, paragraph, token, semantic boundary strategies |
+| `semantica.parse` | Document parsing: PDF, DOCX, HTML, PPTX, Docling layout analysis |
+| `semantica.split` | Text chunking: sentence, paragraph, token, semantic boundary strategies |
 | `semantica.normalize` | Text normalization, entity canonicalization, whitespace and encoding cleanup |
 | `semantica.embeddings` | Sentence-Transformers, FastEmbed, OpenAI, BGE, Ollama local embeddings |
 | `semantica.pipeline` | Pipeline DSL, parallel workers, retry policies, failure handling |
 | `semantica.export` | RDF, Parquet, ArangoDB AQL, CSV, OWL, Arrow, GraphML, GEXF, DOT |
-| `semantica.visualization` | Programmatic graph rendering — force, hierarchical, circular, spring layouts |
+| `semantica.visualization` | Programmatic graph rendering: force, hierarchical, circular, spring layouts |
 | `semantica.deduplication` | Entity deduplication v1/v2, similarity scoring, blocking, merging |
 | `semantica.conflicts` | Conflict detection and resolution across overlapping knowledge sources |
 | `semantica.provenance` | W3C PROV-O lineage tracking, source attribution, audit trails |
 | `semantica.change_management` | Version control with SHA-256 checksums, diff, rollback |
 | `semantica.llms` | Groq, OpenAI, Anthropic, Gemini, Ollama, DeepSeek, Novita AI, LiteLLM, HuggingFace |
 | `semantica.seed` | Foundation graph seeding from CSV, JSON, SQL, API, and RDF sources |
-| `semantica.evals` | Evaluation harness — KG quality, extraction F1, pipeline benchmarking, regression tracking |
+| `semantica.evals` | Evaluation harness: KG quality, extraction F1, pipeline benchmarking, regression tracking |
 | `semantica.core` | Orchestration, ConfigManager, LifecycleManager, PluginRegistry, MethodRegistry |
 | `semantica.utils` | Logging, validation, progress tracking, hash utilities, nested dict helpers |
 
@@ -503,6 +503,6 @@ pip install semantica==0.5.0
     - Use `NERExtractor` without a graph store
     - Use `ContextGraph` without vector storage
     - Every component independently swappable and testable
-    - No framework lock-in — works with any agent stack
+    - No framework lock-in: works with any agent stack
   </Card>
 </CardGroup>

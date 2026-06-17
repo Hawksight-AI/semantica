@@ -1,10 +1,10 @@
----
+﻿---
 title: "pgvector Store"
-description: "PostgreSQL with pgvector extension — cosine, L2, and inner product similarity search with IVFFlat and HNSW indexing."
+description: "PostgreSQL with pgvector extension: cosine, L2, and inner product similarity search with IVFFlat and HNSW indexing."
 icon: "database"
 ---
 
-**`PgVectorStore`** adds PostgreSQL-native vector storage and similarity search to Semantica — no dedicated vector database required.
+**`PgVectorStore`** adds PostgreSQL-native vector storage and similarity search to Semantica: no dedicated vector database required.
 
 
 ## Overview
@@ -18,7 +18,7 @@ icon: "database"
 <Check>JSONB metadata storage with filtering support</Check>
 <Check>Connection pooling via psycopg3/psycopg2</Check>
 <Check>Batch insert, update, and delete</Check>
-<Check>Idempotent index creation — safe to call multiple times</Check>
+<Check>Idempotent index creation: safe to call multiple times</Check>
 
 
 ## Setup
@@ -196,7 +196,7 @@ store.create_index(
 )
 ```
 
-Index creation is idempotent — calling multiple times is safe.
+Index creation is idempotent: calling multiple times is safe.
 
 ### Statistics
 
@@ -226,7 +226,7 @@ stats = store.get_stats()
 
 <Tabs>
   <Tab title="HNSW">
-    **Hierarchical Navigable Small World** — best for high-dimensional vectors with high recall requirements.
+    **Hierarchical Navigable Small World**: best for high-dimensional vectors with high recall requirements.
 
     | | |
     | :-- | :-- |
@@ -241,7 +241,7 @@ stats = store.get_stats()
     ```
   </Tab>
   <Tab title="IVFFlat">
-    **Inverted File with Flat Index** — best for large datasets in memory-constrained environments.
+    **Inverted File with Flat Index**: best for large datasets in memory-constrained environments.
 
     | | |
     | :-- | :-- |

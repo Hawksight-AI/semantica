@@ -1,4 +1,4 @@
----
+﻿---
 title: "Change Management Module"
 description: "Version control, SHA-256 checksums, diff analysis, rollback, and audit trails for knowledge graphs and ontologies."
 icon: "clock-rotate-left"
@@ -6,7 +6,7 @@ icon: "clock-rotate-left"
 
 **`semantica.change_management`** provides **enterprise-grade versioning and audit trails** for knowledge graphs and ontologies:
 
-- SHA-256 checksums on every snapshot — tamper detection without external infrastructure
+- SHA-256 checksums on every snapshot: tamper detection without external infrastructure
 - Structural diff between any two versions: nodes added, removed, or modified
 - Full rollback to any named snapshot
 - Per-entity mutation history for audit trail queries
@@ -23,8 +23,8 @@ icon: "clock-rotate-left"
 | :--- | :--- |
 | `TemporalVersionManager` | Snapshot, diff, rollback, and per-node mutation history for KGs |
 | `OntologyVersionManager` | Schema versioning with structural diff support |
-| `InMemoryVersionStorage` | Fast in-memory storage for dev and testing — no persistence |
-| `SQLiteVersionStorage` | Production storage — persists to a local SQLite file |
+| `InMemoryVersionStorage` | Fast in-memory storage for dev and testing: no persistence |
+| `SQLiteVersionStorage` | Production storage: persists to a local SQLite file |
 | `compute_checksum()` | Returns SHA-256 fingerprint of any dict (graph snapshot, ontology snapshot) |
 | `verify_checksum()` | Detects tampering by recomputing and comparing the stored checksum inside a snapshot dict |
 
@@ -38,7 +38,7 @@ icon: "clock-rotate-left"
     Version control for OWL ontologies with diff and schema migration support.
   </Card>
   <Card title="VersionStorage" icon="database">
-    Pluggable backends — `InMemoryVersionStorage` for tests, `SQLiteVersionStorage` for production.
+    Pluggable backends: `InMemoryVersionStorage` for tests, `SQLiteVersionStorage` for production.
   </Card>
   <Card title="Integrity Verification" icon="shield-check">
     SHA-256 checksums on every snapshot to detect any unauthorised modification.
@@ -74,7 +74,7 @@ icon: "clock-rotate-left"
     ```
   </Step>
   <Step title="Make your changes">
-    Run deduplication, conflict resolution, merges, or any graph modification. The version manager tracks nothing automatically — you control when snapshots are taken.
+    Run deduplication, conflict resolution, merges, or any graph modification. The version manager tracks nothing automatically: you control when snapshots are taken.
   </Step>
   <Step title="Snapshot the result">
     ```python
@@ -82,7 +82,7 @@ icon: "clock-rotate-left"
         graph=kg,
         version_label="v2.0",
         author="user@example.com",
-        description="After deduplication — 1 342 duplicates merged"
+        description="After deduplication: 1 342 duplicates merged"
     )
     ```
   </Step>
@@ -99,7 +99,7 @@ icon: "clock-rotate-left"
 
 ## TemporalVersionManager
 
-Version control for knowledge graphs — snapshot, diff, and rollback.
+Version control for knowledge graphs: snapshot, diff, and rollback.
 
 ### Constructor Parameters
 
@@ -110,7 +110,7 @@ Version control for knowledge graphs — snapshot, diff, and rollback.
 ### List and Retrieve
 
 ```python
-# List all versions — returns List[Dict] with label, author, timestamp, checksum, entity_count
+# List all versions: returns List[Dict] with label, author, timestamp, checksum, entity_count
 versions = manager.list_versions()
 for v in versions:
     print(v["label"], "|", v["author"], "|", v["timestamp"], "|", v["checksum"][:8], "...")
@@ -137,7 +137,7 @@ snapshot = manager.get_version("v1.0")
 
 ## Diff Analysis
 
-Compare any two snapshots to see exactly what changed — useful for code review, incident investigation, and regulatory audit:
+Compare any two snapshots to see exactly what changed: useful for code review, incident investigation, and regulatory audit:
 
 ```python
 diff = manager.diff("v1.0", "v2.0")
@@ -186,7 +186,7 @@ for item in diff["entities_modified"]:
 
 ## OntologyVersionManager
 
-Version control for ontologies — save, diff, and track schema changes:
+Version control for ontologies: save, diff, and track schema changes:
 
 ```python
 from semantica.change_management import OntologyVersionManager
@@ -201,7 +201,7 @@ snapshot = manager.create_snapshot(
     description="Added FHIR alignment mappings"
 )
 
-# Diff two ontology versions — returns a plain dict
+# Diff two ontology versions: returns a plain dict
 diff = manager.compare_versions("1.1.0", "1.2.0")
 print("Classes added:    ", diff["classes_added"])
 print("Classes removed:  ", diff["classes_removed"])
@@ -229,12 +229,12 @@ print("Properties added: ", diff["properties_added"])
     manager = TemporalVersionManager()
     ```
 
-    Fast and zero-setup. Data is **not persisted** — all version history is lost when the process exits. Use this for unit tests and development only.
+    Fast and zero-setup. Data is **not persisted**: all version history is lost when the process exits. Use this for unit tests and development only.
   </Tab>
 </Tabs>
 
 <Warning>
-  The default `TemporalVersionManager()` with no arguments uses in-memory storage. Always pass `storage_path="versions.db"` or an explicit `SQLiteVersionStorage` in production — otherwise your entire version history disappears on restart.
+  The default `TemporalVersionManager()` with no arguments uses in-memory storage. Always pass `storage_path="versions.db"` or an explicit `SQLiteVersionStorage` in production: otherwise your entire version history disappears on restart.
 </Warning>
 
 ## Integrity Verification
@@ -257,7 +257,7 @@ if not is_valid:
 ```
 
 <Tip>
-  `verify_checksum` takes the full snapshot dict (which contains the stored `"checksum"` key). Pass the dict returned by `create_snapshot` or `get_version` directly — no separate `expected_checksum` argument is needed.
+  `verify_checksum` takes the full snapshot dict (which contains the stored `"checksum"` key). Pass the dict returned by `create_snapshot` or `get_version` directly: no separate `expected_checksum` argument is needed.
 </Tip>
 
 ## ChangeLogEntry
@@ -334,17 +334,17 @@ for record in history:
 ### Compliance Coverage
 
 <AccordionGroup>
-  <Accordion title="HIPAA — subject-access requests">
+  <Accordion title="HIPAA: subject-access requests">
     Use `manager.get_node_history("patient_001")` to retrieve every recorded mutation on a patient entity. Each `MutationRecord` includes `timestamp`, `operation`, `entity_id`, `payload`, and `version_label`. The SHA-256 checksum on each snapshot proves the record has not been altered.
   </Accordion>
-  <Accordion title="SOX — quarterly reviews">
+  <Accordion title="SOX: quarterly reviews">
     Use `manager.list_versions()` to enumerate all snapshots and `manager.diff(v1, v2)` to scope the change report to the relevant quarter. The immutable snapshot chain provides the chain of custody required by SOX Section 404.
   </Accordion>
-  <Accordion title="GDPR — right to erasure verification">
+  <Accordion title="GDPR: right to erasure verification">
     After deleting a data subject's entities, snapshot the graph and diff against the pre-deletion snapshot. `diff["entities_removed"]` provides a machine-readable record of exactly what was deleted and when, satisfying Article 17 documentation requirements.
   </Accordion>
-  <Accordion title="FDA 21 CFR Part 11 — electronic records">
-    Every snapshot dict includes `author`, `timestamp`, and `checksum` — the three fields required for a compliant electronic record. `verify_checksum(snapshot)` provides the tamper-evidence required by 21 CFR § 11.10(e).
+  <Accordion title="FDA 21 CFR Part 11: electronic records">
+    Every snapshot dict includes `author`, `timestamp`, and `checksum`: the three fields required for a compliant electronic record. `verify_checksum(snapshot)` provides the tamper-evidence required by 21 CFR § 11.10(e).
   </Accordion>
 </AccordionGroup>
 
@@ -359,7 +359,7 @@ for record in history:
 </Warning>
 
 <Tip>
-  **Use `diff()` for code review and incident investigation.** `manager.diff("v1.0", "v2.0")` returns a plain dict with `"summary"`, `"entities_added"`, `"entities_removed"`, and `"entities_modified"` — use the `"summary"` sub-dict to get counts and `"entities_modified"` to inspect property-level changes.
+  **Use `diff()` for code review and incident investigation.** `manager.diff("v1.0", "v2.0")` returns a plain dict with `"summary"`, `"entities_added"`, `"entities_removed"`, and `"entities_modified"`: use the `"summary"` sub-dict to get counts and `"entities_modified"` to inspect property-level changes.
 </Tip>
 
 <Tip>

@@ -1,10 +1,10 @@
----
+﻿---
 title: "Contributing"
 description: "How to contribute code, documentation, tests, and community support to Semantica."
 icon: "code-pull-request"
 ---
 
-Contributions of all kinds are welcome — code, documentation, tests, and community support. Every contribution is recognized in release notes and the GitHub contributors list.
+Contributions of all kinds are welcome: code, documentation, tests, and community support. Every contribution is recognized in release notes and the GitHub contributors list.
 
 
 ## Quick Start
@@ -17,7 +17,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-New to the project? Start with [`good-first-issue`](https://github.com/semantica-agi/semantica/labels/good-first-issue) labeled tickets — they're scoped to be completable in a few hours without deep codebase knowledge.
+New to the project? Start with [`good-first-issue`](https://github.com/semantica-agi/semantica/labels/good-first-issue) labeled tickets: they're scoped to be completable in a few hours without deep codebase knowledge.
 
 
 ## Ways to Contribute
@@ -77,16 +77,16 @@ Style conventions: **Black** for formatting, **isort** for imports, **flake8** f
 
 Before submitting a PR, confirm:
 
-<Check>Tests pass locally — `pytest`</Check>
+<Check>Tests pass locally: `pytest`</Check>
 <Check>New features include documentation with working code examples</Check>
-<Check>Code follows project style — Black, isort, flake8</Check>
+<Check>Code follows project style: Black, isort, flake8</Check>
 <Check>Commit messages are clear and describe the *why*, not just the *what*</Check>
 <Check>No unresolved merge conflicts</Check>
 
 
 ## Code of Conduct
 
-All contributors are expected to follow the [Contributor Covenant Code of Conduct](https://github.com/semantica-agi/semantica/blob/main/CODE_OF_CONDUCT.md). Be respectful, patient, and constructive — especially toward newcomers. Report violations by opening an issue with the `[CoC]` prefix.
+All contributors are expected to follow the [Contributor Covenant Code of Conduct](https://github.com/semantica-agi/semantica/blob/main/CODE_OF_CONDUCT.md). Be respectful, patient, and constructive: especially toward newcomers. Report violations by opening an issue with the `[CoC]` prefix.
 
 
 ## Help

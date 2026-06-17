@@ -1,4 +1,4 @@
----
+﻿---
 title: "Apache AGE Graph Store"
 description: "PostgreSQL + Apache AGE backend for openCypher queries alongside standard SQL."
 icon: "database"
@@ -29,7 +29,7 @@ pip install psycopg2-binary
 
 <Tabs>
   <Tab title="Unified Facade">
-    Use `GraphStore(backend="age", …)` — the same interface as Neo4j and FalkorDB:
+    Use `GraphStore(backend="age", …)`: the same interface as Neo4j and FalkorDB:
 
     ```python
     from semantica.graph_store import GraphStore
@@ -94,7 +94,7 @@ graph_store_config.set("age_graph_name", "production")
 
 ## Connection & Initialization
 
-On `connect()`, the store performs idempotent setup — safe to call repeatedly:
+On `connect()`, the store performs idempotent setup: safe to call repeatedly:
 
 <Steps>
   <Step title="Load the extension">

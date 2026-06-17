@@ -1,4 +1,4 @@
----
+﻿---
 title: "Graph Store Module"
 description: "Unified interface for Neo4j, FalkorDB, Apache AGE, and Amazon Neptune graph databases."
 icon: "server"
@@ -6,9 +6,9 @@ icon: "server"
 
 **`semantica.graph_store`** provides a **single unified API** for persisting and querying knowledge graphs in production graph databases:
 
-- Swap backends with a one-line change — Neo4j, FalkorDB, Apache AGE, Amazon Neptune
+- Swap backends with a one-line change: Neo4j, FalkorDB, Apache AGE, Amazon Neptune
 - Parameterized Cypher execution with optional result caching via `QueryEngine`
-- Batch node and edge loading — faster than individual writes
+- Batch node and edge loading: faster than individual writes
 - `GraphAnalytics` for degree centrality, connected components, shortest path, neighbor traversal
 - Context manager support: `with GraphStore(...) as store:` closes connection automatically
 
@@ -20,10 +20,10 @@ icon: "server"
 | `GraphStore` | Unified interface: `create_node`, `create_relationship`, `query`, `get_neighbors`, `shortest_path` |
 | `QueryEngine` | Parameterized Cypher execution with result caching |
 | `GraphAnalytics` | `degree_centrality`, `connected_components`, `shortest_path`, `get_neighbors` |
-| `Neo4jStore` | Production workloads via Bolt — supports APOC and GDS plugins |
-| `ApacheAgeStore` | PostgreSQL + AGE extension — no separate graph server needed |
-| `AmazonNeptuneStore` | AWS Neptune — OpenCypher via Bolt protocol |
-| `FalkorDBStore` | Redis-based — sub-millisecond latency for real-time applications |
+| `Neo4jStore` | Production workloads via Bolt: supports APOC and GDS plugins |
+| `ApacheAgeStore` | PostgreSQL + AGE extension: no separate graph server needed |
+| `AmazonNeptuneStore` | AWS Neptune: OpenCypher via Bolt protocol |
+| `FalkorDBStore` | Redis-based: sub-millisecond latency for real-time applications |
 
 
 ## What You Get
@@ -32,7 +32,7 @@ icon: "server"
   <Card title="GraphStore" icon="server">
     - Unified API across Neo4j, FalkorDB, Apache AGE, Amazon Neptune
     - Context manager support for automatic connection cleanup
-    - `create_nodes()` for bulk loading — faster than individual calls
+    - `create_nodes()` for bulk loading: faster than individual calls
   </Card>
   <Card title="QueryEngine" icon="magnifying-glass">
     - Parameterized Cypher construction prevents injection attacks
@@ -45,13 +45,13 @@ icon: "server"
     - Shortest path between nodes, neighbor traversal up to N hops
   </Card>
   <Card title="Bulk Operations" icon="layer-group">
-    - `create_nodes(list)` — one round-trip for many nodes
+    - `create_nodes(list)`: one round-trip for many nodes
     - `create_relationship()` with typed properties
     - `delete_node(detach=True)` removes all connected relationships
   </Card>
   <Card title="Schema Management" icon="table">
-    - `create_index(label, property_name=)` — makes MATCH queries orders-of-magnitude faster
-    - `get_stats()` — node counts, edge counts, type breakdown
+    - `create_index(label, property_name=)`: makes MATCH queries orders-of-magnitude faster
+    - `get_stats()`: node counts, edge counts, type breakdown
     - Create indexes before bulk loading for best performance
   </Card>
   <Card title="Path Traversal" icon="route">
@@ -132,7 +132,7 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
   </Step>
   <Step title="Load nodes and relationships">
     ```python
-    # Batch creation — list of dicts with "labels" and "properties" keys
+    # Batch creation: list of dicts with "labels" and "properties" keys
     store.create_nodes([
         {"labels": ["Person"],       "properties": {"name": "Alice"}},
         {"labels": ["Organization"], "properties": {"name": "Acme Corp"}},
@@ -187,7 +187,7 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
         uri="bolt://localhost:7687",
         user="neo4j",
         password="password",
-        database="neo4j",    # optional — targets default database
+        database="neo4j",    # optional: targets default database
     )
     store.connect()
     ```
@@ -248,7 +248,7 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
     )
     ```
 
-    **Best for:** managed AWS deployments. Neptune uses the Bolt protocol for OpenCypher queries — the same query API used for Neo4j.
+    **Best for:** managed AWS deployments. Neptune uses the Bolt protocol for OpenCypher queries: the same query API used for Neo4j.
   </Tab>
   <Tab title="Backend Comparison">
 
@@ -300,7 +300,7 @@ neighbors = store.get_neighbors(
     depth=1,
 )
 
-# Shortest path — returns {"length", "nodes", "relationships"} or None
+# Shortest path: returns {"length", "nodes", "relationships"} or None
 path = store.shortest_path(
     start_node_id=jobs_id,
     end_node_id=cook_id,
@@ -331,7 +331,7 @@ result = engine.execute(
 )
 # result is {"success": True, "records": [...], "keys": [...], "metadata": {...}}
 
-# Execute with caching — repeated identical calls return cached result
+# Execute with caching: repeated identical calls return cached result
 result = engine.execute(
     "MATCH (p:Person) RETURN count(p) as total",
     use_cache=True,
@@ -368,7 +368,7 @@ store.connect()
 # GraphAnalytics takes the backend store, not the GraphStore facade
 analytics = GraphAnalytics(store._store_backend)
 
-# Degree centrality — returns list of {"id", "degree"} dicts ordered by degree DESC
+# Degree centrality: returns list of {"id", "degree"} dicts ordered by degree DESC
 scores = analytics.degree_centrality(
     labels=["Person"],
     rel_type="KNOWS",
@@ -380,7 +380,7 @@ for entry in scores[:5]:
 # Connected components (requires GDS for Neo4j, NetworkX for in-process)
 components = analytics.connected_components(labels=["Person"])
 
-# Shortest path — returns {"length", "nodes", "relationships"} or None
+# Shortest path: returns {"length", "nodes", "relationships"} or None
 path = analytics.shortest_path(
     start_node_id=alice_id,
     end_node_id=charlie_id,
@@ -401,7 +401,7 @@ neighbors = analytics.get_neighbors(
 
 | Method | Returns | Description |
 | :------ | :------- | :----------- |
-| `degree_centrality(labels, rel_type, direction)` | `List[dict]` | Degree-based node importance — records ordered by degree DESC |
+| `degree_centrality(labels, rel_type, direction)` | `List[dict]` | Degree-based node importance: records ordered by degree DESC |
 | `connected_components(labels)` | `List[dict]` | Connected component assignment (requires GDS on Neo4j) |
 | `shortest_path(start_node_id, end_node_id, rel_type, max_depth)` | `dict \| None` | Path with `length`, `nodes`, `relationships` or `None` |
 | `get_neighbors(node_id, rel_type, direction, depth)` | `List[dict]` | Neighbor nodes up to `depth` hops |
@@ -414,7 +414,7 @@ neighbors = analytics.get_neighbors(
 ## Schema Management
 
 ```python
-# Index for fast label-property lookups — use property_name= not property=
+# Index for fast label-property lookups: use property_name= not property=
 store.create_index(label="Person",       property_name="name")
 store.create_index(label="Organization", property_name="id")
 
@@ -481,7 +481,7 @@ stats = store.get_stats()
     ```
   </Tab>
   <Tab title="Apache AGE notes">
-    AGE supports one primary label per vertex. If you pass multiple labels, the first is used as the AGE label and the rest are stored in a `labels` property array. Parameterized queries use literal inlining internally (AGE does not support `$param` binding inside `cypher()` calls) — the store handles escaping automatically.
+    AGE supports one primary label per vertex. If you pass multiple labels, the first is used as the AGE label and the rest are stored in a `labels` property array. Parameterized queries use literal inlining internally (AGE does not support `$param` binding inside `cypher()` calls): the store handles escaping automatically.
   </Tab>
 </Tabs>
 
@@ -504,7 +504,7 @@ stats = store.get_stats()
 </Warning>
 
 <Warning>
-  **`create_index` parameter is `property_name=`, not `property=`.** `store.create_index(label="Person", property_name="name")` — using `property=` will be silently ignored.
+  **`create_index` parameter is `property_name=`, not `property=`.** `store.create_index(label="Person", property_name="name")`: using `property=` will be silently ignored.
 </Warning>
 
 <Tip>

@@ -1,4 +1,4 @@
----
+﻿---
 title: "Export Module"
 description: "Export knowledge graphs to RDF, Parquet, LPG, ArangoDB AQL, CSV, GraphML, OWL, JSON-LD, Arrow, and vector formats."
 icon: "file-export"
@@ -6,7 +6,7 @@ icon: "file-export"
 
 **`semantica.export`** serializes knowledge graphs to **every downstream format**:
 
-- RDF: Turtle, JSON-LD, N-Triples, RDF/XML — with optional W3C PROV-O provenance inline
+- RDF: Turtle, JSON-LD, N-Triples, RDF/XML: with optional W3C PROV-O provenance inline
 - Analytics: Apache Parquet and Arrow for Spark, BigQuery, Databricks
 - Graph databases: Cypher `CREATE` statements for Neo4j; AQL `INSERT` for ArangoDB
 - Standard formats: GraphML, GEXF, Graphviz DOT, CSV, OWL 2.0
@@ -28,7 +28,7 @@ icon: "file-export"
 | `ArrowExporter` | Apache Arrow IPC | Requires `pyarrow`; zero-copy transfer |
 | `DistanceExporter` | CSV, JSONL | Pairwise distance metrics; takes a `graph` arg |
 | `ReportGenerator` | HTML, Markdown, JSON, plain text | Analytics reports |
-| `NamespaceManager` | — | RDF namespace extraction and declaration generation |
+| `NamespaceManager` |: | RDF namespace extraction and declaration generation |
 
 ## Getting Started
 
@@ -91,7 +91,7 @@ export_lpg(graph,  "import.cypher", method="cypher")
 
 <Tabs>
   <Tab title="RDF">
-    Export to W3C RDF formats — Turtle, JSON-LD, N-Triples, and RDF/XML.
+    Export to W3C RDF formats: Turtle, JSON-LD, N-Triples, and RDF/XML.
 
     **`export_to_rdf()` returns a string; `export()` writes to a file:**
 
@@ -235,7 +235,7 @@ export_lpg(graph,  "import.cypher", method="cypher")
     ```
   </Tab>
   <Tab title="Vectors, Arrow & Reports">
-    **VectorExporter** — takes `(vectors, file_path, format=)`:
+    **VectorExporter**: takes `(vectors, file_path, format=)`:
 
     ```python
     from semantica.export import VectorExporter
@@ -248,7 +248,7 @@ export_lpg(graph,  "import.cypher", method="cypher")
     exporter.export(vectors, "vectors.faiss", format="faiss")
     ```
 
-    **ArrowExporter** — requires `pyarrow`:
+    **ArrowExporter**: requires `pyarrow`:
 
     ```python
     from semantica.export import ArrowExporter
@@ -257,7 +257,7 @@ export_lpg(graph,  "import.cypher", method="cypher")
     exporter.export(graph, "graph.arrow")
     ```
 
-    **DistanceExporter** — takes a `graph` argument at construction:
+    **DistanceExporter**: takes a `graph` argument at construction:
 
     ```python
     from semantica.export import DistanceExporter
@@ -347,12 +347,12 @@ The `export_csv` convenience function delegates to `CSVExporter.export()`. For p
 | `"numpy"` | `numpy` | `VectorExporter` | `.npz` | NumPy arrays from embeddings |
 | `"binary"` | `binary` | `VectorExporter` | `.bin` | Raw float32 binary |
 | `"faiss"` | `faiss` | `VectorExporter` | `.faiss` | Direct FAISS index files |
-| `"html"` / `"markdown"` / `"json"` / `"text"` | — | `ReportGenerator` | `.html` / `.md` / `.json` / `.txt` | Analytics reports |
+| `"html"` / `"markdown"` / `"json"` / `"text"` |: | `ReportGenerator` | `.html` / `.md` / `.json` / `.txt` | Analytics reports |
 
 ## Tips and Common Pitfalls
 
 <Warning>
-  **`export_to_rdf()` returns a string — it does not write a file.** Call `export()` or `export_knowledge_graph()` to write directly to disk.
+  **`export_to_rdf()` returns a string: it does not write a file.** Call `export()` or `export_knowledge_graph()` to write directly to disk.
 </Warning>
 
 <Warning>
@@ -372,7 +372,7 @@ The `export_csv` convenience function delegates to `CSVExporter.export()`. For p
 </Tip>
 
 <Tip>
-  **Use `turtle` for human readability, `ntriples` for streaming.** Turtle is compact and readable for debugging and sharing. N-Triples (`.nt`) is line-oriented — one triple per line — making it safe to stream, concatenate, and process with standard Unix tools.
+  **Use `turtle` for human readability, `ntriples` for streaming.** Turtle is compact and readable for debugging and sharing. N-Triples (`.nt`) is line-oriented: one triple per line: making it safe to stream, concatenate, and process with standard Unix tools.
 </Tip>
 
 <Tip>

@@ -1,4 +1,4 @@
----
+﻿---
 title: "Ontology Module"
 description: "Automated ontology generation, SHACL validation, OWL/RDF export, namespace management, and LLM-powered ontology generation."
 icon: "sitemap"
@@ -21,7 +21,7 @@ icon: "sitemap"
 | `OntologyGenerator` | Auto-generate ontologies from KG data (5-stage pipeline) |
 | `LLMOntologyGenerator` | LLM-powered ontology generation for complex domains |
 | `SHACLGenerator` | Generate SHACL shapes from an ontology or KG schema |
-| `OntologyValidator` | Validate any graph against SHACL shapes — returns `SHACLValidationReport` |
+| `OntologyValidator` | Validate any graph against SHACL shapes: returns `SHACLValidationReport` |
 | `OWLGenerator` | Serialize ontologies to Turtle, RDF/XML, JSON-LD |
 | `NamespaceManager` | IRI generation, prefix management, and namespace binding |
 | `OntologyEvaluator` | Coverage, completeness, and granularity quality metrics |
@@ -55,7 +55,7 @@ engine.export_owl(ontology, "ontology.ttl", format="turtle")
 
 ## OntologyEngine (Unified Facade)
 
-**`OntologyEngine`** orchestrates the full ontology lifecycle — **generation, validation, export, and evaluation**:
+**`OntologyEngine`** orchestrates the full ontology lifecycle: **generation, validation, export, and evaluation**:
 
 ```python
 from semantica.ontology import OntologyEngine
@@ -109,7 +109,7 @@ ontology  = generator.generate_ontology({
     Map definitions to OWL constructs: `owl:Class`, `owl:ObjectProperty`, `owl:DatatypeProperty`.
   </Step>
   <Step title="Hierarchy Generation">
-    Build taxonomy trees using transitive closure and cycle detection — produces `rdfs:subClassOf` chains.
+    Build taxonomy trees using transitive closure and cycle detection: produces `rdfs:subClassOf` chains.
   </Step>
   <Step title="TTL Generation">
     Serialize the final ontology to Turtle format using `rdflib`. Also available: RDF/XML and JSON-LD.

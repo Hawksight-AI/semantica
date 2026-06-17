@@ -1,11 +1,11 @@
----
+﻿---
 title: "Community Projects"
 description: "Projects, extensions, and integrations built by the Semantica community."
 icon: "people-group"
 ---
 
 <Tip>
-  Building something with Semantica? [Submit it on GitHub](https://github.com/semantica-agi/semantica/issues/new?template=community_project.md) — we'd love to feature it here.
+  Building something with Semantica? [Submit it on GitHub](https://github.com/semantica-agi/semantica/issues/new?template=community_project.md): we'd love to feature it here.
 </Tip>
 
 Semantica is used across academia, enterprise, and independent research. Below is a snapshot of the ecosystem being built by the community.
@@ -17,27 +17,27 @@ Semantica is used across academia, enterprise, and independent research. Below i
 
 Teams in academia are using Semantica to build structured, auditable knowledge from unstructured scientific literature.
 
-- **Academic literature mapping** — citation graph construction across multi-year corpora with temporal provenance
-- **Biomedical knowledge graphs** — connecting genes, proteins, drugs, and diseases from PubMed and preprint feeds
-- **Social network analysis** — community detection and influence analysis over entity-linked interaction graphs
-- **Computational linguistics** — coreference resolution pipelines with entity-linked output for downstream NLP tasks
+- **Academic literature mapping**: citation graph construction across multi-year corpora with temporal provenance
+- **Biomedical knowledge graphs**: connecting genes, proteins, drugs, and diseases from PubMed and preprint feeds
+- **Social network analysis**: community detection and influence analysis over entity-linked interaction graphs
+- **Computational linguistics**: coreference resolution pipelines with entity-linked output for downstream NLP tasks
 
 ### Enterprise & Industry
 
 Production deployments span regulated and high-stakes industries where AI accountability is not optional.
 
-- **Business intelligence** — corporate knowledge bases built from filings, reports, and internal documentation
-- **Cybersecurity & threat intelligence** — adversary attribution graphs, CVE-linked threat feeds, incident timelines
-- **Healthcare & clinical AI** — patient safety graphs, drug interaction knowledge bases, HIPAA-compliant audit trails
-- **Financial services** — fraud detection graphs, regulatory compliance pipelines (SOX/GDPR/MiFID II), risk lineage
-- **Legal & compliance** — contract analysis pipelines, regulatory change tracking, evidence-backed research graphs
-- **Critical infrastructure** — supply chain risk graphs, energy grid event graphs, logistics provenance
+- **Business intelligence**: corporate knowledge bases built from filings, reports, and internal documentation
+- **Cybersecurity & threat intelligence**: adversary attribution graphs, CVE-linked threat feeds, incident timelines
+- **Healthcare & clinical AI**: patient safety graphs, drug interaction knowledge bases, HIPAA-compliant audit trails
+- **Financial services**: fraud detection graphs, regulatory compliance pipelines (SOX/GDPR/MiFID II), risk lineage
+- **Legal & compliance**: contract analysis pipelines, regulatory change tracking, evidence-backed research graphs
+- **Critical infrastructure**: supply chain risk graphs, energy grid event graphs, logistics provenance
 
 ### Independent & Open Source
 
-- **GraphRAG toolkits** — custom retrieval layers built on top of Semantica's `context` + `vector_store` modules
-- **Domain-specific extractors** — NER and relation extractors for clinical, legal, and scientific text
-- **Temporal graph dashboards** — visual timelines built with Semantica's `TemporalKnowledgeGraph` + custom visualization adapters
+- **GraphRAG toolkits**: custom retrieval layers built on top of Semantica's `context` + `vector_store` modules
+- **Domain-specific extractors**: NER and relation extractors for clinical, legal, and scientific text
+- **Temporal graph dashboards**: visual timelines built with Semantica's `TemporalKnowledgeGraph` + custom visualization adapters
 
 
 ## Supported Integrations
@@ -66,12 +66,12 @@ Production deployments span regulated and high-stakes industries where AI accoun
     | :-------- | :---- |
     | **OpenAI** | GPT-4o, GPT-4, GPT-3.5 |
     | **Anthropic** | Claude Opus, Sonnet, Haiku |
-    | **Google Gemini** | — |
-    | **Groq** | LLaMA, Mixtral — fast inference |
+    | **Google Gemini** |: |
+    | **Groq** | LLaMA, Mixtral: fast inference |
     | **Ollama** | Fully local, air-gapped |
-    | **HuggingFace** | — |
-    | **DeepSeek** | — |
-    | **Novita AI** | — |
+    | **HuggingFace** |: |
+    | **DeepSeek** |: |
+    | **Novita AI** |: |
     | **LiteLLM** | 100+ model gateway |
   </Tab>
   <Tab title="NLP Libraries">
@@ -89,11 +89,11 @@ Production deployments span regulated and high-stakes industries where AI accoun
 
 The plugin system (`PluginRegistry`) makes it easy to add new capabilities without touching core code. The community has built:
 
-- **Custom entity extractors** — domain-specific NER for clinical entities, legal clause types, and financial instruments
-- **Export adapters** — specialized serialization formats for proprietary industry systems
-- **Ingestor plugins** — adapters for SharePoint, Notion, Confluence, and custom databases
-- **Visualization plugins** — enhanced dashboards with Plotly, D3.js, and custom graph renderers
-- **Evaluation harnesses** — domain-specific precision/recall benchmarks using `semantica.evals`
+- **Custom entity extractors**: domain-specific NER for clinical entities, legal clause types, and financial instruments
+- **Export adapters**: specialized serialization formats for proprietary industry systems
+- **Ingestor plugins**: adapters for SharePoint, Notion, Confluence, and custom databases
+- **Visualization plugins**: enhanced dashboards with Plotly, D3.js, and custom graph renderers
+- **Evaluation harnesses**: domain-specific precision/recall benchmarks using `semantica.evals`
 
 
 ## Build Your Own Extension

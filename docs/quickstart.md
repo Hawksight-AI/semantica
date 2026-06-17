@@ -1,14 +1,14 @@
----
+﻿---
 title: "Quickstart"
 description: "Build your first knowledge graph in 5 minutes. No configuration required."
 icon: "rocket"
 ---
 
 <Info>
-  **v0.5.0** — Ontology Hub, Distance Intelligence, Parquet & XML ingestion, 12 security fixes. [What's new →](index#whats-new)
+  **v0.5.0**: Ontology Hub, Distance Intelligence, Parquet & XML ingestion, 12 security fixes. [What's new →](index#whats-new)
 </Info>
 
-This guide walks you through the end-to-end pipeline for building your first knowledge graph. Start here after installation. An LLM API key is optional — pattern-based extraction works out of the box.
+This guide walks you through the end-to-end pipeline for building your first knowledge graph. Start here after installation. An LLM API key is optional: pattern-based extraction works out of the box.
 
 
 ## Install
@@ -95,7 +95,7 @@ print(parsed.metadata)    # title, author, date, source
 ```
 
 <Tip>
-  For PDFs with tables, charts, or multi-column layouts, use `DoclingParser` — it applies advanced layout analysis and returns structured table data alongside text.
+  For PDFs with tables, charts, or multi-column layouts, use `DoclingParser`: it applies advanced layout analysis and returns structured table data alongside text.
 </Tip>
 
 ```python
@@ -161,7 +161,7 @@ founders = graph.get_neighbors("Apple Inc.", predicate="founded_by")
 ```
 
 <Note>
-  `merge_entities=True` automatically resolves duplicate entity references — "Apple", "Apple Inc.", "AAPL" — using semantic similarity. No manual deduplication needed.
+  `merge_entities=True` automatically resolves duplicate entity references: "Apple", "Apple Inc.", "AAPL": using semantic similarity. No manual deduplication needed.
 </Note>
 
 </Step>
@@ -181,7 +181,7 @@ viz = GraphVisualizer(
 viz.visualize(graph, output="graph.html")
 ```
 
-Open `graph.html` in any browser — pan, zoom, click nodes for details, filter by entity type.
+Open `graph.html` in any browser: pan, zoom, click nodes for details, filter by entity type.
 
 </Step>
 
@@ -205,7 +205,7 @@ from semantica.export import ParquetExporter
 
 exporter = ParquetExporter()
 exporter.export(graph, output_dir="output/")
-# Writes nodes.parquet + edges.parquet — ready for Spark, BigQuery, Databricks
+# Writes nodes.parquet + edges.parquet: ready for Spark, BigQuery, Databricks
 ```
 
 ```python ArangoDB
@@ -225,7 +225,7 @@ aql      = exporter.export(graph)
 
 ## Add Decision Intelligence
 
-Track every agent decision with full causal chains and provenance — one extra import:
+Track every agent decision with full causal chains and provenance: one extra import:
 
 ```python
 from semantica.context import AgentContext, ContextGraph
@@ -249,7 +249,7 @@ decision_id = context.record_decision(
     confidence=0.91,
 )
 
-# Retrieve similar past decisions — prevents inconsistent choices
+# Retrieve similar past decisions: prevents inconsistent choices
 precedents = context.find_precedents("model selection reasoning", limit=5)
 influence  = context.analyze_decision_influence(decision_id)
 ```
@@ -259,7 +259,7 @@ influence  = context.analyze_decision_influence(decision_id)
 
 <AccordionGroup>
 
-<Accordion title="Process raw text directly — no file needed" icon="text">
+<Accordion title="Process raw text directly: no file needed" icon="text">
 
 ```python
 from semantica.semantic_extract import NERExtractor, RelationExtractor
@@ -313,7 +313,7 @@ print(snapshot.get_node("Steve Jobs"))  # role: CEO
 
 </Accordion>
 
-<Accordion title="Persistent graph store — Neo4j, FalkorDB, Apache AGE" icon="database">
+<Accordion title="Persistent graph store: Neo4j, FalkorDB, Apache AGE" icon="database">
 
 ```python
 from semantica.graph_store import Neo4jStore
@@ -327,12 +327,12 @@ store = Neo4jStore(
 
 builder = GraphBuilder(merge_entities=True, graph_store=store)
 graph   = builder.build(entities=entities, relationships=relationships)
-# Graph persisted to Neo4j — survives process restarts
+# Graph persisted to Neo4j: survives process restarts
 ```
 
 </Accordion>
 
-<Accordion title="Full provenance pipeline — W3C PROV-O" icon="link">
+<Accordion title="Full provenance pipeline: W3C PROV-O" icon="link">
 
 ```python
 from semantica.provenance import ProvenanceTracker
@@ -422,7 +422,7 @@ pip install --upgrade semantica
 
 <CardGroup cols={2}>
   <Card title="Core Concepts" icon="book-open" href="concepts">
-    Knowledge graphs, ontologies, reasoning engines — the mental model behind Semantica.
+    Knowledge graphs, ontologies, reasoning engines: the mental model behind Semantica.
   </Card>
   <Card title="Module Reference" icon="puzzle-piece" href="modules">
     Every module explained with key classes and common chains.

@@ -1,11 +1,11 @@
----
+﻿---
 title: "Installation"
 description: "Get Semantica installed in under a minute."
 icon: "download"
 ---
 
 <Check>
-  **Available on PyPI** — `pip install semantica` and you're ready.
+  **Available on PyPI**: `pip install semantica` and you're ready.
 </Check>
 
 <Note>

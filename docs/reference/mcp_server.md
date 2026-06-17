@@ -1,13 +1,13 @@
----
+﻿---
 title: "MCP Server"
-description: "Model Context Protocol server — expose Semantica's full capability set to Claude Desktop, VS Code, Cursor, and any MCP-aware tool."
+description: "Model Context Protocol server: expose Semantica's full capability set to Claude Desktop, VS Code, Cursor, and any MCP-aware tool."
 icon: "plug"
 ---
 
 **`semantica.mcp_server`** exposes Semantica's knowledge graph, decision intelligence, semantic extraction, and reasoning capabilities as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) **server over stdio**:
 
 - 12 MCP tools exposed: extract entities, query graph, record decisions, run reasoning, export results
-- No Python code required after launch — configure once, use from any MCP-aware client
+- No Python code required after launch: configure once, use from any MCP-aware client
 - Compatible with Claude Desktop, Windsurf, Cline, Continue, VS Code, Roo Code, Cursor
 
 
@@ -32,7 +32,7 @@ python -m semantica.mcp_server
 ```
 
 <Tip>
-  `semantica.mcp_server` is a **stdio server process**, not a Python library. It exposes no importable classes — all interaction happens through MCP tool calls from a connected AI client.
+  `semantica.mcp_server` is a **stdio server process**, not a Python library. It exposes no importable classes: all interaction happens through MCP tool calls from a connected AI client.
 </Tip>
 
 ## What You Get
@@ -42,10 +42,10 @@ python -m semantica.mcp_server
     Extract entities, extract relations, record decisions, query decisions, find precedents, trace causal chains, add entities, add relationships, run analytics, summarise graph, run reasoning, export graph.
   </Card>
   <Card title="3 Readable Resources" icon="book-open">
-    Live graph JSON (`semantica://graph/summary`), decision list, and schema/version info — readable by any MCP client.
+    Live graph JSON (`semantica://graph/summary`), decision list, and schema/version info: readable by any MCP client.
   </Card>
   <Card title="Zero Infrastructure" icon="bolt">
-    Runs over stdio — no server, no port, no Docker required. One config block to activate in any MCP client.
+    Runs over stdio: no server, no port, no Docker required. One config block to activate in any MCP client.
   </Card>
   <Card title="Persistent Graphs" icon="database">
     Point `SEMANTICA_KG_PATH` at a saved graph file to reload it automatically on every server startup.
@@ -64,7 +64,7 @@ python -m semantica.mcp_server
 pip install semantica
 ```
 
-The MCP server is included in the base install — no extras required.
+The MCP server is included in the base install: no extras required.
 
 ## Configuration
 
@@ -153,7 +153,7 @@ The MCP server is included in the base install — no extras required.
 
 | Variable | Default | Description |
 | :-------- | :------- | :----------- |
-| `SEMANTICA_KG_PATH` | *(none — in-memory graph)* | Path to a persisted graph file to load on startup |
+| `SEMANTICA_KG_PATH` | *(none: in-memory graph)* | Path to a persisted graph file to load on startup |
 | `SEMANTICA_LOG_LEVEL` | `WARNING` | Log verbosity: `DEBUG`, `INFO`, `WARNING` |
 
 ## Tools
@@ -162,7 +162,7 @@ The MCP server exposes 12 tools that any connected AI assistant can call:
 
 | Tool | Category | Description |
 | :---- | :-------- | :----------- |
-| `extract_entities` | Extraction | NER — find people, places, organisations, concepts |
+| `extract_entities` | Extraction | NER: find people, places, organisations, concepts |
 | `extract_relations` | Extraction | Typed relation and triplet extraction |
 | `record_decision` | Decision Intelligence | Save a decision with reasoning and outcome |
 | `query_decisions` | Decision Intelligence | Search recorded decisions by natural language or category |
@@ -173,7 +173,7 @@ The MCP server exposes 12 tools that any connected AI assistant can call:
 | `get_graph_summary` | Graph Operations | Node count, decision count, graph status |
 | `get_graph_analytics` | Graph Operations | PageRank centrality and community detection |
 | `run_reasoning` | Reasoning | Forward-chain IF/THEN rules over facts |
-| `export_graph` | Reasoning & Export | Serialise the graph (`turtle`/`ttl` — RDF Turtle aliases, `nt`, `xml`, `json-ld`, `json`) |
+| `export_graph` | Reasoning & Export | Serialise the graph (`turtle`/`ttl`: RDF Turtle aliases, `nt`, `xml`, `json-ld`, `json`) |
 
 ### Knowledge Extraction
 
@@ -447,15 +447,15 @@ The MCP server exposes three readable resources:
 </Warning>
 
 <Tip>
-  **Use `find_precedents` before high-stakes decisions.** The tool performs hybrid similarity search across all recorded decisions. Call it at the start of any significant decision path — it surfaces past reasoning that may be directly applicable, reducing redundant work and improving consistency across agent runs.
+  **Use `find_precedents` before high-stakes decisions.** The tool performs hybrid similarity search across all recorded decisions. Call it at the start of any significant decision path: it surfaces past reasoning that may be directly applicable, reducing redundant work and improving consistency across agent runs.
 </Tip>
 
 <Warning>
-  **Configure your MCP client's `command` field exactly.** The `command` field must point to the exact executable path (use `which semantica-mcp` on macOS/Linux to find it). A wrong path fails silently — the server just doesn't appear in the tools list. Test with the raw `echo | semantica-mcp` command first to confirm the binary works.
+  **Configure your MCP client's `command` field exactly.** The `command` field must point to the exact executable path (use `which semantica-mcp` on macOS/Linux to find it). A wrong path fails silently: the server just doesn't appear in the tools list. Test with the raw `echo | semantica-mcp` command first to confirm the binary works.
 </Warning>
 
 <Warning>
-  **The server communicates over stdio — don't add logging to stdout.** Any `print()` or logger output directed to stdout will corrupt the JSON-RPC message stream. All logging is written to `stderr` only. Configure log verbosity with the `SEMANTICA_LOG_LEVEL` environment variable.
+  **The server communicates over stdio: don't add logging to stdout.** Any `print()` or logger output directed to stdout will corrupt the JSON-RPC message stream. All logging is written to `stderr` only. Configure log verbosity with the `SEMANTICA_LOG_LEVEL` environment variable.
 </Warning>
 
 <Tip>

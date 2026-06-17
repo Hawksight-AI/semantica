@@ -1,15 +1,15 @@
----
+﻿---
 title: "Semantic Extract Module"
 description: "Named entity recognition, relation extraction, event detection, and triplet generation."
 icon: "magnifying-glass-chart"
 ---
 
-`semantica.semantic_extract` extracts structured information from unstructured text — the foundation of every knowledge graph in Semantica:
+`semantica.semantic_extract` extracts structured information from unstructured text: the foundation of every knowledge graph in Semantica:
 
-- `NERExtractor` — named entity recognition with confidence scores and source attribution
-- `RelationExtractor` — typed relationship extraction (`founded_by`, `located_in`, and custom types)
-- `TripletExtractor` — direct `(subject, predicate, object)` triplet generation for RDF output
-- `EventDetector` — event detection with participants, temporal context, and confidence
+- `NERExtractor`: named entity recognition with confidence scores and source attribution
+- `RelationExtractor`: typed relationship extraction (`founded_by`, `located_in`, and custom types)
+- `TripletExtractor`: direct `(subject, predicate, object)` triplet generation for RDF output
+- `EventDetector`: event detection with participants, temporal context, and confidence
 - Three extraction modes on every extractor: `"pattern"` (no API key), `"huggingface"`, `"llm"`
 
 
@@ -67,7 +67,7 @@ entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
 | Class | Role |
 | :--- | :--- |
 | `NamedEntityRecognizer` | High-level NER with confidence thresholding and overlap merging |
-| `NERExtractor` | Core NER implementation — use directly for simplicity |
+| `NERExtractor` | Core NER implementation: use directly for simplicity |
 | `RelationExtractor` | Typed relationship extraction (`founded_by`, `located_in`, ...) |
 | `TripletExtractor` | Direct `(subject, predicate, object)` triplet generation for RDF output |
 | `EventDetector` | Event detection with participants, temporal context, and confidence scores |
@@ -79,12 +79,12 @@ entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
 ## Method Selection Guide
 
 <Tabs>
-  <Tab title="Pattern — No Setup">
+  <Tab title="Pattern: No Setup">
     Zero dependencies, no API key required. Uses spaCy rules and regex to match standard entity types.
 
     | | |
     | :-- | :-- |
-    | **Setup** | None — works out of the box |
+    | **Setup** | None: works out of the box |
     | **Cost** | Free |
     | **Accuracy** | Good for standard entity types |
     | **Best for** | Quick prototyping, batch processing, air-gapped systems |
@@ -99,7 +99,7 @@ entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
     relationships = rel.extract(text, entities=entities)
     ```
   </Tab>
-  <Tab title="HuggingFace — Custom Models">
+  <Tab title="HuggingFace: Custom Models">
     Use any pre-trained or fine-tuned transformer model. Free inference, runs locally.
 
     | | |
@@ -121,14 +121,14 @@ entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
     entities = ner.extract(text, model="d4data/biomedical-ner-all")
     ```
   </Tab>
-  <Tab title="LLM — Best Accuracy">
+  <Tab title="LLM: Best Accuracy">
     Highest accuracy for complex schemas and custom entity types. Requires an LLM API key.
 
     | | |
     | :-- | :-- |
     | **Setup** | `pip install semantica[llm-groq]` + API key |
     | **Cost** | Depends on provider |
-    | **Accuracy** | Highest — handles complex types and context |
+    | **Accuracy** | Highest: handles complex types and context |
     | **Best for** | Production, custom entity types, complex relation schemas |
 
     ```python
@@ -148,7 +148,7 @@ entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
     ```
   </Tab>
   <Tab title="Fallback Chain">
-    Try methods in priority order — guarantees non-empty results even when the preferred method is unavailable.
+    Try methods in priority order: guarantees non-empty results even when the preferred method is unavailable.
 
     ```python
     from semantica.semantic_extract import NERExtractor, RelationExtractor
@@ -157,7 +157,7 @@ entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
     ner = NERExtractor(method=["llm", "pattern"])
     rel = RelationExtractor(method=["llm", "pattern"])
 
-    # Always returns results — safe for production pipelines
+    # Always returns results: safe for production pipelines
     entities      = ner.extract(text)
     relationships = rel.extract(text, entities=entities)
     ```
@@ -225,15 +225,15 @@ from semantica.semantic_extract import NERExtractor
 from semantica.llms import Groq
 import os
 
-# Pattern-based — fast, no API key, good for standard entity types
+# Pattern-based: fast, no API key, good for standard entity types
 ner = NERExtractor(method="pattern")
 entities = ner.extract("Apple Inc. was founded by Steve Jobs in Cupertino.")
 
-# HuggingFace-based — custom models, no API cost
+# HuggingFace-based: custom models, no API cost
 ner = NERExtractor(method="huggingface")
 entities = ner.extract(text, model="dslim/bert-base-NER", device="cpu")
 
-# LLM-based — best accuracy, handles complex schemas and custom types
+# LLM-based: best accuracy, handles complex schemas and custom types
 llm = Groq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
 ner = NERExtractor(method="llm", llm_provider=llm, max_retries=3)
 entities = ner.extract(text)
@@ -285,11 +285,11 @@ Output format:
 
 Available methods:
 
-- `"pattern"` — rule-based pattern matching
-- `"dependency"` — spaCy dependency parsing
-- `"cooccurrence"` — proximity-based co-occurrence
-- `"huggingface"` — custom models
-- `"llm"` — highest accuracy, requires API key
+- `"pattern"`: rule-based pattern matching
+- `"dependency"`: spaCy dependency parsing
+- `"cooccurrence"`: proximity-based co-occurrence
+- `"huggingface"`: custom models
+- `"llm"`: highest accuracy, requires API key
 
 
 ## TripletExtractor
@@ -327,11 +327,11 @@ for event in events:
 
 Output fields per event:
 
-- `type` — event category (e.g. `"founding"`, `"acquisition"`)
-- `participants` — list of entities with roles
-- `temporal` — date or time reference
-- `location` — location entity (when present)
-- `confidence` — extraction confidence score
+- `type`: event category (e.g. `"founding"`, `"acquisition"`)
+- `participants`: list of entities with roles
+- `temporal`: date or time reference
+- `location`: location entity (when present)
+- `confidence`: extraction confidence score
 
 
 ## CoreferenceResolver
@@ -384,7 +384,7 @@ results = ner.extract(documents)  # Entities include document_id in metadata
 
 ## Using All Extractors Together
 
-The standard extraction pipeline — entities → relationships → triplets:
+The standard extraction pipeline: entities → relationships → triplets:
 
 ```python
 from semantica.semantic_extract import NERExtractor, RelationExtractor, TripletExtractor

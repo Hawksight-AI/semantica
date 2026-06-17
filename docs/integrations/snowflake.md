@@ -1,4 +1,4 @@
----
+﻿---
 title: "Snowflake Integration"
 description: "Ingest structured data from Snowflake tables and queries into Semantica's KG pipeline."
 icon: "snowflake"
@@ -34,7 +34,7 @@ ingestor = SnowflakeIngestor(
 )
 
 data = ingestor.ingest_table("CUSTOMERS")
-print(f"Retrieved {data.row_count} rows — columns: {data.columns}")
+print(f"Retrieved {data.row_count} rows: columns: {data.columns}")
 ```
 
 <Tip>
@@ -64,7 +64,7 @@ Use environment variables (or a `.env` file with `python-dotenv`) to keep creden
         warehouse="COMPUTE_WH",
     )
     ```
-    Preferred for production — no password stored in config.
+    Preferred for production: no password stored in config.
   </Tab>
   <Tab title="OAuth">
     ```python
@@ -165,7 +165,7 @@ from semantica.ingest import SnowflakeConnector
 
 connector = SnowflakeConnector(account="myaccount", user="myuser", password="mypassword")
 if not connector.test_connection():
-    print("Connection failed — check credentials and account identifier")
+    print("Connection failed: check credentials and account identifier")
 ```
 
 

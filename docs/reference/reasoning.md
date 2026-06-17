@@ -1,4 +1,4 @@
----
+﻿---
 title: "Reasoning Module"
 description: "Forward chaining, Rete, deductive, abductive, SPARQL, Datalog, and temporal reasoning with explainable inference paths."
 icon: "microchip"
@@ -7,7 +7,7 @@ icon: "microchip"
 `semantica.reasoning` derives new knowledge from existing facts using logical rules:
 
 - Six reasoning engines: forward chaining, Rete, SPARQL, Datalog, temporal, and LLM-powered GraphReasoner
-- Every engine produces explainable inference paths — traceable chains of rules and facts
+- Every engine produces explainable inference paths: traceable chains of rules and facts
 - `DatalogReasoner` guarantees termination via semi-naive fixpoint evaluation
 - `TemporalReasoningEngine` implements all 13 Allen interval algebra relations
 - `ExplanationGenerator` produces step-by-step natural-language justifications
@@ -18,11 +18,11 @@ icon: "microchip"
 | Class | Role |
 | :--- | :--- |
 | `Reasoner` | Forward-chaining inference: `add_fact`, `add_rule`, `forward_chain`, `backward_chain`, `infer_facts` |
-| `GraphReasoner` | LLM-powered reasoning over a KG dict — answers natural language queries via `reason(graph, query)` |
+| `GraphReasoner` | LLM-powered reasoning over a KG dict: answers natural language queries via `reason(graph, query)` |
 | `ReteEngine` | Rete pattern matching: `build_network`, `add_fact`, `match_patterns`, `execute_matches` |
 | `SPARQLReasoner` | Rule-based SPARQL query expansion via `execute_query`, `expand_query`, `infer_results` |
-| `DatalogReasoner` | Recursive Horn clause rules with semi-naive fixpoint — `add_fact`, `add_rule`, `derive_all`, `query` |
-| `TemporalReasoningEngine` | All 13 Allen interval algebra relations — `relation(a, b)`, `overlaps`, `contains`, `active_at` |
+| `DatalogReasoner` | Recursive Horn clause rules with semi-naive fixpoint: `add_fact`, `add_rule`, `derive_all`, `query` |
+| `TemporalReasoningEngine` | All 13 Allen interval algebra relations: `relation(a, b)`, `overlaps`, `contains`, `active_at` |
 | `ExplanationGenerator` | Step-by-step explanations via `generate_explanation(inference_result)` |
 | `Rule` | IF/THEN rule: `{rule_id, name, conditions, conclusion, rule_type, confidence, priority}` |
 | `Fact` | Working-memory fact: `{fact_id, predicate, arguments}` |
@@ -33,10 +33,10 @@ icon: "microchip"
 
 <CardGroup cols={2}>
   <Card title="Reasoner" icon="arrow-right-arrow-left" href="#reasoner-forwardbackward-chaining">
-    IF/THEN rules, forward and backward chaining. **Start here** — covers 90% of use cases. No query language required.
+    IF/THEN rules, forward and backward chaining. **Start here**: covers 90% of use cases. No query language required.
   </Card>
   <Card title="GraphReasoner" icon="robot" href="#graphreasoner">
-    Natural language queries over a knowledge graph via LLM. No SPARQL or rules — just ask a question.
+    Natural language queries over a knowledge graph via LLM. No SPARQL or rules: just ask a question.
   </Card>
   <Card title="DatalogReasoner" icon="code" href="#datalogreasoner">
     Recursive Horn clause rules with guaranteed termination. Use for complex multi-hop transitive rules.
@@ -69,7 +69,7 @@ reasoner.add_fact("Employee(Alice)")
 # Add an IF-THEN rule using the string form
 reasoner.add_rule("IF Manager(?x) THEN HasAuthority(?x)")
 
-# Run forward chaining — returns List[InferenceResult]
+# Run forward chaining: returns List[InferenceResult]
 results = reasoner.forward_chain()
 for r in results:
     print(r.conclusion)         # "HasAuthority(Alice)"
@@ -97,7 +97,7 @@ reasoner.add_rule(rule)
 
 ## Reasoner (Forward/Backward Chaining)
 
-**`Reasoner`** is the unified entry point for rule-based inference — iterates facts and rules to a **fixpoint**, then optionally proves a specific goal via backward chaining:
+**`Reasoner`** is the unified entry point for rule-based inference: iterates facts and rules to a **fixpoint**, then optionally proves a specific goal via backward chaining:
 
 ```python
 from semantica.reasoning import Reasoner, Rule, RuleType, InferenceResult
@@ -111,14 +111,14 @@ reasoner.add_fact("Employee(John)")
 # IF-THEN string form
 reasoner.add_rule("IF Manager(?x) AND Employee(?x) THEN SeniorStaff(?x)")
 
-# Forward chaining — iterates until fixpoint
+# Forward chaining: iterates until fixpoint
 results = reasoner.forward_chain()
 for r in results:
     print(r.conclusion)   # e.g. "SeniorStaff(John)"
     print(r.premises)     # list of premise strings matched
     print(r.confidence)   # float
 
-# Backward chaining — prove a specific goal
+# Backward chaining: prove a specific goal
 result = reasoner.backward_chain("SeniorStaff(John)", max_depth=10)
 if result:
     print(f"Proven: {result.conclusion}")
@@ -149,7 +149,7 @@ conclusions = reasoner.infer_facts(
 ```python
 from semantica.reasoning import Rule, Fact, RuleType
 
-# Rule — all fields
+# Rule: all fields
 rule = Rule(
     rule_id="rule_001",            # required: unique identifier
     name="manager_authority",      # required: display name
@@ -160,7 +160,7 @@ rule = Rule(
     priority=0,                     # higher priority rules run first
 )
 
-# Fact — for working with the Rete engine directly
+# Fact: for working with the Rete engine directly
 from semantica.reasoning import Fact
 fact = Fact(
     fact_id="f001",                # required: unique identifier
@@ -173,12 +173,12 @@ fact = Fact(
 
 ## GraphReasoner
 
-**`GraphReasoner`** uses an LLM to answer **natural language queries** over a knowledge graph dict — no SPARQL or rule authoring required:
+**`GraphReasoner`** uses an LLM to answer **natural language queries** over a knowledge graph dict: no SPARQL or rule authoring required:
 
 ```python
 from semantica.reasoning import GraphReasoner
 
-# Initialize — uses openai by default; override via kwargs
+# Initialize: uses openai by default; override via kwargs
 reasoner = GraphReasoner(provider="openai", model="gpt-4o-mini")
 
 kg = {
@@ -250,7 +250,7 @@ engine.reset()
 
 ## SPARQLReasoner
 
-**`SPARQLReasoner`** extends SPARQL with **inference rule expansion** — add IF-THEN rules and they are automatically woven into queries before execution:
+**`SPARQLReasoner`** extends SPARQL with **inference rule expansion**: add IF-THEN rules and they are automatically woven into queries before execution:
 
 ```python
 from semantica.reasoning import SPARQLReasoner
@@ -260,7 +260,7 @@ reasoner = SPARQLReasoner()
 # Add an inference rule (IF-THEN string form)
 reasoner.add_inference_rule("IF is_a(?x, Manager) THEN has_authority(?x)")
 
-# Execute a query — returns SPARQLQueryResult
+# Execute a query: returns SPARQLQueryResult
 result = reasoner.execute_query("""
     PREFIX ex: <http://example.org/>
     SELECT ?person ?company WHERE {
@@ -296,14 +296,14 @@ SPARQLReasoner(
 
 ## DatalogReasoner
 
-Pure-Python bottom-up semi-naive fixpoint evaluation for recursive Horn clause rules. Termination is **guaranteed** — the engine detects fixpoint convergence and stops:
+Pure-Python bottom-up semi-naive fixpoint evaluation for recursive Horn clause rules. Termination is **guaranteed**: the engine detects fixpoint convergence and stops:
 
 ```python
 from semantica.reasoning import DatalogReasoner, DatalogFact
 
 datalog = DatalogReasoner()
 
-# Add base facts — string form is the simplest
+# Add base facts: string form is the simplest
 datalog.add_fact("parent(alice, bob)")
 datalog.add_fact("parent(bob, charlie)")
 
@@ -314,11 +314,11 @@ datalog.add_fact(DatalogFact(predicate="parent", args=("charlie", "dave")))
 datalog.add_rule("ancestor(X, Y) :- parent(X, Y).")
 datalog.add_rule("ancestor(X, Z) :- parent(X, Y), ancestor(Y, Z).")
 
-# Evaluate to fixpoint — returns all derived fact strings
+# Evaluate to fixpoint: returns all derived fact strings
 all_facts = datalog.derive_all()
 # e.g. ["parent(alice, bob)", "parent(bob, charlie)", ..., "ancestor(alice, bob)", ...]
 
-# Query with variable pattern — variables start with uppercase or ?
+# Query with variable pattern: variables start with uppercase or ?
 results = datalog.query("ancestor(alice, ?Z)")
 # → [{"Z": "bob"}, {"Z": "charlie"}, {"Z": "dave"}]
 
@@ -331,11 +331,11 @@ datalog.clear()
 ```python
 from semantica.reasoning import DatalogFact, DatalogRule
 
-# DatalogFact — ground fact; args must all be constants (lowercase start)
+# DatalogFact: ground fact; args must all be constants (lowercase start)
 fact = DatalogFact(predicate="parent", args=("alice", "bob"))
 
-# DatalogRule — parsed from string; head and body are set by the parser
-# Use add_rule("head(X, Y) :- body(X, Z), body2(Z, Y).") — do not construct directly
+# DatalogRule: parsed from string; head and body are set by the parser
+# Use add_rule("head(X, Y) :- body(X, Z), body2(Z, Y)."): do not construct directly
 ```
 
 ### DatalogReasoner Methods
@@ -345,14 +345,14 @@ fact = DatalogFact(predicate="parent", args=("alice", "bob"))
 | `add_fact(fact)` | `None` | Add string, dict, or `DatalogFact`; constants must be lowercase-starting |
 | `add_rule(rule_str)` | `None` | Parse and add a Horn clause string like `"ancestor(X,Y) :- parent(X,Y)."` |
 | `derive_all()` | `List[str]` | Run semi-naive fixpoint evaluation; returns all facts as strings |
-| `query(pattern)` | `List[dict]` | Query derived facts — auto-runs `derive_all()` if needed |
+| `query(pattern)` | `List[dict]` | Query derived facts: auto-runs `derive_all()` if needed |
 | `load_from_graph(graph)` | `int` | Load a ContextGraph's nodes/edges as Datalog facts; returns count added |
 | `clear()` | `None` | Clear all facts and rules |
 
 
 ## TemporalReasoningEngine
 
-Pure-Python Allen interval algebra — all 13 relations, no LLM calls:
+Pure-Python Allen interval algebra: all 13 relations, no LLM calls:
 
 ```python
 from datetime import datetime
@@ -363,7 +363,7 @@ engine = TemporalReasoningEngine()
 ceo_tenure   = TemporalInterval(start=datetime(1997, 9, 16), end=datetime(2011, 8, 24))
 board_member = TemporalInterval(start=datetime(2000, 1,  1), end=datetime(2012, 6,  1))
 
-# Compute Allen relation — method is relation(), not get_relation()
+# Compute Allen relation: method is relation(), not get_relation()
 rel = engine.relation(ceo_tenure, board_member)
 # → IntervalRelation.DURING  (ceo_tenure is fully inside board_member)
 
@@ -413,7 +413,7 @@ results = reasoner.forward_chain()
 # ExplanationGenerator takes no positional args
 generator = ExplanationGenerator()
 
-# Pass an InferenceResult object — not a dict
+# Pass an InferenceResult object: not a dict
 explanation = generator.generate_explanation(results[0])
 
 print(f"Type:       {explanation.explanation_type}")   # "inference"
@@ -472,7 +472,7 @@ step.confidence     # float
 | `TemporalReasoningEngine` | Time interval relationships | Always | `relation(a, b)` |
 
 <Tip>
-  For recursive rules (e.g. ancestor, reachability, transitivity), use `DatalogReasoner` — it guarantees termination via semi-naive bottom-up fixpoint evaluation. `Reasoner.forward_chain()` has a `max_iterations` cap (default 50) and will silently stop early with deep recursion.
+  For recursive rules (e.g. ancestor, reachability, transitivity), use `DatalogReasoner`: it guarantees termination via semi-naive bottom-up fixpoint evaluation. `Reasoner.forward_chain()` has a `max_iterations` cap (default 50) and will silently stop early with deep recursion.
 </Tip>
 
 <Warning>

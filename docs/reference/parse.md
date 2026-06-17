@@ -1,13 +1,13 @@
----
+﻿---
 title: "Parse Module"
-description: "Document parsing and text extraction — DocumentParser for standard formats and DoclingParser for complex layouts."
+description: "Document parsing and text extraction: DocumentParser for standard formats and DoclingParser for complex layouts."
 icon: "file-lines"
 ---
 
 **`semantica.parse`** extracts **structured text, layout, tables, and metadata** from unstructured documents:
 
-- `DocumentParser` — broad format support (PDF, DOCX, HTML, JSON, CSV, PPTX, XLSX), no extra dependencies
-- `DoclingParser` — complex layouts, merged-cell tables, multi-column PDFs, OCR (`pip install docling`)
+- `DocumentParser`: broad format support (PDF, DOCX, HTML, JSON, CSV, PPTX, XLSX), no extra dependencies
+- `DoclingParser`: complex layouts, merged-cell tables, multi-column PDFs, OCR (`pip install docling`)
 - Both return a consistent `dict` with `full_text`, `metadata`, `pages`, and `tables` keys
 - `parse_batch()` processes multiple files in parallel with configurable error handling
 
@@ -60,14 +60,14 @@ print(f"Extracted {len(text)} characters from {metadata.get('page_count', 0)} pa
 ## Parser Selection Guide
 
 <Tabs>
-  <Tab title="DocumentParser — Standard">
+  <Tab title="DocumentParser: Standard">
     Zero extra dependencies. Use for clean PDFs, Word docs, HTML, and structured formats.
 
     | | |
     | :-- | :-- |
     | **Formats** | PDF, DOCX, HTML, TXT, JSON, CSV, PPTX, XLSX |
     | **Speed** | Fast |
-    | **Setup** | None — included in base install |
+    | **Setup** | None: included in base install |
     | **Best for** | Clean documents, broad format support, production pipelines |
 
     ```python
@@ -81,7 +81,7 @@ print(f"Extracted {len(text)} characters from {metadata.get('page_count', 0)} pa
     print(len(result.get("pages", [])))  # Per-page breakdown
     ```
   </Tab>
-  <Tab title="DoclingParser — Complex Layouts">
+  <Tab title="DoclingParser: Complex Layouts">
     Superior table extraction, OCR, multi-column PDFs. Requires `pip install docling`.
 
     | | |
@@ -130,7 +130,7 @@ print(f"Extracted {len(text)} characters from {metadata.get('page_count', 0)} pa
         print(f"{item['file_path']}: {len(item['result']['full_text'])} chars")
 
     for item in results["failed"]:
-        print(f"FAILED: {item['file_path']} — {item['error']}")
+        print(f"FAILED: {item['file_path']}: {item['error']}")
     ```
 
     <Note>
@@ -143,7 +143,7 @@ print(f"Extracted {len(text)} characters from {metadata.get('page_count', 0)} pa
 
 | Class | Role |
 | :--- | :--- |
-| `DocumentParser` | Auto-detects format — delegates to format-specific parser (PDF, DOCX, HTML, JSON, CSV, ...) |
+| `DocumentParser` | Auto-detects format: delegates to format-specific parser (PDF, DOCX, HTML, JSON, CSV, ...) |
 | `DoclingParser` | Complex layouts, merged-cell tables, multi-column PDFs, and OCR (`pip install docling`) |
 | `DoclingMetadata` | Document metadata from Docling parsing |
 | `PDFParser` | PDF text and metadata extraction |
@@ -171,7 +171,7 @@ Supported formats: PDF, DOCX, HTML, TXT, JSON, CSV, PPTX, XLSX.
 
 ## DoclingParser
 
-Advanced parser using the Docling backend — handles layouts that `DocumentParser` cannot:
+Advanced parser using the Docling backend: handles layouts that `DocumentParser` cannot:
 
 ```bash
 pip install docling
@@ -275,7 +275,7 @@ metadata = {
 
 ## Integration with FileIngestor
 
-The most common pattern — ingest a directory then parse each source:
+The most common pattern: ingest a directory then parse each source:
 
 ```python
 from semantica.ingest import FileIngestor

@@ -1,4 +1,4 @@
----
+﻿---
 title: "LLMs Module"
 description: "Unified interface for Groq, OpenAI, LiteLLM (Anthropic, Gemini, Ollama, DeepSeek, Azure, Bedrock, 100+ models), and HuggingFace."
 icon: "microchip"
@@ -8,7 +8,7 @@ icon: "microchip"
 
 - Every provider is a drop-in replacement for the `llm_provider=` parameter in extractors, reasoners, and agents
 - `LiteLLM` routes to 100+ providers with a single class and model-string prefixes
-- `HuggingFaceLLM` runs fully on-premise — no API key, no network calls
+- `HuggingFaceLLM` runs fully on-premise: no API key, no network calls
 - Structured output via `generate_with_schema()` for JSON extraction from any provider
 - Streaming, tool use, and `generate_batch()` for bulk inference
 
@@ -32,21 +32,21 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
 
 ## What You Get
 
-- **Unified `LLMProvider` interface** — swap providers with a one-line change, no application code changes
-- **`LiteLLM`** — single class for 100+ providers using model-string routing
-- **Local models** — `HuggingFaceLLM` runs fully on-premise, no API key
-- **Streaming** — token-by-token output for low-latency UX
-- **Custom gateways** — point `OpenAI` at any OpenAI-compatible endpoint via `base_url`
+- **Unified `LLMProvider` interface**: swap providers with a one-line change, no application code changes
+- **`LiteLLM`**: single class for 100+ providers using model-string routing
+- **Local models**: `HuggingFaceLLM` runs fully on-premise, no API key
+- **Streaming**: token-by-token output for low-latency UX
+- **Custom gateways**: point `OpenAI` at any OpenAI-compatible endpoint via `base_url`
 
 ## Choosing a Provider
 
 <Tabs>
-  <Tab title="Groq — Getting Started">
+  <Tab title="Groq: Getting Started">
     Free tier, fastest inference, zero setup friction. Best for development and high-throughput extraction pipelines.
 
     | | |
     | :-- | :-- |
-    | **Speed** | Very fast — 100+ tok/s |
+    | **Speed** | Very fast: 100+ tok/s |
     | **Cost** | Free tier available |
     | **Context** | 128k |
     | **Best for** | Development, high-throughput extraction |
@@ -64,7 +64,7 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
 
     Get your free key at [console.groq.com](https://console.groq.com).
   </Tab>
-  <Tab title="OpenAI — Production">
+  <Tab title="OpenAI: Production">
     Highest accuracy, best JSON mode and function calling. Use for production pipelines where extraction quality matters.
 
     | | |
@@ -86,8 +86,8 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
     )
     ```
   </Tab>
-  <Tab title="Ollama — Local / Air-gapped">
-    Fully on-premise — no API key, no data leaves your infrastructure. Required for air-gapped deployments.
+  <Tab title="Ollama: Local / Air-gapped">
+    Fully on-premise: no API key, no data leaves your infrastructure. Required for air-gapped deployments.
 
     | | |
     | :-- | :-- |
@@ -114,7 +114,7 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
       No API key required. Ensure the Ollama server is running (`ollama serve`) before creating the `LiteLLM` instance.
     </Note>
   </Tab>
-  <Tab title="Claude — Reasoning">
+  <Tab title="Claude: Reasoning">
     Largest context window, best multi-hop reasoning, highest safety bar. Use for complex analysis and long-document extraction.
 
     | | |
@@ -135,7 +135,7 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
     )
     ```
   </Tab>
-  <Tab title="DeepSeek — Cost Optimization">
+  <Tab title="DeepSeek: Cost Optimization">
     Lowest cost per token for high-volume workloads. Strong on coding and structured data extraction.
 
     | | |
@@ -257,7 +257,7 @@ llm = LiteLLM(model="anthropic/claude-opus-4-5",         api_key=os.getenv("ANTH
 # Google Gemini
 llm = LiteLLM(model="gemini/gemini-1.5-pro",             api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Ollama (local — no API key)
+# Ollama (local: no API key)
 llm = LiteLLM(model="ollama/llama3.2:3b",                api_base="http://localhost:11434")
 
 # DeepSeek
@@ -282,12 +282,12 @@ llm = HuggingFaceLLM(
     max_new_tokens=512,
     temperature=0.1,
 )
-# Bring your own model — full local control, no API key
+# Bring your own model: full local control, no API key
 ```
 
 </CodeGroup>
 
-## LiteLLM — 100+ Providers
+## LiteLLM: 100+ Providers
 
 `LiteLLM` is the recommended way to access any provider not directly exported by `semantica.llms`. Use the `provider/model` string format:
 
@@ -317,7 +317,7 @@ response = providers["Anthropic"].generate("Explain GraphRAG in one paragraph.")
 
 ## Custom / Enterprise Gateways
 
-Any OpenAI-compatible endpoint — internal routing layers, Qwen proxies, or private LLaMA deployments:
+Any OpenAI-compatible endpoint: internal routing layers, Qwen proxies, or private LLaMA deployments:
 
 ```python
 import os

@@ -1,6 +1,6 @@
----
+﻿---
 title: "Conflicts Module"
-description: "Multi-source conflict detection and resolution — value, type, temporal, and logical conflicts with investigation guides."
+description: "Multi-source conflict detection and resolution: value, type, temporal, and logical conflicts with investigation guides."
 icon: "triangle-exclamation"
 ---
 
@@ -10,7 +10,7 @@ icon: "triangle-exclamation"
 - Seven resolution strategies: voting, credibility-weighted, most-recent, first-seen, highest-confidence, manual review, expert review
 - `InvestigationGuideGenerator` produces step-by-step investigation instructions for manual resolution
 - `SourceTracker` maps each property value to its contributing source for full attribution
-- Conflicts are surfaced explicitly — never silently corrupting the knowledge graph
+- Conflicts are surfaced explicitly: never silently corrupting the knowledge graph
 
 
 ## Why Detect Conflicts?
@@ -19,11 +19,11 @@ When you ingest data from multiple sources, contradictions are inevitable. One a
 
 Semantica's conflict detection makes disagreements explicit and actionable:
 
-- **Value conflicts** — SEC says revenue is $391B; Reuters says $383B
-- **Type conflicts** — "Python" is a `ProgrammingLanguage` in one source, a `Snake` species in another
-- **Temporal conflicts** — a CEO had two different employers during overlapping date ranges
-- **Logical conflicts** — an entity simultaneously holds two mutually exclusive properties
-- **Relationship conflicts** — the same relationship has inconsistent cardinality or properties across sources
+- **Value conflicts**: SEC says revenue is $391B; Reuters says $383B
+- **Type conflicts**: "Python" is a `ProgrammingLanguage` in one source, a `Snake` species in another
+- **Temporal conflicts**: a CEO had two different employers during overlapping date ranges
+- **Logical conflicts**: an entity simultaneously holds two mutually exclusive properties
+- **Relationship conflicts**: the same relationship has inconsistent cardinality or properties across sources
 
 ## Exported Classes
 
@@ -118,7 +118,7 @@ Semantica's conflict detection makes disagreements explicit and actionable:
 
     # Auto-resolve low-severity conflicts
     low_conflicts = severity_details.get("low", [])
-    # Re-fetch full Conflict objects if needed — severity_details contains dicts
+    # Re-fetch full Conflict objects if needed: severity_details contains dicts
     auto_resolved = resolver.resolve_conflicts(
         conflicts,
         strategy=ResolutionStrategy.CREDIBILITY_WEIGHTED,
@@ -203,7 +203,7 @@ for result in results:
 
 <Tabs>
   <Tab title="CREDIBILITY_WEIGHTED (recommended)">
-    Weights each source's value by its assigned credibility score — favors authoritative sources automatically:
+    Weights each source's value by its assigned credibility score: favors authoritative sources automatically:
 
     ```python
     from semantica.conflicts import ConflictResolver, SourceTracker, ResolutionStrategy
@@ -223,7 +223,7 @@ for result in results:
     **Best for:** sources with known reliability rankings (SEC > blog).
   </Tab>
   <Tab title="VOTING">
-    Majority vote — most common value across sources wins:
+    Majority vote: most common value across sources wins:
 
     ```python
     results = resolver.resolve_conflicts(conflicts, strategy=ResolutionStrategy.VOTING)
@@ -233,16 +233,16 @@ for result in results:
   </Tab>
   <Tab title="MOST_RECENT / FIRST_SEEN">
     ```python
-    # Most recent source wins — for fast-changing facts
+    # Most recent source wins: for fast-changing facts
     results = resolver.resolve_conflicts(conflicts, strategy=ResolutionStrategy.MOST_RECENT)
 
-    # First seen wins — for stable facts (founding date, original name)
+    # First seen wins: for stable facts (founding date, original name)
     results = resolver.resolve_conflicts(conflicts, strategy=ResolutionStrategy.FIRST_SEEN)
     ```
   </Tab>
   <Tab title="MANUAL_REVIEW / EXPERT_REVIEW">
     ```python
-    # Flag for human review — use with InvestigationGuideGenerator
+    # Flag for human review: use with InvestigationGuideGenerator
     results   = resolver.resolve_conflicts(conflicts, strategy=ResolutionStrategy.MANUAL_REVIEW)
     generator = InvestigationGuideGenerator()
 
@@ -265,7 +265,7 @@ for result in results:
     | First seen | `FIRST_SEEN` | Stable facts: founding date, original name |
     | Highest confidence | `HIGHEST_CONFIDENCE` | Extraction pipeline outputs confidence scores |
     | Manual review | `MANUAL_REVIEW` | High-stakes decisions, regulated data |
-    | Expert review | `EXPERT_REVIEW` | Domain-specific ambiguity — escalate to a specialist |
+    | Expert review | `EXPERT_REVIEW` | Domain-specific ambiguity: escalate to a specialist |
   </Tab>
 </Tabs>
 
@@ -312,7 +312,7 @@ chain = tracker.get_traceability_chain("apple_inc")
 
 **Key behaviours:**
 - Credibility scores default to 0.50 for any source not explicitly set
-- `SourceTracker` stores property-level provenance — so you can trace exactly which source contributed each value
+- `SourceTracker` stores property-level provenance: so you can trace exactly which source contributed each value
 
 ## ConflictAnalyzer
 
@@ -334,9 +334,9 @@ for t in trends:
 ```
 
 **Key behaviours:**
-- `analyze_conflicts()["patterns"]` returns a list of `ConflictPattern` objects — use `pattern.pattern_type` and `pattern.frequency` to find systemic data quality issues
-- `analyze_conflicts()["by_source"]` includes `counts` and `top_sources` — sources appearing in many conflicts may have upstream data quality problems
-- `analyze_trends()` returns a list of per-period dicts (`period`, `conflict_count`, `trend`, `trend_direction`) — `trend` is `"increasing"`, `"decreasing"`, or `"stable"`
+- `analyze_conflicts()["patterns"]` returns a list of `ConflictPattern` objects: use `pattern.pattern_type` and `pattern.frequency` to find systemic data quality issues
+- `analyze_conflicts()["by_source"]` includes `counts` and `top_sources`: sources appearing in many conflicts may have upstream data quality problems
+- `analyze_trends()` returns a list of per-period dicts (`period`, `conflict_count`, `trend`, `trend_direction`): `trend` is `"increasing"`, `"decreasing"`, or `"stable"`
 
 ## InvestigationGuideGenerator
 
@@ -439,7 +439,7 @@ class InvestigationStep:
 ## Tips and Common Pitfalls
 
 <Warning>
-  **Detect before you merge, not after.** Run conflict detection on raw entity data before deduplication and graph construction. Detecting conflicts in a live graph that already contains merged entities is harder — you lose the original source attribution.
+  **Detect before you merge, not after.** Run conflict detection on raw entity data before deduplication and graph construction. Detecting conflicts in a live graph that already contains merged entities is harder: you lose the original source attribution.
 </Warning>
 
 <Warning>
@@ -447,7 +447,7 @@ class InvestigationStep:
 </Warning>
 
 <Tip>
-  **Don't auto-resolve everything.** Use `MANUAL_REVIEW` for conflicts with `severity == "critical"` or `severity == "high"` — high severity means the disagreement is large and the stakes of getting it wrong are high.
+  **Don't auto-resolve everything.** Use `MANUAL_REVIEW` for conflicts with `severity == "critical"` or `severity == "high"`: high severity means the disagreement is large and the stakes of getting it wrong are high.
 </Tip>
 
 <Warning>

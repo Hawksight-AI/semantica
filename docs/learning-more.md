@@ -1,10 +1,10 @@
----
+﻿---
 title: "Learning More"
 description: "Structured learning paths, configuration reference, troubleshooting, and performance guidance."
 icon: "graduation-cap"
 ---
 
-Whether you're running your first pipeline or deploying Semantica in production, this page gives you a structured path forward — from beginner to enterprise-grade usage.
+Whether you're running your first pipeline or deploying Semantica in production, this page gives you a structured path forward: from beginner to enterprise-grade usage.
 
 
 ## Learning Paths
@@ -30,19 +30,19 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
     <Steps>
       <Step title="Set up your environment">
-        [Installation Guide](installation) — virtual environments, optional extras, platform-specific fixes.
+        [Installation Guide](installation): virtual environments, optional extras, platform-specific fixes.
       </Step>
       <Step title="Understand the core ideas">
-        [Core Concepts](concepts) — what knowledge graphs are, how embeddings work, what extraction does.
+        [Core Concepts](concepts): what knowledge graphs are, how embeddings work, what extraction does.
       </Step>
       <Step title="Run your first example">
-        [Getting Started](getting-started) — 5-minute code walkthrough with pattern-based extraction (no API key needed).
+        [Getting Started](getting-started): 5-minute code walkthrough with pattern-based extraction (no API key needed).
       </Step>
       <Step title="Build your first knowledge graph">
-        [Quickstart Tutorial](quickstart) — full 6-step pipeline from ingestion to visualization.
+        [Quickstart Tutorial](quickstart): full 6-step pipeline from ingestion to visualization.
       </Step>
       <Step title="Explore interactively">
-        [Welcome to Semantica notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/01_Welcome_to_Semantica.ipynb) — Jupyter walkthrough of every module.
+        [Welcome to Semantica notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/01_Welcome_to_Semantica.ipynb): Jupyter walkthrough of every module.
       </Step>
     </Steps>
   </Tab>
@@ -51,16 +51,16 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
     <Steps>
       <Step title="Learn every module">
-        [Modules Guide](modules) — all 27 modules with code examples and common pipeline chains.
+        [Modules Guide](modules): all 27 modules with code examples and common pipeline chains.
       </Step>
       <Step title="Build production knowledge graphs">
-        [Building Knowledge Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb) — multi-source, deduplication, conflict resolution.
+        [Building Knowledge Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb): multi-source, deduplication, conflict resolution.
       </Step>
       <Step title="Add semantic search">
-        [Embeddings notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb) — providers, pooling strategies, vector stores.
+        [Embeddings notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb): providers, pooling strategies, vector stores.
       </Step>
       <Step title="Build a GraphRAG system">
-        [GraphRAG Complete notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb) — hybrid retrieval, reasoning, source attribution.
+        [GraphRAG Complete notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb): hybrid retrieval, reasoning, source attribution.
       </Step>
       <Step title="Multi-source integration">
         [Multi-Source Data Integration notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb) and [Use Cases](use-cases) for domain-specific patterns.
@@ -72,19 +72,19 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
     <Steps>
       <Step title="Understand the architecture">
-        [Architecture Guide](architecture) — four-layer design, extension points, and design decisions.
+        [Architecture Guide](architecture): four-layer design, extension points, and design decisions.
       </Step>
       <Step title="Temporal intelligence">
-        [Temporal Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/04_Temporal_Graphs.ipynb) — `valid_from`/`valid_until`, Allen interval algebra, point-in-time queries.
+        [Temporal Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/04_Temporal_Graphs.ipynb): `valid_from`/`valid_until`, Allen interval algebra, point-in-time queries.
       </Step>
       <Step title="Ontology-driven knowledge bases">
-        [Ontology notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb) — auto-generation, SHACL validation, Ontology Hub (v0.5.0).
+        [Ontology notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb): auto-generation, SHACL validation, Ontology Hub (v0.5.0).
       </Step>
       <Step title="Advanced visualization">
-        [Complete Visualization Suite notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/03_Complete_Visualization_Suite.ipynb) — UMAP, t-SNE, community layouts, embedding projections.
+        [Complete Visualization Suite notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/03_Complete_Visualization_Suite.ipynb): UMAP, t-SNE, community layouts, embedding projections.
       </Step>
       <Step title="Enterprise export">
-        [Multi-Format Export notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/05_Multi_Format_Export.ipynb) — RDF with PROV-O, Parquet, Neo4j Cypher, Arrow, OWL.
+        [Multi-Format Export notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/05_Multi_Format_Export.ipynb): RDF with PROV-O, Parquet, Neo4j Cypher, Arrow, OWL.
       </Step>
     </Steps>
   </Tab>
@@ -93,7 +93,7 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
 ## Configuration Reference
 
-All settings can be overridden with environment variables — no code changes needed.
+All settings can be overridden with environment variables: no code changes needed.
 
 | Setting | Environment Variable | Default |
 | :------- | :-------------------- | :------- |
@@ -126,7 +126,7 @@ pip install "semantica[gpu]"          # GPU acceleration
 
 ### `AuthenticationError`
 
-Set your API key as an environment variable — never hardcode keys in source files:
+Set your API key as an environment variable: never hardcode keys in source files:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -189,14 +189,14 @@ set PYTHONIOENCODING=utf-8
 | :--------- | :------------------ | :---------------- |
 | Graph construction | Fast | Moderate |
 | Query performance | Moderate | Fast |
-| Scalability | Low — in-memory only | High — persistent |
+| Scalability | Low: in-memory only | High: persistent |
 | Recommended for | Development, small graphs | Production, large corpora |
 
 Use NetworkX for local development and prototyping. Switch to a persistent backend before deploying to production.
 
 ### Batch Processing
 
-Process documents in batches rather than one at a time. Configure `chunk_size` based on available RAM — a good starting point is 1,000 documents per batch on a 16 GB machine.
+Process documents in batches rather than one at a time. Configure `chunk_size` based on available RAM: a good starting point is 1,000 documents per batch on a 16 GB machine.
 
 ### Deduplication v2
 
@@ -210,10 +210,10 @@ merged   = resolver.resolve(entities, strategy="semantic_v2")  # up to 7x faster
 
 ## Security Best Practices
 
-- **API keys** — store in environment variables or a secrets manager; never commit them to version control; rotate on a schedule
-- **Sensitive data** — use local embedding models (Ollama, HuggingFace) for PII or classified content; avoid sending sensitive data to external APIs without data handling agreements
-- **Graph exports** — encrypt sensitive exports at rest; use the v0.5.0 SSRF-safe `base_url` validation when configuring custom LLM gateways
-- **XML ingestion** — always use `XMLIngestor` (v0.5.0), which uses the XXE-safe lxml backend; never parse untrusted XML with the standard library parser
+- **API keys**: store in environment variables or a secrets manager; never commit them to version control; rotate on a schedule
+- **Sensitive data**: use local embedding models (Ollama, HuggingFace) for PII or classified content; avoid sending sensitive data to external APIs without data handling agreements
+- **Graph exports**: encrypt sensitive exports at rest; use the v0.5.0 SSRF-safe `base_url` validation when configuring custom LLM gateways
+- **XML ingestion**: always use `XMLIngestor` (v0.5.0), which uses the XXE-safe lxml backend; never parse untrusted XML with the standard library parser
 
 <CardGroup cols={2}>
   <Card title="Cookbook" icon="flask" href="cookbook">

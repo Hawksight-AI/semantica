@@ -1,4 +1,4 @@
----
+﻿---
 title: "Context Module"
 description: "Agent context graphs, decision tracking, causal chains, precedent search, policy enforcement, and multi-hop GraphRAG."
 icon: "brain"
@@ -17,7 +17,7 @@ icon: "brain"
 
 | Class | Role |
 | :--- | :--- |
-| `AgentContext` | Primary entry point — memory, retrieval, decisions, graph traversal, checkpoints |
+| `AgentContext` | Primary entry point: memory, retrieval, decisions, graph traversal, checkpoints |
 | `ContextGraph` | In-memory knowledge graph with centrality, community detection, and decision tracking |
 | `AgentMemory` | Vector-backed persistent memory: `store(text)`, `retrieve(query, max_results)` |
 | `EntityLinker` | Link entity mentions to URIs; create typed edges between entity IDs |
@@ -152,7 +152,7 @@ decision_id = context.record_decision(
   </Step>
   <Step title="Find precedents and trace causal chains">
     ```python
-    # Search past decisions — prevents contradictory choices across runs
+    # Search past decisions: prevents contradictory choices across runs
     precedents = context.find_precedents("model selection reasoning", limit=5)
     for p in precedents:
         print("[{}] {}  (confidence: {:.2f})".format(p.category, p.outcome, p.confidence))
@@ -174,13 +174,13 @@ decision_id = context.record_decision(
 
 <Tabs>
   <Tab title="Vector Memory Only">
-    Fastest setup — no knowledge graph. Best for agents that need semantic search over facts without graph traversal overhead.
+    Fastest setup: no knowledge graph. Best for agents that need semantic search over facts without graph traversal overhead.
 
     ```python
     from semantica.context import AgentContext
     from semantica.vector_store import VectorStore
 
-    # Zero-graph setup — vector memory only
+    # Zero-graph setup: vector memory only
     context = AgentContext(
         vector_store=VectorStore(backend="faiss", dimension=768),
     )
@@ -198,7 +198,7 @@ decision_id = context.record_decision(
     </Check>
   </Tab>
   <Tab title="Full Agent Context">
-    Production setup — graph + decisions + analytics. Use when you need explainability and contradiction-free decision history.
+    Production setup: graph + decisions + analytics. Use when you need explainability and contradiction-free decision history.
 
     ```python
     from semantica.context import AgentContext, ContextGraph
@@ -314,7 +314,7 @@ decision_id = context.record_decision(
 | :--------- | :---- | :------- | :----------- |
 | `vector_store` | `VectorStore` | **required** | Backend for embedding-based memory retrieval |
 | `knowledge_graph` | `ContextGraph` | `None` | Enables graph-backed relationships and GraphRAG |
-| `decision_tracking` | `bool` | `False` | Activates `DecisionRecorder` — requires `knowledge_graph` to also be set |
+| `decision_tracking` | `bool` | `False` | Activates `DecisionRecorder`: requires `knowledge_graph` to also be set |
 | `retention_days` | `Optional[int]` | `30` | Auto-expire memories older than N days; `None` = keep forever |
 | `max_memories` | `int` | `10000` | Hard cap before LRU eviction |
 | `graph_expansion` | `bool` | `True` | Auto-expands graph from stored memories |
@@ -332,13 +332,13 @@ decision_id = context.record_decision(
 | Method | Returns | Description |
 | :------ | :------- | :----------- |
 | `store(content, metadata, conversation_id, user_id)` | `str` or `Dict` | Store a fact (str → memory ID) or list of documents (list → stats dict) |
-| `batch_store(items)` | `List[str]` | Store multiple items at once — returns list of memory IDs |
+| `batch_store(items)` | `List[str]` | Store multiple items at once: returns list of memory IDs |
 | `retrieve(query, max_results, min_score, use_graph, conversation_id)` | `List[Dict]` | Semantic retrieval; auto-selects GraphRAG if `knowledge_graph` is set |
 | `forget(memory_id, conversation_id, days_old)` | `int` | Delete memories by ID, conversation, or age |
 | `update(memory_id, content, metadata)` | `bool` | Update content or metadata of a stored memory |
 | `get_memory(memory_id)` | `Optional[Dict]` | Fetch a specific memory by ID |
 | `stats()` | `Dict` | Memory counts, vector store status, graph stats |
-| `health()` | `Dict` | System health — all backends, status flags |
+| `health()` | `Dict` | System health: all backends, status flags |
 | `save(path)` | `None` | Persist full context state (memory + graph) to disk |
 | `load(path)` | `None` | Restore context state from disk |
 | `export(conversation_id, format)` | `str \| Dict` | Export memories as JSON or dict |
@@ -366,7 +366,7 @@ results = context.retrieve(
 
 ### Multi-Hop GraphRAG
 
-**Requires `knowledge_graph`** to be set at construction — enables `query_with_reasoning()` for LLM-grounded multi-hop traversal:
+**Requires `knowledge_graph`** to be set at construction: enables `query_with_reasoning()` for LLM-grounded multi-hop traversal:
 
 ```python
 import os
@@ -393,12 +393,12 @@ print("Sources used: {}".format(result["num_sources"]))
 | `find_precedents(scenario, category, limit, use_hybrid_search, max_hops, as_of)` | `List[Decision]` | Find similar past decisions by semantic + structural similarity |
 | `query_decisions(query, max_hops, use_hybrid_search)` | `List[Decision]` | Broad context-aware decision search |
 | `get_causal_chain(decision_id, direction, max_depth)` | `List[Decision]` | Trace `"upstream"` causes or `"downstream"` effects |
-| `trace_decision_explainability(decision_id)` | `Dict` | Full explainability — causes, effects, relationship paths |
+| `trace_decision_explainability(decision_id)` | `Dict` | Full explainability: causes, effects, relationship paths |
 | `get_policy_engine()` | `PolicyEngine` | Access the active `PolicyEngine` instance |
 
 ### Checkpoint Methods
 
-**Ideal for auditing reasoning loops** — take a snapshot before and after a pass to see exactly what changed:
+**Ideal for auditing reasoning loops**: take a snapshot before and after a pass to see exactly what changed:
 
 ```python
 # Take a named snapshot of the current graph state
@@ -456,7 +456,7 @@ print("Nodes: {}, Edges: {}".format(stats["node_count"], stats["edge_count"]))
 | `community_detection` | `bool` | `True` | Louvain community clustering |
 | `node_embeddings` | `bool` | `True` | Node2Vec embeddings for structural similarity |
 
-### ContextGraph — Full Method Reference
+### ContextGraph: Full Method Reference
 
 | Method | Returns | Description |
 | :------ | :------- | :----------- |
@@ -622,7 +622,7 @@ linked = linker.link(text="Apple Inc. was founded by Steve Jobs.", entities=enti
 for e in linked:
     print("{} → {}  (confidence: {:.2f})".format(e.text, e.uri, e.confidence))
 
-# Explicitly link two entity IDs (not a list — takes two IDs)
+# Explicitly link two entity IDs (not a list: takes two IDs)
 linker.link_entities(
     entity1_id="apple_inc",
     entity2_id="aapl",
@@ -792,7 +792,7 @@ class EntityLink:
 ## Real-World Patterns
 
 <Tabs>
-  <Tab title="Healthcare — Treatment Decisions">
+  <Tab title="Healthcare: Treatment Decisions">
     ```python
     from semantica.context import AgentContext, ContextGraph
     from semantica.vector_store import VectorStore
@@ -804,7 +804,7 @@ class EntityLink:
     )
 
     health_agent.store("Patient has hypertension, type 2 diabetes")
-    health_agent.store("Patient allergic to penicillin — verified 2024-01")
+    health_agent.store("Patient allergic to penicillin: verified 2024-01")
 
     decision_id = health_agent.record_decision(
         category="treatment_plan",
@@ -822,7 +822,7 @@ class EntityLink:
     print("Follow-up decisions triggered: {}".format(len(chain)))
     ```
   </Tab>
-  <Tab title="Finance — Loan Decisions">
+  <Tab title="Finance: Loan Decisions">
     ```python
     from semantica.context import AgentContext, ContextGraph, PolicyEngine
     from semantica.context.decision_models import Policy, Decision
@@ -856,7 +856,7 @@ class EntityLink:
     d = Decision(
         decision_id="dec_loan_001",
         category="loan_approval",
-        scenario="First-time homebuyer — 30yr fixed, 20% down",
+        scenario="First-time homebuyer: 30yr fixed, 20% down",
         reasoning="Credit score above threshold, DTI within limits",
         outcome="approved_300k",
         confidence=0.94,
@@ -894,7 +894,7 @@ class EntityLink:
     # Persist everything
     context.save("agent_state/")
 
-    # Later — restore and continue
+    # Later: restore and continue
     restored = AgentContext(
         vector_store=VectorStore(backend="faiss", dimension=768),
         knowledge_graph=ContextGraph(),
@@ -911,11 +911,11 @@ class EntityLink:
 ## Tips and Common Pitfalls
 
 <Warning>
-  **`decision_tracking=True` silently does nothing without `knowledge_graph`.** Both must be set at construction. Passing only `decision_tracking=True` without a `knowledge_graph` instance leaves the decision backend uninitialised — `record_decision()` will raise `RuntimeError`.
+  **`decision_tracking=True` silently does nothing without `knowledge_graph`.** Both must be set at construction. Passing only `decision_tracking=True` without a `knowledge_graph` instance leaves the decision backend uninitialised: `record_decision()` will raise `RuntimeError`.
 </Warning>
 
 <Warning>
-  **Persist your vector store between runs.** Pass `index_path="context.faiss"` to `VectorStore` — without it the FAISS index lives only in memory and is lost on shutdown.
+  **Persist your vector store between runs.** Pass `index_path="context.faiss"` to `VectorStore`: without it the FAISS index lives only in memory and is lost on shutdown.
 </Warning>
 
 <Tip>
@@ -955,5 +955,5 @@ class EntityLink:
 
 ### Cookbooks
 
-- [Context Module](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb) — memory and decision tracking · Intermediate
-- [Advanced Context Engineering](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb) — production FAISS + Neo4j setup · Advanced
+- [Context Module](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb): memory and decision tracking · Intermediate
+- [Advanced Context Engineering](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb): production FAISS + Neo4j setup · Advanced

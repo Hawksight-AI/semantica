@@ -1,4 +1,4 @@
----
+﻿---
 title: "Core Module"
 description: "Framework orchestration, lifecycle management, configuration, and plugin system."
 icon: "gear"
@@ -20,7 +20,7 @@ icon: "gear"
 
 <CardGroup cols={2}>
   <Card title="Semantica" icon="arrows-turn-to-dots">
-    High-level orchestrator — coordinates the full KG construction pipeline from a single `config.yaml`. Entry point for application-level deployments.
+    High-level orchestrator: coordinates the full KG construction pipeline from a single `config.yaml`. Entry point for application-level deployments.
   </Card>
   <Card title="ConfigManager" icon="sliders">
     YAML config with deep-merge, `SEMANTICA_` env var overrides, and dot-notation nested key access. Keeps secrets out of source files.
@@ -29,7 +29,7 @@ icon: "gear"
     Ordered startup/shutdown hooks, health monitoring, and a 6-state machine. Essential for long-running services like FastAPI apps.
   </Card>
   <Card title="PluginRegistry" icon="plug">
-    Register custom ingestors, parsers, exporters, or any component. Load them by name at runtime — no imports required.
+    Register custom ingestors, parsers, exporters, or any component. Load them by name at runtime: no imports required.
   </Card>
 </CardGroup>
 
@@ -37,11 +37,11 @@ icon: "gear"
 
 | Class | Role |
 | :--- | :--- |
-| `Semantica` | Orchestration entry point — coordinates the full KG construction pipeline |
+| `Semantica` | Orchestration entry point: coordinates the full KG construction pipeline |
 | `ConfigManager` | YAML config loading, deep-merge, validation, and env var overrides |
 | `LifecycleManager` | Startup/shutdown state machine with health monitoring and lifecycle hooks |
 | `PluginRegistry` | Dynamic plugin discovery, registration, and loading |
-| `method_registry` | Global `MethodRegistry` instance — register and dispatch custom orchestration methods |
+| `method_registry` | Global `MethodRegistry` instance: register and dispatch custom orchestration methods |
 
 
 ## Semantica (Orchestration)
@@ -77,7 +77,7 @@ finally:
 | `build_knowledge_base(sources, **kwargs)` | Orchestrate full KG construction pipeline |
 | `run_pipeline(pipeline, data)` | Execute an existing `Pipeline` instance |
 | `get_status()` | Return system health and current state |
-| `shutdown(graceful=True)` | Graceful shutdown — waits for in-flight operations |
+| `shutdown(graceful=True)` | Graceful shutdown: waits for in-flight operations |
 
 ## ConfigManager
 
@@ -107,7 +107,7 @@ config.validate()
 llm_provider:
   name: openai
   model: gpt-4o
-  # Do not put API keys in YAML — use environment variables instead.
+  # Do not put API keys in YAML: use environment variables instead.
   # ConfigManager loads YAML with yaml.safe_load(), which does not
   # interpolate ${...} expressions. Set secrets via env vars (see below).
 
@@ -183,7 +183,7 @@ manager.shutdown(graceful=True)
 
 ## PluginRegistry
 
-Register custom components that participate in the full pipeline — provenance tracking, retry policies, and parallel execution included:
+Register custom components that participate in the full pipeline: provenance tracking, retry policies, and parallel execution included:
 
 ```python
 from semantica.core import PluginRegistry
@@ -214,7 +214,7 @@ from semantica.core import method_registry
 from semantica.core.methods import build_knowledge_base
 
 def fast_kb_builder(sources, **kwargs):
-    # Custom logic — skip embeddings for speed
+    # Custom logic: skip embeddings for speed
     ...
 
 method_registry.register("knowledge_base", "fast", fast_kb_builder)
