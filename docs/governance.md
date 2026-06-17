@@ -6,25 +6,21 @@ icon: "scale-balanced"
 
 > Semantica is maintained by Hawksight AI with community contributions under an open governance model.
 
----
 
 ## Roles
 
-**Maintainers** (Hawksight AI team)
-- Review and merge pull requests
-- Manage releases and code quality
-- Set project direction and community standards
+<CardGroup cols={3}>
+  <Card title="Maintainers" icon="shield-halved">
+    Hawksight AI team — review and merge PRs, manage releases and code quality, set project direction and community standards.
+  </Card>
+  <Card title="Contributors" icon="code-pull-request">
+    Submit code, documentation, and bug reports. Help with issues and reviews. Recognized in [CONTRIBUTORS.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTORS.md).
+  </Card>
+  <Card title="Community Members" icon="users">
+    Use Semantica, provide feedback, share use cases, and participate in GitHub Discussions and Discord.
+  </Card>
+</CardGroup>
 
-**Contributors**
-- Submit code, documentation, and bug reports
-- Help with issues and reviews
-- Recognized in [CONTRIBUTORS.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTORS.md)
-
-**Community Members**
-- Use Semantica and provide feedback
-- Share use cases and participate in discussions
-
----
 
 ## Decision Process
 
@@ -44,19 +40,17 @@ icon: "scale-balanced"
 - Minimum 1-week community discussion period
 - Maintainers decide based on community feedback and technical feasibility
 
----
 
 ## Releases
 
 Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 | Level | Trigger | Cadence |
-|-------|---------|---------|
+| :------- | :--------- | :--------- |
 | MAJOR | Breaking changes | Quarterly or as needed |
 | MINOR | New features (backward compatible) | Monthly or when ready |
 | PATCH | Bug fixes (backward compatible) | As bugs are fixed |
 
----
 
 ## Code Review
 
@@ -68,7 +62,6 @@ Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 **Guidelines for contributors:** address comments promptly, ask questions when unclear, be open to feedback.
 
----
 
 ## Communication
 
@@ -77,23 +70,32 @@ Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 - **GitHub Discussions** — community conversation
 - **Security Advisories** — [report security issues privately](https://github.com/semantica-agi/semantica/security/advisories/new)
 
----
 
 ## Project Goals
 
-1. **Usability** — Easy to use and understand
-2. **Reliability** — Production-ready quality
-3. **Performance** — Efficient and scalable
-4. **Extensibility** — Easy to extend with plugins and custom modules
-5. **Community** — Welcoming and inclusive
+<CardGroup cols={3}>
+  <Card title="Usability" icon="hand-pointer">
+    Easy to use and understand — sensible defaults, clear documentation, minimal ceremony.
+  </Card>
+  <Card title="Reliability" icon="circle-check">
+    Production-ready quality — tested across Python versions, platforms, and real-world workloads.
+  </Card>
+  <Card title="Performance" icon="bolt">
+    Efficient and scalable — from single-machine notebooks to enterprise graph databases.
+  </Card>
+  <Card title="Extensibility" icon="puzzle-piece">
+    Easy to extend with plugins and custom modules via the `PluginRegistry` pattern.
+  </Card>
+  <Card title="Community" icon="heart">
+    Welcoming and inclusive — all backgrounds and experience levels contribute and are recognized.
+  </Card>
+</CardGroup>
 
----
 
 ## License
 
 MIT License — see [LICENSE](https://github.com/semantica-agi/semantica/blob/main/LICENSE) and the [License page](license).
 
----
 
 ## See Also
 

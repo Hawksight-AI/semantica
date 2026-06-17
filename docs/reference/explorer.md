@@ -4,7 +4,14 @@ description: "Interactive FastAPI dashboard for knowledge graph exploration, ont
 icon: "map"
 ---
 
-`semantica.explorer` is a browser-based dashboard for exploring knowledge graphs, managing ontologies, and running visual analyses — no code required after launch.
+**`semantica.explorer`** is a **browser-based dashboard** for exploring knowledge graphs, managing ontologies, and running visual analyses:
+
+- Indexed search: 0.004ms on 118k nodes — no full scans
+- Ontology Hub: visual editor, SHACL Studio, alignment authoring, and health dashboard
+- Bidirectional path finding between any two nodes
+- WebSocket progress streaming for live pipeline monitoring
+- No code required after launch — full graph exploration in the browser
+
 
 ## Getting Started
 
@@ -86,8 +93,8 @@ The browser opens automatically at `http://127.0.0.1:8000`. The interactive API 
 The `semantica-explorer` command accepts exactly four flags:
 
 | Flag | Short | Default | Description |
-| ---- | ----- | ------- | ----------- |
-| `--graph` | `-g` | *(required)* | Path to a ContextGraph JSON file to load |
+| :---- | :----- | :------- | :----------- |
+| `--graph` | `-g` | *(**required**)* | Path to a ContextGraph JSON file to load |
 | `--port` | `-p` | `8000` | Port to bind the server |
 | `--host` | — | `127.0.0.1` | Host to bind the server — use `0.0.0.0` to expose on the network |
 | `--no-browser` | — | off | Skip auto-opening the browser tab |
@@ -178,7 +185,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
   <Accordion title="Graph endpoints">
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/graph/stats` | `GET` | Node count, edge count, entity type distribution |
     | `/api/graph/nodes` | `GET` | List nodes — `?type=&search=&skip=&limit=&cursor=&bbox=` |
     | `/api/graph/node/{id}` | `GET` | Fetch a single node with all properties |
@@ -195,14 +202,14 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     **Analytics:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/analytics` | `GET` | Graph metrics — `?metrics=centrality,community,connectivity` |
     | `/api/analytics/validation` | `GET` | Graph validation report |
 
     **Enrich:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/enrich/extract` | `POST` | Entity extraction from text |
     | `/api/enrich/links` | `POST` | Link prediction for nodes |
     | `/api/enrich/dedup` | `POST` | Duplicate detection |
@@ -212,7 +219,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     **Temporal:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/temporal/snapshot` | `GET` | Graph snapshot at `?at=ISO8601` (defaults to now) |
     | `/api/temporal/diff` | `GET` | Diff between two times — `?from_time=&to_time=` |
     | `/api/temporal/patterns` | `GET` | Temporal activity patterns |
@@ -225,7 +232,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     **Ontology:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/ontology/registry` | `GET` | List loaded ontologies |
     | `/api/ontology/load` | `POST` | Load an ontology from URL or content |
     | `/api/ontology/create` | `POST` | Create a new ontology |
@@ -243,7 +250,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     **Vocabulary:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/vocabulary/schemes` | `GET` | SKOS schemes via TripletStore |
     | `/api/vocabulary/concepts` | `GET` | Concepts in a scheme — `?scheme=URI` |
     | `/api/vocabulary/hierarchy` | `GET` | Concept hierarchy tree |
@@ -252,7 +259,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     **SPARQL:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/sparql` | `POST` | Execute a SPARQL SELECT or ASK query |
 
   </Accordion>
@@ -261,7 +268,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     **Decisions:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/decisions` | `GET` | Paginated list of recorded decisions |
     | `/api/decisions/{id}` | `GET` | Single decision details |
     | `/api/decisions/{id}/chain` | `GET` | Causal chain for a decision |
@@ -272,14 +279,14 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     **Provenance:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/provenance` | `GET` | Entity provenance lineage — `?node_id=` |
     | `/api/provenance/report` | `GET` | Provenance export report — `?node_id=` |
 
     **Annotations:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/annotations` | `GET` | List annotations — `?node_id=` (optional) |
     | `/api/annotations` | `POST` | Create annotation (returns 201) |
     | `/api/annotations/{id}` | `DELETE` | Delete annotation (returns 204) |
@@ -287,7 +294,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
     **Export / Import:**
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/export` | `POST` | Export graph as JSON or CSV — body: `{format, node_ids}` |
     | `/api/export/distance-enriched` | `POST` | Export pairwise distances as CSV or JSONL |
     | `/api/import` | `POST` | Import nodes/edges from `.json` or `.csv` file (max 50 MB) |
@@ -296,7 +303,7 @@ Full interactive docs at `http://localhost:8000/docs`. All endpoints accept and 
   <Accordion title="Health & Info">
 
     | Endpoint | Method | Description |
-    | -------- | ------ | ----------- |
+    | :-------- | :------ | :----------- |
     | `/api/health` | `GET` | Returns `{"status": "healthy"}` |
     | `/api/info` | `GET` | Server name, version, status |
     | `/docs` | `GET` | Interactive Swagger UI — all endpoints |
@@ -348,7 +355,7 @@ Event types broadcast over the WebSocket include: `connection_ack`, `pong`, and 
 ## Performance
 
 | Scenario | Latency |
-| -------- | ------- |
+| :-------- | :------- |
 | Node search (118k nodes, indexed) | 0.004ms |
 | Neighbor expansion (depth 2) | < 5ms |
 | BFS path (118k nodes) | < 50ms |

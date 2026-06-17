@@ -4,12 +4,19 @@ description: "Graph construction, temporal models, analytics, similarity scoring
 icon: "diagram-project"
 ---
 
-`semantica.kg` transforms extracted entities and relationships into structured, queryable knowledge graphs. It includes temporal support, a full suite of graph analytics algorithms, node embeddings, and structural similarity scoring.
+`semantica.kg` transforms extracted entities and relationships into structured, queryable knowledge graphs:
+
+- Temporal nodes and edges with `valid_from` / `valid_until` windows and all 13 Allen interval relations
+- Full graph analytics suite: centrality, community detection, path finding, link prediction
+- Node2Vec structural embeddings for downstream ML and similarity scoring
+- OWL-Time export and versioned snapshots via `TemporalVersionManager`
+- Schema and constraint validation before persistence
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `KnowledgeGraph` | Core graph data structure — nodes, edges, properties, temporal validity |
 | `GraphBuilder` | Construct from entities + relationships; pass `merge_entities=True` to enable deduplication |
 | `GraphBuilderWithProvenance` | Wraps `GraphBuilder` with optional provenance tracking; pass `provenance=True` to enable |
@@ -25,6 +32,7 @@ icon: "diagram-project"
 | `SimilarityCalculator` | Cosine, Euclidean, Manhattan, and correlation similarity scoring |
 | `GraphValidator` | Schema and constraint validation before persistence |
 
+
 <Tip>
   For conflict detection and advanced entity resolution, use `semantica.conflicts` and `semantica.deduplication` alongside this module.
 </Tip>
@@ -33,7 +41,7 @@ icon: "diagram-project"
 
 ## GraphBuilder
 
-Constructs knowledge graphs from extracted entities and relationships. `merge_entities` defaults to `False` — pass `True` to enable entity deduplication during construction:
+**`GraphBuilder`** constructs knowledge graphs from extracted entities and relationships. `merge_entities` defaults to `False` — pass **`True`** to enable entity deduplication during construction:
 
 ```python
 from semantica.kg import GraphBuilder
@@ -43,14 +51,15 @@ builder = GraphBuilder(merge_entities=True)
 kg = builder.build({"entities": entities, "relationships": relationships})
 ```
 
-| Method | Description |
-| ------ | ----------- |
-| `build(sources)` | Build graph from a dict, list of dicts, or list of entity/relation objects |
-| `build_single_source(data)` | Build graph from a single data source dict |
+| Method | Returns | Description |
+| :------ | :------- | :----------- |
+| `build(sources)` | `dict` | Build graph from a dict, list of dicts, or list of entity/relation objects |
+| `build_single_source(data)` | `dict` | Build graph from a single data source dict |
+
 
 ## Temporal Knowledge Graphs (v0.4.0)
 
-Use `TemporalGraphQuery` to attach `valid_from`/`valid_until` windows and query time-aware graphs:
+Use **`TemporalGraphQuery`** to attach `valid_from`/`valid_until` windows and query **point-in-time snapshots** of any graph:
 
 ```python
 from semantica.kg import GraphBuilder, TemporalGraphQuery, TemporalVersionManager
@@ -91,7 +100,14 @@ versioner.create_snapshot(kg, version_label="2024-Q1",
                           description="Q1 2024 snapshot")
 ```
 
-Supports all 13 Allen interval algebra relations (before, after, meets, overlaps, during, starts, finishes, equals, and their inverses). OWL-Time export available.
+Supports all 13 Allen interval algebra relations:
+
+- before, after, meets, met_by
+- overlaps, overlapped_by
+- during, contains, starts, started_by, finishes, finished_by, equals
+
+OWL-Time export available.
+
 
 ## Similarity Scoring
 
@@ -115,97 +131,150 @@ for node_id in similar:
     print(node_id)
 ```
 
+
 ## Graph Analytics
 
-### Centrality Analysis
+<Tabs>
+  <Tab title="Centrality">
+    Measure node importance across five algorithms. Use `calculate_all_centrality()` to run them all at once.
 
-```python
-from semantica.kg import CentralityCalculator
+    ```python
+    from semantica.kg import CentralityCalculator
 
-calculator = CentralityCalculator()
+    calculator = CentralityCalculator()
 
-centrality    = calculator.calculate_degree_centrality(graph)
-pagerank      = calculator.calculate_pagerank(graph, damping_factor=0.85)
-betweenness   = calculator.calculate_betweenness_centrality(graph)
-closeness     = calculator.calculate_closeness_centrality(graph)
-eigenvector   = calculator.calculate_eigenvector_centrality(graph)
-all_metrics   = calculator.calculate_all_centrality(graph)
+    # Run all centrality measures at once
+    all_metrics = calculator.calculate_all_centrality(graph)
 
-top_nodes = calculator.get_top_nodes(centrality, top_k=10)
-```
+    # Or run individually
+    pagerank    = calculator.calculate_pagerank(graph, damping_factor=0.85)
+    betweenness = calculator.calculate_betweenness_centrality(graph)
+    closeness   = calculator.calculate_closeness_centrality(graph)
 
-| Method | Algorithm |
-| ------ | --------- |
-| `calculate_degree_centrality()` | Degree-based importance |
-| `calculate_betweenness_centrality()` | Bridge-based importance (bottleneck nodes) |
-| `calculate_closeness_centrality()` | Distance-based importance |
-| `calculate_eigenvector_centrality()` | Influence-based importance |
-| `calculate_pagerank()` | Link-based importance (PageRank) |
-| `calculate_all_centrality()` | All measures at once |
+    # Get the top 10 most important nodes
+    top_nodes = calculator.get_top_nodes(pagerank, top_k=10)
+    ```
 
-### Community Detection
+    | Method | Best for |
+    | :------ | :-------- |
+    | `calculate_degree_centrality()` | Most-connected nodes |
+    | `calculate_pagerank()` | Link-based influence (like Google PageRank) |
+    | `calculate_betweenness_centrality()` | Bottleneck / bridge nodes |
+    | `calculate_closeness_centrality()` | Nodes closest to all others |
+    | `calculate_eigenvector_centrality()` | Nodes connected to other high-influence nodes |
+  </Tab>
+  <Tab title="Community Detection">
+    Discover clusters and communities within the graph. Louvain is the fastest; Leiden produces higher-quality partitions.
 
-```python
-from semantica.kg import CommunityDetector
+    ```python
+    from semantica.kg import CommunityDetector
 
-detector = CommunityDetector()
+    detector = CommunityDetector()
 
-# Louvain (default — fast, high quality)
-communities = detector.detect_communities(graph, algorithm="louvain")
+    # Louvain — fast, high quality (default)
+    communities = detector.detect_communities(graph, algorithm="louvain")
 
-# Leiden (higher quality, slower)
-leiden_communities = detector.detect_communities_leiden(graph, resolution=1.2)
+    # Leiden — higher quality, slower
+    communities = detector.detect_communities_leiden(graph, resolution=1.2)
 
-metrics = detector.calculate_community_metrics(graph, communities)
-```
+    # Evaluate community quality
+    metrics = detector.calculate_community_metrics(graph, communities)
+    print(f"Modularity: {metrics['modularity']:.3f}")
+    print(f"Communities found: {metrics['num_communities']}")
+    ```
 
-Algorithms: Louvain, Leiden, Label Propagation, K-Clique Communities.
+    | Algorithm | Strength |
+    | :--------- | :-------- |
+    | Louvain | Fast, good modularity — use for large graphs |
+    | Leiden | Best modularity — use when quality matters more than speed |
+    | Label Propagation | Near-linear time — use for very large graphs |
+    | K-Clique | Overlapping communities — nodes can belong to multiple groups |
+  </Tab>
+  <Tab title="Path Finding">
+    Find shortest paths and route alternatives between any two nodes.
 
-### Path Finding
+    ```python
+    from semantica.kg import PathFinder
 
-```python
-from semantica.kg import PathFinder
+    finder = PathFinder()
 
-finder = PathFinder()
+    # Dijkstra shortest path
+    path = finder.dijkstra_shortest_path(graph, "Alice", "Bob")
+    print(" → ".join(path["path"]))
 
-path   = finder.dijkstra_shortest_path(graph, "node_a", "node_b")
-paths  = finder.all_shortest_paths(graph, "source", "target")
-k_paths = finder.find_k_shortest_paths(graph, "source", "target", k=3)
-```
+    # All shortest paths between two nodes
+    paths = finder.all_shortest_paths(graph, "source", "target")
 
-Algorithms: Dijkstra, A\*, BFS, All Shortest Paths, K-Shortest Paths.
+    # K-Shortest paths (alternative routes)
+    k_paths = finder.find_k_shortest_paths(graph, "source", "target", k=3)
+    ```
 
-### Link Prediction
+    | Algorithm | Use case |
+    | :--------- | :-------- |
+    | Dijkstra | Weighted shortest path — standard routing |
+    | A\* | Heuristic-guided search — faster on large sparse graphs |
+    | BFS | Unweighted shortest path — hop count only |
+    | K-Shortest | Multiple alternative routes |
+  </Tab>
+  <Tab title="Link Prediction">
+    Predict missing or future edges. Use to complete knowledge graphs or find implicit relationships.
 
-```python
-from semantica.kg import LinkPredictor
+    ```python
+    from semantica.kg import LinkPredictor
 
-predictor = LinkPredictor(method="preferential_attachment")
-links = predictor.predict_links(graph, top_k=20)
-score = predictor.score_link(graph, "node_a", "node_b")
-```
+    predictor = LinkPredictor(method="preferential_attachment")
 
-Algorithms: Preferential Attachment, Common Neighbors, Jaccard, Adamic-Adar, Resource Allocation.
+    # Predict the top 20 most likely missing edges
+    predicted = predictor.predict_links(graph, top_k=20)
+    for link in predicted:
+        print(f"{link['source']} → {link['target']}  (score: {link['score']:.3f})")
 
-### Node Embeddings
+    # Score a specific pair
+    score = predictor.score_link(graph, "Alice", "CompanyX")
+    ```
 
-```python
-from semantica.kg import NodeEmbedder
+    | Algorithm | Best for |
+    | :--------- | :-------- |
+    | Preferential Attachment | High-degree node connection prediction |
+    | Common Neighbors | Nodes with shared connections |
+    | Jaccard | Normalized common-neighbor overlap |
+    | Adamic-Adar | Weighted common neighbors (penalizes hubs) |
+    | Resource Allocation | Conservative — ignores high-degree intermediaries |
+  </Tab>
+  <Tab title="Node Embeddings">
+    Compute structural embeddings with Node2Vec, then find similar nodes or feed into downstream ML.
 
-embedder = NodeEmbedder(method="node2vec", embedding_dimension=128)
-embeddings    = embedder.compute_embeddings(graph_store, ["Entity"], ["RELATED_TO"])
-similar_nodes = embedder.find_similar_nodes(graph_store, "entity_123", top_k=10)
-# find_similar_nodes returns List[str] — a list of similar node IDs
-for node_id in similar_nodes:
-    print(node_id)
-```
+    ```python
+    from semantica.kg import NodeEmbedder, SimilarityCalculator
 
-Supported algorithm: `node2vec`.
+    # Compute Node2Vec embeddings
+    embedder = NodeEmbedder(method="node2vec", embedding_dimension=128)
+    embeddings = embedder.compute_embeddings(
+        graph, ["Person", "Organization"], ["RELATED_TO"]
+    )
+
+    # Find structurally similar nodes
+    similar = embedder.find_similar_nodes(graph, "Apple Inc.", top_k=5)
+    for node_id in similar:
+        print(node_id)
+
+    # Compare two specific nodes by embedding similarity
+    calc  = SimilarityCalculator()
+    score = calc.cosine_similarity(embeddings["Apple Inc."], embeddings["Google"])
+    print(f"Structural similarity: {score:.3f}")
+    ```
+
+    <Note>
+      `find_similar_nodes` returns `List[str]` — a list of node IDs, not node objects. Look up full node data via `graph["nodes"]`.
+    </Note>
+  </Tab>
+</Tabs>
+
 
 ## Algorithm Summary
 
 | Category | Algorithms | Use Cases |
-| -------- | ---------- | --------- |
+| :-------- | :---------- | :--------- |
 | Node Embeddings | Node2Vec | Structural similarity, node representation |
 | Similarity | Cosine, Euclidean, Manhattan, Correlation | Node matching, recommendation |
 | Path Finding | Dijkstra, A\*, BFS, K-Shortest | Route planning, network analysis |
@@ -213,6 +282,7 @@ Supported algorithm: `node2vec`.
 | Centrality | Degree, Betweenness, Closeness, PageRank | Influence analysis |
 | Community Detection | Louvain, Leiden, Label Propagation | Social clustering |
 | Connectivity | Components, Bridges, Density | Network robustness |
+
 
 ## GraphValidator
 

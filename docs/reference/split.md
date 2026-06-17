@@ -4,7 +4,14 @@ description: "Text chunking with recursive, semantic, entity-aware, relation-awa
 icon: "scissors"
 ---
 
-`semantica.split` breaks documents into chunks that preserve semantic context. Chunking quality directly determines downstream accuracy — a poorly chunked document produces bad embeddings, missed entities, and broken relation triplets. Use the right strategy for your content type and pipeline goal.
+**`semantica.split`** breaks documents into chunks that **preserve semantic context**:
+
+- Six chunking strategies: recursive, semantic, entity-aware, relation-aware, sliding window, structural
+- `SemanticChunker` uses embedding-based topic-shift detection to split only when content changes
+- `EntityAwareChunker` keeps entity mentions intact across chunk boundaries
+- `RelationAwareChunker` keeps subject-predicate-object triplets within a single chunk
+- Chunking quality directly determines downstream embedding accuracy and entity extraction quality
+
 
 ## Why Chunking Matters
 
@@ -19,7 +26,7 @@ Semantica's chunking methods are designed to avoid these failure modes.
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `TextSplitter` | Unified entry point — swap `method=` without changing downstream code |
 | `Chunk` | `{text, start_index, end_index, metadata, id}` |
 | `SemanticChunker` | Embedding-based topic-shift detection — splits only when content actually changes |
@@ -31,7 +38,7 @@ Semantica's chunking methods are designed to avoid these failure modes.
 **Available `method=` values for `TextSplitter`:**
 
 | Method | Best for |
-| --- | --- |
+| :--- | :--- |
 | `recursive` | General text — splits on paragraphs, sentences, words in order |
 | `sentence` | Conversational text, QA |
 | `paragraph` | Long-form text where paragraph integrity matters |
@@ -118,7 +125,7 @@ Semantica's chunking methods are designed to avoid these failure modes.
 ## Splitting Methods
 
 | Method | How It Splits | Best For |
-| ------ | ------------- | -------- |
+| :------ | :------------- | :-------- |
 | `recursive` | Paragraph → sentence → word (cascading fallback) | General-purpose default |
 | `semantic_transformer` | Embeds sentences, splits at cosine similarity drops | RAG — topic coherence matters |
 | `entity_aware` | Adjusts boundaries so entity spans are never cut | NER pipelines |
@@ -162,7 +169,7 @@ splitter = TextSplitter(
 ```
 
 | Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
+| :--------- | :---- | :------- | :----------- |
 | `method` | `str \| list[str]` | `"recursive"` | Chunking strategy, or list of methods as fallback chain |
 | `chunk_size` | `int` | `1000` | Target size in **characters** (not tokens — if you were using token-based sizing before, multiply by ~4 to approximate the same boundary) |
 | `chunk_overlap` | `int` | `200` | Character overlap between adjacent chunks |
@@ -309,7 +316,7 @@ class Chunk:
 Metadata keys vary by method. Only keys that are actually set by the implementation are listed.
 
 | Field | Type | Set by | Description |
-| ----- | ---- | ------ | ----------- |
+| :----- | :---- | :------ | :----------- |
 | `method` | `str` | all methods | Splitting method that produced this chunk |
 | `chunk_size` | `int` | most methods | Character length of this chunk |
 | `sentence_count` | `int` | `sentence`, `semantic_transformer`, spaCy path | Number of sentences in this chunk |
@@ -331,7 +338,7 @@ Metadata keys vary by method. Only keys that are actually set by the implementat
 The `token` method accepts a `tokenizer=` kwarg that is passed to `tiktoken.encoding_for_model()`. The value should be a tiktoken model name. Unrecognised names fall back to `cl100k_base` automatically.
 
 | Value | Encoding used |
-| ----- | ------------- |
+| :----- | :------------- |
 | `"gpt-4"` (default) | `cl100k_base` |
 | `"gpt-3.5-turbo"` | `cl100k_base` |
 | `"text-embedding-ada-002"` | `cl100k_base` |

@@ -4,7 +4,14 @@ description: "Named entity recognition, relation extraction, event detection, an
 icon: "magnifying-glass-chart"
 ---
 
-`semantica.semantic_extract` extracts structured information from unstructured text — the foundation of every knowledge graph in Semantica. All extractors support three modes: pattern-based (no API key), ML-based, and LLM-based.
+`semantica.semantic_extract` extracts structured information from unstructured text — the foundation of every knowledge graph in Semantica:
+
+- `NERExtractor` — named entity recognition with confidence scores and source attribution
+- `RelationExtractor` — typed relationship extraction (`founded_by`, `located_in`, and custom types)
+- `TripletExtractor` — direct `(subject, predicate, object)` triplet generation for RDF output
+- `EventDetector` — event detection with participants, temporal context, and confidence
+- Three extraction modes on every extractor: `"pattern"` (no API key), `"huggingface"`, `"llm"`
+
 
 ## Getting Started
 
@@ -50,14 +57,15 @@ ner = NERExtractor(method="llm", llm_provider=llm)
 entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
 ```
 
+
 ## Exported Classes
 
 <Tip>
-  `NamedEntityRecognizer` is the high-level coordinator with confidence thresholding and overlap merging. `NERExtractor` is the lower-level implementation. For most use cases, start with `NERExtractor` for simplicity or `NamedEntityRecognizer` for fine-grained control.
+  **`NamedEntityRecognizer`** is the high-level coordinator with confidence thresholding and overlap merging. **`NERExtractor`** is the lower-level implementation. For most use cases, start with `NERExtractor` for simplicity or `NamedEntityRecognizer` for fine-grained control.
 </Tip>
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `NamedEntityRecognizer` | High-level NER with confidence thresholding and overlap merging |
 | `NERExtractor` | Core NER implementation — use directly for simplicity |
 | `RelationExtractor` | Typed relationship extraction (`founded_by`, `located_in`, ...) |
@@ -70,35 +78,100 @@ entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
 
 ## Method Selection Guide
 
-Choose the right extraction method based on your requirements:
+<Tabs>
+  <Tab title="Pattern — No Setup">
+    Zero dependencies, no API key required. Uses spaCy rules and regex to match standard entity types.
 
-| Priority | Method | Setup Required | API Cost | Accuracy | Use Cases |
-|----------|--------|----------------|----------|----------|-----------|
-| **Speed** | `pattern` | None | Free | Good | Quick prototyping, known entity types |
-| **Custom Models** | `huggingface` | Model download | Free | Varies | Domain-specific models, fine-tuned NER |
-| **Best Accuracy** | `llm` | API key | $$ | Highest | Complex schemas, custom entity types |
+    | | |
+    | :-- | :-- |
+    | **Setup** | None — works out of the box |
+    | **Cost** | Free |
+    | **Accuracy** | Good for standard entity types |
+    | **Best for** | Quick prototyping, batch processing, air-gapped systems |
 
-### Quick Recommendations
+    ```python
+    from semantica.semantic_extract import NERExtractor, RelationExtractor
 
-```python
-# No setup required
-ner = NERExtractor(method="pattern")
+    ner = NERExtractor(method="pattern")
+    entities = ner.extract("Apple Inc. was founded by Steve Jobs in Cupertino.")
 
-# Best accuracy - requires API key
-from semantica.llms import Groq
-import os
-llm = Groq(api_key=os.getenv("GROQ_API_KEY"))
-ner = NERExtractor(method="llm", llm_provider=llm)
+    rel = RelationExtractor(method="pattern")
+    relationships = rel.extract(text, entities=entities)
+    ```
+  </Tab>
+  <Tab title="HuggingFace — Custom Models">
+    Use any pre-trained or fine-tuned transformer model. Free inference, runs locally.
 
-# Custom models - domain-specific
-ner = NERExtractor(method="huggingface")
-entities = ner.extract(text, model="dslim/bert-base-NER", device="cpu")
-```
+    | | |
+    | :-- | :-- |
+    | **Setup** | `pip install semantica[models-huggingface]` |
+    | **Cost** | Free (local compute) |
+    | **Accuracy** | Excellent for domain-specific NER |
+    | **Best for** | Medical NER, custom fine-tunes, no API cost |
+
+    ```python
+    from semantica.semantic_extract import NERExtractor
+
+    ner = NERExtractor(method="huggingface")
+
+    # Pass model per-call
+    entities = ner.extract(text, model="dslim/bert-base-NER", device="cpu")
+
+    # Biomedical NER
+    entities = ner.extract(text, model="d4data/biomedical-ner-all")
+    ```
+  </Tab>
+  <Tab title="LLM — Best Accuracy">
+    Highest accuracy for complex schemas and custom entity types. Requires an LLM API key.
+
+    | | |
+    | :-- | :-- |
+    | **Setup** | `pip install semantica[llm-groq]` + API key |
+    | **Cost** | Depends on provider |
+    | **Accuracy** | Highest — handles complex types and context |
+    | **Best for** | Production, custom entity types, complex relation schemas |
+
+    ```python
+    import os
+    from semantica.llms import Groq
+    from semantica.semantic_extract import NERExtractor, RelationExtractor, TripletExtractor
+
+    llm = Groq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
+
+    ner  = NERExtractor(method="llm",  llm_provider=llm, max_retries=3)
+    rel  = RelationExtractor(method="llm", llm_provider=llm)
+    trip = TripletExtractor(method="llm", llm_provider=llm)
+
+    entities      = ner.extract(text)
+    relationships = rel.extract(text, entities=entities)
+    triplets      = trip.extract(text)
+    ```
+  </Tab>
+  <Tab title="Fallback Chain">
+    Try methods in priority order — guarantees non-empty results even when the preferred method is unavailable.
+
+    ```python
+    from semantica.semantic_extract import NERExtractor, RelationExtractor
+
+    # Try LLM first, fall back to pattern on error
+    ner = NERExtractor(method=["llm", "pattern"])
+    rel = RelationExtractor(method=["llm", "pattern"])
+
+    # Always returns results — safe for production pipelines
+    entities      = ner.extract(text)
+    relationships = rel.extract(text, entities=entities)
+    ```
+
+    <Tip>
+      Use fallback chains in pipelines where API availability isn't guaranteed (rate limits, network issues). The first method in the list is always tried first.
+    </Tip>
+  </Tab>
+</Tabs>
 
 ### Method Availability by Extractor
 
 | Extractor | `pattern` | `huggingface` | `llm` | Notes |
-|-----------|-----------|---------------|-------|-------|
+| :----------- | :----------- | :--------------- | :------- | :------- |
 | `NERExtractor` | ✅ | ✅ | ✅ | Full method support |
 | `RelationExtractor` | ✅ | ✅ | ✅ | Also supports `dependency`, `cooccurrence` |
 | `TripletExtractor` | ✅ | ✅ | ✅ | Also supports `rules` method |
@@ -118,6 +191,7 @@ trip = TripletExtractor(method=["llm", "pattern"])
 entities = ner.extract(text)
 ```
 
+
 ## Quick Start
 
 ```python
@@ -135,12 +209,14 @@ triplets      = TripletExtractor(method="llm", llm_provider=llm).extract(text)
 
 <img src="/assets/img/diagrams/extraction-pipeline.svg" alt="Semantic extraction pipeline: raw text fans into NER, Relation, and Coreference extractors, then merges into a Triplet Generator" style={{ width: '100%', borderRadius: '12px', margin: '0 0 24px' }} />
 
+
 ## Extractor Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `extract(text)` | `List[Entity]` / `List[Relation]` / `List[Triplet]` / `List[Event]` | Extract from single text input |
 | `extract(texts)` | `List[List[...]]` | Process multiple texts (batch detected automatically) |
+
 
 ## NERExtractor
 
@@ -207,7 +283,14 @@ Output format:
 ]
 ```
 
-Available methods: `"pattern"` (pattern-based), `"dependency"` (spaCy parsing), `"cooccurrence"` (proximity-based), `"huggingface"` (custom models), `"llm"`.
+Available methods:
+
+- `"pattern"` — rule-based pattern matching
+- `"dependency"` — spaCy dependency parsing
+- `"cooccurrence"` — proximity-based co-occurrence
+- `"huggingface"` — custom models
+- `"llm"` — highest accuracy, requires API key
+
 
 ## TripletExtractor
 
@@ -222,6 +305,7 @@ triplets = trip.extract(text)
 ```
 
 Triplets are suitable for loading directly into a triplet store or knowledge graph.
+
 
 ## EventDetector
 
@@ -241,7 +325,14 @@ for event in events:
     print(f"Confidence:   {event.confidence:.2f}")
 ```
 
-Output fields per event: `type`, `participants` (with roles), `temporal`, `location`, and `confidence`.
+Output fields per event:
+
+- `type` — event category (e.g. `"founding"`, `"acquisition"`)
+- `participants` — list of entities with roles
+- `temporal` — date or time reference
+- `location` — location entity (when present)
+- `confidence` — extraction confidence score
+
 
 ## CoreferenceResolver
 
@@ -256,6 +347,7 @@ resolved_text = resolver.resolve(
 )
 # "Apple Inc." replaces "The company" for consistent downstream extraction
 ```
+
 
 ## Batch Processing
 
@@ -313,7 +405,7 @@ triplets      = trip.extract(text)
 ## Extraction Method Comparison
 
 | Method | Speed | Cost | Accuracy | Custom Types |
-| ------ | ----- | ---- | -------- | ------------ |
+| :------ | :----- | :---- | :-------- | :------------ |
 | `pattern` | Very fast | Free | Medium | Yes (dictionary) |
 | `ml` | Fast | Free | High | Limited |
 | `llm` | Medium | API cost | Highest | Yes (schema) |

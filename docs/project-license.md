@@ -6,7 +6,6 @@ icon: "file-contract"
 
 > Semantica is open source and free for everyone under the MIT License.
 
----
 
 ## MIT License
 
@@ -34,51 +33,46 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
----
 
 ## What This Means
 
 **You can:**
 
-- Use Semantica commercially — free for business use
-- Modify the source code
-- Distribute copies or derivatives
-- Use in proprietary software
+<Check>Use Semantica commercially — free for business use</Check>
+<Check>Modify the source code</Check>
+<Check>Distribute copies or derivatives</Check>
+<Check>Use in proprietary software</Check>
 
 **You must:**
 
 - Keep the copyright notice in copies
 - Include the MIT license text in distributions
 
-**No warranty** — the authors are not responsible for damages or liable for how you use the software.
+<Warning>**No warranty** — the authors are not responsible for damages or liable for how you use the software.</Warning>
 
----
 
 ## Commercial Use
 
 Semantica is completely free for commercial use. No attribution is required (though it's appreciated).
 
----
 
 ## Third-Party Dependencies
 
 Semantica uses open-source libraries with compatible licenses:
 
 | Library | License |
-|---------|---------|
+| :--------- | :--------- |
 | Python | PSF License |
 | NumPy, Pandas | BSD |
 | spaCy | MIT |
 | Transformers | Apache 2.0 |
 | RDFLib | BSD |
 
----
 
 ## Contributing
 
 By contributing to Semantica, you agree that your contributions will be licensed under the same MIT License.
 
----
 
 ## See Also
 

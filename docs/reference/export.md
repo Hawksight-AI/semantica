@@ -4,12 +4,19 @@ description: "Export knowledge graphs to RDF, Parquet, LPG, ArangoDB AQL, CSV, G
 icon: "file-export"
 ---
 
-`semantica.export` serializes knowledge graphs to every downstream format — semantic web standards, analytics pipelines, graph databases, and vector stores.
+**`semantica.export`** serializes knowledge graphs to **every downstream format**:
+
+- RDF: Turtle, JSON-LD, N-Triples, RDF/XML — with optional W3C PROV-O provenance inline
+- Analytics: Apache Parquet and Arrow for Spark, BigQuery, Databricks
+- Graph databases: Cypher `CREATE` statements for Neo4j; AQL `INSERT` for ArangoDB
+- Standard formats: GraphML, GEXF, Graphviz DOT, CSV, OWL 2.0
+- Vector export: NumPy `.npz`, FAISS index, binary for embedding pipelines
+
 
 ## Exported Classes
 
 | Class | Output formats | Notes |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | `RDFExporter` | Turtle, JSON-LD, N-Triples, RDF/XML | `export_to_rdf()` → string; `export()` → file |
 | `ParquetExporter` | `.parquet` | Requires `pyarrow`; explicit typed schema |
 | `LPGExporter` | Cypher `CREATE` | Neo4j and Memgraph compatible |
@@ -321,7 +328,7 @@ The `export_csv` convenience function delegates to `CSVExporter.export()`. For p
 ## Format Reference
 
 | Format string | Canonical name | Exporter | File ext | Best for |
-| --- | --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- | :--- |
 | `"turtle"` / `"ttl"` | `turtle` | `RDFExporter` | `.ttl` | Readable RDF, ontology sharing |
 | `"jsonld"` / `"json-ld"` | `jsonld` | `RDFExporter` | `.jsonld` | APIs, Linked Data, JSON pipelines |
 | `"ntriples"` / `"nt"` | `ntriples` | `RDFExporter` | `.nt` | Streaming RDF, line-by-line processing |

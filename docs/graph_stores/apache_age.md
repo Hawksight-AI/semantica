@@ -9,12 +9,11 @@ icon: "database"
 
 Apache AGE is a PostgreSQL extension that adds graph database functionality, enabling you to run openCypher queries alongside traditional SQL. This backend lets Semantica use AGE as a property graph store with the same interface as Neo4j and FalkorDB.
 
----
 
 ## Prerequisites
 
 | Component | Version |
-|-----------|---------|
+| :----------- | :--------- |
 | PostgreSQL | 12+ |
 | Apache AGE | 1.4+ (compiled and installed) |
 | psycopg2 | 2.9+ |
@@ -25,61 +24,61 @@ pip install psycopg2-binary
 
 <Note>Apache AGE must be compiled and installed into your PostgreSQL instance. See the [AGE installation guide](https://age.apache.org/age-manual/master/intro/setup.html).</Note>
 
----
 
 ## Quick Start
 
-```python
-from semantica.graph_store import GraphStore
+<Tabs>
+  <Tab title="Unified Facade">
+    Use `GraphStore(backend="age", …)` — the same interface as Neo4j and FalkorDB:
 
-# Using the unified GraphStore facade
-store = GraphStore(
-    backend="age",
-    connection_string="host=localhost dbname=agedb user=postgres password=secret",
-    graph_name="semantica",
-)
-store.connect()
+    ```python
+    from semantica.graph_store import GraphStore
 
-# Create nodes
-alice = store.create_node(labels=["Person"], properties={"name": "Alice", "age": 30})
-bob = store.create_node(labels=["Person"], properties={"name": "Bob", "age": 25})
+    store = GraphStore(
+        backend="age",
+        connection_string="host=localhost dbname=agedb user=postgres password=secret",
+        graph_name="semantica",
+    )
+    store.connect()
 
-# Create relationship
-rel = store.create_relationship(alice["id"], bob["id"], "KNOWS", {"since": 2023})
+    alice = store.create_node(labels=["Person"], properties={"name": "Alice", "age": 30})
+    bob   = store.create_node(labels=["Person"], properties={"name": "Bob",   "age": 25})
+    store.create_relationship(alice["id"], bob["id"], "KNOWS", {"since": 2023})
 
-# Query
-result = store.execute_query("MATCH (p:Person) RETURN p", cols="p agtype")
-print(result["records"])
+    result = store.execute_query("MATCH (p:Person) RETURN p", cols="p agtype")
+    print(result["records"])
+    store.close()
+    ```
+  </Tab>
+  <Tab title="Direct (ApacheAgeStore)">
+    Import `ApacheAgeStore` directly when you need AGE-specific behaviour:
 
-store.close()
-```
+    ```python
+    from semantica.graph_store.age_store import ApacheAgeStore
 
-### Direct Usage (without facade)
+    store = ApacheAgeStore(
+        connection_string="host=localhost dbname=agedb user=postgres password=secret",
+        graph_name="my_graph",
+    )
+    store.connect()
 
-```python
-from semantica.graph_store.age_store import ApacheAgeStore
+    node = store.create_node(["Entity"], {"semantica_id": "ent-001", "value": "test"})
+    print(node)
+    # {"id": 844424930131969, "labels": ["Entity"],
+    #  "properties": {"semantica_id": "ent-001", "value": "test"}}
 
-store = ApacheAgeStore(
-    connection_string="host=localhost dbname=agedb user=postgres password=secret",
-    graph_name="my_graph",
-)
-store.connect()
+    store.close()
+    ```
+  </Tab>
+</Tabs>
 
-node = store.create_node(["Entity"], {"semantica_id": "ent-001", "value": "test"})
-print(node)
-# {"id": 844424930131969, "labels": ["Entity"], "properties": {"semantica_id": "ent-001", "value": "test"}}
-
-store.close()
-```
-
----
 
 ## Configuration
 
 ### Environment Variables
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| :---------- | :------------- | :--------- |
 | `GRAPH_STORE_AGE_CONNECTION_STRING` | PostgreSQL connection string | `host=localhost dbname=agedb user=postgres password=postgres` |
 | `GRAPH_STORE_AGE_GRAPH_NAME` | AGE graph name | `semantica` |
 
@@ -92,27 +91,33 @@ graph_store_config.set("age_connection_string", "host=db.example.com dbname=prod
 graph_store_config.set("age_graph_name", "production")
 ```
 
----
 
 ## Connection & Initialization
 
-On `connect()`, the store performs idempotent setup:
+On `connect()`, the store performs idempotent setup — safe to call repeatedly:
 
-1. `CREATE EXTENSION IF NOT EXISTS age;`
-2. `LOAD 'age';`
-3. `SET search_path = ag_catalog, "$user", public;`
-4. Creates the named graph if it does not already exist.
+<Steps>
+  <Step title="Load the extension">
+    `CREATE EXTENSION IF NOT EXISTS age;`
+  </Step>
+  <Step title="Activate AGE in the session">
+    `LOAD 'age';`
+  </Step>
+  <Step title="Set the search path">
+    `SET search_path = ag_catalog, "$user", public;`
+  </Step>
+  <Step title="Create the graph">
+    Creates the named graph if it does not already exist.
+  </Step>
+</Steps>
 
-This is safe to call repeatedly.
-
----
 
 ## ID Handling
 
 Apache AGE auto-generates internal vertex/edge IDs (large integers). These are **not** the same as any semantic or application-level ID you may want to assign.
 
 | Concept | Description |
-|---------|-------------|
+| :--------- | :------------- |
 | **AGE internal ID** | Auto-generated by AGE. Exposed as `"id"` in all returned dicts. Used in `delete_node()`, `get_node()`, etc. |
 | **Semantic ID** | Application-level identifier. Store it in the `semantica_id` property. |
 
@@ -127,7 +132,6 @@ node = store.create_node(
 
 <Warning>Never mix AGE internal IDs with semantic IDs. Use `node["id"]` for graph operations (delete, update, traverse) and `node["properties"]["semantica_id"]` for application-level lookups.</Warning>
 
----
 
 ## Label Handling
 
@@ -147,7 +151,6 @@ node = store.create_node(
 # Returned: {"id": ..., "labels": ["Person", "Employee", "Admin"], "properties": {"name": "Alice"}}
 ```
 
----
 
 ## Cypher Query Execution
 
@@ -182,7 +185,6 @@ result = store.execute_query(
 
 If omitted, the store attempts to infer columns from the `RETURN` clause.
 
----
 
 ## Transactions
 
@@ -192,14 +194,13 @@ The store uses explicit PostgreSQL transactions:
 - **Exception** → `ROLLBACK`, then re-raise as `ProcessingError`
 - No silent failures
 
----
 
 ## API Reference
 
 All methods match the standard Semantica graph store backend interface:
 
 | Method | Description |
-|--------|-------------|
+| :-------- | :------------- |
 | `connect(**options)` | Connect and initialize AGE |
 | `close()` | Close the connection |
 | `create_node(labels, properties)` | Create a vertex |
@@ -217,7 +218,6 @@ All methods match the standard Semantica graph store backend interface:
 | `create_index(label, property_name, index_type)` | Create a PostgreSQL index |
 | `get_stats()` | Graph statistics |
 
----
 
 ## Docker Setup
 

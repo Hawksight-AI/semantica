@@ -4,7 +4,14 @@ description: "Text and graph embedding generation — FastEmbed, Sentence-Transf
 icon: "vector-square"
 ---
 
-`semantica.embeddings` converts text and graph structures into dense vectors. These vectors power semantic search, entity resolution, GraphRAG retrieval, and deduplication across every Semantica module. A single provider-agnostic API abstracts FastEmbed, Sentence-Transformers, OpenAI, and BGE behind one interface.
+**`semantica.embeddings`** converts text and graph structures into **dense vector representations**:
+
+- Provider-agnostic API: FastEmbed (default, ONNX, no GPU), Sentence-Transformers, OpenAI, BGE
+- Powers semantic search, entity resolution, GraphRAG retrieval, and deduplication
+- `GraphEmbeddingManager` embeds KG nodes and edges for graph database backends
+- Five pooling strategies: Mean (default), Max, CLS, Attention, Hierarchical
+- `check_available_providers()` shows which backends are installed in your environment
+
 
 ## Why Embeddings Matter
 
@@ -21,14 +28,14 @@ Semantica uses embeddings for:
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `EmbeddingGenerator` | Provider-agnostic entry point — handles batching and provider selection |
 | `TextEmbedder` | Text embedding with automatic batch processing; default uses FastEmbed |
 | `GraphEmbeddingManager` | Embed KG nodes and edges for GraphRAG and graph databases |
 | `VectorEmbeddingManager` | Prepare and format embeddings for vector database backends |
 | `OpenAIStore` | OpenAI `text-embedding-3-small` / `text-embedding-3-large` provider |
 | `BGEStore` | BAAI/bge models via `sentence-transformers` |
-| `FastEmbedStore` | ONNX-accelerated local embeddings — no CUDA required |
+| `FastEmbedStore` | ONNX-accelerated local embeddings — no CUDA **required** |
 | `LlamaStore` | Placeholder store — not production-ready; do not use for embeddings |
 | `MeanPooling` | Default pooling strategy — best for retrieval and clustering |
 
@@ -55,17 +62,93 @@ Semantica uses embeddings for:
   </Card>
 </CardGroup>
 
-## Installation
+## Provider Setup
 
-| Provider | Install Command | API Key Required |
-| -------- | --------------- | ---------------- |
-| FastEmbed (default) | `pip install "semantica[fastembed]"` | No |
-| Sentence-Transformers | `pip install semantica` | No |
-| BGE | `pip install semantica` | No (uses sentence-transformers) |
-| OpenAI | `pip install "semantica[llm-openai]"` | Yes — `OPENAI_API_KEY` |
-| All providers | `pip install "semantica[all]"` | Varies |
+<Tabs>
+  <Tab title="FastEmbed (default)">
+    ONNX-accelerated local embeddings. No GPU required, no API key. Best starting point.
 
-Check which providers are available in your environment:
+    ```bash
+    pip install "semantica[fastembed]"
+    ```
+
+    ```python
+    from semantica.embeddings import EmbeddingGenerator
+
+    # FastEmbed is the default — no config needed
+    generator = EmbeddingGenerator()
+    embedding = generator.generate_embeddings("Text about AI")
+    ```
+
+    <Check>
+      Default model is `BAAI/bge-small-en-v1.5`. Zero cost, zero GPU, works on any machine.
+    </Check>
+  </Tab>
+  <Tab title="Sentence-Transformers">
+    Broad model selection via HuggingFace. Runs locally, no API key.
+
+    ```bash
+    pip install semantica  # sentence-transformers included
+    ```
+
+    ```python
+    from semantica.embeddings import EmbeddingGenerator
+
+    generator = EmbeddingGenerator(config={
+        "text": {
+            "method": "sentence_transformers",
+            "model_name": "all-MiniLM-L6-v2",
+        }
+    })
+    ```
+
+    Popular models: `all-MiniLM-L6-v2` (fast, small), `all-mpnet-base-v2` (balanced), `BAAI/bge-large-en-v1.5` (high accuracy).
+  </Tab>
+  <Tab title="BGE">
+    BAAI/bge models via sentence-transformers. State-of-the-art retrieval performance, runs locally.
+
+    ```bash
+    pip install semantica
+    ```
+
+    ```python
+    from semantica.embeddings import BGEStore, EmbeddingGenerator
+
+    store     = BGEStore(model="BAAI/bge-large-en-v1.5")
+    embedding = store.embed("Text about AI")
+
+    # Or switch model on an existing EmbeddingGenerator
+    generator = EmbeddingGenerator()
+    generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
+    ```
+  </Tab>
+  <Tab title="OpenAI">
+    Cloud embeddings via OpenAI API. Highest quality, requires API key.
+
+    ```bash
+    pip install "semantica[llm-openai]"
+    export OPENAI_API_KEY="sk-..."
+    ```
+
+    ```python
+    import os
+    from semantica.embeddings import OpenAIStore
+
+    store = OpenAIStore(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        model="text-embedding-3-small",   # or text-embedding-3-large
+    )
+    embedding = store.embed("Text about AI")
+    ```
+
+    | Model | Dimensions | Best for |
+    | :---- | :--------- | :-------- |
+    | `text-embedding-3-small` | 1536 | Cost-efficient retrieval |
+    | `text-embedding-3-large` | 3072 | Highest accuracy workloads |
+  </Tab>
+</Tabs>
+
+Check which providers are installed in your environment:
 
 ```python
 from semantica.embeddings import check_available_providers
@@ -156,8 +239,8 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
 ## Supported Models
 
 | Provider | Model | Dimension | Speed | Best For |
-| -------- | ----- | --------- | ----- | -------- |
-| `fastembed` | `BAAI/bge-small-en-v1.5` | 384 | Very fast | **Default** — CPU-optimised, no GPU required |
+| :-------- | :----- | :--------- | :----- | :-------- |
+| `fastembed` | `BAAI/bge-small-en-v1.5` | 384 | Very fast | **Default** — CPU-optimised, no GPU **required** |
 | `sentence_transformers` | `all-MiniLM-L6-v2` | 384 | Fast | Good balance of speed and quality |
 | `sentence_transformers` | `all-mpnet-base-v2` | 768 | Medium | Higher retrieval quality |
 | `sentence_transformers` | `BAAI/bge-large-en-v1.5` | 1024 | Medium | State-of-the-art retrieval accuracy |
@@ -177,7 +260,7 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
     similarity = generator.compare_embeddings(embeddings[0], embeddings[1])
     ```
 
-    Best for: CPU-only production, lowest latency without GPU. Default — works out of the box.
+    **Best for:** CPU-only production, lowest latency without GPU. Default — works out of the box.
   </Tab>
   <Tab title="Sentence-Transformers">
     ```python
@@ -188,7 +271,7 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
     embeddings = generator.generate_embeddings(texts)
     ```
 
-    Best for: higher-quality retrieval when GPU is available, or when fine-tuned models are needed.
+    **Best for:** higher-quality retrieval when GPU is available, or when fine-tuned models are needed.
   </Tab>
   <Tab title="OpenAI">
     ```python
@@ -199,7 +282,7 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
     embedding = store.embed("Hello world")
     ```
 
-    Best for: highest quality (`text-embedding-3-large`), or matching an existing OpenAI pipeline.
+    **Best for:** highest quality (`text-embedding-3-large`), or matching an existing OpenAI pipeline.
   </Tab>
   <Tab title="GPU acceleration">
     ```python
@@ -219,7 +302,7 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
 ### Constructor Parameters
 
 | Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
+| :--------- | :---- | :------- | :----------- |
 | `config` | `dict` | `None` | Config dict; `config["text"]` is passed to `TextEmbedder` |
 | `**kwargs` | | | Additional key/value config merged into `config` |
 
@@ -251,7 +334,7 @@ dim = embedder.get_embedding_dimension()
 ### TextEmbedder Constructor Parameters
 
 | Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
+| :--------- | :---- | :------- | :----------- |
 | `model_name` | `str` | `"BAAI/bge-small-en-v1.5"` | Model name to load |
 | `method` | `str` | `"fastembed"` | Embedding method: `"fastembed"` or `"sentence_transformers"` |
 | `device` | `str` | `"cpu"` | Device for sentence-transformers: `"cpu"`, `"cuda"`, `"mps"`. Ignored for FastEmbed. |
@@ -308,7 +391,7 @@ Pooling aggregates a set of embeddings into a single vector — useful when you 
     pooled = pooler.pool(token_embeddings)   # shape: (hidden_dim,)
     ```
 
-    Best for: retrieval, semantic search, and clustering — averages all contributions.
+    **Best for:** retrieval, semantic search, and clustering — averages all contributions.
   </Tab>
   <Tab title="MaxPooling">
     ```python
@@ -318,7 +401,7 @@ Pooling aggregates a set of embeddings into a single vector — useful when you 
     pooled = pooler.pool(token_embeddings)
     ```
 
-    Best for: capturing the presence of any feature — takes the max activation per dimension.
+    **Best for:** capturing the presence of any feature — takes the max activation per dimension.
   </Tab>
   <Tab title="CLSPooling">
     ```python
@@ -328,7 +411,7 @@ Pooling aggregates a set of embeddings into a single vector — useful when you 
     pooled = pooler.pool(token_embeddings)
     ```
 
-    Best for: classification-style tasks; models explicitly trained with CLS pooling (BERT).
+    **Best for:** classification-style tasks; models explicitly trained with CLS pooling (BERT).
   </Tab>
   <Tab title="HierarchicalPooling">
     ```python
@@ -339,12 +422,12 @@ Pooling aggregates a set of embeddings into a single vector — useful when you 
     pooled = pooler.pool(token_embeddings, chunk_size=10)
     ```
 
-    Best for: long documents — chunk-level mean pooling, then global mean pooling across chunks.
+    **Best for:** long documents — chunk-level mean pooling, then global mean pooling across chunks.
   </Tab>
   <Tab title="Strategy Comparison">
 
     | Strategy | When to Use |
-    | -------- | ----------- |
+    | :-------- | :----------- |
     | `mean` | Default for retrieval, semantic search, and clustering |
     | `max` | When you want to capture the presence of any feature, not average presence |
     | `cls` | Classification-style tasks; models explicitly trained with CLS pooling (BERT) |

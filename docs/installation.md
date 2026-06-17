@@ -15,11 +15,12 @@ icon: "download"
 ## System Requirements
 
 | Component | Minimum | Recommended |
-| --------- | ------- | ----------- |
+| :--------- | :------- | :----------- |
 | Python | 3.8 | 3.11+ |
 | OS | Windows / Linux / Mac | Linux / Mac |
 | RAM | 4 GB | 16 GB+ |
 | Storage | 2 GB | 20 GB+ (models and data) |
+
 
 ## Basic Installation
 
@@ -38,6 +39,7 @@ pip install semantica[all]
 ```bash
 python -c "import semantica; print(semantica.__version__)"
 ```
+
 
 ## Virtual Environment (Recommended)
 
@@ -58,6 +60,7 @@ python -c "import semantica; print(semantica.__version__)"
     ```
   </Tab>
 </Tabs>
+
 
 ## Optional Dependencies
 
@@ -94,6 +97,7 @@ Install only what you need:
   </Tab>
 </Tabs>
 
+
 ## Install from Source
 
 For the latest development version or to contribute:
@@ -112,6 +116,7 @@ Install directly from the main branch if the PyPI release has issues:
 ```bash
 pip install git+https://github.com/semantica-agi/semantica.git@main
 ```
+
 
 ## Troubleshooting
 
@@ -158,6 +163,7 @@ pip install --upgrade semantica
 ### Windows PyTorch DLL errors
 
 Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe). This is a Windows system dependency, not a Semantica bug.
+
 
 ## Next Steps
 

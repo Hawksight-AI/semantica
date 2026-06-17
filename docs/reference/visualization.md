@@ -4,14 +4,20 @@ description: "Interactive and static knowledge graph, ontology, embedding, and t
 icon: "chart-bar"
 ---
 
-`semantica.visualization` renders knowledge graphs, ontologies, embedding spaces, and temporal data as interactive HTML or static images — without launching the full Explorer server.
+**`semantica.visualization`** renders knowledge graphs, ontologies, embedding spaces, and temporal data as **interactive HTML or static images** — without launching the full Explorer server:
+
+- `KGVisualizer` — interactive network with force, hierarchical, and circular layouts
+- `EmbeddingVisualizer` — 2D/3D UMAP or t-SNE projections with cluster labels
+- `TemporalVisualizer` — timeline views and graph evolution across snapshots
+- `AnalyticsVisualizer` — centrality scores, community structure, degree distribution charts
 
 Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` or `graphviz`.
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `KGVisualizer` | Interactive network, community, and subgraph rendering with force/hierarchical/circular layouts |
 | `OntologyVisualizer` | Class hierarchy and property relationship diagrams from any ontology |
 | `EmbeddingVisualizer` | 2D/3D UMAP or t-SNE projection of embedding spaces with cluster labels |
@@ -91,7 +97,7 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
     **Layout options (`layout=`):**
 
     | Layout | Description | Best For |
-    | ------ | ----------- | -------- |
+    | :------ | :----------- | :-------- |
     | `force` | Physics simulation — clusters emerge naturally | General graphs |
     | `hierarchical` | Top-down tree layout | Taxonomies, org charts |
     | `circular` | Nodes on a circle, edges as chords | Small dense graphs |
@@ -138,7 +144,7 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
     ```
 
     | Method | Speed | Preserves | Best For |
-    | ------ | ----- | --------- | -------- |
+    | :------ | :----- | :--------- | :-------- |
     | `umap` | Fast | Global + local structure | Large datasets, cluster discovery |
     | `tsne` | Medium | Local structure | Tight cluster separation |
     | `pca` | Very fast | Variance | Quick overview, linear structure |
@@ -217,7 +223,7 @@ viz = KGVisualizer(color_scheme="vibrant")
 ```
 
 | Scheme | Description | Best For |
-| ------ | ----------- | -------- |
+| :------ | :----------- | :-------- |
 | `default` | Blue-grey palette | General use |
 | `vibrant` | High-contrast, saturated colours | Presentations |
 | `pastel` | Soft, muted tones | Light backgrounds |
@@ -228,7 +234,7 @@ viz = KGVisualizer(color_scheme="vibrant")
 ## Export Formats
 
 | Format | Interactive | Scalable | Best For |
-| ------ | ----------- | -------- | -------- |
+| :------ | :----------- | :-------- | :-------- |
 | `.html` | Yes | N/A | Web dashboards, exploratory analysis |
 | `.png` | No | No | Reports, Jupyter notebooks |
 | `.svg` | No | Yes | Publications, slide decks |

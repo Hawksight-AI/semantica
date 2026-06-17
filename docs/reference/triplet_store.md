@@ -4,14 +4,14 @@ description: "RDF triple storage with SPARQL queries and bulk loading — Blazeg
 icon: "table"
 ---
 
-`semantica.triplet_store` provides W3C-standard RDF storage with SPARQL query support. Use it when you need semantic web compatibility, OWL-style reasoning, SPARQL-based queries, or standards-compliant RDF serialization.
+`semantica.triplet_store` provides **W3C-standard RDF storage** with **SPARQL 1.1** query support. Use it when you need **semantic web compatibility**, OWL-style reasoning, SPARQL-based queries, or standards-compliant RDF serialization.
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :---- | :--- |
 | `TripletStore` | Unified interface: `add_triplet`, `add_triplets`, `get_triplets`, `delete_triplet`, `execute_query` |
-| `QueryEngine` | SPARQL 1.1 execution with query optimization and result caching |
+| `QueryEngine` | **SPARQL 1.1** execution with query optimization and result caching |
 | `BulkLoader` | High-volume RDF loading with batching, retries, and progress tracking |
 | `BlazegraphStore` | Blazegraph REST API — SPARQL 1.1 Update, namespace management |
 | `JenaStore` | Apache Jena — rdflib-backed, SPARQL read support via remote endpoint |
@@ -42,7 +42,7 @@ icon: "table"
 
 ## Getting Started
 
-`TripletStore` wraps the backend of your choice. Construct a `Triplet` object (from `semantica.semantic_extract.types`) and call `add_triplet()`:
+**`TripletStore`** wraps the backend of your choice. Construct a `Triplet` object (from `semantica.semantic_extract.types`) and call `add_triplet()`:
 
 ```python
 from semantica.triplet_store import TripletStore
@@ -147,7 +147,7 @@ for row in result.bindings:
     )
     ```
 
-    Best for: Wikidata-style workloads, high triple counts, named graph support, SPARQL 1.1 Update.
+    **Best for:** Wikidata-style workloads, high triple counts, named graph support, SPARQL 1.1 Update.
   </Tab>
   <Tab title="Apache Jena">
     ```bash
@@ -161,7 +161,7 @@ for row in result.bindings:
     )
     ```
 
-    Best for: local development with rdflib, SPARQL read queries against a Fuseki endpoint.
+    **Best for:** local development with rdflib, SPARQL read queries against a Fuseki endpoint.
 
     **Note on inference:** `JenaStore` accepts `enable_inference=True` in config but OWL reasoning is a placeholder and does not produce inferred triples in the current implementation.
   </Tab>
@@ -178,12 +178,12 @@ for row in result.bindings:
     )
     ```
 
-    Best for: Eclipse Foundation deployments, transaction-based loading via REST API.
+    **Best for:** Eclipse Foundation deployments, transaction-based loading via REST API.
   </Tab>
   <Tab title="Backend Comparison">
 
     | Backend | License | Named Graphs | Write via | Best For |
-    | ------- | ------- | ------------ | --------- | -------- |
+    | :------- | :------- | :------------ | :--------- | :-------- |
     | Blazegraph | Open source | Yes | SPARQL Update REST | High triple count, SPARQL 1.1 |
     | Apache Jena | Apache 2.0 | No (rdflib backend) | rdflib in-process | Local dev, read queries |
     | RDF4J | Eclipse 1.0 | Yes | REST API N-Triples | Enterprise Java, transactions |
@@ -208,17 +208,17 @@ t = Triplet(
 ```
 
 | Field | Type | Default | Description |
-| ----- | ---- | ------- | ----------- |
-| `subject` | `str` | required | Subject URI |
-| `predicate` | `str` | required | Predicate URI |
-| `object` | `str` | required | Object URI or literal |
+| :----- | :---- | :------- | :----------- |
+| `subject` | `str` | **required** | Subject URI |
+| `predicate` | `str` | **required** | Predicate URI |
+| `object` | `str` | **required** | Object URI or literal |
 | `confidence` | `float` | `1.0` | Confidence score (0–1) |
 | `metadata` | `dict` | `{}` | Arbitrary metadata |
 
 ## TripletStore Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `add_triplet(triplet)` | `dict` | Add a single `Triplet` object |
 | `add_triplets(triplets, batch_size)` | `dict` | Bulk-add a list of `Triplet` objects; returns `{"success", "total", "processed", "failed", "batches"}` |
 | `get_triplets(subject, predicate, object)` | `List[Triplet]` | Retrieve triplets matching subject/predicate/object filters |
@@ -271,7 +271,7 @@ store.execute_query("""
 ### QueryResult fields
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `bindings` | `List[dict]` | Each dict maps variable name → `{"value": ..., "type": ...}` |
 | `variables` | `List[str]` | SPARQL result variable names |
 | `execution_time` | `float` | Seconds elapsed |

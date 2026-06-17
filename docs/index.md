@@ -7,62 +7,131 @@ description: "The Accountability and Context Layer for AI — Context Graphs · 
   **v0.5.0 is live** — Ontology Hub, Distance Intelligence, SHACL Studio, Parquet & XML ingestion, 12 security fixes. [What's new →](#whats-new)
 </Info>
 
-> Most AI agents act without a trail. Semantica adds the layer your stack is missing: structured context graphs, auditable decision records, and full provenance from every output back to its source — so your AI isn't just powerful, it's **accountable**.
+Your AI agent just made a decision. Now someone needs to explain it.
 
-## The Problem
+*What did it know at the time? Which facts shaped the outcome? Where did those facts come from? Has it made the same call before — and did that go well?*
 
-AI agents today are powerful but not trustworthy. Five structural gaps make them impossible to deploy in regulated environments:
+If your stack can't answer those questions with a traceable record, you have a gap. Not a capability gap — an **accountability gap**. It's the reason AI hasn't landed at scale in healthcare, finance, legal, and government. And it's why teams building for those markets keep rebuilding the same guardrails from scratch.
+
+**Semantica closes that gap.** It's the context and accountability layer that sits beneath your existing agent framework — not a replacement for LangChain or LlamaIndex, but the infrastructure that makes their outputs trustworthy.
+
+<CardGroup cols={4}>
+  <Card title="1,000+ Tests" icon="circle-check">
+    Production-hardened with a full regression suite
+  </Card>
+  <Card title="25+ Modules" icon="puzzle-piece">
+    Every capability independently importable
+  </Card>
+  <Card title="12 LLM Providers" icon="microchip">
+    OpenAI, Anthropic, Ollama, Groq, and more
+  </Card>
+  <Card title="MIT Licensed" icon="code-branch">
+    Open source, no vendor lock-in, fully forkable
+  </Card>
+</CardGroup>
+
+
+## The Problem Every Production AI Team Hits
+
+Powerful agents aren't automatically trustworthy ones. Five structural blind spots make modern AI systems impossible to deploy in regulated environments:
 
 <CardGroup cols={2}>
   <Card title="No memory structure" icon="brain">
-    Agents store embeddings, not meaning. There's no way to ask *why* something was recalled or trace a fact to its source.
+    Agents store embeddings, not meaning.
+    - No way to ask *why* a fact was recalled
+    - No link from a recalled fact back to its source document
+    - Context is a black box that resets on every run
   </Card>
   <Card title="No decision trail" icon="clock-rotate-left">
-    Agents act continuously but record nothing. When something breaks, there's no history to debug or audit.
+    Agents act continuously but record nothing.
+    - No history to hand to a regulator or auditor
+    - No way to replay or reproduce a past decision
+    - Debugging means re-running, not reviewing
   </Card>
   <Card title="No provenance" icon="link-slash">
-    Outputs can't be traced back to source facts. In healthcare, finance, and legal, this is a hard compliance blocker.
+    Outputs can't be traced to source facts.
+    - In healthcare, finance, and legal — this is a hard compliance blocker
+    - No lineage from inference back to the original document
+    - Impossible to demonstrate what the agent actually relied on
   </Card>
   <Card title="No reasoning transparency" icon="eye-slash">
-    Black-box answers with zero explanation of how a conclusion was reached.
+    Black-box answers with no explanation.
+    - Impossible to validate the reasoning path
+    - Impossible to contest a specific conclusion
+    - No basis for improving or correcting future behavior
   </Card>
   <Card title="No conflict detection" icon="triangle-exclamation">
-    Contradictory facts silently coexist in vector stores, producing unpredictable and inconsistent outputs.
+    Contradictory facts silently coexist in vector stores.
+    - No detection when two sources disagree
+    - Outputs become inconsistent and unpredictable over time
+    - Silent failures compound as the knowledge base grows
   </Card>
 </CardGroup>
 
-These aren't edge cases. They're why AI cannot be deployed in healthcare, finance, legal, and government without custom guardrails built from scratch.
+<Note>
+  These aren't edge cases. They're why enterprise AI pilots stall — and why your compliance team keeps saying *not yet*.
+</Note>
 
-## The Solution
 
-Semantica is the **accountability and context layer** you add on top of your existing AI stack. Not a replacement for LangChain or LlamaIndex — the infrastructure that makes their outputs trustworthy.
+## What Semantica Adds to Your Stack
+
+Semantica gives every agent the infrastructure it needs to be accountable. Drop it into your existing setup in minutes:
 
 <CardGroup cols={2}>
   <Card title="Context Graphs" icon="diagram-project">
-    A structured, queryable graph of everything your agent knows, decides, and reasons about. Persistent across runs.
+    A structured, queryable graph of everything your agent knows, decides, and reasons about.
+    - Persistent across agent runs — no context loss between sessions
+    - Queryable with SPARQL and full graph algorithms
+    - Temporal model with `valid_from` / `valid_until` on nodes and edges
+    - Point-in-time snapshots of the full knowledge state
   </Card>
   <Card title="Decision Intelligence" icon="check-circle">
-    Every decision is a first-class object: recorded, causally linked, searchable by precedent, and analyzable for downstream impact.
+    Every decision is a first-class object in your system.
+    - `record_decision()` captures full lifecycle and causal chain
+    - Hybrid precedent search over past decisions for consistency
+    - `analyze_decision_impact()` shows downstream consequences
+    - Causal chain visualization from trigger to outcome
   </Card>
   <Card title="Full Provenance" icon="shield-check">
-    Every fact links back to its source. W3C PROV-O compliant. Full lineage from ingestion to inference.
+    Every fact links to its source document and ingestion event.
+    - W3C PROV-O compliant lineage across all modules
+    - Full traceability from raw input to final inference
+    - `recorded_at` stamping with OWL-Time export
+    - Audit-ready for HIPAA, SOX, GDPR, FDA 21 CFR Part 11
   </Card>
   <Card title="Reasoning Engines" icon="microchip">
-    Forward chaining, Rete, deductive, abductive, SPARQL, Datalog. Explainable paths, not black boxes.
+    Explainable reasoning paths — not black boxes.
+    - Forward chaining, Rete, deductive, abductive
+    - SPARQL query-based inference over RDF graphs
+    - Datalog with recursive Horn clause rules
+    - Every conclusion backed by a traceable derivation path
   </Card>
   <Card title="Temporal Intelligence" icon="clock">
-    Point-in-time queries, Allen interval algebra, temporal provenance, OWL-Time export.
+    Your graph knows not just *what* — but *when*.
+    - Allen interval algebra — all 13 temporal relations
+    - Point-in-time queries over historical graph states
+    - Temporal provenance stamping on every fact
+    - OWL-Time export for standards-compliant archiving
   </Card>
   <Card title="Ontology Hub" icon="sitemap">
-    Visual editor, SHACL Studio, alignment authoring, health dashboard. Full ontology lifecycle in the browser.
+    Full ontology lifecycle in the browser.
+    - Visual editor for schema design and editing
+    - SHACL Studio for constraint authoring and validation
+    - Alignment authoring across multiple ontologies
+    - Health dashboard and version control built in
   </Card>
 </CardGroup>
 
-Works alongside any LLM provider and any agent framework.
+<Tip>
+  Works alongside any LLM provider and any agent framework — add it to an existing stack without changing your architecture.
+</Tip>
 
 <img src="/assets/img/diagrams/architecture-overview.svg" alt="Semantica four-layer architecture: Ingestion → Processing → Intelligence → Application" style={{ width: '100%', borderRadius: '12px', margin: '24px 0' }} />
 
-## Quick Start
+
+## See It In Action
+
+One pip install. A few lines to connect your agent. Everything else becomes traceable.
 
 ```bash
 pip install semantica
@@ -150,15 +219,110 @@ decision_id = context.record_decision(
 
 <CardGroup cols={3}>
   <Card title="Full Quickstart" icon="rocket" href="quickstart">
-    Step-by-step pipeline walkthrough.
+    Step-by-step pipeline walkthrough
   </Card>
   <Card title="Cookbook" icon="flask" href="cookbook">
-    40+ real-world Jupyter notebooks.
+    40+ real-world Jupyter notebooks
   </Card>
   <Card title="Join Discord" icon="discord" href="https://discord.gg/sV34vps5hH">
-    Community chat and support.
+    Community chat and support
   </Card>
 </CardGroup>
+
+
+## Built for Where Mistakes Have Consequences
+
+Semantica was designed for domains where every decision must be explainable and every fact must be traceable:
+
+<CardGroup cols={2}>
+  <Card title="Healthcare & Life Sciences" icon="heart-pulse">
+    - Clinical decision support with full audit trails
+    - Drug interaction and contraindication graphs
+    - Patient safety event tracking and root-cause analysis
+    - HIPAA-compliant provenance chains out of the box
+  </Card>
+  <Card title="Finance & Risk" icon="chart-line">
+    - Fraud detection knowledge graphs
+    - Risk assessment trails built to survive an audit
+    - SOX, GDPR, and MiFID II compliance infrastructure
+    - Model decision lineage for regulatory reporting
+  </Card>
+  <Card title="Legal & Compliance" icon="scale-balanced">
+    - Evidence-backed research with every cited fact provenance-linked
+    - Contract analysis with traceable clause extraction
+    - Regulatory change tracking across jurisdictions
+    - Full reasoning paths ready for court-admissible documentation
+  </Card>
+  <Card title="Cybersecurity" icon="shield">
+    - Threat attribution graphs linking actors, TTPs, and indicators
+    - Incident response timelines with full event provenance
+    - Security audit trails across the complete kill chain
+    - MITRE ATT&CK-aligned knowledge graph integration
+  </Card>
+  <Card title="Government & Defense" icon="building-columns">
+    - Policy decision trails from brief to outcome
+    - Classified information handling with provenance chains
+    - Chain-of-custody scrutiny for intelligence reporting
+    - Air-gapped deployment with local LLM support
+  </Card>
+  <Card title="Critical Infrastructure" icon="bolt">
+    - Power grid state tracking with temporal intelligence
+    - Transportation safety event graphs
+    - Emergency response coordination with decision audit trails
+    - Consequence modeling for high-stakes operational decisions
+  </Card>
+</CardGroup>
+
+
+## Start Here
+
+<Steps>
+  <Step title="Install Semantica">
+    ```bash
+    pip install semantica
+    ```
+    See [Installation](installation) for optional extras (`[all]`, `[neo4j]`, `[pinecone]`) and environment setup.
+  </Step>
+  <Step title="Run the Quickstart">
+    Build a complete knowledge graph pipeline in [5 minutes](quickstart):
+    - Ingest documents from any source
+    - Extract entities and relationships
+    - Build and query the graph
+    - Record and trace a decision
+  </Step>
+  <Step title="Learn the mental model">
+    [Core Concepts](concepts) covers:
+    - Knowledge graphs vs. vector stores — when to use each
+    - What GraphRAG is and how Semantica implements it
+    - How provenance and decision tracking work together
+    - The accountability layer architecture
+  </Step>
+  <Step title="Go deep on any module">
+    Every module has a dedicated [reference page](reference/context) with:
+    - Full class and method documentation
+    - Parameter tables with types and defaults
+    - Runnable code examples for each feature
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="installation">
+    Get Semantica installed in under a minute
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="quickstart">
+    Build a complete knowledge graph pipeline in 5 minutes
+  </Card>
+  <Card title="Core Concepts" icon="book-open" href="concepts">
+    The mental model behind the API
+  </Card>
+  <Card title="API Reference" icon="rectangle-terminal" href="reference/context">
+    Exact module, class, and method details
+  </Card>
+  <Card title="Cookbook" icon="flask" href="cookbook">
+    Domain notebooks for real-world use cases
+  </Card>
+</CardGroup>
+
 
 ## What's New
 
@@ -169,7 +333,7 @@ decision_id = context.record_decision(
 Released **May 11, 2026**
 
 | Area | Highlights |
-|------|------------|
+| :------ | :------------ |
 | **Ontology Hub** | Visual editor, SHACL Studio, alignment authoring, health dashboard, version control — full ontology lifecycle in the browser |
 | **Distance Intelligence** | Semantic neighborhoods, N×N distance matrices, ego-mode visualization, distance band classification, embedding cache optimization |
 | **Parquet Ingestion** | `ParquetIngestor` with PyArrow — single file, partitioned directories, Hive-style discovery, selective column reading |
@@ -187,7 +351,7 @@ pip install semantica==0.5.0
 <Accordion title="v0.4.0 — Temporal Intelligence & Knowledge Explorer" icon="clock">
 
 | Area | Highlights |
-|------|------------|
+| :------ | :------------ |
 | **Temporal Intelligence** | 6-PR system: temporal data model, point-in-time queries, Allen interval algebra (all 13 relations), OWL-Time export |
 | **Knowledge Explorer API** | Full FastAPI backend — 99 tests, 12 export formats, WebSocket progress, thread-safe sessions, audit trail |
 | **Ontology Foundations** | SHACL generation/validation, SKOS vocabulary, ontology alignment API, diff & migration tooling |
@@ -198,97 +362,96 @@ pip install semantica==0.5.0
 
 </AccordionGroup>
 
-## Start Here
 
-<Steps>
-  <Step title="Install">
-    ```bash
-    pip install semantica
-    ```
-    See [Installation](installation) for optional extras and environment setup.
-  </Step>
-  <Step title="Follow the Quickstart">
-    Build a complete knowledge graph pipeline — ingest, extract, build, query — in [5 minutes](quickstart).
-  </Step>
-  <Step title="Learn the mental model">
-    [Core Concepts](concepts) explains knowledge graphs, GraphRAG, provenance, and decision intelligence. Read this before the API reference.
-  </Step>
-  <Step title="Go deep on any module">
-    Every module has a dedicated [reference page](reference/context) with class docs, parameter tables, and runnable examples.
-  </Step>
-</Steps>
-
-<CardGroup cols={2}>
-  <Card title="Installation" icon="download" href="installation">
-    Get Semantica installed in under a minute.
-  </Card>
-  <Card title="Quickstart" icon="rocket" href="quickstart">
-    Build a complete knowledge graph pipeline in 5 minutes.
-  </Card>
-  <Card title="Core Concepts" icon="book-open" href="concepts">
-    The mental model behind the API.
-  </Card>
-  <Card title="API Reference" icon="rectangle-terminal" href="reference/context">
-    Jump here for exact module, class, and method details.
-  </Card>
-  <Card title="Cookbook" icon="flask" href="cookbook">
-    Explore domain notebooks once you have the basics working.
-  </Card>
-</CardGroup>
-
-## Capabilities
+## Full Capabilities
 
 <AccordionGroup>
 
 <Accordion title="Context & Decision Intelligence" icon="brain">
 
-- **Context Graphs** — structured, persistent graph of entities, relationships, and decisions
-- **Decision tracking** — `record_decision()` with full lifecycle management and causal chains
-- **Precedent search** — hybrid similarity search over past decisions for consistency
-- **Influence analysis** — `analyze_decision_impact()`, `analyze_decision_influence()`
-- **Temporal graphs** — `valid_from` / `valid_until` on nodes and edges, point-in-time queries
-- **Distance Intelligence** — semantic neighborhoods, N×N distance matrices, ego-mode exploration
+### Context Graphs
+
+- Structured, persistent graph of entities, relationships, and decisions
+- Temporal model with `valid_from` / `valid_until` on every node and edge
+- Point-in-time queries across historical graph states
+- Distance Intelligence — semantic neighborhoods and N×N distance matrices
+
+### Decision Tracking
+
+- `record_decision()` with full lifecycle management and causal chains
+- Hybrid similarity search over past decisions for consistency enforcement
+- `analyze_decision_impact()` and `analyze_decision_influence()` for consequence modeling
+- Ego-mode exploration for targeted neighborhood investigation
 
 </Accordion>
 
 <Accordion title="Knowledge Engineering" icon="diagram-project">
 
-- **NER** — named entity recognition with pattern, ML, or LLM methods
-- **Relation extraction** — typed triplets via LLM or rule-based methods
-- **Deduplication v2** — `blocking_v2`, `hybrid_v2`, `semantic_v2` — up to 7x faster
-- **Ontology Hub** — visual editor, SHACL Studio, alignments, health dashboard
-- **Datalog reasoning** — recursive Horn clause rules with fixpoint semantics
-- **SPARQL reasoning** — query-based inference over RDF graphs
+### Entity & Relation Extraction
+
+- Named entity recognition — pattern, ML, or LLM methods
+- Typed triplet extraction via LLM or rule-based pipelines
+- Event extraction with temporal and causal linking
+
+### Ontology & Schema
+
+- Ontology Hub — visual editor, SHACL Studio, alignments, health dashboard
+- Deduplication v2 — `blocking_v2`, `hybrid_v2`, `semantic_v2` — up to 7x faster
+- Datalog reasoning — recursive Horn clause rules with fixpoint semantics
+- SPARQL reasoning — query-based inference over RDF graphs
 
 </Accordion>
 
 <Accordion title="Provenance & Auditability" icon="shield-check">
 
-- **W3C PROV-O** — lineage tracking across all modules
-- **Change management** — version control with SHA-256 checksums and audit trails
-- **Temporal provenance** — `recorded_at` stamping, OWL-Time export
-- **Compliance** — HIPAA, SOX, GDPR, FDA 21 CFR Part 11 infrastructure
+### Lineage Tracking
+
+- W3C PROV-O lineage across all modules — every fact has a source
+- `recorded_at` stamping with full OWL-Time export
+- Change management with SHA-256 checksums and version control
+- Full audit trails from ingestion event to final inference
+
+### Compliance Infrastructure
+
+- HIPAA — patient data handling with audit-ready provenance chains
+- SOX / MiFID II — financial decision records with full traceability
+- GDPR — data lineage for subject access and right-to-erasure workflows
+- FDA 21 CFR Part 11 — electronic records and signature compliance
 
 </Accordion>
 
 <Accordion title="Data Ingestion & Export" icon="database">
 
-**Ingestion:** PDF, DOCX, HTML, JSON, CSV, Excel, PPTX, Parquet, XML, archives, web crawl, SQL, Snowflake, feeds, email, repositories, MCP
+### Ingestion Formats
 
-**Vector Stores:** FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector, in-memory
+- Documents: PDF, DOCX, HTML, PPTX, Docling layout analysis
+- Structured data: JSON, CSV, Excel, Parquet, XML
+- Sources: web crawl, SQL, Snowflake, feeds, email, code repositories, MCP
 
-**Graph Stores:** Neo4j, FalkorDB, Apache AGE, Amazon Neptune
+### Vector Stores
 
-**Export:** RDF (Turtle, JSON-LD, N-Triples, XML), Parquet, ArangoDB AQL, OWL ontologies
+- FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector, in-memory
+
+### Graph Stores
+
+- Neo4j, FalkorDB, Apache AGE, Amazon Neptune
+
+### Export Formats
+
+- RDF: Turtle, JSON-LD, N-Triples, RDF/XML
+- Tabular: Parquet, CSV, Arrow
+- Graph: GraphML, GEXF, DOT, ArangoDB AQL
+- Ontology: OWL, SKOS, SHACL
 
 </Accordion>
 
 </AccordionGroup>
 
+
 ## Module Reference
 
 | Module | What it provides |
-|--------|-----------------|
+| :-------- | :----------------- |
 | `semantica.context` | Context graphs, agent memory, decision tracking, causal analysis, precedent search |
 | `semantica.kg` | KG construction, graph algorithms, temporal model, Allen interval algebra |
 | `semantica.semantic_extract` | NER, relation extraction, event extraction, triplet generation |
@@ -317,41 +480,29 @@ pip install semantica==0.5.0
 | `semantica.core` | Orchestration, ConfigManager, LifecycleManager, PluginRegistry, MethodRegistry |
 | `semantica.utils` | Logging, validation, progress tracking, hash utilities, nested dict helpers |
 
-## Built for High-Stakes Domains
-
-Where every decision must be accountable and mistakes have real consequences:
-
-<CardGroup cols={2}>
-  <Card title="Healthcare & Life Sciences" icon="heart-pulse">
-    Clinical decision support, drug interaction graphs, patient safety audit trails, HIPAA compliance.
-  </Card>
-  <Card title="Finance & Risk" icon="chart-line">
-    Fraud detection graphs, SOX/GDPR/MiFID II compliance, risk assessment trails.
-  </Card>
-  <Card title="Legal & Compliance" icon="scale-balanced">
-    Evidence-backed research, contract analysis, regulatory change tracking.
-  </Card>
-  <Card title="Cybersecurity" icon="shield">
-    Threat attribution graphs, incident response timelines, security audit trails.
-  </Card>
-  <Card title="Government & Defense" icon="building-columns">
-    Policy decision trails, classified information handling, provenance chains.
-  </Card>
-  <Card title="Critical Infrastructure" icon="bolt">
-    Power grids, transportation safety, emergency response coordination.
-  </Card>
-</CardGroup>
 
 ## Why Semantica?
 
 <CardGroup cols={3}>
   <Card title="Open Source, MIT" icon="code-branch">
-    No vendor lock-in, no paywalled features. Every line of code is available and forkable.
+    No vendor lock-in. No paywalled features.
+    - Full source available on GitHub
+    - Every line auditable by your security team
+    - Fork, extend, and self-host with no restrictions
+    - No telemetry, no usage reporting
   </Card>
   <Card title="Production Ready" icon="circle-check">
-    1,000+ passing tests, `PipelineValidator`, `FailureHandler` with exponential backoff, 12 security fixes in v0.5.0.
+    Built for teams that can't afford surprises.
+    - 1,000+ passing tests with full regression coverage
+    - `PipelineValidator` catches configuration errors at startup
+    - `FailureHandler` with exponential backoff and dead-letter queues
+    - 12 security vulnerabilities fixed in v0.5.0
   </Card>
   <Card title="Modular by Design" icon="puzzle-piece">
-    Import only what you need. Use `NERExtractor` without a graph store. Every component is independently swappable.
+    Import only what you need.
+    - Use `NERExtractor` without a graph store
+    - Use `ContextGraph` without vector storage
+    - Every component independently swappable and testable
+    - No framework lock-in — works with any agent stack
   </Card>
 </CardGroup>

@@ -4,12 +4,19 @@ description: "Automated ontology generation, SHACL validation, OWL/RDF export, n
 icon: "sitemap"
 ---
 
-`semantica.ontology` provides the full lifecycle for knowledge graph schemas — from auto-generation and SHACL validation to OWL/RDF export. Use it for schema design, data modeling, semantic web interoperability, and SHACL-based data quality validation.
+`semantica.ontology` provides the full lifecycle for knowledge graph schemas:
+
+- Auto-generate ontologies from KG data via a 5-stage pipeline (Semantic Network → YAML → Types → Hierarchy → TTL)
+- LLM-powered ontology generation for complex domains via `LLMOntologyGenerator`
+- SHACL validation: generate shapes, validate graphs, and get violation reports
+- OWL/RDF export in Turtle, RDF/XML, and JSON-LD formats
+- Ontology Hub visual editor available in `semantica.explorer` (v0.5.0)
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `OntologyEngine` | Unified facade orchestrating the full ontology lifecycle |
 | `OntologyGenerator` | Auto-generate ontologies from KG data (5-stage pipeline) |
 | `LLMOntologyGenerator` | LLM-powered ontology generation for complex domains |
@@ -22,9 +29,10 @@ icon: "sitemap"
 | `PropertyGenerator` | Generate properties from entity attributes and relationships |
 | `AssociativeClassBuilder` | Model N-ary relationships as intermediate OWL classes |
 
+
 ## Getting Started
 
-`OntologyEngine` is your main entry point for the complete ontology workflow:
+**`OntologyEngine`** is your main entry point for the complete ontology workflow:
 
 ```python
 from semantica.ontology import OntologyEngine
@@ -47,7 +55,7 @@ engine.export_owl(ontology, "ontology.ttl", format="turtle")
 
 ## OntologyEngine (Unified Facade)
 
-The `OntologyEngine` orchestrates the full ontology lifecycle — generation, validation, export, and evaluation:
+**`OntologyEngine`** orchestrates the full ontology lifecycle — **generation, validation, export, and evaluation**:
 
 ```python
 from semantica.ontology import OntologyEngine
@@ -70,7 +78,7 @@ engine.export_owl(ontology, "ontology.ttl", format="turtle")
 ### OntologyEngine Methods
 
 | Method | Description |
-| ------ | ----------- |
+| :------ | :----------- |
 | `from_data(data)` | Run the 5-stage pipeline on entity/relationship data |
 | `validate_graph(kg, ontology=...)` | Check a knowledge graph against generated SHACL shapes |
 | `export_owl(ontology, path, format)` | Serialize to `"turtle"`, `"xml"`, or `"json-ld"` |
@@ -78,7 +86,7 @@ engine.export_owl(ontology, "ontology.ttl", format="turtle")
 
 ## OntologyGenerator (5-Stage Pipeline)
 
-Generate a formal ontology automatically from your knowledge graph entities and relationships:
+**`OntologyGenerator`** auto-generates a formal ontology from your knowledge graph entities and relationships:
 
 ```python
 from semantica.ontology import OntologyGenerator
@@ -90,13 +98,23 @@ ontology  = generator.generate_ontology({
 })
 ```
 
-The pipeline runs through these stages in order:
-
-1. **Semantic Network Parsing** — extract concepts and patterns from entity/relationship data
-2. **YAML-to-Definition** — transform patterns into intermediate class definitions
-3. **Definition-to-Types** — map definitions to OWL types (`owl:Class`, `owl:ObjectProperty`)
-4. **Hierarchy Generation** — build taxonomy trees using transitive closure and cycle detection
-5. **TTL Generation** — serialize to Turtle format using `rdflib`
+<Steps>
+  <Step title="Semantic Network Parsing">
+    Extract concepts and patterns from entity types and relationship structures in the source data.
+  </Step>
+  <Step title="YAML-to-Definition">
+    Transform the extracted patterns into intermediate class and property definitions.
+  </Step>
+  <Step title="Definition-to-Types">
+    Map definitions to OWL constructs: `owl:Class`, `owl:ObjectProperty`, `owl:DatatypeProperty`.
+  </Step>
+  <Step title="Hierarchy Generation">
+    Build taxonomy trees using transitive closure and cycle detection — produces `rdfs:subClassOf` chains.
+  </Step>
+  <Step title="TTL Generation">
+    Serialize the final ontology to Turtle format using `rdflib`. Also available: RDF/XML and JSON-LD.
+  </Step>
+</Steps>
 
 ## SHACL Validation
 
@@ -125,7 +143,7 @@ if not report.conforms:
 ### Validation Report Fields
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `conforms` | `bool` | `True` if the graph passes all SHACL constraints |
 | `violations` | `List[SHACLViolation]` | Detailed failure records |
 | `focus_node` | `str` | IRI of the violating graph node |

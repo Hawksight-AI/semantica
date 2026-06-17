@@ -4,7 +4,14 @@ description: "Unified interface for Groq, OpenAI, LiteLLM (Anthropic, Gemini, Ol
 icon: "microchip"
 ---
 
-`semantica.llms` provides a single consistent API across every major LLM provider. Every provider is a drop-in replacement for the `llm_provider=` parameter in extractors, reasoning engines, and agents.
+**`semantica.llms`** provides a **single consistent API** across every major LLM provider:
+
+- Every provider is a drop-in replacement for the `llm_provider=` parameter in extractors, reasoners, and agents
+- `LiteLLM` routes to 100+ providers with a single class and model-string prefixes
+- `HuggingFaceLLM` runs fully on-premise — no API key, no network calls
+- Structured output via `generate_with_schema()` for JSON extraction from any provider
+- Streaming, tool use, and `generate_batch()` for bulk inference
+
 
 ## Exported Classes
 
@@ -13,7 +20,7 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
 ```
 
 | Class | Provider | API Key Required |
-| ----- | -------- | ---------------- |
+| :----- | :-------- | :---------------- |
 | `Groq` | Groq Cloud | `GROQ_API_KEY` |
 | `OpenAI` | OpenAI / any OpenAI-compatible gateway | `OPENAI_API_KEY` |
 | `LiteLLM` | 100+ providers via LiteLLM routing | Depends on model |
@@ -33,32 +40,123 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
 
 ## Choosing a Provider
 
-Use this decision matrix to select the right LLM provider for your use case:
+<Tabs>
+  <Tab title="Groq — Getting Started">
+    Free tier, fastest inference, zero setup friction. Best for development and high-throughput extraction pipelines.
 
-| Priority | Recommended Provider | Model | Why |
-|----------|---------------------|-------|-----|
-| **Getting Started** | Groq | `llama-3.1-8b-instant` | Free tier, fast inference, no complex setup |
-| **Production Quality** | OpenAI | `gpt-4o` | Highest capability, function calling, JSON mode |
-| **Cost Optimization** | LiteLLM + DeepSeek | `deepseek/deepseek-chat` | Lowest cost per token for high-volume workloads |
-| **Privacy/On-Premise** | Ollama (via LiteLLM) | `ollama/llama3.2:3b` | Fully local, no data leaves your infrastructure |
-| **Advanced Reasoning** | Anthropic Claude (via LiteLLM) | `anthropic/claude-sonnet-4-20250514` | Highest quality for complex analysis |
+    | | |
+    | :-- | :-- |
+    | **Speed** | Very fast — 100+ tok/s |
+    | **Cost** | Free tier available |
+    | **Context** | 128k |
+    | **Best for** | Development, high-throughput extraction |
 
-### Quick Start Recommendation
+    ```python
+    import os
+    from semantica.llms import Groq
 
-For new users, start with Groq:
+    llm = Groq(
+        model="llama-3.1-8b-instant",
+        api_key=os.getenv("GROQ_API_KEY"),
+        temperature=0.0,
+    )
+    ```
 
-```python
-from semantica.llms import Groq
-import os
+    Get your free key at [console.groq.com](https://console.groq.com).
+  </Tab>
+  <Tab title="OpenAI — Production">
+    Highest accuracy, best JSON mode and function calling. Use for production pipelines where extraction quality matters.
 
-# Fastest path to working extraction
-llm = Groq(
-    model="llama-3.1-8b-instant",  # Default model
-    api_key=os.getenv("GROQ_API_KEY")
-)
-```
+    | | |
+    | :-- | :-- |
+    | **Speed** | Fast |
+    | **Cost** | Medium |
+    | **Context** | 128k |
+    | **Best for** | Production quality, JSON extraction, function calling |
 
-Get your free API key at [console.groq.com](https://console.groq.com).
+    ```python
+    import os
+    from semantica.llms import OpenAI
+
+    llm = OpenAI(
+        model="gpt-4o",
+        api_key=os.getenv("OPENAI_API_KEY"),
+        temperature=0.0,
+        max_tokens=4096,
+    )
+    ```
+  </Tab>
+  <Tab title="Ollama — Local / Air-gapped">
+    Fully on-premise — no API key, no data leaves your infrastructure. Required for air-gapped deployments.
+
+    | | |
+    | :-- | :-- |
+    | **Speed** | Medium (hardware-dependent) |
+    | **Cost** | Free (local compute only) |
+    | **Context** | Varies by model |
+    | **Best for** | Privacy, air-gapped, custom fine-tunes |
+
+    ```bash
+    # Install Ollama and pull a model first
+    ollama pull llama3.2:3b
+    ```
+
+    ```python
+    from semantica.llms import LiteLLM
+
+    llm = LiteLLM(
+        model="ollama/llama3.2:3b",
+        api_base="http://localhost:11434",  # Ollama default port
+    )
+    ```
+
+    <Note>
+      No API key required. Ensure the Ollama server is running (`ollama serve`) before creating the `LiteLLM` instance.
+    </Note>
+  </Tab>
+  <Tab title="Claude — Reasoning">
+    Largest context window, best multi-hop reasoning, highest safety bar. Use for complex analysis and long-document extraction.
+
+    | | |
+    | :-- | :-- |
+    | **Speed** | Fast |
+    | **Cost** | Medium |
+    | **Context** | 200k |
+    | **Best for** | Complex reasoning, long documents, safety-critical outputs |
+
+    ```python
+    import os
+    from semantica.llms import LiteLLM
+
+    llm = LiteLLM(
+        model="anthropic/claude-sonnet-4-20250514",
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        temperature=0.0,
+    )
+    ```
+  </Tab>
+  <Tab title="DeepSeek — Cost Optimization">
+    Lowest cost per token for high-volume workloads. Strong on coding and structured data extraction.
+
+    | | |
+    | :-- | :-- |
+    | **Speed** | Fast |
+    | **Cost** | Very low |
+    | **Context** | 64k |
+    | **Best for** | High-volume pipelines, coding tasks, budget-sensitive workloads |
+
+    ```python
+    import os
+    from semantica.llms import LiteLLM
+
+    llm = LiteLLM(
+        model="deepseek/deepseek-chat",
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
+        temperature=0.0,
+    )
+    ```
+  </Tab>
+</Tabs>
 
 ## API Key Setup
 
@@ -132,7 +230,7 @@ llm = Groq(
     max_tokens=64000,
     temperature=0.0,
 )
-# Best for: high-throughput extraction, fast inference at low cost
+# **Best for:** high-throughput extraction, fast inference at low cost
 ```
 
 ```python OpenAI
@@ -144,7 +242,7 @@ llm = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     temperature=0.0,
 )
-# Best for: general purpose, function calling, JSON mode
+# **Best for:** general purpose, function calling, JSON mode
 ```
 
 ```python LiteLLM (100+ providers)
@@ -255,7 +353,7 @@ trip = TripletExtractor(method="llm",  llm_provider=llm)
 ## Provider Comparison
 
 | Provider | Import | Speed | Cost | Local | Context | Best For |
-| -------- | ------ | ----- | ---- | ----- | ------- | -------- |
+| :-------- | :------ | :----- | :---- | :----- | :------- | :-------- |
 | Groq | `Groq` | Very fast | Low | No | 128k | High-throughput extraction |
 | OpenAI | `OpenAI` | Fast | Medium | No | 128k | General purpose, function calling |
 | Anthropic | `LiteLLM(model="anthropic/...")` | Fast | Medium | No | 200k | Complex reasoning, safety |
@@ -277,7 +375,7 @@ Documentation examples may showcase stronger models for better developer experie
 **Verified Implementation Defaults:**
 
 | Provider | Default Model | Notes |
-|----------|---------------|-------|
+| :---------- | :--------------- | :------- |
 | `Groq` | `llama-3.1-8b-instant` | Implementation default; examples use `llama-3.3-70b-versatile` for showcase |
 | `OpenAI` | `gpt-3.5-turbo` | Implementation default; examples use `gpt-4o` for showcase |
 | `HuggingFaceLLM` | `gpt2` | Lightweight, widely compatible |
@@ -315,7 +413,7 @@ for text in texts:
 ### Model Selection by Use Case
 
 | Use Case | Recommended Provider/Model | Reasoning |
-|----------|---------------------------|-----------|
+| :---------- | :--------------------------- | :----------- |
 | **Entity Extraction** | `Groq("llama-3.3-70b-versatile")` | Fast, good accuracy for structured tasks |
 | **Relation Extraction** | `OpenAI("gpt-4o")` | Best at complex relationship reasoning |
 | **Complex Analysis** | `LiteLLM("anthropic/claude-sonnet-4-20250514")` | Highest reasoning capability |

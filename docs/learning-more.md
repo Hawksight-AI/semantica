@@ -6,6 +6,7 @@ icon: "graduation-cap"
 
 Whether you're running your first pipeline or deploying Semantica in production, this page gives you a structured path forward — from beginner to enterprise-grade usage.
 
+
 ## Learning Paths
 
 <CardGroup cols={3}>
@@ -23,37 +24,79 @@ Whether you're running your first pipeline or deploying Semantica in production,
   </Card>
 </CardGroup>
 
-### Beginner Path
+<Tabs>
+  <Tab title="Beginner (1–2 hrs)">
+    New to Semantica and knowledge graphs. No prior graph database experience required.
 
-1. [Installation Guide](installation) — set up your environment
-2. [Core Concepts](concepts) — understand KGs, embeddings, and extraction
-3. [Getting Started](getting-started) — first working example
-4. [Quickstart Tutorial](quickstart) — build your first knowledge graph
-5. [Welcome to Semantica notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/01_Welcome_to_Semantica.ipynb) — interactive introduction to all modules
+    <Steps>
+      <Step title="Set up your environment">
+        [Installation Guide](installation) — virtual environments, optional extras, platform-specific fixes.
+      </Step>
+      <Step title="Understand the core ideas">
+        [Core Concepts](concepts) — what knowledge graphs are, how embeddings work, what extraction does.
+      </Step>
+      <Step title="Run your first example">
+        [Getting Started](getting-started) — 5-minute code walkthrough with pattern-based extraction (no API key needed).
+      </Step>
+      <Step title="Build your first knowledge graph">
+        [Quickstart Tutorial](quickstart) — full 6-step pipeline from ingestion to visualization.
+      </Step>
+      <Step title="Explore interactively">
+        [Welcome to Semantica notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/01_Welcome_to_Semantica.ipynb) — Jupyter walkthrough of every module.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Intermediate (4–6 hrs)">
+    Comfortable with the basics, building real applications. Assumes you've completed the Beginner path.
 
-### Intermediate Path
+    <Steps>
+      <Step title="Learn every module">
+        [Modules Guide](modules) — all 27 modules with code examples and common pipeline chains.
+      </Step>
+      <Step title="Build production knowledge graphs">
+        [Building Knowledge Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb) — multi-source, deduplication, conflict resolution.
+      </Step>
+      <Step title="Add semantic search">
+        [Embeddings notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb) — providers, pooling strategies, vector stores.
+      </Step>
+      <Step title="Build a GraphRAG system">
+        [GraphRAG Complete notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb) — hybrid retrieval, reasoning, source attribution.
+      </Step>
+      <Step title="Multi-source integration">
+        [Multi-Source Data Integration notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb) and [Use Cases](use-cases) for domain-specific patterns.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Advanced (8+ hrs)">
+    Enterprise deployments, customization, and extension. Assumes production usage experience.
 
-1. [Modules Guide](modules) — every module with code examples
-2. [Building Knowledge Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb)
-3. [Embeddings notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb)
-4. [GraphRAG Complete notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb)
-5. [Multi-Source Data Integration notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb)
-6. [Use Cases](use-cases) — domain-specific examples with notebooks
+    <Steps>
+      <Step title="Understand the architecture">
+        [Architecture Guide](architecture) — four-layer design, extension points, and design decisions.
+      </Step>
+      <Step title="Temporal intelligence">
+        [Temporal Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/04_Temporal_Graphs.ipynb) — `valid_from`/`valid_until`, Allen interval algebra, point-in-time queries.
+      </Step>
+      <Step title="Ontology-driven knowledge bases">
+        [Ontology notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb) — auto-generation, SHACL validation, Ontology Hub (v0.5.0).
+      </Step>
+      <Step title="Advanced visualization">
+        [Complete Visualization Suite notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/03_Complete_Visualization_Suite.ipynb) — UMAP, t-SNE, community layouts, embedding projections.
+      </Step>
+      <Step title="Enterprise export">
+        [Multi-Format Export notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/05_Multi_Format_Export.ipynb) — RDF with PROV-O, Parquet, Neo4j Cypher, Arrow, OWL.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
-### Advanced Path
-
-1. [Architecture Guide](architecture) — three-layer system, extension points, design decisions
-2. [Temporal Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/04_Temporal_Graphs.ipynb) — v0.4.0 temporal intelligence
-3. [Ontology notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb) — v0.5.0 Ontology Hub
-4. [Complete Visualization Suite notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/03_Complete_Visualization_Suite.ipynb)
-5. [Multi-Format Export notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/05_Multi_Format_Export.ipynb)
 
 ## Configuration Reference
 
 All settings can be overridden with environment variables — no code changes needed.
 
 | Setting | Environment Variable | Default |
-| ------- | -------------------- | ------- |
+| :------- | :-------------------- | :------- |
 | OpenAI API Key | `OPENAI_API_KEY` | `None` |
 | Groq API Key | `GROQ_API_KEY` | `None` |
 | Anthropic API Key | `ANTHROPIC_API_KEY` | `None` |
@@ -61,6 +104,7 @@ All settings can be overridden with environment variables — no code changes ne
 | Graph Backend | `SEMANTICA_GRAPH_BACKEND` | `"networkx"` |
 | Log Level | `SEMANTICA_LOG_LEVEL` | `"INFO"` |
 | Log Format | `SEMANTICA_LOG_FORMAT` | `"text"` |
+
 
 ## Troubleshooting
 
@@ -136,12 +180,13 @@ Fixed in **v0.5.0**. For earlier versions, pass encoding explicitly or set the e
 set PYTHONIOENCODING=utf-8
 ```
 
+
 ## Performance Optimization
 
 ### Backend Selection
 
 | Operation | NetworkX (default) | Neo4j / FalkorDB |
-| --------- | ------------------ | ---------------- |
+| :--------- | :------------------ | :---------------- |
 | Graph construction | Fast | Moderate |
 | Query performance | Moderate | Fast |
 | Scalability | Low — in-memory only | High — persistent |
@@ -161,6 +206,7 @@ If deduplication is a bottleneck, switch from v1 strategies to v2:
 resolver = EntityResolver()
 merged   = resolver.resolve(entities, strategy="semantic_v2")  # up to 7x faster
 ```
+
 
 ## Security Best Practices
 

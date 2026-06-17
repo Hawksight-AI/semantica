@@ -6,7 +6,6 @@ icon: "snowflake"
 
 > Extract data from Snowflake into Semantica with password, key-pair, OAuth, and SSO authentication.
 
----
 
 ## Installation
 
@@ -18,7 +17,6 @@ pip install "semantica[db-snowflake]"
 pip install snowflake-connector-python
 ```
 
----
 
 ## Basic Usage
 
@@ -43,7 +41,6 @@ print(f"Retrieved {data.row_count} rows — columns: {data.columns}")
 Use environment variables (or a `.env` file with `python-dotenv`) to keep credentials out of source code. `SnowflakeIngestor()` with no arguments reads from `SNOWFLAKE_*` environment variables automatically.
 </Tip>
 
----
 
 ## Authentication Methods
 
@@ -92,7 +89,6 @@ Use environment variables (or a `.env` file with `python-dotenv`) to keep creden
   </Tab>
 </Tabs>
 
----
 
 ## Querying
 
@@ -126,7 +122,6 @@ for column in schema["columns"]:
     print(f"{column['name']}: {column['type']}")
 ```
 
----
 
 ## Export as Semantica Documents
 
@@ -139,7 +134,6 @@ documents = ingestor.export_as_documents(
 print(f"Created {len(documents)} documents for processing")
 ```
 
----
 
 ## Batch Processing Large Tables
 
@@ -163,7 +157,6 @@ data = ingestor.ingest_query(
 )
 ```
 
----
 
 ## Troubleshooting
 
@@ -175,7 +168,6 @@ if not connector.test_connection():
     print("Connection failed — check credentials and account identifier")
 ```
 
----
 
 ## See Also
 

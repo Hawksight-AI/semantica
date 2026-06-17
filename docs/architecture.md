@@ -6,6 +6,7 @@ icon: "building"
 
 Semantica is built around a four-layer modular architecture. Import only what you need — the framework never forces a full stack. Every component is independently swappable, and every layer communicates through clean interfaces with no hidden coupling.
 
+
 ## Four-Layer Architecture
 
 <img src="/assets/img/diagrams/architecture-overview.svg" alt="Semantica four-layer architecture" style={{ width: '100%', borderRadius: '12px', margin: '16px 0 24px' }} />
@@ -17,7 +18,7 @@ Semantica is built around a four-layer modular architecture. Import only what yo
 Loads data from any source into the pipeline as a unified `SourceDocument`.
 
 | Source | Module | Notes |
-| ------ | ------ | ----- |
+| :------ | :------ | :----- |
 | PDF, DOCX, PPTX, HTML, JSON, CSV | `ingest.FileIngestor` | Supports archives, recursive directory scan |
 | Parquet | `ingest.ParquetIngestor` | PyArrow, Hive-style partitions (v0.5.0) |
 | XML | `ingest.XMLIngestor` | XXE-safe lxml, XSD/DTD validation (v0.5.0) |
@@ -35,7 +36,7 @@ Loads data from any source into the pipeline as a unified `SourceDocument`.
 Transforms raw text into structured, enriched documents ready for knowledge store ingestion.
 
 | Step | Module | What it does |
-| ---- | ------ | ------------ |
+| :---- | :------ | :------------ |
 | Parse | `parse.DocumentParser` / `parse.DoclingParser` | Text + layout extraction, table detection |
 | Normalize | `normalize` | Canonical forms, date/name standardization, encoding fix |
 | Extract | `semantic_extract` | NER, relation extraction, event detection, triplets |
@@ -49,7 +50,7 @@ Transforms raw text into structured, enriched documents ready for knowledge stor
 Persistent knowledge stores and embedding infrastructure that power retrieval and reasoning.
 
 | Component | Module | Description |
-| --------- | ------ | ----------- |
+| :--------- | :------ | :----------- |
 | Knowledge Graph | `kg` | Graph construction, temporal models, analytics, Distance Intelligence |
 | Vector Store | `vector_store` | pgvector, Qdrant, Weaviate, Pinecone — semantic similarity search |
 | Ontology | `ontology` | OWL/RDFS modeling, SHACL validation, ontology alignment |
@@ -64,7 +65,7 @@ Persistent knowledge stores and embedding infrastructure that power retrieval an
 Consumes the knowledge graph and vector stores for downstream use cases.
 
 | Use Case | Module | Description |
-| -------- | ------ | ----------- |
+| :-------- | :------ | :----------- |
 | GraphRAG | `context.AgentContext` | Graph-grounded retrieval for LLMs |
 | Agent memory | `context.ContextGraph` | Persistent semantic memory across agent runs |
 | Decision tracking | `context.AgentContext` | Record, trace, and audit every agent decision |
@@ -78,21 +79,24 @@ Consumes the knowledge graph and vector stores for downstream use cases.
 
 </Tabs>
 
+
 ## Data Flow
 
 Every pipeline follows the same linear path from raw source to delivered output:
 
 <img src="/assets/img/diagrams/pipeline-flow.svg" alt="Semantica 8-step pipeline: Ingest → Parse → Normalize → Extract → Build KG → QA → Store → Deliver" style={{ width: '100%', borderRadius: '10px', margin: '16px 0 24px' }} />
 
+
 ## Module Map
 
 | Layer | Category | Modules |
-| ----- | -------- | ------- |
+| :----- | :-------- | :------- |
 | **Layer 1 — Ingestion** | Sources | `ingest`, `split` |
 | **Layer 2 — Processing** | Transform | `parse`, `normalize`, `semantic_extract`, `deduplication`, `conflicts` |
 | **Layer 3 — Intelligence** | Stores | `kg`, `vector_store`, `graph_store`, `triplet_store`, `embeddings`, `ontology` |
 | **Layer 4 — Application** | Delivery | `context`, `reasoning`, `export`, `visualization`, `explorer`, `pipeline` |
 | — | Cross-cutting | `provenance`, `change_management`, `llms`, `mcp_server`, `seed`, `evals`, `core`, `utils` |
+
 
 ## Extension Points
 
@@ -138,6 +142,7 @@ registry.register_plugin("my_plugin", MyPlugin, version="1.0.0")
 
 </CodeGroup>
 
+
 ## Design Decisions
 
 <AccordionGroup>
@@ -168,10 +173,11 @@ Centralized `ConfigManager` with environment variable overrides. No magic defaul
 
 </AccordionGroup>
 
+
 ## Performance Characteristics
 
 | Characteristic | Mechanism |
-| -------------- | --------- |
+| :-------------- | :--------- |
 | **Parallel execution** | `Pipeline(workers=N)` with configurable workers per stage |
 | **Delta processing** | Incremental graph updates — no full recompute on new data |
 | **Streaming ingestion** | Process large corpora without loading everything into memory |

@@ -6,11 +6,10 @@ icon: "file-lines"
 
 > Parse complex documents — PDFs, DOCX, PPTX, HTML — with high-fidelity table extraction and built-in OCR.
 
----
 
 ## Overview
 
-Docling is integrated into Semantica's `parse` module via the `DoclingParser`. Documents pass through Docling's layout engine, then feed directly into Semantica's extraction and KG pipeline.
+Docling is integrated into Semantica's `parse` module via the **`DoclingParser`**. Documents pass through Docling's **layout engine**, then feed directly into Semantica's extraction and KG pipeline.
 
 <CardGroup cols={2}>
   <Card title="Multi-format" icon="file">
@@ -27,7 +26,6 @@ Docling is integrated into Semantica's `parse` module via the `DoclingParser`. D
   </Card>
 </CardGroup>
 
----
 
 ## Installation
 
@@ -38,7 +36,6 @@ pip install semantica
 pip install docling
 ```
 
----
 
 ## Basic Usage
 
@@ -52,7 +49,6 @@ print(result["full_text"][:200])
 print(f"Found {len(result['tables'])} tables")
 ```
 
----
 
 ## Full Example
 
@@ -81,16 +77,14 @@ print(f"Title: {metadata.get('title')}")
 print(f"Pages: {result.get('total_pages')}")
 ```
 
----
 
 ## DoclingParser Parameters
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
+| :----------- | :--------- | :------------- |
 | `enable_ocr` | `False` | Enable OCR for scanned pages |
 | `export_format` | `"markdown"` | Output format: `"markdown"` or `"text"` |
 
----
 
 ## Parsed Result Structure
 
@@ -103,7 +97,6 @@ print(f"Pages: {result.get('total_pages')}")
 }
 ```
 
----
 
 ## See Also
 

@@ -4,12 +4,19 @@ description: "Agent context graphs, decision tracking, causal chains, precedent 
 icon: "brain"
 ---
 
-`semantica.context` is the memory and decision layer for AI agents. It stores facts with provenance, records decisions as first-class objects with full causal chains, lets agents search their own history to stay consistent across runs, and answers complex queries by traversing the knowledge graph.
+`semantica.context` is the memory and decision layer for AI agents:
+
+- Stores facts with provenance and embedding-backed retrieval
+- Records decisions as first-class graph objects with full causal chains
+- Lets agents search their own history to stay consistent across runs
+- Answers complex queries via multi-hop GraphRAG traversal
+- Enforces versioned policies and tracks compliance exceptions
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `AgentContext` | Primary entry point — memory, retrieval, decisions, graph traversal, checkpoints |
 | `ContextGraph` | In-memory knowledge graph with centrality, community detection, and decision tracking |
 | `AgentMemory` | Vector-backed persistent memory: `store(text)`, `retrieve(query, max_results)` |
@@ -19,34 +26,52 @@ icon: "brain"
 | `PolicyEngine` | Policy management: `add_policy()`, `check_compliance()`, `get_applicable_policies()` |
 | `CausalChainAnalyzer` | Trace how decisions influenced each other: `get_causal_chain(decision_id)` |
 
+
 ## What You Get
 
 <CardGroup cols={2}>
   <Card title="AgentContext" icon="brain">
-    Unified interface for memory, decision tracking, graph-backed retrieval, conversation history, checkpoints, and persistence.
+    - Memory, decision tracking, and graph-backed retrieval behind one API
+    - Conversation history and checkpoint diffing
+    - Persist and restore full context state to disk
   </Card>
   <Card title="ContextGraph" icon="diagram-project">
-    Thread-safe in-memory knowledge graph with centrality analysis, community detection, temporal validity, cross-graph links, and decision management.
+    - Thread-safe in-memory knowledge graph
+    - PageRank, centrality, community detection, temporal validity
+    - Cross-graph navigation and link traversal
   </Card>
   <Card title="AgentMemory" icon="database">
-    Embedding-backed memory with retention policy and LRU eviction.
+    - Embedding-backed memory with retention policy
+    - LRU eviction at configurable `max_memory_size`
+    - Per-conversation history isolation
   </Card>
   <Card title="DecisionRecorder" icon="list-check">
-    Records decisions with causal chains, confidence scores, temporal validity windows, and cross-system context capture.
+    - Records decisions with causal chains and confidence scores
+    - Temporal validity windows (`valid_from` / `valid_until`)
+    - Cross-system context capture on every decision
   </Card>
   <Card title="PolicyEngine" icon="shield-check">
-    Manages policy versions, checks compliance for recorded decisions, and tracks policy exceptions in the graph.
+    - Versioned policy storage in the knowledge graph
+    - Compliance checking against recorded decisions
+    - Policy exception tracking with approver audit trail
   </Card>
   <Card title="EntityLinker" icon="link">
-    Maps entity text to URIs and creates typed links between entity IDs — prevents "Apple", "Apple Inc.", and "AAPL" from becoming three separate nodes.
+    - Maps entity text to stable URIs
+    - Creates typed links between entity IDs
+    - Prevents "Apple", "Apple Inc.", "AAPL" becoming separate nodes
   </Card>
   <Card title="ContextRetriever" icon="magnifying-glass">
-    Hybrid retrieval fusing vector similarity, graph traversal, and agent memory for richer context than pure vector search.
+    - Fuses vector similarity, graph traversal, and agent memory
+    - Richer context than pure vector search
+    - Configurable `hybrid_alpha` and expansion hops
   </Card>
   <Card title="CausalChainAnalyzer" icon="arrow-trend-up">
-    Traces upstream causes and downstream effects of any decision through the knowledge graph.
+    - Traces upstream causes and downstream effects of any decision
+    - Explainability paths with relationship types
+    - Configurable depth and direction
   </Card>
 </CardGroup>
+
 
 ## Getting Started
 
@@ -144,14 +169,149 @@ decision_id = context.record_decision(
   </Step>
 </Steps>
 
+
+## Usage Patterns
+
+<Tabs>
+  <Tab title="Vector Memory Only">
+    Fastest setup — no knowledge graph. Best for agents that need semantic search over facts without graph traversal overhead.
+
+    ```python
+    from semantica.context import AgentContext
+    from semantica.vector_store import VectorStore
+
+    # Zero-graph setup — vector memory only
+    context = AgentContext(
+        vector_store=VectorStore(backend="faiss", dimension=768),
+    )
+
+    context.store("User prefers concise responses with code examples")
+    context.store("Project uses Python 3.11 with FastAPI and PostgreSQL")
+
+    results = context.retrieve("user coding preferences", max_results=5)
+    for r in results:
+        print("{:.3f}  {}".format(r["score"], r["content"]))
+    ```
+
+    <Check>
+      Swap `backend="faiss"` to `backend="inmemory"` for zero-dependency local development.
+    </Check>
+  </Tab>
+  <Tab title="Full Agent Context">
+    Production setup — graph + decisions + analytics. Use when you need explainability and contradiction-free decision history.
+
+    ```python
+    from semantica.context import AgentContext, ContextGraph
+    from semantica.vector_store import VectorStore
+
+    context = AgentContext(
+        vector_store=VectorStore(backend="faiss", dimension=768),
+        knowledge_graph=ContextGraph(
+            advanced_analytics=True,  # PageRank, centrality, community detection
+            kg_algorithms=True,       # path-finding, link prediction
+        ),
+        decision_tracking=True,       # requires knowledge_graph
+        retention_days=90,
+        max_memories=50000,
+    )
+
+    decision_id = context.record_decision(
+        category="model_selection",
+        scenario="Choose LLM for production reasoning pipeline",
+        reasoning="GPT-4 benchmark advantage justifies 3x cost",
+        outcome="selected_gpt4",
+        confidence=0.91,
+        entities=["gpt-4", "gpt-3.5"],
+    )
+
+    # Prevent contradictions across runs
+    precedents = context.find_precedents("model selection", limit=5)
+    ```
+
+    <Note>
+      `decision_tracking=True` silently no-ops unless `knowledge_graph` is also provided at construction time.
+    </Note>
+  </Tab>
+  <Tab title="GraphRAG Query">
+    Load a pre-built knowledge graph and answer complex questions with multi-hop graph traversal.
+
+    ```python
+    from semantica.context import AgentContext, ContextGraph
+    from semantica.vector_store import VectorStore
+
+    context = AgentContext(
+        vector_store=VectorStore(backend="faiss", dimension=768),
+        knowledge_graph=ContextGraph(advanced_analytics=True),
+        hybrid_alpha=0.4,        # 0.0 = pure vector  →  1.0 = pure graph
+        max_expansion_hops=3,
+    )
+
+    # Load a pre-built knowledge graph
+    context.load_graph("company_kg.json")
+
+    # Multi-hop GraphRAG retrieval
+    results = context.retrieve(
+        "companies founded by Apple alumni",
+        use_graph=True,
+        max_results=10,
+    )
+    for r in results:
+        print("[{:.3f}] {}".format(r["score"], r["content"]))
+    ```
+
+    <Tip>
+      Increase `max_expansion_hops` for deeper traversal at the cost of latency. Start at 2 and tune upward.
+    </Tip>
+  </Tab>
+  <Tab title="Policy Enforcement">
+    Add versioned compliance policies and gate every decision against them before recording.
+
+    ```python
+    from semantica.context import AgentContext, ContextGraph, PolicyEngine
+    from semantica.vector_store import VectorStore
+
+    context = AgentContext(
+        vector_store=VectorStore(backend="faiss", dimension=768),
+        knowledge_graph=ContextGraph(),
+        decision_tracking=True,
+    )
+
+    engine = PolicyEngine(knowledge_graph=context.knowledge_graph)
+
+    engine.add_policy(
+        name="data_privacy",
+        description="No PII stored without user consent flag",
+        version="1.2",
+        effective_date="2024-01-01",
+        category="privacy",
+        rules={"requires_consent": True, "max_retention_days": 90},
+    )
+
+    decision_data = {"action": "store_user_email", "user_consent": True}
+    result = engine.check_compliance(decision_data, policy_names=["data_privacy"])
+
+    if result["compliant"]:
+        context.record_decision(
+            category="data_storage",
+            scenario="Store user profile",
+            outcome="stored",
+            confidence=1.0,
+        )
+    else:
+        print("Blocked by policy:", result["violations"])
+    ```
+  </Tab>
+</Tabs>
+
+
 ## AgentContext
 
-The main entry point. Wraps memory, graph, and decision tracking behind a single API.
+**`AgentContext`** is the main entry point. Wraps memory, graph, and decision tracking behind a **single unified API**.
 
 ### Constructor Parameters
 
 | Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
+| :--------- | :---- | :------- | :----------- |
 | `vector_store` | `VectorStore` | **required** | Backend for embedding-based memory retrieval |
 | `knowledge_graph` | `ContextGraph` | `None` | Enables graph-backed relationships and GraphRAG |
 | `decision_tracking` | `bool` | `False` | Activates `DecisionRecorder` — requires `knowledge_graph` to also be set |
@@ -170,7 +330,7 @@ The main entry point. Wraps memory, graph, and decision tracking behind a single
 ### Memory Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `store(content, metadata, conversation_id, user_id)` | `str` or `Dict` | Store a fact (str → memory ID) or list of documents (list → stats dict) |
 | `batch_store(items)` | `List[str]` | Store multiple items at once — returns list of memory IDs |
 | `retrieve(query, max_results, min_score, use_graph, conversation_id)` | `List[Dict]` | Semantic retrieval; auto-selects GraphRAG if `knowledge_graph` is set |
@@ -206,7 +366,7 @@ results = context.retrieve(
 
 ### Multi-Hop GraphRAG
 
-Requires `knowledge_graph` to be set at construction:
+**Requires `knowledge_graph`** to be set at construction — enables `query_with_reasoning()` for LLM-grounded multi-hop traversal:
 
 ```python
 import os
@@ -228,7 +388,7 @@ print("Sources used: {}".format(result["num_sources"]))
 ### Decision Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `record_decision(category, scenario, reasoning, outcome, confidence, entities, decision_maker, valid_from, valid_until)` | `str` | Record a decision; raises `RuntimeError` if `decision_tracking=False` or no `knowledge_graph` |
 | `find_precedents(scenario, category, limit, use_hybrid_search, max_hops, as_of)` | `List[Decision]` | Find similar past decisions by semantic + structural similarity |
 | `query_decisions(query, max_hops, use_hybrid_search)` | `List[Decision]` | Broad context-aware decision search |
@@ -238,7 +398,7 @@ print("Sources used: {}".format(result["num_sources"]))
 
 ### Checkpoint Methods
 
-Useful for detecting what changed across reasoning runs:
+**Ideal for auditing reasoning loops** — take a snapshot before and after a pass to see exactly what changed:
 
 ```python
 # Take a named snapshot of the current graph state
@@ -257,9 +417,10 @@ print("Relationships added: {}".format(len(diff["relationships_added"])))
 context.flush_checkpoint("after_inference")
 ```
 
+
 ## ContextGraph
 
-The knowledge graph backing `AgentContext`. Can also be used standalone for relationship modelling.
+**`ContextGraph`** is the knowledge graph backing `AgentContext`. Can also be used **standalone** for relationship modelling without the full context layer.
 
 ```python
 from semantica.context import ContextGraph
@@ -289,7 +450,7 @@ print("Nodes: {}, Edges: {}".format(stats["node_count"], stats["edge_count"]))
 ### Constructor Options
 
 | Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
+| :--------- | :---- | :------- | :----------- |
 | `advanced_analytics` | `bool` | `True` | PageRank, betweenness centrality |
 | `centrality_analysis` | `bool` | `True` | Full centrality suite |
 | `community_detection` | `bool` | `True` | Louvain community clustering |
@@ -298,7 +459,7 @@ print("Nodes: {}, Edges: {}".format(stats["node_count"], stats["edge_count"]))
 ### ContextGraph — Full Method Reference
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `add_node(node_id, node_type, properties, valid_from, valid_until)` | `None` | Add a node; supports temporal validity windows |
 | `add_edge(source_id, target_id, edge_type, weight, properties)` | `None` | Add a directed edge with optional weight |
 | `add_nodes(nodes)` | `int` | Bulk-add from a list of dicts; returns count added |
@@ -353,6 +514,7 @@ path = domain_graph.cross_graph_path(
 print("Reachable: {}, hops: {}".format(path["reachable"], path["hop_count"]))
 ```
 
+
 ## AgentMemory (Low-Level)
 
 For fine-grained control over memory storage and retrieval:
@@ -385,10 +547,11 @@ history = memory.get_conversation_history(conversation_id="conv_001", max_items=
 ```
 
 | Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
+| :--------- | :---- | :------- | :----------- |
 | `vector_store` | `VectorStore` | **required** | Embedding backend for semantic retrieval |
 | `max_memory_size` | `int` | `10000` | Max items before LRU eviction |
 | `retention_policy` | `str` | `"unlimited"` | `"N_days"` (e.g. `"30_days"`) or `"unlimited"` |
+
 
 ## PolicyEngine
 
@@ -436,6 +599,7 @@ for p in policies:
     print("{} v{}".format(p.name, p.version))
 ```
 
+
 ## EntityLinker
 
 Maps entity text to URIs and creates typed links between entity IDs:
@@ -458,7 +622,7 @@ linked = linker.link(text="Apple Inc. was founded by Steve Jobs.", entities=enti
 for e in linked:
     print("{} → {}  (confidence: {:.2f})".format(e.text, e.uri, e.confidence))
 
-# Explicitly link two entity IDs
+# Explicitly link two entity IDs (not a list — takes two IDs)
 linker.link_entities(
     entity1_id="apple_inc",
     entity2_id="aapl",
@@ -475,7 +639,7 @@ print("Links:   ", web["statistics"]["total_links"])
 `LinkedEntity` fields returned by `link()`:
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `entity_id` | `str` | Entity identifier |
 | `uri` | `str` | Generated URI (e.g. `"https://semantica.dev/entity/apple_inc."`) |
 | `text` | `str` | Surface form text |
@@ -483,6 +647,7 @@ print("Links:   ", web["statistics"]["total_links"])
 | `linked_entities` | `List[EntityLink]` | Related entity links with `source_entity_id`, `target_entity_id`, `link_type`, `confidence` |
 | `context` | `Dict` | Entity metadata |
 | `confidence` | `float` | Overall confidence score |
+
 
 ## ContextRetriever
 
@@ -510,6 +675,7 @@ results = retriever.retrieve(
 for r in results:
     print("[{}] score={:.3f}: {}".format(r.source, r.score, r.content[:80]))
 ```
+
 
 ## Data Structures
 
@@ -621,6 +787,7 @@ class EntityLink:
 
   </Accordion>
 </AccordionGroup>
+
 
 ## Real-World Patterns
 
@@ -739,6 +906,7 @@ class EntityLink:
     ```
   </Tab>
 </Tabs>
+
 
 ## Tips and Common Pitfalls
 

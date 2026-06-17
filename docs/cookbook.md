@@ -15,7 +15,6 @@ icon: "flask"
   Prerequisites: Python 3.8+, Jupyter, and an API key for your preferred LLM provider.
 </Note>
 
----
 
 ## Featured Recipes
 
@@ -42,7 +41,6 @@ icon: "flask"
   </Card>
 </CardGroup>
 
----
 
 ## Core Tutorials
 
@@ -101,7 +99,6 @@ Essential guides to master the Semantica framework.
   </Card>
 </CardGroup>
 
----
 
 ## Advanced Concepts
 
@@ -160,7 +157,6 @@ Deep dive into advanced features, customization, and complex workflows.
   </Card>
 </CardGroup>
 
----
 
 ## Industry Use Cases
 
@@ -254,7 +250,6 @@ Deep dive into advanced features, customization, and complex workflows.
   </Card>
 </CardGroup>
 
----
 
 ## How to Run
 

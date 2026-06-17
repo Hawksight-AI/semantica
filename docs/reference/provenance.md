@@ -4,12 +4,19 @@ description: "W3C PROV-O lineage tracking, source attribution, tamper-evident ch
 icon: "link"
 ---
 
-`semantica.provenance` tracks the full lineage of every fact — from raw ingestion through extraction, chunking, and relationship building. Designed for high-stakes domains requiring complete traceability.
+`semantica.provenance` tracks the full lineage of every fact — from raw ingestion through extraction, chunking, and relationship building:
+
+- W3C PROV-O compliant — suitable for HIPAA, SOX, GDPR, FDA 21 CFR Part 11 audit trails
+- SHA-256 checksums for tamper detection on every stored `ProvenanceEntry`
+- `SQLiteStorage` for persistence across restarts; `InMemoryStorage` for development
+- `ProvenanceManager` provides `track_entity`, `track_relationship`, `track_chunk`, and `get_lineage`
+- Bridges to W3C PROV-O ontology via `BridgeAxiom` for semantic web export
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `ProvenanceManager` | Central tracker: `track_entity`, `track_relationship`, `track_chunk`, `get_lineage`, `get_statistics` |
 | `ProvenanceEntry` | Single lineage record: `{entity_id, entity_type, activity_id, source_document, confidence, checksum, ...}` |
 | `SourceReference` | Rich source pointer: `{document, page, section, line, confidence, metadata}` |
@@ -21,46 +28,64 @@ icon: "link"
 
 ## Getting Started
 
-```python
-from semantica.provenance import ProvenanceManager, SQLiteStorage
+<Tabs>
+  <Tab title="In-Memory (default)">
+    Zero configuration — fast, no disk writes. Use for notebooks, testing, and single-run scripts.
 
-# In-memory (default) — no arguments required
-manager = ProvenanceManager()
+    ```python
+    from semantica.provenance import ProvenanceManager, compute_checksum, verify_checksum
 
-# SQLite — persists to disk
-manager = ProvenanceManager(storage=SQLiteStorage("provenance.db"))
+    manager = ProvenanceManager()   # InMemoryStorage by default
 
-# Shorthand for SQLite — equivalent to the line above
-manager = ProvenanceManager(storage_path="provenance.db")
-```
+    entry = manager.track_entity(
+        entity_id="apple_inc",
+        source="annual_report_2023.pdf",
+        source_location="Page 12, Section 3.1",
+        source_quote="Apple Inc. was incorporated on January 3, 1977.",
+        confidence=0.98,
+    )
 
-Track an entity with a source document, retrieve its lineage, then verify integrity:
+    print(entry.checksum)        # SHA-256 hex auto-computed
+    print(verify_checksum(entry))  # True — tamper detection
+    ```
 
-```python
-from semantica.provenance import ProvenanceManager, compute_checksum, verify_checksum
+    <Note>
+      In-memory storage is lost when the process exits. Use `SQLiteStorage` for anything that needs to survive restarts.
+    </Note>
+  </Tab>
+  <Tab title="SQLite (persistent)">
+    Persists provenance to a local SQLite file. Use for production pipelines and audit trails.
 
-manager = ProvenanceManager()
+    ```python
+    from semantica.provenance import ProvenanceManager, SQLiteStorage
 
-# track_entity returns a ProvenanceEntry
-entry = manager.track_entity(
-    entity_id="apple_inc",
-    source="annual_report_2023.pdf",
-    source_location="Page 12, Section 3.1",
-    source_quote="Apple Inc. was incorporated on January 3, 1977.",
-    confidence=0.98,
-)
+    # Option 1: explicit storage instance
+    manager = ProvenanceManager(storage=SQLiteStorage("provenance.db"))
 
-print(entry.entity_id)       # "apple_inc"
-print(entry.source_document) # "annual_report_2023.pdf"
-print(entry.confidence)      # 0.98
-print(entry.checksum)        # SHA-256 hex string (set automatically)
+    # Option 2: shorthand — equivalent to above
+    manager = ProvenanceManager(storage_path="provenance.db")
 
-# Verify the entry has not been tampered with
-is_valid = verify_checksum(entry)
-print(is_valid)  # True
-```
+    entry = manager.track_entity(
+        entity_id="apple_inc",
+        source="annual_report_2023.pdf",
+        source_location="Page 12, Section 3.1",
+        confidence=0.98,
+    )
+
+    # Retrieve lineage after restart — entries persist in provenance.db
+    lineage = manager.get_lineage("apple_inc")
+    print(f"{len(lineage)} provenance entries for apple_inc")
+    ```
+
+    <Check>
+      The SQLite file is created automatically on first write. No schema setup required.
+    </Check>
+  </Tab>
+</Tabs>
 
 ## ProvenanceManager
+
+**`ProvenanceManager`** is the central tracker for all lineage data. Every call to `track_entity`, `track_relationship`, or `track_chunk` automatically computes and stores a **SHA-256 checksum** for tamper detection.
 
 ### Constructor
 
@@ -185,7 +210,7 @@ cleared = manager.clear()
 ### ProvenanceManager Methods Reference
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `track_entity(entity_id, source, metadata, **kwargs)` | `ProvenanceEntry` | Record entity provenance; checksum set automatically |
 | `track_relationship(relationship_id, source, metadata, **kwargs)` | `ProvenanceEntry` | Record relationship provenance |
 | `track_chunk(chunk_id, source_document, ...)` | `ProvenanceEntry` | Record chunk provenance with char offsets |
@@ -465,7 +490,7 @@ print(lineage["source_documents"])
 Provenance tracking in Semantica produces the following audit artifacts:
 
 | Standard | Available |
-| -------- | --------- |
+| :-------- | :--------- |
 | **W3C PROV-O** | Compliant data model; `to_dict()` and `from_dict()` for serialization |
 | **HIPAA** | Audit trail: entity → source document → timestamp → confidence |
 | **SOX** | Tamper-evident checksums; timestamps on every entry |

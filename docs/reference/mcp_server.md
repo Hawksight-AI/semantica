@@ -4,11 +4,12 @@ description: "Model Context Protocol server — expose Semantica's full capabili
 icon: "plug"
 ---
 
-`semantica.mcp_server` exposes Semantica's knowledge graph, decision intelligence, semantic extraction, and reasoning capabilities as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server over stdio.
+**`semantica.mcp_server`** exposes Semantica's knowledge graph, decision intelligence, semantic extraction, and reasoning capabilities as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) **server over stdio**:
 
-Once configured, any connected AI assistant can extract entities, record decisions, query the graph, run reasoning, and export results — without writing a single line of Python.
+- 12 MCP tools exposed: extract entities, query graph, record decisions, run reasoning, export results
+- No Python code required after launch — configure once, use from any MCP-aware client
+- Compatible with Claude Desktop, Windsurf, Cline, Continue, VS Code, Roo Code, Cursor
 
-Compatible with **Claude Desktop**, **Windsurf**, **Cline**, **Continue**, **VS Code**, **Roo Code**, **Cursor**, and any MCP-aware client.
 
 ## Server Interface
 
@@ -71,7 +72,7 @@ The MCP server is included in the base install — no extras required.
   <Step title="Find your MCP client's settings file">
 
     | Client | Settings file |
-    | ------ | ------------- |
+    | :------ | :------------- |
     | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
     | Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
     | Cursor | `.cursor/mcp.json` in your project, or `~/.cursor/mcp.json` globally |
@@ -151,7 +152,7 @@ The MCP server is included in the base install — no extras required.
 ## Environment Variables
 
 | Variable | Default | Description |
-| -------- | ------- | ----------- |
+| :-------- | :------- | :----------- |
 | `SEMANTICA_KG_PATH` | *(none — in-memory graph)* | Path to a persisted graph file to load on startup |
 | `SEMANTICA_LOG_LEVEL` | `WARNING` | Log verbosity: `DEBUG`, `INFO`, `WARNING` |
 
@@ -160,7 +161,7 @@ The MCP server is included in the base install — no extras required.
 The MCP server exposes 12 tools that any connected AI assistant can call:
 
 | Tool | Category | Description |
-| ---- | -------- | ----------- |
+| :---- | :-------- | :----------- |
 | `extract_entities` | Extraction | NER — find people, places, organisations, concepts |
 | `extract_relations` | Extraction | Typed relation and triplet extraction |
 | `record_decision` | Decision Intelligence | Save a decision with reasoning and outcome |
@@ -434,7 +435,7 @@ Supported formats: `turtle`, `ttl`, `nt`, `xml`, `json-ld`, `json`. Default is `
 The MCP server exposes three readable resources:
 
 | URI | Description |
-| --- | ----------- |
+| :--- | :----------- |
 | `semantica://graph/summary` | High-level graph statistics |
 | `semantica://decisions/list` | All recorded decisions (up to 50) |
 | `semantica://schema/info` | Server version and available tools |

@@ -4,7 +4,16 @@ description: "Text cleaning, entity canonicalization, date normalization, number
 icon: "broom"
 ---
 
-`semantica.normalize` standardizes raw data before extraction and graph construction. All normalizers expose both convenience functions (one-liners) and stateful class instances (full control over configuration and reuse).
+**`semantica.normalize`** standardizes raw data **before extraction and graph construction**:
+
+- Text cleaning: Unicode NFC/NFKC, whitespace collapse, smart-quote and dash normalization
+- Entity canonicalization: alias resolution and disambiguation via configurable alias maps
+- Date normalization: any format → ISO 8601, including relative dates
+- Number conversion: `"$1.2B"` → `1200000000.0` with unit and currency handling
+- Language detection and encoding repair for inconsistent source data
+
+All normalizers expose convenience functions (one-liners) and stateful class instances (full control).
+
 
 ## Why Normalize Before Extraction
 
@@ -20,7 +29,7 @@ Normalization collapses these variants before any extractor, deduplicator, or gr
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `TextNormalizer` | Unicode forms (NFC/NFKC), whitespace collapse, smart-quote and dash normalization |
 | `EntityNormalizer` | Alias resolution and entity disambiguation using configurable alias maps |
 | `DateNormalizer` | Parses any date string format to ISO 8601; handles relative dates |
@@ -212,7 +221,7 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     ```
 
     | `normalize_text()` parameter | Type | Default | Description |
-    | ----------------------------- | ---- | ------- | ----------- |
+    | :----------------------------- | :---- | :------- | :----------- |
     | `unicode_form` | `str` | `"NFC"` | Unicode form: `"NFC"` / `"NFD"` / `"NFKC"` / `"NFKD"` |
     | `case` | `str` | `"preserve"` | `"preserve"` / `"lower"` / `"upper"` / `"title"` |
     | `normalize_diacritics` | `bool` | `False` | Strip diacritical marks |
@@ -221,7 +230,7 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     **Unicode form guide:**
 
     | Form | Use When |
-    | ---- | -------- |
+    | :---- | :-------- |
     | `NFC` | Default — best for storage and display |
     | `NFKC` | Search indexing — normalises ligatures, fullwidth chars, and fractions |
     | `NFD` | Stripping diacritics — split é → e + combining accent, then strip accents |
@@ -496,7 +505,7 @@ print(f"Warnings: {len(result.warnings)}")
 ### DataCleaner Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `clean_data(dataset, remove_duplicates, validate, handle_missing, **options)` | `List[Dict]` | Combined cleaning pipeline |
 | `detect_duplicates(dataset, threshold, key_fields)` | `List[DuplicateGroup]` | Return duplicate groups above similarity threshold |
 | `validate_data(dataset, schema)` | `ValidationResult` | Validate records against a schema dict |

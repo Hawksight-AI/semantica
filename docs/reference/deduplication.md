@@ -4,12 +4,19 @@ description: "Entity deduplication — similarity scoring, blocking, merging, an
 icon: "copy"
 ---
 
-`semantica.deduplication` detects and merges duplicate entities across sources to produce a clean, single-source-of-truth knowledge graph. All deduplication workflows operate on plain Python dicts with `id`, `name`, `type`, `properties`, and `relationships` keys.
+**`semantica.deduplication`** detects and merges duplicate entities across sources to produce a **clean, single-source-of-truth** knowledge graph:
+
+- Four v2 strategies up to 7× faster than v1: `blocking_v2`, `hybrid_v2`, `semantic_v2`
+- `ClusterBuilder` uses Union-Find and hierarchical clustering for batch deduplication at scale
+- `EntityMerger` preserves original source provenance on every merged entity
+- `MergeStrategyManager` supports per-property rules and conflict resolution
+- All workflows operate on plain Python dicts — no ORM or schema required
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `DuplicateDetector` | Pairwise and batch detection — returns `DuplicateCandidate` or `DuplicateGroup` lists |
 | `EntityMerger` | Merge duplicate groups — returns `List[MergeOperation]` |
 | `SimilarityCalculator` | Multi-factor similarity: string, property, relationship, and embedding |
@@ -20,6 +27,30 @@ icon: "copy"
 | `detect_duplicates()` | Convenience function — `detect_duplicates(entities, method="pairwise", similarity_threshold=0.7)` |
 | `merge_entities()` | Convenience function — `merge_entities(entities, method="keep_most_complete")` |
 | `calculate_similarity()` | Convenience function — `calculate_similarity(entity_a, entity_b, method="multi_factor")` |
+
+## What You Get
+
+<CardGroup cols={2}>
+  <Card title="DuplicateDetector" icon="copy">
+    Pairwise, batch, incremental, and group detection modes. Returns scored candidates with reasons.
+  </Card>
+  <Card title="EntityMerger" icon="code-merge">
+    Five merge strategies — keep first, last, most complete, highest confidence, or merge all fields.
+  </Card>
+  <Card title="SimilarityCalculator" icon="equals">
+    Multi-factor scoring across string edit distance, property overlap, relationship overlap, and embeddings.
+  </Card>
+  <Card title="ClusterBuilder" icon="diagram-project">
+    Union-Find and hierarchical clustering for batch deduplication at scale — handles 100k+ entity sets.
+  </Card>
+  <Card title="MergeStrategyManager" icon="sliders">
+    Per-property merge rules with conflict resolution priorities. Apply different strategies to different fields.
+  </Card>
+  <Card title="v2 Strategies" icon="bolt">
+    `blocking_v2`, `hybrid_v2`, `semantic_v2` — up to 7× faster than v1 for large entity sets.
+  </Card>
+</CardGroup>
+
 
 ## Getting Started
 
@@ -100,7 +131,7 @@ the comparison is performed. These are independent of the `SimilarityCalculator`
 method used internally:
 
 | `method=` | Algorithm | Returns |
-| --------- | --------- | ------- |
+| :--------- | :--------- | :------- |
 | `"pairwise"` (default) | O(n²) all-pairs comparison | `List[DuplicateCandidate]` |
 | `"batch"` | Batch similarity calculation | `List[DuplicateCandidate]` |
 | `"incremental"` | New vs existing entities | `List[DuplicateCandidate]` |
@@ -109,7 +140,7 @@ method used internally:
 ### DuplicateCandidate fields
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `entity1` | `Dict` | First entity |
 | `entity2` | `Dict` | Second entity |
 | `similarity_score` | `float` | Similarity score (0–1) |
@@ -120,7 +151,7 @@ method used internally:
 ### DuplicateGroup fields
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `entities` | `List[Dict]` | All entities in the group |
 | `similarity_scores` | `Dict` | Pair → score mapping |
 | `representative` | `Optional[Dict]` | Most complete entity in group |
@@ -162,7 +193,7 @@ print("Total merges performed:", len(history))
 Pass as a string to `strategy=` on `merge_duplicates()` or `merge_entity_group()`:
 
 | Strategy | Behavior |
-| -------- | -------- |
+| :-------- | :-------- |
 | `"keep_first"` | Keep the first entity in each duplicate group |
 | `"keep_last"` | Keep the most recently seen entity |
 | `"keep_most_complete"` | Keep the entity with the most non-null properties + relationships |
@@ -201,7 +232,7 @@ operations = merger.merge_duplicates(entities)
 ### MergeOperation fields
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `source_entities` | `List[Dict]` | Original entities that were merged |
 | `merged_entity` | `Dict` | Resulting merged entity |
 | `merge_result` | `MergeResult` | Detailed result with conflicts |
@@ -247,7 +278,7 @@ rel_score  = calc.calculate_relationship_similarity(entity_a, entity_b)
 ### SimilarityResult fields
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `score` | `float` | Overall weighted similarity score (0–1) |
 | `method` | `str` | Method used (e.g. `"multi_factor"`, `"levenshtein"`) |
 | `components` | `Dict[str, float]` | Per-component scores: `"string"`, `"property"`, `"relationship"`, `"embedding"` |
@@ -284,7 +315,7 @@ print("Quality metrics:", result.quality_metrics)
 ### Cluster fields
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `cluster_id` | `str` | Unique cluster identifier |
 | `entities` | `List[Dict]` | Entities in the cluster |
 | `centroid` | `Optional[Dict]` | Representative entity (optional) |

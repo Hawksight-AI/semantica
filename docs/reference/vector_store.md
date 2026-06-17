@@ -4,12 +4,19 @@ description: "Unified interface for FAISS, Pinecone, Weaviate, Qdrant, Milvus, a
 icon: "database"
 ---
 
-`semantica.vector_store` provides a unified API for storing and searching vector embeddings across all major backends. Swap backends with a one-line change — no application code changes needed.
+`semantica.vector_store` provides a unified API for storing and searching vector embeddings across all major backends:
+
+- Swap backends with a one-line change — no application code changes needed
+- `HybridSearch` fuses dense vector similarity with metadata filtering via RRF or weighted average
+- `NamespaceManager` for multi-tenant structural isolation
+- `FAISSStore` with flat, ivf, hnsw, and pq index types
+- Batch embed and store with parallel workers; metadata update without re-embedding
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `VectorStore` | Unified interface: `store_vectors`, `search_vectors`, `update_vectors`, `delete_vectors` |
 | `HybridSearch` | Fuses dense vector similarity with metadata filtering via RRF or weighted average |
 | `MetadataFilter` | Chainable filter builder: `.eq("type", "person").gt("year", 2020).in_list("tag", [...])` |
@@ -27,28 +34,41 @@ icon: "database"
 
 <CardGroup cols={2}>
   <Card title="VectorStore" icon="database">
-    Unified interface across FAISS, Pinecone, Weaviate, Qdrant, Milvus, and PgVector.
+    - Unified interface across FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector
+    - One-line backend swap — no application code changes
+    - `add_documents()` auto-embeds; `store_vectors()` for pre-computed embeddings
   </Card>
   <Card title="HybridSearch" icon="magnifying-glass">
-    Combine dense vector similarity with metadata filtering and configurable fusion strategies.
+    - Dense vector similarity with metadata filtering
+    - RRF or weighted-average fusion strategies
+    - Multi-source fusion across separate collections
   </Card>
   <Card title="MetadataStore" icon="table">
-    Rich metadata indexing — query by field values, update fields without re-embedding.
+    - Rich metadata indexing by field values
+    - Update metadata fields without re-embedding
+    - OR and AND query operators
   </Card>
   <Card title="NamespaceManager" icon="folder-tree">
-    Multi-tenant namespace isolation — structural separation, not just metadata filters.
+    - Structural per-tenant namespace isolation
+    - Faster queries (smaller search space per tenant)
+    - Safer than metadata-filter-only separation
   </Card>
   <Card title="Batch Operations" icon="layer-group">
-    Bulk add, delete, and metadata updates — parallel embedding with configurable workers.
+    - Bulk add, delete, and metadata updates
+    - Parallel embedding with configurable `batch_size` and `workers`
+    - In-place vector updates without full re-indexing
   </Card>
   <Card title="FAISS Index Types" icon="chart-scatter">
-    flat, ivf, hnsw, and pq index types with full configuration control.
+    - flat, ivf, hnsw, and pq index types
+    - Full configuration control via `FAISSStore.create_index()`
+    - `save()` / `load()` for disk persistence
   </Card>
 </CardGroup>
 
+
 ## Getting Started
 
-`VectorStore` is the main entry point. Use `"inmemory"` for development and `"faiss"` for local production:
+**`VectorStore`** is the main entry point. Use `"inmemory"` for development and `"faiss"` for **local production**:
 
 ```python
 from semantica.vector_store import VectorStore
@@ -233,7 +253,7 @@ store = VectorStore(
 ## Backend Selection Guide
 
 | Backend | Deployment | API Key | Persistence | Best For |
-| ------- | ---------- | ------- | ----------- | -------- |
+| :------- | :---------- | :------- | :----------- | :-------- |
 | `inmemory` | Process | No | No | Development, unit tests |
 | `faiss` | Local | No | Via `save()`/`load()` | On-premise, offline production |
 | `pinecone` | Cloud | Yes | Managed | Managed cloud, serverless |
@@ -312,7 +332,7 @@ mf = (
 ### MetadataFilter Methods
 
 | Method | Operator | Description |
-| ------ | -------- | ----------- |
+| :------ | :-------- | :----------- |
 | `.eq(field, value)` | `==` | Exact equality |
 | `.ne(field, value)` | `!=` | Not equal |
 | `.gt(field, value)` | `>` | Greater than |
@@ -339,7 +359,7 @@ fused   = ranker.rank([results_list_1, results_list_2], weights=[0.7, 0.3])
 ```
 
 | Fusion strategy | Description |
-| --------------- | ----------- |
+| :--------------- | :----------- |
 | `reciprocal_rank_fusion` | Rank-based combination via RRF — robust to score scale differences (default) |
 | `weighted_average` | Weighted sum of scores — pass `weights=[...]` to `rank()` |
 
@@ -470,7 +490,7 @@ store.create_index(index_type="pq", metric="L2", m=8)
 ```
 
 | Index | Memory | Speed | Accuracy | When to Use |
-| ----- | ------ | ----- | -------- | ----------- |
+| :----- | :------ | :----- | :-------- | :----------- |
 | `flat` | High | Slow | Exact (100%) | < 100K vectors, correctness critical |
 | `ivf` | Medium | Fast | ~95–98% | 100K–10M vectors, good balance |
 | `hnsw` | Medium-High | Very fast | ~97–99% | Low latency, production retrieval |

@@ -4,12 +4,20 @@ description: "Shared utilities for logging, validation, error handling, progress
 icon: "wrench"
 ---
 
-`semantica.utils` provides shared infrastructure used throughout Semantica. Most users won't call it directly, but its APIs are available when you need fine-grained control over logging, validation, progress tracking, or error handling.
+**`semantica.utils`** provides **shared infrastructure** used throughout Semantica:
+
+- Structured logging: `setup_logging()`, `get_logger()`, `log_execution_time` decorator
+- Validation helpers: `validate_entity()` and `validate_config()` return `(bool, Optional[str])` without raising
+- Progress tracking: `ProgressTracker` class and `track_progress()` iterable wrapper with ETA
+- Typed exceptions: `SemanticaError`, `ValidationError`, `ProcessingError`, `ConfigurationError`, `QualityError`
+
+Most users won't call utils directly — it's the **shared foundation** for all modules.
+
 
 ## Exported Classes
 
 | Name | Type | Role |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | `setup_logging` | function | Configure the `semantica` root logger — accepts `level`, `file`, `console`, `rotation` kwargs |
 | `get_logger` | function | Get a named logger instance (`semantica.<name>`) |
 | `log_execution_time` | decorator | Wraps a function — logs name, execution time, and success/failure |
@@ -96,9 +104,9 @@ if not is_valid:
 ```
 
 | Function | Description | Returns |
-| -------- | ----------- | ------- |
-| `validate_entity(data)` | Check entity dict has required fields (`id`, `text`, `type`) and correct types | `Tuple[bool, Optional[str]]` |
-| `validate_config(cfg, required_keys=None)` | Check configuration dict; optionally enforce required keys | `Tuple[bool, Optional[str]]` |
+| :-------- | :----------- | :------- |
+| `validate_entity(data)` | Check entity dict has **required** fields (`id`, `text`, `type`) and correct types | `Tuple[bool, Optional[str]]` |
+| `validate_config(cfg, required_keys=None)` | Check configuration dict; optionally enforce **required** keys | `Tuple[bool, Optional[str]]` |
 
 ## Progress Tracking
 
@@ -178,7 +186,7 @@ except SemanticaError as e:
 ```
 
 | Exception | When Raised | Key Attributes |
-| --------- | ----------- | -------------- |
+| :--------- | :----------- | :-------------- |
 | `SemanticaError` | Base class — all framework errors inherit from this | `.message`, `.context`, `.error_code` |
 | `ValidationError` | Input data failed schema or type validation | `.field`, `.value`, `.constraint` |
 | `ProcessingError` | Failure during extraction, graph build, or pipeline step | `.stage`, `.input_data`, `.output_data` |

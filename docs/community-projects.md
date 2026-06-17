@@ -10,6 +10,7 @@ icon: "people-group"
 
 Semantica is used across academia, enterprise, and independent research. Below is a snapshot of the ecosystem being built by the community.
 
+
 ## Projects Using Semantica
 
 ### Research & Academia
@@ -38,42 +39,51 @@ Production deployments span regulated and high-stakes industries where AI accoun
 - **Domain-specific extractors** — NER and relation extractors for clinical, legal, and scientific text
 - **Temporal graph dashboards** — visual timelines built with Semantica's `TemporalKnowledgeGraph` + custom visualization adapters
 
+
 ## Supported Integrations
 
-### Vector Databases
+<Tabs>
+  <Tab title="Vector Databases">
+    | Store | Notes |
+    | :---- | :---- |
+    | **FAISS** | In-process, CPU/GPU |
+    | **Pinecone** | Managed vector cloud |
+    | **Weaviate** | Schema-first hybrid search |
+    | **Qdrant** | High-performance Rust-native |
+    | **Milvus** | Enterprise-scale distributed |
+    | **PgVector** | Postgres-native for SQL stacks |
+  </Tab>
+  <Tab title="Graph Databases">
+    | Store | Notes |
+    | :---- | :---- |
+    | **Neo4j** | Industry standard, Cypher query |
+    | **FalkorDB** | Redis-protocol, low-latency |
+    | **Apache AGE** | PostgreSQL extension, OpenCypher |
+    | **Amazon Neptune** | Managed AWS, SPARQL + Gremlin |
+  </Tab>
+  <Tab title="LLM Providers">
+    | Provider | Notes |
+    | :-------- | :---- |
+    | **OpenAI** | GPT-4o, GPT-4, GPT-3.5 |
+    | **Anthropic** | Claude Opus, Sonnet, Haiku |
+    | **Google Gemini** | — |
+    | **Groq** | LLaMA, Mixtral — fast inference |
+    | **Ollama** | Fully local, air-gapped |
+    | **HuggingFace** | — |
+    | **DeepSeek** | — |
+    | **Novita AI** | — |
+    | **LiteLLM** | 100+ model gateway |
+  </Tab>
+  <Tab title="NLP Libraries">
+    | Library | Notes |
+    | :------- | :---- |
+    | **spaCy** | Production NER and dependency parsing |
+    | **NLTK** | Tokenization and feature extraction |
+    | **Sentence Transformers** | Semantic embeddings |
+    | **FastEmbed** | Lightweight, fast inference |
+  </Tab>
+</Tabs>
 
-- FAISS — in-process, CPU/GPU
-- Pinecone — managed vector cloud
-- Weaviate — schema-first hybrid search
-- Qdrant — high-performance Rust-native
-- Milvus — enterprise-scale distributed
-- PgVector — Postgres-native for SQL stacks
-
-### Graph Databases
-
-- Neo4j — industry standard, Cypher query
-- FalkorDB — Redis-protocol, low-latency
-- Apache AGE — PostgreSQL extension, OpenCypher
-- Amazon Neptune — managed AWS, SPARQL + Gremlin
-
-### LLM Providers
-
-- OpenAI (GPT-4o, GPT-4, GPT-3.5)
-- Anthropic (Claude Opus, Sonnet, Haiku)
-- Google Gemini
-- Groq (LLaMA, Mixtral — fast inference)
-- Ollama (fully local, air-gapped)
-- HuggingFace
-- DeepSeek
-- Novita AI
-- LiteLLM (100+ model gateway)
-
-### NLP Libraries
-
-- spaCy — production NER and dependency parsing
-- NLTK — tokenization and feature extraction
-- Sentence Transformers — semantic embeddings
-- FastEmbed — lightweight, fast inference
 
 ## Community Extensions
 
@@ -84,6 +94,7 @@ The plugin system (`PluginRegistry`) makes it easy to add new capabilities witho
 - **Ingestor plugins** — adapters for SharePoint, Notion, Confluence, and custom databases
 - **Visualization plugins** — enhanced dashboards with Plotly, D3.js, and custom graph renderers
 - **Evaluation harnesses** — domain-specific precision/recall benchmarks using `semantica.evals`
+
 
 ## Build Your Own Extension
 
@@ -99,6 +110,7 @@ method_registry.register("file", "my_format", my_ingestor)
 ```
 
 See [Architecture](architecture#extension-points) for the full extension guide.
+
 
 ## How to Contribute
 

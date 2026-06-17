@@ -4,9 +4,10 @@ description: "Install the Explorer extras, save a ContextGraph to JSON, and laun
 icon: "map"
 ---
 
-`semantica-explorer` is an interactive browser dashboard for knowledge graph exploration. You give it a graph file, it starts a local server, and opens a browser tab where you can search nodes, find paths, inspect provenance, and run analytics — no code required after launch.
+**`semantica-explorer`** is an **interactive browser dashboard** for knowledge graph exploration. You give it a graph file, it starts a local server, and opens a browser tab where you can search nodes, find paths, inspect provenance, and run analytics — no code required after launch.
 
 This page covers everything needed to go from zero to a running Explorer. For the full REST API reference and endpoint catalogue, see [Explorer Reference](reference/explorer).
+
 
 ## Prerequisites
 
@@ -27,6 +28,7 @@ semantica-explorer --help
 ```
 
 You should see the usage message with the four available flags. If you see `command not found`, activate your virtual environment first. See [CLI Setup](cli-setup#troubleshooting) for PATH help.
+
 
 ## Minimal End-to-End Example
 
@@ -56,6 +58,7 @@ The browser opens at `http://127.0.0.1:8000`. The health endpoint confirms the s
 curl http://127.0.0.1:8000/api/health
 # {"status": "healthy"}
 ```
+
 
 ## Step 1 — Build and Save a ContextGraph
 
@@ -109,6 +112,7 @@ Explorer loads a graph from a JSON file on disk. You need to create that file fi
   Already have a graph from a pipeline run? Skip straight to Step 2. The only requirement is that the file was saved with `ContextGraph.save_to_file()`.
 </Tip>
 
+
 ## Step 2 — Launch Explorer
 
 ```bash
@@ -127,13 +131,14 @@ The startup sequence prints:
 
 The browser opens automatically at `http://127.0.0.1:8000` shortly after the server starts.
 
+
 ## CLI Flags
 
 `semantica-explorer` accepts exactly four flags:
 
 | Flag | Short | Default | Description |
-| ---- | ----- | ------- | ----------- |
-| `--graph` | `-g` | *(required)* | Path to a ContextGraph JSON file |
+| :---- | :----- | :------- | :----------- |
+| `--graph` | `-g` | *(**required**)* | Path to a ContextGraph JSON file |
 | `--port` | `-p` | `8000` | Port to bind the server |
 | `--host` | — | `127.0.0.1` | Host to bind the server |
 | `--no-browser` | — | off | Do not open a browser tab automatically |
@@ -160,17 +165,19 @@ semantica-explorer --graph my_graph.json --no-browser
   `--host 0.0.0.0` makes Explorer reachable on every network interface. The server has no built-in authentication. Only use this on a trusted private network.
 </Warning>
 
+
 ## Browser Access
 
 Once the server is running:
 
 | URL | What you get |
-| --- | ------------ |
+| :--- | :------------ |
 | `http://127.0.0.1:8000` | Interactive dashboard |
 | `http://127.0.0.1:8000/docs` | Swagger UI — every REST endpoint, interactive |
 | `http://127.0.0.1:8000/api/health` | Health check — `{"status": "healthy"}` |
 
 The browser tab opens shortly after startup. If it does not open, navigate to the URL manually or pass `--no-browser` and open it yourself.
+
 
 ## Running as a Python Module
 
@@ -179,6 +186,7 @@ If `semantica-explorer` is not on `PATH`, use the module form:
 ```bash
 python -m semantica.explorer --graph my_graph.json --port 8080
 ```
+
 
 ## Common Startup Errors
 
@@ -227,6 +235,7 @@ semantica-explorer --graph my_graph.json --host 0.0.0.0
 **Browser tab does not open**
 
 This is expected in headless, SSH, and container environments. Add `--no-browser` to suppress the warning and open `http://127.0.0.1:8000` in a browser that has network access to the server.
+
 
 ## What Explorer Gives You
 

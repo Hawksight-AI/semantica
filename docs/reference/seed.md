@@ -4,12 +4,19 @@ description: "Bootstrap Knowledge Graphs from verified, structured sources — t
 icon: "database"
 ---
 
-`semantica.seed` gives your knowledge graph a reliable starting point. Rather than building from an empty graph and hoping extraction produces consistent reference data, you load verified, structured sources first — ISO codes, employee rosters, product catalogs, domain taxonomies — then merge freshly extracted data on top.
+**`semantica.seed`** gives your knowledge graph a **reliable, verified starting point**:
+
+- Load verified reference data first — ISO codes, employee rosters, product catalogs, domain taxonomies
+- `SeedDataManager` merges freshly extracted data onto foundation nodes without creating duplicates
+- Supports JSON, CSV, and programmatic registration of seed sources
+- Deterministic test graph generation from structured seed data
+- Anchors entity extraction to known entities, reducing hallucination and duplicate nodes
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `SeedDataManager` | Coordinator: `register_source`, `load_source`, `create_foundation_graph`, `integrate_with_extracted` |
 | `SeedDataSource` | Config dataclass: `{name, format, location, entity_type, verified, version, metadata}` |
 | `SeedData` | Container dataclass: `{entities, relationships, properties, metadata}` |
@@ -171,7 +178,7 @@ icon: "database"
 ## SeedDataManager Reference
 
 | Method | Description |
-| ------ | ----------- |
+| :------ | :----------- |
 | `register_source(name, format, location, **config)` | Add a new data source to the manager |
 | `load_source(source_name)` | Load and return raw data from a registered source |
 | `create_foundation_graph()` | Build the initial graph from all registered sources |

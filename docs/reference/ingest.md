@@ -4,12 +4,19 @@ description: "Universal data ingestion from files, Parquet, XML, web, public API
 icon: "database"
 ---
 
-`semantica.ingest` is the entry point for loading data into Semantica. Each ingestor returns its own typed object (`FileObject`, `WebContent`, `TableData`, etc.) with normalized content and metadata for its source type.
+**`semantica.ingest`** is the **universal entry point** for loading data into Semantica:
+
+- 15+ ingestion adapters: files, web, SQL, Snowflake, Kafka, MCP, Git repos, email
+- PyArrow Parquet with column selection and partitioned dataset support
+- XXE-safe lxml XML with optional XSD schema validation
+- `ingest()` unified dispatcher — auto-detects source type from path or URL
+- Each ingestor returns its own typed object (`FileObject`, `WebContent`, `TableData`, etc.)
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `FileIngestor` | PDF, DOCX, HTML, JSON, CSV, Excel, PPTX, ZIP/TAR — type auto-detected from extension |
 | `CloudStorageIngestor` | Unified client for AWS S3, Google Cloud Storage, and Azure Blob Storage |
 | `WebIngestor` | Web scraping and crawling with `ingest_url`, `crawl_sitemap`, `crawl_domain` |
@@ -29,7 +36,7 @@ icon: "database"
 
 ## Getting Started
 
-Use `FileIngestor` for local files — it auto-detects format from the file extension and handles archives:
+Use **`FileIngestor`** for local files — it **auto-detects format** from the file extension and handles archives:
 
 ```python
 from semantica.ingest import FileIngestor
@@ -502,8 +509,8 @@ result = ingest(
 ### `ingest()` Parameters
 
 | Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
-| `sources` | `str`, `Path`, or `List` | required | File path, URL, directory, or connection string |
+| :--------- | :---- | :------- | :----------- |
+| `sources` | `str`, `Path`, or `List` | **required** | File path, URL, directory, or connection string |
 | `source_type` | `str` | `None` (auto-detected) | `"file"`, `"web"`, `"public_api"`, `"feed"`, `"stream"`, `"repo"`, `"email"`, `"db"`, `"parquet"`, `"xml"`, `"ontology"`, `"mcp"` |
 | `method` | `str` | `None` | Optional method override passed to the underlying ingestor |
 | `**kwargs` | | | Extra options forwarded to the underlying ingestor method |

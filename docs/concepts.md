@@ -24,7 +24,6 @@ At its core, Semantica adds a **context and accountability layer** on top of you
   </Card>
 </CardGroup>
 
----
 
 ## Knowledge Graphs
 
@@ -37,6 +36,7 @@ The foundation of everything in Semantica. A knowledge graph stores information 
 - **Properties** — name, date, confidence score, source URL
 
 This structure makes knowledge **searchable**, **connectable**, **queryable**, and — critically — **explainable**: every answer can be traced back to the facts and relationships that produced it.
+
 
 ## Entity Extraction (NER)
 
@@ -57,7 +57,7 @@ Scanning text to find and classify real-world entities:
 Each entity gets a type, confidence score, and a link to its source document. Three extraction methods are available:
 
 | Method | Speed | Accuracy | Requirements |
-| ------ | ----- | -------- | ------------ |
+| :------ | :----- | :-------- | :------------ |
 | `"pattern"` | ⚡ Very fast | Moderate | No API key — regex-based |
 | `"ml"` | Fast | High | Local ML model |
 | `"llm"` | Medium | Highest | LLM provider — all 9 supported |
@@ -77,6 +77,81 @@ Finding how entities connect to each other:
 
 Relationships can be extracted via rule-based methods, ML models, or LLMs — each producing typed triplets with confidence scores and source attribution.
 
+
+## Knowledge Graph vs. Vector Store
+
+Both store information for AI retrieval — but they're built for different jobs.
+
+<Tabs>
+  <Tab title="Knowledge Graph">
+    Stores **structured facts** as typed nodes and labeled edges. Answers questions that require understanding relationships between entities.
+
+    | Strength | Why it matters |
+    | :-------- | :------------- |
+    | **Traversal** | Multi-hop queries: "Who founded companies that Apple alumni later joined?" |
+    | **Explainability** | Every answer traces back to specific nodes and edges — no black-box retrieval |
+    | **Temporal reasoning** | Point-in-time queries, `valid_from`/`valid_until` windows, historical snapshots |
+    | **Conflict detection** | Two sources disagreeing on the same fact is surfaced and resolvable |
+    | **Schema enforcement** | SHACL validation catches constraint violations before they corrupt results |
+
+    **Use when:** you need structured reasoning, provenance, compliance, or explainability.
+
+    ```python
+    from semantica.kg import GraphBuilder, PathFinder
+
+    graph   = GraphBuilder(merge_entities=True).build(entities=entities, relationships=rels)
+    finder  = PathFinder()
+    path    = finder.dijkstra_shortest_path(graph, "Steve Jobs", "Tim Cook")
+    ```
+  </Tab>
+
+  <Tab title="Vector Store">
+    Stores **dense embeddings** of text chunks. Answers questions by finding semantically similar passages — useful when the structure of the answer isn't known in advance.
+
+    | Strength | Why it matters |
+    | :-------- | :------------- |
+    | **Fuzzy similarity** | Finds relevant content even when exact words don't match |
+    | **Speed** | Sub-millisecond approximate nearest-neighbor search at scale |
+    | **Unstructured text** | Works directly on paragraphs, sentences, and raw documents |
+    | **Simplicity** | No schema design required — embed and index |
+
+    **Use when:** you need fast semantic search over large text corpora.
+
+    ```python
+    from semantica.vector_store import VectorStore
+
+    store   = VectorStore(backend="faiss", dimension=768)
+    store.add_documents(["Apple was founded in 1976.", "Google was founded in 1998."])
+    results = store.search("tech company founding dates", limit=5)
+    ```
+  </Tab>
+
+  <Tab title="GraphRAG (Both)">
+    Semantica combines both — vector search seeds the graph traversal, and the graph provides structure and provenance the vector store cannot.
+
+    | Step | What happens |
+    | :---- | :----------- |
+    | **Query embedding** | User query is embedded and used to find anchor nodes via vector similarity |
+    | **Graph traversal** | Multi-hop traversal from anchor nodes retrieves related entities and relationships |
+    | **Context assembly** | Facts + relationships are assembled with source attribution for each claim |
+    | **LLM generation** | LLM generates an answer grounded in the retrieved structured context |
+
+    **Result:** every claim in the response links back to a specific graph node — no hallucination from training data, full audit trail.
+
+    ```python
+    from semantica.context import AgentContext, ContextGraph
+    from semantica.vector_store import VectorStore
+
+    context = AgentContext(
+        vector_store=VectorStore(backend="faiss", dimension=768),
+        knowledge_graph=ContextGraph(advanced_analytics=True),
+    )
+    result = context.query("Who founded Apple?", mode="graphrag")
+    ```
+  </Tab>
+</Tabs>
+
+
 ## Embeddings
 
 Embeddings convert text into numerical vectors so AI systems can measure semantic similarity — finding related concepts even when the exact words differ.
@@ -90,6 +165,7 @@ Semantica uses embeddings for:
 - **Distance Intelligence** — N×N semantic distance matrices between any node set
 
 **Supported models:** Sentence-Transformers, FastEmbed, OpenAI, BGE, Ollama local embeddings.
+
 
 ## GraphRAG
 
@@ -116,6 +192,7 @@ GraphRAG (Graph-Augmented Retrieval Augmented Generation) enhances LLM responses
   **GraphRAG eliminates the hallucination and traceability problems of standard RAG.** Standard RAG retrieves text chunks; GraphRAG retrieves structured facts with typed relationships. The LLM cannot confabulate structure that was never in the graph.
 </Tip>
 
+
 ## Ontology
 
 An ontology defines the schema and rules for your knowledge — what entity types exist, which relationships are valid, and what constraints apply.
@@ -132,6 +209,7 @@ ontology = {
 ```
 
 Semantica can auto-generate ontologies from your knowledge graph or import existing OWL/RDF/Turtle ontologies. The **Ontology Hub** (v0.5.0) adds a visual editor, SHACL Studio, alignment authoring, and a live health dashboard. See the [Ontology reference](reference/ontology) for the full 6-stage generation pipeline.
+
 
 ## Reasoning & Inference
 
@@ -200,7 +278,7 @@ Inferred: Steve Jobs has a connection to Cupertino
   <Tab title="Engine Comparison">
 
     | Engine | Description | Best For |
-    | ------ | ----------- | -------- |
+    | :------ | :----------- | :-------- |
     | Forward chaining | Applies rules until fixpoint | Alert systems, compliance checks |
     | Rete network | Efficient pattern matching | Large rule sets, high fact throughput |
     | Deductive | Classical syllogistic reasoning | Mathematical and logical inference |
@@ -212,6 +290,7 @@ Inferred: Steve Jobs has a connection to Cupertino
 </Tabs>
 
 All engines produce **explainable inference paths** — not black-box conclusions. Every derived fact includes the rules and premises that produced it.
+
 
 ## Temporal Intelligence
 
@@ -231,6 +310,7 @@ snapshot = query_engine.query_at_time(kg, query="", at_time=datetime(2021, 6, 15
 
 **Common uses:** tracking company leadership changes, policy evolution, research timelines, financial instrument histories, regulatory compliance windows.
 
+
 ## Distance Intelligence
 
 Explore the semantic neighborhood of any entity in your graph — useful for understanding what's conceptually close, detecting clusters, and visualizing knowledge topology.
@@ -246,6 +326,7 @@ scores = calc.calculate_similarity(entity_a, entity_b)
 
 The [Visualization module](reference/visualization) renders distance matrices as interactive heatmaps and ego-mode neighborhood graphs. The [Explorer](reference/explorer) embeds distance intelligence directly in the browser dashboard.
 
+
 ## Deduplication & Entity Resolution
 
 Real-world data contains the same entity under many names — "Apple", "Apple Inc.", "Apple Computer Inc." Semantica's deduplication pipeline detects these, merges attributes, resolves conflicts, and preserves the original source provenance.
@@ -254,7 +335,7 @@ Real-world data contains the same entity under many names — "Apple", "Apple In
   <Tab title="Strategies">
 
     | Strategy | Algorithm | Best For |
-    | -------- | --------- | -------- |
+    | :-------- | :--------- | :-------- |
     | `v1` | Jaro-Winkler string similarity | Small datasets, fast baseline |
     | `blocking_v2` | Candidate blocking + similarity | Large corpora — reduces O(n²) comparisons |
     | `hybrid_v2` | Blocking + semantic embedding match | Mixed structured/unstructured entity names |
@@ -273,6 +354,7 @@ Real-world data contains the same entity under many names — "Apple", "Apple In
     ```
   </Tab>
 </Tabs>
+
 
 ## Provenance & Auditability
 
@@ -299,6 +381,7 @@ print(f"Extracted: {lineage.timestamp}")
 print(f"Checksum:  {lineage.checksum}")
 ```
 
+
 ## Decision Intelligence
 
 Every agent decision is a first-class object in Semantica — recorded, causally linked, and searchable by precedent. This is the **accountability layer** for AI pipelines: decisions are no longer ephemeral log messages, they are queryable knowledge graph nodes.
@@ -323,6 +406,7 @@ influence  = context.analyze_decision_influence(decision_id)
   **Use `find_precedents()` before every high-stakes decision.** Hybrid similarity search over all recorded decisions surfaces past reasoning that may apply — reducing inconsistency across agent runs and enabling genuine organisational learning from AI decision history.
 </Tip>
 
+
 ## Conflict Detection
 
 When multiple sources disagree on the same fact, Semantica flags and resolves the conflict rather than silently picking one value.
@@ -335,6 +419,7 @@ When multiple sources disagree on the same fact, Semantica flags and resolves th
 - **Manual review** — flag for human arbitration; continue pipeline without blocking
 
 See the [Conflicts reference](reference/conflicts) for `ConflictResolver`, `SourceTracker`, and `InvestigationGuideGenerator`.
+
 
 ## Custom Plugin Development
 

@@ -4,6 +4,23 @@ description: "Common questions about Semantica — installation, features, integ
 icon: "circle-question"
 ---
 
+<Tip>
+  Use **Ctrl+F** / **Cmd+F** to search this page. Common jumps: [Installation](#installation) · [Data & Features](#data--features) · [Troubleshooting](#troubleshooting)
+</Tip>
+
+## Quick Answers
+
+| Question | Answer |
+| :-------- | :------ |
+| License? | MIT — free forever, no paywalled features |
+| Python version? | 3.8+ (3.11+ recommended) |
+| API key required? | Optional — pattern extraction works with no keys |
+| Works with LangChain / LlamaIndex? | Yes — Semantica is a layer on top, not a replacement |
+| Production-ready? | Yes — 1,000+ tests, v0.5.0 ships with 12 security fixes |
+| Latest version? | **v0.5.0** (May 2026) |
+| Local LLMs? | Yes — Ollama via LiteLLM, HuggingFaceLLM for air-gapped |
+
+
 ## General
 
 <AccordionGroup>
@@ -55,6 +72,7 @@ pip install --upgrade semantica
 
 </AccordionGroup>
 
+
 ## Installation
 
 <AccordionGroup>
@@ -90,7 +108,7 @@ If you're on an older version, install extras individually: `pip install "semant
 <Accordion title="What are the system requirements?" icon="server">
 
 | Requirement | Minimum | Recommended |
-| ----------- | ------- | ----------- |
+| :----------- | :------- | :----------- |
 | Python | 3.8 | 3.11+ |
 | RAM | 4 GB | 16 GB+ |
 | Storage | 2 GB | 20 GB+ |
@@ -100,6 +118,7 @@ If you're on an older version, install extras individually: `pip install "semant
 
 </AccordionGroup>
 
+
 ## Data & Features
 
 <AccordionGroup>
@@ -107,7 +126,7 @@ If you're on an older version, install extras individually: `pip install "semant
 <Accordion title="What data sources does Semantica support?" icon="database">
 
 | Category | Sources |
-| -------- | ------- |
+| :-------- | :------- |
 | **Files** | PDF, DOCX, HTML, JSON, CSV, Excel, PPTX, Parquet (v0.5.0), XML (v0.5.0), archives |
 | **Web** | `WebIngestor` crawl, RSS feeds, sitemaps |
 | **Databases** | PostgreSQL, MySQL, Snowflake via `DBIngestor` / `SnowflakeIngestor` |
@@ -205,6 +224,7 @@ pip install --upgrade semantica
 
 </AccordionGroup>
 
+
 ## Technical
 
 <AccordionGroup>
@@ -250,6 +270,7 @@ Yes. v0.5.0 ships with:
 </Accordion>
 
 </AccordionGroup>
+
 
 ## Troubleshooting
 
@@ -313,6 +334,7 @@ set PYTHONIOENCODING=utf-8
 </Accordion>
 
 </AccordionGroup>
+
 
 ## Support
 

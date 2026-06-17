@@ -4,12 +4,19 @@ description: "Forward chaining, Rete, deductive, abductive, SPARQL, Datalog, and
 icon: "microchip"
 ---
 
-`semantica.reasoning` derives new knowledge from existing facts using logical rules. Every engine produces explainable inference paths — traceable chains of rules and facts, not black-box conclusions.
+`semantica.reasoning` derives new knowledge from existing facts using logical rules:
+
+- Six reasoning engines: forward chaining, Rete, SPARQL, Datalog, temporal, and LLM-powered GraphReasoner
+- Every engine produces explainable inference paths — traceable chains of rules and facts
+- `DatalogReasoner` guarantees termination via semi-naive fixpoint evaluation
+- `TemporalReasoningEngine` implements all 13 Allen interval algebra relations
+- `ExplanationGenerator` produces step-by-step natural-language justifications
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `Reasoner` | Forward-chaining inference: `add_fact`, `add_rule`, `forward_chain`, `backward_chain`, `infer_facts` |
 | `GraphReasoner` | LLM-powered reasoning over a KG dict — answers natural language queries via `reason(graph, query)` |
 | `ReteEngine` | Rete pattern matching: `build_network`, `add_fact`, `match_patterns`, `execute_matches` |
@@ -20,6 +27,31 @@ icon: "microchip"
 | `Rule` | IF/THEN rule: `{rule_id, name, conditions, conclusion, rule_type, confidence, priority}` |
 | `Fact` | Working-memory fact: `{fact_id, predicate, arguments}` |
 | `InferenceResult` | Single derived conclusion: `{conclusion, rule_used, premises, confidence}` |
+
+
+## Which Engine Should I Use?
+
+<CardGroup cols={2}>
+  <Card title="Reasoner" icon="arrow-right-arrow-left" href="#reasoner-forwardbackward-chaining">
+    IF/THEN rules, forward and backward chaining. **Start here** — covers 90% of use cases. No query language required.
+  </Card>
+  <Card title="GraphReasoner" icon="robot" href="#graphreasoner">
+    Natural language queries over a knowledge graph via LLM. No SPARQL or rules — just ask a question.
+  </Card>
+  <Card title="DatalogReasoner" icon="code" href="#datalogreasoner">
+    Recursive Horn clause rules with guaranteed termination. Use for complex multi-hop transitive rules.
+  </Card>
+  <Card title="ReteEngine" icon="bolt" href="#reteengine">
+    Rete pattern matching for high-frequency inference. Use when you need to match many facts against many rules simultaneously.
+  </Card>
+  <Card title="SPARQLReasoner" icon="database" href="#sparqlreasoner">
+    SPARQL query expansion and rule-based inference. Use when you're working with RDF/OWL data.
+  </Card>
+  <Card title="TemporalReasoningEngine" icon="clock" href="#temporalreasoningengine">
+    All 13 Allen interval algebra relations. Use for time-aware reasoning: overlaps, before/after, during, contains.
+  </Card>
+</CardGroup>
+
 
 ## Getting Started
 
@@ -62,9 +94,10 @@ rule = Rule(
 reasoner.add_rule(rule)
 ```
 
+
 ## Reasoner (Forward/Backward Chaining)
 
-The unified entry point for rule-based inference:
+**`Reasoner`** is the unified entry point for rule-based inference — iterates facts and rules to a **fixpoint**, then optionally proves a specific goal via backward chaining:
 
 ```python
 from semantica.reasoning import Reasoner, Rule, RuleType, InferenceResult
@@ -102,7 +135,7 @@ conclusions = reasoner.infer_facts(
 ### Reasoner Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `add_fact(fact)` | `None` | Add a string, entity dict, or relationship dict to working memory |
 | `add_rule(rule)` | `Rule` | Add a `Rule` object or IF-THEN string; rules are sorted by `priority` descending |
 | `forward_chain()` | `List[InferenceResult]` | Derive all possible conclusions iteratively until fixpoint |
@@ -137,9 +170,10 @@ fact = Fact(
 )
 ```
 
+
 ## GraphReasoner
 
-LLM-powered reasoning that answers natural language queries over a knowledge graph dict:
+**`GraphReasoner`** uses an LLM to answer **natural language queries** over a knowledge graph dict — no SPARQL or rule authoring required:
 
 ```python
 from semantica.reasoning import GraphReasoner
@@ -165,6 +199,7 @@ print(answer)
 ```
 
 `reason()` converts the graph to a text context and calls the LLM with a structured prompt. Returns a plain string answer.
+
 
 ## ReteEngine
 
@@ -204,7 +239,7 @@ engine.reset()
 ### ReteEngine Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `build_network(rules)` | `None` | Build the Rete network from a list of `Rule` objects |
 | `add_fact(fact)` | `None` | Add a `Fact` to working memory and propagate through the network |
 | `match_patterns(facts)` | `List[Match]` | Match all patterns; optionally add facts before matching |
@@ -212,9 +247,10 @@ engine.reset()
 | `reset()` | `None` | Clear facts and all node activation state |
 | `get_network_stats()` | `dict` | Return counts of alpha, beta, terminal nodes and facts |
 
+
 ## SPARQLReasoner
 
-Query-based inference with rule expansion for triplet stores:
+**`SPARQLReasoner`** extends SPARQL with **inference rule expansion** — add IF-THEN rules and they are automatically woven into queries before execution:
 
 ```python
 from semantica.reasoning import SPARQLReasoner
@@ -256,6 +292,7 @@ SPARQLReasoner(
 <Note>
   `execute_query()` returns empty bindings when no `triplet_store` is configured. Pass a `TripletStore` instance via the `triplet_store=` kwarg to execute queries against a live backend.
 </Note>
+
 
 ## DatalogReasoner
 
@@ -304,13 +341,14 @@ fact = DatalogFact(predicate="parent", args=("alice", "bob"))
 ### DatalogReasoner Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `add_fact(fact)` | `None` | Add string, dict, or `DatalogFact`; constants must be lowercase-starting |
 | `add_rule(rule_str)` | `None` | Parse and add a Horn clause string like `"ancestor(X,Y) :- parent(X,Y)."` |
 | `derive_all()` | `List[str]` | Run semi-naive fixpoint evaluation; returns all facts as strings |
 | `query(pattern)` | `List[dict]` | Query derived facts — auto-runs `derive_all()` if needed |
 | `load_from_graph(graph)` | `int` | Load a ContextGraph's nodes/edges as Datalog facts; returns count added |
 | `clear()` | `None` | Clear all facts and rules |
+
 
 ## TemporalReasoningEngine
 
@@ -340,7 +378,7 @@ engine.active_at(ceo_tenure, datetime(2005, 6, 1))   # True
 All 13 Allen interval algebra relations:
 
 | Relation | Meaning |
-| -------- | ------- |
+| :-------- | :------- |
 | `BEFORE` | A ends before B starts |
 | `MEETS` | A ends exactly when B starts |
 | `OVERLAPS` | A starts before B, ends inside B |
@@ -358,6 +396,7 @@ All 13 Allen interval algebra relations:
 <Note>
   `TemporalInterval.start` expects a `datetime` object, not a string. Import `datetime` from the standard library and construct intervals with `datetime(year, month, day)`.
 </Note>
+
 
 ## ExplanationGenerator
 
@@ -396,7 +435,7 @@ print(justification.explanation_text)
 ### ExplanationGenerator Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `generate_explanation(reasoning)` | `Explanation` | Generate structured explanation for an `InferenceResult`, `Proof`, or abductive result |
 | `show_reasoning_path(reasoning)` | `ReasoningPath` | Extract and return the reasoning path from any result |
 | `justify_conclusion(conclusion, path)` | `Justification` | Build a `Justification` with evidence and NL text for a conclusion |
@@ -420,10 +459,11 @@ step.output_fact    # Any
 step.confidence     # float
 ```
 
+
 ## Engine Selection Guide
 
 | Engine | Best For | Termination | Key Method |
-| ------ | -------- | ----------- | ---------- |
+| :------ | :-------- | :----------- | :---------- |
 | `Reasoner` | Simple IF/THEN rules | Always (with `max_iterations` cap) | `forward_chain()` |
 | `GraphReasoner` | NL queries over a KG via LLM | Always | `reason(graph, query)` |
 | `ReteEngine` | Large rule sets with many facts | Always | `match_patterns()` |

@@ -4,7 +4,14 @@ description: "Multi-source conflict detection and resolution — value, type, te
 icon: "triangle-exclamation"
 ---
 
-`semantica.conflicts` detects and resolves contradictions when multiple sources disagree on the same fact. It surfaces five conflict types, seven resolution strategies, and generates investigation guides for manual review — so conflicts never silently corrupt your knowledge graph.
+**`semantica.conflicts`** detects and resolves **contradictions when multiple sources disagree** on the same fact:
+
+- Five conflict types: value, type, temporal, logical, and relationship
+- Seven resolution strategies: voting, credibility-weighted, most-recent, first-seen, highest-confidence, manual review, expert review
+- `InvestigationGuideGenerator` produces step-by-step investigation instructions for manual resolution
+- `SourceTracker` maps each property value to its contributing source for full attribution
+- Conflicts are surfaced explicitly — never silently corrupting the knowledge graph
+
 
 ## Why Detect Conflicts?
 
@@ -21,7 +28,7 @@ Semantica's conflict detection makes disagreements explicit and actionable:
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `ConflictDetector` | Detects value, type, and relationship conflicts across entity lists |
 | `ConflictResolver` | Resolves conflicts with configurable strategy: `voting`, `credibility_weighted`, `most_recent`, `first_seen`, `highest_confidence`, `manual_review`, `expert_review` |
 | `ConflictType` | Enum: `VALUE_CONFLICT`, `TYPE_CONFLICT`, `TEMPORAL_CONFLICT`, `LOGICAL_CONFLICT`, `RELATIONSHIP_CONFLICT` |
@@ -146,7 +153,7 @@ conflicts = detector.detect_value_conflicts(entities, "revenue")
 ### Detection Types
 
 | Type | What It Detects | Example |
-| ---- | --------------- | ------- |
+| :---- | :--------------- | :------- |
 | `VALUE` | Same entity, same property, different values across sources | Revenue $391B vs $383B |
 | `TYPE` | Same entity classified as different types | "Python" as Language vs Snake |
 | `TEMPORAL` | Conflicting timestamps or validity windows | CEO at two companies simultaneously |
@@ -172,7 +179,7 @@ all_conflicts = detector.detect_entity_conflicts(entities)
 ### ConflictDetector Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `detect_value_conflicts(entities, property_name, entity_type=None)` | `List[Conflict]` | Detect value disagreements on a specific property across entity instances |
 | `detect_type_conflicts(entities)` | `List[Conflict]` | Detect type classification conflicts |
 | `detect_relationship_conflicts(relationships)` | `List[Conflict]` | Detect relationship property conflicts (takes a list of relationship dicts) |
@@ -213,7 +220,7 @@ for result in results:
     )
     ```
 
-    Best for: sources with known reliability rankings (SEC > blog).
+    **Best for:** sources with known reliability rankings (SEC > blog).
   </Tab>
   <Tab title="VOTING">
     Majority vote — most common value across sources wins:
@@ -222,7 +229,7 @@ for result in results:
     results = resolver.resolve_conflicts(conflicts, strategy=ResolutionStrategy.VOTING)
     ```
 
-    Best for: 3+ sources with roughly equal credibility. When all sources have identical credibility scores, `CREDIBILITY_WEIGHTED` behaves identically to `VOTING`.
+    **Best for:** 3+ sources with roughly equal credibility. When all sources have identical credibility scores, `CREDIBILITY_WEIGHTED` behaves identically to `VOTING`.
   </Tab>
   <Tab title="MOST_RECENT / FIRST_SEEN">
     ```python
@@ -246,12 +253,12 @@ for result in results:
             print("  [%d] %s" % (step.step_number, step.description))
     ```
 
-    Best for: high-stakes decisions (`severity == "critical"`), regulated data (HIPAA/SOX), and domain-specific ambiguity.
+    **Best for:** high-stakes decisions (`severity == "critical"`), regulated data (HIPAA/SOX), and domain-specific ambiguity.
   </Tab>
   <Tab title="Strategy Comparison">
 
     | Strategy | Enum | When to Use |
-    | -------- | ---- | ----------- |
+    | :-------- | :---- | :----------- |
     | Majority vote | `VOTING` | 3+ sources with roughly equal credibility |
     | Credibility-weighted | `CREDIBILITY_WEIGHTED` | Sources have different authority levels |
     | Most recent | `MOST_RECENT` | Fast-changing facts: stock price, headcount, status |

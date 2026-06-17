@@ -4,12 +4,19 @@ description: "Pipeline DSL with parallel workers, retry policies, failure handli
 icon: "gear"
 ---
 
-`semantica.pipeline` lets you chain Semantica components into reproducible, fault-tolerant workflows with parallel execution and configurable error handling. Pipelines are serializable — save them to YAML and reload in any environment.
+**`semantica.pipeline`** lets you chain Semantica components into **reproducible, fault-tolerant workflows**:
+
+- Per-step failure strategies: `skip`, `retry`, `abort`, or `fallback`
+- Parallel workers via `ParallelismManager` — thread or process pool
+- `PipelineValidator` catches cycles, missing handlers, and config errors before running
+- Pre-built templates: `"document_processing"`, `"rag_pipeline"`, `"kg_construction"`, `"ontology_generation"`
+- Pipelines are serializable to YAML — save and reload in any environment
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `PipelineBuilder` | DSL for wiring steps: `add_step`, `connect_steps`, `set_parallel`, `build` |
 | `ExecutionEngine` | Runs a built pipeline: `execute_pipeline(pipeline, data)` → `ExecutionResult` |
 | `ExecutionResult` | `{success, output, metadata, metrics, errors}` — full run summary |
@@ -180,7 +187,7 @@ result   = engine.execute_pipeline(pipeline, data="data/")
 ### Failure Strategies
 
 | Strategy | Behaviour | When to Use |
-| -------- | --------- | ----------- |
+| :-------- | :--------- | :----------- |
 | `"skip"` | Log failure, continue to next document | Production — one bad doc shouldn't stop 10k |
 | `"stop"` | Raise exception immediately | Development — surface errors fast |
 | `"retry"` | Retry via `RetryPolicy`, then skip | When failures are likely transient |
@@ -368,7 +375,7 @@ engine.stop_pipeline(pipeline_id)
 ```
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `execute_pipeline(pipeline, data)` | `ExecutionResult` | Execute pipeline from start to finish |
 | `get_pipeline_status(pipeline_id)` | `PipelineStatus` | Current state (RUNNING, PAUSED, STOPPED) |
 | `get_progress(pipeline_id)` | `Dict` | `completed_steps`, `total_steps`, `progress_percentage`, `status` |

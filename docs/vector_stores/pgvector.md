@@ -4,20 +4,22 @@ description: "PostgreSQL with pgvector extension — cosine, L2, and inner produ
 icon: "database"
 ---
 
-PostgreSQL with pgvector extension support for Semantica vector storage and similarity search.
+**`PgVectorStore`** adds PostgreSQL-native vector storage and similarity search to Semantica — no dedicated vector database required.
+
 
 ## Overview
 
-The `PgVectorStore` provides native PostgreSQL vector storage using the [pgvector](https://github.com/pgvector/pgvector) extension. It supports multiple distance metrics (cosine similarity, L2/Euclidean, inner product), index types (IVFFlat, HNSW), and JSONB metadata storage with filtering.
+**`PgVectorStore`** provides native PostgreSQL vector storage using the [pgvector](https://github.com/pgvector/pgvector) extension. It supports **multiple distance metrics** (cosine similarity, L2/Euclidean, inner product), index types (IVFFlat, HNSW), and JSONB metadata storage with filtering.
 
 ## Features
 
-- **Distance Metrics**: Cosine, L2 (Euclidean), Inner Product
-- **Index Types**: IVFFlat, HNSW (for approximate nearest neighbor search)
-- **Metadata Storage**: JSONB for flexible metadata with filtering support
-- **Connection Pooling**: Efficient connection management with psycopg3/psycopg2
-- **Batch Operations**: Bulk insert, update, delete support
-- **Idempotent Index Creation**: Safe to call multiple times
+<Check>Distance metrics: cosine, L2 (Euclidean), inner product</Check>
+<Check>Index types: IVFFlat and HNSW for approximate nearest-neighbor search</Check>
+<Check>JSONB metadata storage with filtering support</Check>
+<Check>Connection pooling via psycopg3/psycopg2</Check>
+<Check>Batch insert, update, and delete</Check>
+<Check>Idempotent index creation — safe to call multiple times</Check>
+
 
 ## Setup
 
@@ -40,29 +42,29 @@ pip install psycopg2-binary pgvector
 
 ### PostgreSQL Setup
 
-1. Install pgvector extension (if not already installed):
+<Steps>
+  <Step title="Install the pgvector extension">
+    ```sql
+    -- Debian/Ubuntu
+    sudo apt-get install postgresql-16-pgvector
 
-```sql
--- Using apt (Debian/Ubuntu)
-sudo apt-get install postgresql-16-pgvector
+    -- macOS (Homebrew)
+    brew install pgvector
 
--- Using homebrew (macOS)
-brew install pgvector
-
--- Or build from source
-```
-
-2. Create the extension in your database:
-
-```sql
-CREATE EXTENSION vector;
-```
-
-3. Verify installation:
-
-```sql
-SELECT * FROM pg_extension WHERE extname = 'vector';
-```
+    -- Or build from source: https://github.com/pgvector/pgvector
+    ```
+  </Step>
+  <Step title="Create the extension in your database">
+    ```sql
+    CREATE EXTENSION vector;
+    ```
+  </Step>
+  <Step title="Verify installation">
+    ```sql
+    SELECT * FROM pg_extension WHERE extname = 'vector';
+    ```
+  </Step>
+</Steps>
 
 ### Docker Quickstart
 
@@ -73,6 +75,7 @@ docker run -d \
     -p 5432:5432 \
     ankane/pgvector:latest
 ```
+
 
 ## Connection String Format
 
@@ -94,6 +97,7 @@ Examples:
 # Connection parameters
 "postgresql://user:pass@localhost/db?connect_timeout=10&application_name=semantica"
 ```
+
 
 ## Usage
 
@@ -192,7 +196,7 @@ store.create_index(
 )
 ```
 
-Index creation is idempotent - calling multiple times is safe.
+Index creation is idempotent — calling multiple times is safe.
 
 ### Statistics
 
@@ -211,7 +215,7 @@ stats = store.get_stats()
 ## Distance Metrics
 
 | Metric | Operator | Description | Use Case |
-|--------|----------|-------------|----------|
+| :-------- | :---------- | :------------- | :---------- |
 | `cosine` | `<=>` | Cosine distance (1 - cosine similarity) | Semantic similarity, text embeddings |
 | `l2` | `<->` | Euclidean distance | Geometric distance, clustering |
 | `inner_product` | `<#>` | Negative inner product | Maximum inner product search |
@@ -220,32 +224,39 @@ stats = store.get_stats()
 
 ## Index Types
 
-### HNSW (Hierarchical Navigable Small World)
+<Tabs>
+  <Tab title="HNSW">
+    **Hierarchical Navigable Small World** — best for high-dimensional vectors with high recall requirements.
 
-- **Best for**: High-dimensional vectors, high recall requirements
-- **Pros**: Fast search, good recall, incremental build
-- **Cons**: Higher memory usage, slower build
+    | | |
+    | :-- | :-- |
+    | **Pros** | Fast search, good recall, incremental build |
+    | **Cons** | Higher memory usage, slower build time |
 
-```python
-store.create_index(index_type="hnsw", params={
-    "m": 16,              # Number of connections per layer (default: 16)
-    "ef_construction": 64  # Build-time accuracy/speed tradeoff (default: 64)
-})
-```
+    ```python
+    store.create_index(index_type="hnsw", params={
+        "m": 16,               # connections per layer (default: 16)
+        "ef_construction": 64  # build-time accuracy/speed tradeoff (default: 64)
+    })
+    ```
+  </Tab>
+  <Tab title="IVFFlat">
+    **Inverted File with Flat Index** — best for large datasets in memory-constrained environments.
 
-### IVFFlat (Inverted File with Flat Index)
+    | | |
+    | :-- | :-- |
+    | **Pros** | Lower memory usage, tunable speed/accuracy |
+    | **Cons** | Requires training data, slower incremental updates |
 
-- **Best for**: Large datasets, memory-constrained environments
-- **Pros**: Lower memory usage, tunable speed/accuracy
-- **Cons**: Requires training, slower incremental updates
+    ```python
+    store.create_index(index_type="ivfflat", params={
+        "lists": 100  # number of inverted lists (default: 100)
+    })
+    ```
 
-```python
-store.create_index(index_type="ivfflat", params={
-    "lists": 100  # Number of inverted lists (default: 100)
-})
-```
-
-**Note**: IVFFlat requires at least as many vectors as lists for training.
+    <Note>IVFFlat requires at least as many vectors as `lists` before training can run.</Note>
+  </Tab>
+</Tabs>
 
 ## Schema
 
@@ -338,7 +349,7 @@ store = PgVectorStore(
 Common errors and solutions:
 
 | Error | Cause | Solution |
-|-------|-------|----------|
+| :------- | :------- | :---------- |
 | `ProcessingError: pgvector extension is not installed` | pgvector not in PostgreSQL | Run `CREATE EXTENSION vector;` |
 | `ValidationError: Unsupported distance metric` | Invalid metric | Use: `cosine`, `l2`, `inner_product` |
 | `ValidationError: dimension mismatch` | Vector dim != store dim | Ensure consistent dimensions |

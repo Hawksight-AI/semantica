@@ -4,25 +4,49 @@ description: "Framework orchestration, lifecycle management, configuration, and 
 icon: "gear"
 ---
 
-`semantica.core` is the coordination layer for the framework. For most tasks you should use individual modules directly (`semantica.ingest`, `semantica.kg`, etc.). Reach for Core when you need application-level lifecycle management, centralized configuration, or a plugin registry.
+**`semantica.core`** is the **coordination layer** for the framework:
+
+- `Semantica` orchestrator coordinates the full KG construction pipeline from a YAML config
+- `ConfigManager` loads YAML config with deep-merge, validation, and environment variable overrides
+- `PluginRegistry` enables dynamic component registration and loading at runtime
+- `LifecycleManager` manages startup/shutdown with health monitoring and lifecycle hooks
+
+<Tip>
+  Use individual modules directly for the vast majority of use cases. Reach for `semantica.core` only when you need application-level lifecycle management, centralized config, or a plugin system.
+</Tip>
+
+
+## What You Get
+
+<CardGroup cols={2}>
+  <Card title="Semantica" icon="arrows-turn-to-dots">
+    High-level orchestrator — coordinates the full KG construction pipeline from a single `config.yaml`. Entry point for application-level deployments.
+  </Card>
+  <Card title="ConfigManager" icon="sliders">
+    YAML config with deep-merge, `SEMANTICA_` env var overrides, and dot-notation nested key access. Keeps secrets out of source files.
+  </Card>
+  <Card title="LifecycleManager" icon="circle-play">
+    Ordered startup/shutdown hooks, health monitoring, and a 6-state machine. Essential for long-running services like FastAPI apps.
+  </Card>
+  <Card title="PluginRegistry" icon="plug">
+    Register custom ingestors, parsers, exporters, or any component. Load them by name at runtime — no imports required.
+  </Card>
+</CardGroup>
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `Semantica` | Orchestration entry point — coordinates the full KG construction pipeline |
 | `ConfigManager` | YAML config loading, deep-merge, validation, and env var overrides |
 | `LifecycleManager` | Startup/shutdown state machine with health monitoring and lifecycle hooks |
 | `PluginRegistry` | Dynamic plugin discovery, registration, and loading |
 | `method_registry` | Global `MethodRegistry` instance — register and dispatch custom orchestration methods |
 
-<Tip>
-  **Use individual modules directly** for the vast majority of use cases. Use the `Semantica` orchestration class only when you need application-level lifecycle management or a plugin system.
-</Tip>
 
 ## Semantica (Orchestration)
 
-High-level entry point that coordinates the full KG construction pipeline:
+**`Semantica`** is the high-level entry point that coordinates the **full KG construction pipeline**:
 
 ```python
 from semantica.core import Semantica, ConfigManager
@@ -48,7 +72,7 @@ finally:
 ### Core Methods
 
 | Method | Description |
-| ------ | ----------- |
+| :------ | :----------- |
 | `initialize()` | Initialize all framework components |
 | `build_knowledge_base(sources, **kwargs)` | Orchestrate full KG construction pipeline |
 | `run_pipeline(pipeline, data)` | Execute an existing `Pipeline` instance |
@@ -201,7 +225,7 @@ result = build_knowledge_base(sources=["doc.pdf"], method="fast")
 ## When to Use Core vs. Individual Modules
 
 | Scenario | Recommended Approach |
-| -------- | -------------------- |
+| :-------- | :-------------------- |
 | Single extraction task | `from semantica.semantic_extract import NERExtractor` |
 | Build a knowledge graph | `from semantica.kg import GraphBuilder` |
 | Multi-step pipeline | `from semantica.pipeline import Pipeline` |

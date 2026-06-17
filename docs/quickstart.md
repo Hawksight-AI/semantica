@@ -10,6 +10,7 @@ icon: "rocket"
 
 This guide walks you through the end-to-end pipeline for building your first knowledge graph. Start here after installation. An LLM API key is optional — pattern-based extraction works out of the box.
 
+
 ## Install
 
 <CodeGroup>
@@ -36,6 +37,7 @@ Verify:
 python -c "import semantica; print(semantica.__version__)"
 # 0.5.0
 ```
+
 
 ## Full Pipeline
 
@@ -220,6 +222,7 @@ aql      = exporter.export(graph)
 
 </Steps>
 
+
 ## Add Decision Intelligence
 
 Track every agent decision with full causal chains and provenance — one extra import:
@@ -250,6 +253,7 @@ decision_id = context.record_decision(
 precedents = context.find_precedents("model selection reasoning", limit=5)
 influence  = context.analyze_decision_influence(decision_id)
 ```
+
 
 ## Common Patterns
 
@@ -353,6 +357,7 @@ print(node.provenance)
 
 </AccordionGroup>
 
+
 ## Troubleshooting
 
 <AccordionGroup>
@@ -411,6 +416,7 @@ pip install --upgrade semantica
 </Accordion>
 
 </AccordionGroup>
+
 
 ## Next Steps
 

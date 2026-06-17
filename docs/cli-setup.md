@@ -6,6 +6,7 @@ icon: "terminal"
 
 Installing the base package registers five executables on your `PATH`. Each serves a distinct purpose. This page explains what they are, how to verify they are available, and which one to reach for in each situation.
 
+
 ## Installed Commands
 
 ```bash
@@ -15,7 +16,7 @@ pip install semantica
 After installation the following commands are available:
 
 | Command | Entry point | What it does |
-| ------- | ----------- | ------------ |
+| :------- | :----------- | :------------ |
 | `semantica` | `semantica.cli:main` | General-purpose CLI for pipeline runs, extraction, and graph operations |
 | `semantica-server` | `semantica.server:main` | FastAPI/uvicorn REST API server bound to `0.0.0.0:8000` |
 | `semantica-worker` | `semantica.worker:main` | Background worker process entry point for Semantica deployments |
@@ -25,6 +26,7 @@ After installation the following commands are available:
 <Note>
   `semantica-explorer` requires `pip install semantica[explorer]`. Running it without that extra will immediately print an error and exit. See [Explorer Setup](explorer-setup) for the full walkthrough.
 </Note>
+
 
 ## Verify the Installation
 
@@ -43,6 +45,7 @@ Confirm the package version:
 ```bash
 python -c "import semantica; print(semantica.__version__)"
 ```
+
 
 ## When to Use Each Command
 
@@ -63,6 +66,7 @@ python -c "import semantica; print(semantica.__version__)"
     Runs the MCP server over stdio. Configure it in your MCP client's settings file to expose all 12 tools and 3 resources to Claude Desktop, Cursor, Windsurf, or any MCP-aware client. See [MCP Server](reference/mcp_server).
   </Card>
 </CardGroup>
+
 
 ## Usage Examples
 
@@ -144,22 +148,24 @@ python -c "import semantica; print(semantica.__version__)"
   </Tab>
 </Tabs>
 
+
 ## Environment Variables
 
 `semantica-mcp` reads two environment variables:
 
 | Variable | Default | Description |
-| -------- | ------- | ----------- |
+| :-------- | :------- | :----------- |
 | `SEMANTICA_KG_PATH` | *(none)* | Path to a saved graph file to load on startup |
 | `SEMANTICA_LOG_LEVEL` | `WARNING` | Log verbosity: `DEBUG`, `INFO`, `WARNING` |
 
 `semantica-server` reads one:
 
 | Variable | Default | Description |
-| -------- | ------- | ----------- |
+| :-------- | :------- | :----------- |
 | `SEMANTICA_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated list of allowed CORS origins |
 
 No other environment variables are read by these commands.
+
 
 ## Troubleshooting
 
@@ -216,6 +222,7 @@ A response of `{"jsonrpc":"2.0","id":1,"result":{}}` confirms the server is work
 ### Windows: DLL errors on startup
 
 Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe). This is a Windows system dependency required by PyTorch and related packages, not a Semantica bug.
+
 
 ## Next Steps
 

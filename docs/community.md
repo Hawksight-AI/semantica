@@ -6,6 +6,7 @@ icon: "users"
 
 Semantica is built in the open, with contributions from researchers, engineers, and practitioners across many domains. Whether you're filing a bug, sharing a project, or reviewing a PR — you're part of the ecosystem.
 
+
 ## Get Help
 
 <CardGroup cols={2}>
@@ -23,6 +24,7 @@ Semantica is built in the open, with contributions from researchers, engineers, 
   </Card>
 </CardGroup>
 
+
 ## Community Guidelines
 
 We follow the [Contributor Covenant Code of Conduct](https://github.com/semantica-agi/semantica/blob/main/CODE_OF_CONDUCT.md). The community is built on four principles:
@@ -33,6 +35,7 @@ We follow the [Contributor Covenant Code of Conduct](https://github.com/semantic
 - **Learning** — share knowledge openly, ask questions without hesitation, and help others grow
 
 To report unacceptable behavior, open a GitHub issue with the `[CoC]` prefix. Every report is investigated.
+
 
 ## Ways to Contribute
 
@@ -64,12 +67,14 @@ There's no single right way to contribute. Pick the path that fits your skills a
 
 See the [Contributing Guide](contributing-guide) for the full development workflow.
 
+
 ## Stay Connected
 
 - **[GitHub](https://github.com/semantica-agi/semantica)** — source code, releases, and the public roadmap
 - **[PyPI](https://pypi.org/project/semantica/)** — package releases and download stats
 - **[Discord](https://discord.gg/sV34vps5hH)** — real-time community chat
 - **[X / Twitter](https://x.com/BuildSemantica)** — announcements and release highlights
+
 
 ## See Also
 

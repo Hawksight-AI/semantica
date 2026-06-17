@@ -1,12 +1,12 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "maple",
+  "theme": "venus",
   "name": "Semantica",
   "description": "The Accountability and Context Layer for AI — Context Graphs · Decision Intelligence · Full Provenance",
   "colors": {
-    "primary": "#059669",
+    "primary": "#10B981",
     "light": "#10B981",
-    "dark": "#047857"
+    "dark": "#10B981"
   },
   "favicon": "/assets/img/semantica-logo.png",
   "logo": {
@@ -28,8 +28,8 @@
   },
   "background": {
     "color": {
-      "dark": "#0A0A0A",
-      "light": "#FAF7F0"
+      "dark": "#080C10",
+      "light": "#080C10"
     }
   },
   "chat": {
@@ -50,7 +50,7 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Documentation",
+        "tab": "Overview",
         "groups": [
           {
             "group": "Overview",

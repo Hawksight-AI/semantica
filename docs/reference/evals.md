@@ -4,7 +4,7 @@ description: "Evaluation framework for measuring Knowledge Graph quality, extrac
 icon: "chart-line"
 ---
 
-`semantica.evals` is planned as a comprehensive evaluation framework for measuring extraction accuracy, graph quality, and pipeline performance.
+**`semantica.evals`** is planned as a comprehensive evaluation framework for measuring **extraction accuracy, graph quality, and pipeline performance**.
 
 <Warning>
   **`semantica.evals` is not yet implemented.** The module is a placeholder with `__all__ = []`. No classes or functions are available for import. This page describes the planned API only.
@@ -15,7 +15,7 @@ icon: "chart-line"
 When released, `semantica.evals` will provide:
 
 | Planned Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `KGEvaluator` | Completeness, consistency, schema compliance, coverage, and orphan node detection |
 | `ExtractionEvaluator` | NER precision / recall / F1 and relation extraction metrics against gold datasets |
 | `PipelineBenchmark` | Throughput (docs/sec), per-step latency, peak memory, and error rate |
@@ -51,7 +51,7 @@ print("Relation coverage: ", report["relation_completeness"]["relation_coverage"
 `EvaluationResult` fields returned by `evaluate_ontology()`:
 
 | Field | Type | Description |
-| ----- | ---- | ----------- |
+| :----- | :---- | :----------- |
 | `coverage_score` | `float` | Fraction of competency questions answerable by the ontology |
 | `completeness_score` | `float` | Average of class and property completeness scores |
 | `gaps` | `List[str]` | Identified gaps in coverage |

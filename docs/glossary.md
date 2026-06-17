@@ -10,6 +10,7 @@ icon: "book"
 
 A quick-reference dictionary of every concept, data structure, algorithm, and standard referenced in Semantica's documentation and codebase.
 
+
 ## Core Concepts
 
 **Agent**
@@ -33,6 +34,7 @@ A directed, typed connection between two entities: e.g., `works_for`, `located_i
 **Semantic**
 Relating to meaning in language or logic. Semantic understanding captures context and intent — going beyond keyword matching to understand what text *means*.
 
+
 ## Data Processing
 
 **Chunking**
@@ -46,6 +48,7 @@ Standardizing data into a consistent canonical form: converting dates to ISO for
 
 **Parsing**
 Extracting structured text, layout, and metadata from unstructured or semi-structured documents — PDFs, Word files, HTML, PPTX. `DoclingParser` additionally handles multi-column layouts, merged-cell tables, and OCR.
+
 
 ## Artificial Intelligence
 
@@ -66,6 +69,7 @@ An AI model trained on large text corpora, capable of understanding and generati
 
 **RAG (Retrieval Augmented Generation)**
 A technique that enhances LLM outputs by retrieving relevant context from a knowledge base before generating a response. GraphRAG extends this with graph traversal for more precise, structured retrieval.
+
 
 ## Knowledge Graph Components
 
@@ -90,6 +94,7 @@ A knowledge graph where nodes and edges carry `valid_from` / `valid_until` time 
 **Triplet**
 The atomic unit of knowledge: a `(subject, predicate, object)` triple — e.g., `(Apple_Inc, founded_by, Steve_Jobs)`. The building block of RDF and SPARQL-based storage.
 
+
 ## Entity Recognition & Extraction
 
 **Coreference Resolution**
@@ -106,6 +111,7 @@ Identifying and classifying named entities in text into predefined categories: p
 
 **Relationship Extraction**
 Identifying and extracting typed semantic relationships between entities — e.g., `(Google, acquired, DeepMind)` — from raw text.
+
 
 ## Ontology & Schema
 
@@ -130,6 +136,7 @@ The W3C standard for validating RDF graphs against a set of shape constraints. S
 **SKOS (Simple Knowledge Organization System)**
 A W3C standard for representing controlled vocabularies, taxonomies, and thesauri. Used in Semantica for domain vocabulary management.
 
+
 ## Storage & Retrieval
 
 **Embedding**
@@ -146,6 +153,7 @@ A database designed specifically for storing and querying RDF `(subject, predica
 
 **Vector Store**
 A database optimized for storing and searching high-dimensional embedding vectors by similarity. Semantica supports FAISS, Pinecone, Weaviate, Qdrant, Milvus, and PgVector.
+
 
 ## Graph Analytics
 
@@ -164,6 +172,7 @@ Semantica's v0.5.0 feature for semantic neighborhood exploration: N×N distance 
 **PageRank**
 An algorithm measuring node importance based on the structure of incoming relationships — originally designed for web pages, applicable to any directed graph.
 
+
 ## Query Languages & Standards
 
 **Cypher**
@@ -177,6 +186,7 @@ The W3C standard for representing information as subject-predicate-object triple
 
 **SPARQL**
 The W3C query language for RDF data. Semantica's `SparqlReasoner` uses SPARQL for query-based inference over RDF graphs.
+
 
 ## Data Quality
 
@@ -192,6 +202,7 @@ Identifying and merging duplicate entity records. Semantica v2 strategies (`bloc
 **W3C PROV-O**
 The W3C provenance ontology standard. Semantica tracks lineage across all modules in PROV-O compliant format — suitable for HIPAA, SOX, GDPR, and FDA 21 CFR Part 11 compliance.
 
+
 ## Security Terms
 
 **SSRF (Server-Side Request Forgery)**
@@ -200,9 +211,20 @@ A vulnerability where a server is induced to make requests to unintended destina
 **XXE (XML External Entity)**
 A vulnerability in XML parsers that allows attackers to read arbitrary files or trigger SSRF. Semantica's `XMLIngestor` (v0.5.0) uses an XXE-safe lxml backend.
 
+
 ## See Also
 
-- [Core Concepts](concepts) — deeper explanation of key ideas with code examples
-- [Getting Started](getting-started) — first working examples
-- [Modules Guide](modules) — every module explained
-- [API Reference](reference/context) — complete technical reference
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="lightbulb" href="concepts">
+    Deeper explanation of key ideas with code examples.
+  </Card>
+  <Card title="Getting Started" icon="play" href="getting-started">
+    First working examples — no prior graph experience required.
+  </Card>
+  <Card title="Modules Guide" icon="cubes" href="modules">
+    All 27 modules explained with code and pipeline chains.
+  </Card>
+  <Card title="API Reference" icon="code" href="reference/context">
+    Complete technical reference for every class and method.
+  </Card>
+</CardGroup>

@@ -4,128 +4,192 @@ description: "Real-world applications of Semantica across domains, with linked c
 icon: "briefcase"
 ---
 
-Semantica is purpose-built for environments where AI outputs must be explainable, auditable, and traceable. The use cases below span regulated industries, advanced research, and high-stakes operational domains — each with linked Jupyter notebooks you can run today.
+Semantica is purpose-built for environments where AI outputs must be explainable, auditable, and traceable. Every use case below includes linked Jupyter notebooks you can run today.
 
-## At a Glance
+## Browse by Sector
 
-| Use Case | Domain | Difficulty | Estimated Time |
-| -------- | ------ | ---------- | -------------- |
-| Biomedical Knowledge Graphs | Healthcare | Intermediate | 1–2 hours |
-| Financial Data Integration | Finance | Intermediate | 1–2 hours |
-| Fraud Detection | Finance | Advanced | 2–3 hours |
-| Blockchain Analytics | Finance | Intermediate | 1–2 hours |
-| Cybersecurity Threat Intelligence | Security | Advanced | 2–3 hours |
-| Criminal Network Analysis | Security / Intelligence | Intermediate | 1–2 hours |
-| Intelligence Analysis Orchestrator | Intelligence | Intermediate | 1–2 hours |
-| Supply Chain Optimization | Operations | Intermediate | 1–2 hours |
-| Renewable Energy Management | Energy | Intermediate | 1–2 hours |
-| GraphRAG | AI / LLM | Advanced | 1–2 hours |
+<Tabs>
+  <Tab title="Research & Science">
 
-**Difficulty levels:**
+<CardGroup cols={2}>
+  <Card title="Biomedical Knowledge Graphs" icon="heart-pulse" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/01_Drug_Discovery_Pipeline.ipynb">
+    Connect genes, proteins, drugs, and diseases from scientific literature to accelerate drug discovery and understand disease mechanisms.
 
-- **Beginner** — basic Semantica knowledge only, no domain expertise needed
-- **Intermediate** — some domain knowledge helpful, uses 2–4 Semantica modules
-- **Advanced** — domain expertise expected, uses advanced features (temporal graphs, multi-source pipelines, reasoning)
+    **Key modules:** `ingest` (PubMed RSS), `semantic_extract`, `kg`, `deduplication`, `context`
 
-## Research & Science
+    **Notebooks:**
+    - [Drug Discovery Pipeline](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/01_Drug_Discovery_Pipeline.ipynb) — Intermediate
+    - [Genomic Variant Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/02_Genomic_Variant_Analysis.ipynb) — Intermediate
+  </Card>
+  <Card title="GraphRAG for Research" icon="magnifying-glass" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb">
+    Ground LLM answers in structured scientific literature with hybrid retrieval, logical inference, and source attribution on every claim.
 
-### Biomedical Knowledge Graphs
+    **Key modules:** `context`, `vector_store`, `kg`, `reasoning`, `llms`
 
-Connect genes, proteins, drugs, and diseases from scientific literature and databases to accelerate drug discovery and understand disease mechanisms. Semantica's temporal graphs and provenance tracking make every fact in the knowledge base traceable to its source publication.
+    **Notebooks:**
+    - [GraphRAG Complete](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb) — Advanced
+    - [RAG vs. GraphRAG Comparison](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/02_RAG_vs_GraphRAG_Comparison.ipynb) — Advanced
+  </Card>
+</CardGroup>
 
-**Key modules:** `ingest` (PubMed RSS), `semantic_extract`, `kg`, `deduplication`, `context`
+  </Tab>
 
-**Cookbooks:**
+  <Tab title="Finance & Trading">
 
-- [Drug Discovery Pipeline](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/01_Drug_Discovery_Pipeline.ipynb) — PubMed RSS ingestion, entity-aware chunking, GraphRAG, vector similarity search
-- [Genomic Variant Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/02_Genomic_Variant_Analysis.ipynb) — bioRxiv RSS, temporal KGs, deduplication, pathway analysis
+<CardGroup cols={2}>
+  <Card title="Financial Data Integration" icon="chart-line" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/01_Financial_Data_Integration_MCP.ipynb">
+    Unify financial data from APIs, MCP servers, and real-time streams into a single queryable knowledge graph — with conflict detection when sources disagree.
 
-## Finance & Trading
+    **Key modules:** `ingest` (API, MCP, stream), `normalize`, `kg`, `conflicts`, `provenance`
 
-### Financial Data Integration
+    **Notebooks:**
+    - [Financial Data Integration (MCP)](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/01_Financial_Data_Integration_MCP.ipynb) — Intermediate
+  </Card>
+  <Card title="Fraud Detection" icon="shield-halved" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/02_Fraud_Detection.ipynb">
+    Detect complex fraud rings using temporal graphs and pattern detection over transaction, device, and user data. Temporal edges let you query: "what connections existed during this window?"
 
-Unify financial data from APIs, MCP servers, and real-time streams into a single queryable knowledge graph — with conflict detection when sources disagree and full provenance back to each data feed.
+    **Key modules:** `kg` (temporal), `conflicts`, `reasoning`, `visualization`
 
-**Key modules:** `ingest` (API, MCP, stream), `normalize`, `kg`, `conflicts`, `provenance`
+    **Notebooks:**
+    - [Fraud Detection](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/02_Fraud_Detection.ipynb) — Advanced
+  </Card>
+  <Card title="Blockchain Analytics" icon="link" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/01_DeFi_Protocol_Intelligence.ipynb">
+    Map transaction flows, analyze DeFi protocols, and detect illicit activity. Graph algorithms (centrality, community detection) surface high-risk actors that linear transaction analysis misses.
 
-**Cookbook:** [Financial Data Integration (MCP)](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/01_Financial_Data_Integration_MCP.ipynb) — Alpha Vantage API, MCP servers, seed data, real-time ingestion
+    **Key modules:** `kg`, `reasoning`, `visualization`
 
-### Fraud Detection
+    **Notebooks:**
+    - [DeFi Protocol Intelligence](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/01_DeFi_Protocol_Intelligence.ipynb) — Intermediate
+    - [Transaction Network Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/02_Transaction_Network_Analysis.ipynb) — Intermediate
+  </Card>
+</CardGroup>
 
-Detect complex fraud rings using temporal graphs and pattern detection over transaction, device, and user data. Temporal edges let you query: "what connections existed during this window?" — critical for reconstructing fraud timelines.
+  </Tab>
 
-**Key modules:** `kg` (temporal), `conflicts`, `reasoning`, `visualization`
+  <Tab title="Security & Intelligence">
 
-**Cookbook:** [Fraud Detection](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/02_Fraud_Detection.ipynb) — temporal KGs, cycle detection, fraud pattern analysis
+<CardGroup cols={2}>
+  <Card title="Cybersecurity Threat Intelligence" icon="shield" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/01_Real_Time_Anomaly_Detection.ipynb">
+    Ingest threat feeds (CVE databases, security RSS), detect anomalies in streaming data, and build threat intelligence knowledge graphs for proactive defense.
 
-### Blockchain Analytics
+    **Key modules:** `ingest` (stream, feed), `kg` (temporal), `context`, `reasoning`, `export`
 
-Map transaction flows, analyze DeFi protocols, and detect illicit activity across wallet and exchange networks. Graph algorithms (centrality, community detection) surface high-risk actors that linear transaction analysis misses.
+    **Notebooks:**
+    - [Real-Time Anomaly Detection](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/01_Real_Time_Anomaly_Detection.ipynb) — Advanced
+    - [Threat Intelligence Hybrid RAG](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/02_Threat_Intelligence_Hybrid_RAG.ipynb) — Advanced
+  </Card>
+  <Card title="Criminal Network Analysis" icon="users" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/01_Criminal_Network_Analysis.ipynb">
+    Build knowledge graphs from police reports, court records, and OSINT feeds to identify key players, communities, and suspicious patterns. Network centrality surfaces actors text search alone would miss.
 
-**Cookbooks:**
+    **Key modules:** `ingest`, `semantic_extract`, `kg`, `visualization` (community detection)
 
-- [DeFi Protocol Intelligence](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/01_DeFi_Protocol_Intelligence.ipynb)
-- [Transaction Network Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/02_Transaction_Network_Analysis.ipynb)
+    **Notebooks:**
+    - [Criminal Network Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/01_Criminal_Network_Analysis.ipynb) — Intermediate
+  </Card>
+  <Card title="Intelligence Analysis Orchestrator" icon="network-wired" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/02_Intelligence_Analysis_Orchestrator_Worker.ipynb">
+    Process multiple intelligence sources in parallel with an orchestrator-worker pipeline. Multi-source conflict detection flags disagreements rather than silently discarding minority reports.
 
-## Security & Intelligence
+    **Key modules:** `pipeline`, `ingest`, `conflicts`, `provenance`, `export`
 
-### Cybersecurity Threat Intelligence
+    **Notebooks:**
+    - [Intelligence Analysis Orchestrator-Worker](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/02_Intelligence_Analysis_Orchestrator_Worker.ipynb) — Intermediate
+  </Card>
+</CardGroup>
 
-Ingest threat feeds (CVE databases, security RSS), detect anomalies in streaming data, and build threat intelligence knowledge graphs for proactive defense. Real-time streaming ingestion with temporal provenance means every threat event is timestamped and traceable.
+  </Tab>
 
-**Key modules:** `ingest` (stream, feed), `kg` (temporal), `context`, `reasoning`, `export`
+  <Tab title="Industry & Operations">
 
-**Cookbooks:**
+<CardGroup cols={2}>
+  <Card title="Supply Chain Optimization" icon="truck" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/supply_chain/01_Supply_Chain_Data_Integration.ipynb">
+    Map suppliers, logistics routes, inventory levels, and delivery relationships to identify bottlenecks and optimize global supply chains. Graph path-finding reveals indirect dependencies spreadsheets miss.
 
-- [Real-Time Anomaly Detection](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/01_Real_Time_Anomaly_Detection.ipynb)
-- [Threat Intelligence Hybrid RAG](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/02_Threat_Intelligence_Hybrid_RAG.ipynb)
+    **Key modules:** `ingest`, `kg`, `reasoning`, `visualization`, `export` (Parquet for analytics)
 
-### Criminal Network Analysis
+    **Notebooks:**
+    - [Supply Chain Data Integration](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/supply_chain/01_Supply_Chain_Data_Integration.ipynb) — Intermediate
+  </Card>
+  <Card title="Renewable Energy Management" icon="bolt" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/renewable_energy/01_Energy_Market_Analysis.ipynb">
+    Connect sensor data, weather forecasts, and maintenance logs to predict equipment failures and optimize grid operations. Temporal graphs track asset states over time and correlate maintenance events with performance degradation.
 
-Build knowledge graphs from police reports, court records, and OSINT feeds to identify key players, communities, and suspicious patterns. Network centrality analysis (PageRank, betweenness) surfaces actors that text search alone would miss.
+    **Key modules:** `ingest` (stream, API), `kg` (temporal), `reasoning`, `visualization`
 
-**Key modules:** `ingest`, `semantic_extract`, `kg`, `visualization` (community detection)
+    **Notebooks:**
+    - [Energy Market Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/renewable_energy/01_Energy_Market_Analysis.ipynb) — Intermediate
+  </Card>
+</CardGroup>
 
-**Cookbook:** [Criminal Network Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/01_Criminal_Network_Analysis.ipynb)
+  </Tab>
+</Tabs>
 
-### Intelligence Analysis Orchestrator
 
-Process multiple intelligence sources in parallel using an orchestrator-worker pipeline pattern with multi-source conflict detection and resolution. When sources disagree on the same fact, Semantica flags and resolves rather than silently discarding.
+## Compliance Footprint by Domain
 
-**Key modules:** `pipeline`, `ingest`, `conflicts`, `provenance`, `export`
+<AccordionGroup>
 
-**Cookbook:** [Intelligence Analysis Orchestrator-Worker](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/02_Intelligence_Analysis_Orchestrator_Worker.ipynb)
+<Accordion title="Healthcare & Life Sciences" icon="heart-pulse">
 
-## Industry & Operations
+**Regulatory requirements:** HIPAA, FDA 21 CFR Part 11
 
-### Supply Chain Optimization
+| Semantica capability | Compliance role |
+| :-------------------- | :-------------- |
+| W3C PROV-O provenance | Full lineage from raw data to inference — required for FDA audit trails |
+| SHA-256 checksums | Tamper detection on every snapshot — supports electronic record integrity |
+| Decision tracking | Every AI-assisted recommendation is recorded with causal chain and confidence |
+| Temporal graphs | Point-in-time queries for retrospective safety analysis |
+| SHACL validation | Schema enforcement before data enters the knowledge graph |
 
-Map suppliers, logistics routes, inventory levels, and delivery relationships to identify bottlenecks and optimize global supply chains. Graph path-finding reveals indirect dependencies that spreadsheet analysis cannot.
+</Accordion>
 
-**Key modules:** `ingest`, `kg`, `reasoning`, `visualization`, `export` (Parquet for analytics)
+<Accordion title="Finance & Banking" icon="chart-line">
 
-**Cookbook:** [Supply Chain Data Integration](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/supply_chain/01_Supply_Chain_Data_Integration.ipynb)
+**Regulatory requirements:** SOX, MiFID II, GDPR, Basel III
 
-### Renewable Energy Management
+| Semantica capability | Compliance role |
+| :-------------------- | :-------------- |
+| Decision audit trail | Full record of model decisions with reasoning — required for model risk management |
+| Conflict detection | Flags when two sources disagree on a valuation or risk figure |
+| Version control | SHA-256 snapshot history — supports point-in-time reconstruction for audits |
+| Provenance export | RDF with PROV-O inline — submittable to regulatory bodies as structured evidence |
 
-Connect sensor data, weather forecasts, and maintenance logs to predict equipment failures and optimize grid operations. Temporal graphs let you track asset states over time and correlate maintenance events with performance degradation.
+</Accordion>
 
-**Key modules:** `ingest` (stream, API), `kg` (temporal), `reasoning`, `visualization`
+<Accordion title="Government & Defense" icon="building-columns">
 
-**Cookbook:** [Energy Market Analysis](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/renewable_energy/01_Energy_Market_Analysis.ipynb)
+**Operational requirements:** Air-gap capability, chain-of-custody, information provenance
 
-## Advanced AI Patterns
+| Semantica capability | Operational role |
+| :-------------------- | :--------------- |
+| Local LLM support | `HuggingFaceLLM` and Ollama via LiteLLM — fully air-gapped deployments |
+| Provenance chains | Every intelligence claim traceable to source document and extraction event |
+| Conflict resolution | Multiple-source disagreement resolved with auditable strategy |
+| Temporal intelligence | Historical queries over evolving intelligence graphs |
 
-### GraphRAG (Graph-Augmented Generation)
+</Accordion>
 
-Use knowledge graphs to retrieve precise, structured context for LLM responses — with hybrid retrieval (vector + graph traversal), logical inference, and source attribution on every claim. Every answer links back to a node in the graph, making hallucination auditable rather than invisible.
+<Accordion title="Legal & Compliance" icon="scale-balanced">
 
-**Key modules:** `context`, `vector_store`, `kg`, `reasoning`, `llms`
+**Requirements:** Evidence integrity, chain of custody, regulatory change tracking
 
-**Cookbooks:**
+| Semantica capability | Legal role |
+| :-------------------- | :--------- |
+| Source attribution | Every extracted fact links to document, page, and section |
+| PROV-O export | Structured provenance acceptable as supporting evidence |
+| Change management | Version-controlled knowledge bases with diff and rollback |
+| Reasoning paths | Explainable inference chains for contested conclusions |
 
-- [GraphRAG Complete](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb) — production-ready implementation with hybrid retrieval
-- [RAG vs. GraphRAG Comparison](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/02_RAG_vs_GraphRAG_Comparison.ipynb) — side-by-side benchmark on real-world data
+</Accordion>
+
+</AccordionGroup>
+
+
+## Difficulty Reference
+
+| Level | What it means | Typical time |
+| :---- | :------------ | :----------- |
+| **Beginner** | Basic Semantica knowledge only, no domain expertise needed | 30–60 min |
+| **Intermediate** | Some domain knowledge helpful, uses 2–4 Semantica modules | 1–2 hours |
+| **Advanced** | Domain expertise expected, uses temporal graphs, multi-source pipelines, or reasoning | 2–3 hours |
 
 <CardGroup cols={3}>
   <Card title="Cookbook" icon="flask" href="cookbook">

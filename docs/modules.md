@@ -33,6 +33,7 @@ Semantica is organized into **27 modules** across six logical layers. Each modul
   </Card>
 </CardGroup>
 
+
 ## Input Layer
 
 ### Ingest
@@ -105,6 +106,7 @@ standardized_date = normalize_date("Jan 1st, 2020")
 ```
 
 **Normalizers available:** text cleaning, entity canonicalization, date normalization, number normalization, encoding handling, language detection
+
 
 ## Core Processing
 
@@ -189,6 +191,7 @@ results = datalog.query("ancestor(alice, ?)")
 
 **Engines:** forward chaining, Rete network, deductive, abductive, SPARQL, Datalog — all produce explainable inference paths
 
+
 ## Storage
 
 ### Embeddings
@@ -252,6 +255,7 @@ results = store.sparql("SELECT ?s ?p ?o WHERE { ?s ?p ?o }")
 
 **Backends:** Blazegraph, Apache Jena, RDF4J
 
+
 ## Quality Assurance
 
 ### Deduplication
@@ -286,6 +290,7 @@ resolved  = detector.resolve(conflicts, strategy="most_recent")
 **Detection types:** value conflicts, type conflicts, temporal conflicts, logical conflicts
 
 **Resolution strategies:** prefer most recent, prefer most reliable source, majority vote, flag for manual review
+
 
 ## Context & Memory
 
@@ -344,6 +349,7 @@ diff     = manager.diff("v1.0", "v1.1")
 ```
 
 **Components:** `TemporalVersionManager`, `ChangeLog`, `OntologyVersionManager`, `VersionStorage`
+
 
 ## Output & Orchestration
 
@@ -408,6 +414,7 @@ FastAPI Knowledge Explorer with Ontology Hub, WebSocket progress, bidirectional 
 ```
 
 **Routes:** graph, ontology, provenance, decisions, analytics, SPARQL, temporal, annotations, export/import, vocabulary
+
 
 ## Utilities
 
@@ -513,22 +520,170 @@ from semantica.utils import helpers, validators, logging
 
 **Components:** `helpers`, `validators`, `constants`, `types`, `exceptions`, `logging`, `ProgressTracker`
 
+
 ## Common Module Chains
 
-| Goal | Pipeline |
-| ---- | -------- |
-| Document processing | Ingest → Parse → Split → Semantic Extract → KG |
-| Web scraping | Ingest (Web) → Normalize → Semantic Extract → Graph Store |
-| GraphRAG | KG + Vector Store → Context → Reasoning → Export |
-| AI agents | Context → LLM Providers → Reasoning → Export |
-| Temporal analysis | KG (Temporal) → Context → Change Management → Export |
-| Compliance pipeline | Ingest → Semantic Extract → KG → Provenance → Export |
-| Evaluation workflow | Ingest → Parse → Semantic Extract → Evals |
+<Tabs>
+  <Tab title="Document → KG">
+    Load documents from any source and turn them into a queryable knowledge graph.
+
+    **Pipeline:** `Ingest` → `Parse` → `Normalize` → `Semantic Extract` → `GraphBuilder` → `KG`
+
+```python
+from semantica.ingest import FileIngestor
+from semantica.parse import DocumentParser
+from semantica.semantic_extract import NERExtractor, RelationExtractor
+from semantica.kg import GraphBuilder
+
+sources       = FileIngestor().ingest("data/")
+parsed        = DocumentParser().parse(sources[0])
+entities      = NERExtractor(method="llm", llm_provider=llm).extract(parsed)
+relationships = RelationExtractor(method="llm", llm_provider=llm).extract(parsed, entities=entities)
+graph         = GraphBuilder(merge_entities=True).build(
+                    entities=entities, relationships=relationships
+                )
+```
+
+    **Best for:** research pipelines, enterprise data extraction, document intelligence
+  </Tab>
+
+  <Tab title="GraphRAG">
+    Ground every LLM response in a knowledge graph — structured retrieval with source attribution.
+
+    **Pipeline:** `KG` + `VectorStore` → `AgentContext` → GraphRAG query → grounded answer
+
+```python
+from semantica.context import AgentContext, ContextGraph
+from semantica.vector_store import VectorStore
+
+context = AgentContext(
+    vector_store=VectorStore(backend="faiss", dimension=768),
+    knowledge_graph=ContextGraph(advanced_analytics=True),
+)
+context.load_graph("company_kg.json")
+
+result = context.query(
+    "What companies did Apple alumni found?",
+    mode="graphrag",
+    reasoning=True,
+)
+for claim in result.claims:
+    print(f"{claim.text}  →  {claim.source_node}")
+```
+
+    **Best for:** question-answering systems, RAG with source attribution, research assistants
+  </Tab>
+
+  <Tab title="AI Agent">
+    Give your agent persistent memory, decision tracking, and policy enforcement.
+
+    **Pipeline:** `AgentContext` → decision recording → precedent search → policy check → causal analysis
+
+```python
+from semantica.context import AgentContext, ContextGraph
+from semantica.vector_store import VectorStore
+
+context = AgentContext(
+    vector_store=VectorStore(backend="faiss", dimension=768),
+    knowledge_graph=ContextGraph(advanced_analytics=True),
+    decision_tracking=True,
+)
+context.store("GPT-4 outperforms GPT-3.5 on reasoning by 40%")
+
+decision_id = context.record_decision(
+    category="model_selection",
+    scenario="Choose LLM for production",
+    reasoning="Benchmark advantage justifies cost",
+    outcome="selected_gpt4",
+    confidence=0.91,
+)
+precedents = context.find_precedents("model selection", limit=5)
+```
+
+    **Best for:** autonomous agents, AI copilots, decision-support systems
+  </Tab>
+
+  <Tab title="Compliance Pipeline">
+    Full provenance from raw data to final inference — W3C PROV-O, SHA-256 checksums, audit trail.
+
+    **Pipeline:** `Ingest` → `Parse` → `Extract` → `KG` → `Provenance` → `ChangeManagement` → `Export`
+
+```python
+from semantica.ingest import FileIngestor
+from semantica.semantic_extract import NERExtractor
+from semantica.kg import GraphBuilder
+from semantica.provenance import ProvenanceManager
+from semantica.export import RDFExporter
+
+sources  = FileIngestor().ingest("records/")
+entities = NERExtractor(method="llm", llm_provider=llm).extract(sources)
+graph    = GraphBuilder(merge_entities=True).build(entities=entities, relationships=[])
+prov     = ProvenanceManager()
+lineage  = prov.get_entity_lineage("entity_id")
+
+RDFExporter(include_provenance=True).export_to_rdf(graph, format="turtle", output="audit.ttl")
+```
+
+    **Best for:** HIPAA, SOX, GDPR, FDA 21 CFR Part 11 deployments
+  </Tab>
+
+  <Tab title="Web Scraping → Graph">
+    Crawl websites, normalize text, and extract knowledge directly from the web.
+
+    **Pipeline:** `WebIngestor` → `Normalize` → `Semantic Extract` → `GraphStore`
+
+```python
+from semantica.ingest import WebIngestor
+from semantica.normalize import TextNormalizer
+from semantica.semantic_extract import NERExtractor, RelationExtractor
+from semantica.graph_store import Neo4jStore
+
+pages      = WebIngestor(max_depth=2).ingest("https://example.com")
+normalizer = TextNormalizer()
+store      = Neo4jStore(uri="bolt://localhost:7687", user="neo4j", password="password")
+
+for page in pages:
+    text          = normalizer.normalize_text(page.text)
+    entities      = NERExtractor().extract(text)
+    relationships = RelationExtractor().extract(text, entities=entities)
+    store.add_nodes(entities)
+    store.add_edges(relationships)
+```
+
+    **Best for:** competitive intelligence, news monitoring, research aggregation
+  </Tab>
+
+  <Tab title="Temporal Analysis">
+    Track how facts change over time — point-in-time queries, snapshots, and versioning.
+
+    **Pipeline:** `KG (Temporal)` → `TemporalGraphQuery` → `VersionManager` → `ChangeManagement`
+
+```python
+from semantica.kg import GraphBuilder, TemporalGraphQuery, TemporalVersionManager
+
+builder = GraphBuilder()
+kg      = builder.build(sources=[{
+    "entities": [{"id": "alice", "type": "Person"}],
+    "relationships": [{"source": "alice", "target": "acme", "type": "ceo_of",
+                       "valid_from": "2020-01-01", "valid_until": "2023-06-01"}]
+}])
+
+query         = TemporalGraphQuery()
+snapshot_2021 = query.reconstruct_at_time(kg, "2021-06-15")
+
+versioner = TemporalVersionManager()
+versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description="Q1 snapshot")
+```
+
+    **Best for:** financial history, regulatory timelines, organizational change tracking
+  </Tab>
+</Tabs>
+
 
 ## Module Index
 
 | Module | Purpose | Key Classes |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | [ingest](reference/ingest) | Data ingestion | `FileIngestor`, `WebIngestor`, `ParquetIngestor`, `XMLIngestor` |
 | [parse](reference/parse) | Document parsing | `DocumentParser`, `DoclingParser` |
 | [split](reference/split) | Text chunking | `TextSplitter` |

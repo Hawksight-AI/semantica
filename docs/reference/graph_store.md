@@ -4,12 +4,19 @@ description: "Unified interface for Neo4j, FalkorDB, Apache AGE, and Amazon Nept
 icon: "server"
 ---
 
-`semantica.graph_store` provides a single API for persisting and querying knowledge graphs in production graph databases. Swap backends with a one-line change — no application code changes needed.
+**`semantica.graph_store`** provides a **single unified API** for persisting and querying knowledge graphs in production graph databases:
+
+- Swap backends with a one-line change — Neo4j, FalkorDB, Apache AGE, Amazon Neptune
+- Parameterized Cypher execution with optional result caching via `QueryEngine`
+- Batch node and edge loading — faster than individual writes
+- `GraphAnalytics` for degree centrality, connected components, shortest path, neighbor traversal
+- Context manager support: `with GraphStore(...) as store:` closes connection automatically
+
 
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `GraphStore` | Unified interface: `create_node`, `create_relationship`, `query`, `get_neighbors`, `shortest_path` |
 | `QueryEngine` | Parameterized Cypher execution with result caching |
 | `GraphAnalytics` | `degree_centrality`, `connected_components`, `shortest_path`, `get_neighbors` |
@@ -18,28 +25,42 @@ icon: "server"
 | `AmazonNeptuneStore` | AWS Neptune — OpenCypher via Bolt protocol |
 | `FalkorDBStore` | Redis-based — sub-millisecond latency for real-time applications |
 
+
 ## What You Get
 
 <CardGroup cols={2}>
   <Card title="GraphStore" icon="server">
-    Unified interface across Neo4j, FalkorDB, Apache AGE, and Amazon Neptune.
+    - Unified API across Neo4j, FalkorDB, Apache AGE, Amazon Neptune
+    - Context manager support for automatic connection cleanup
+    - `create_nodes()` for bulk loading — faster than individual calls
   </Card>
   <Card title="QueryEngine" icon="magnifying-glass">
-    Parameterized Cypher construction and optional result caching.
+    - Parameterized Cypher construction prevents injection attacks
+    - Optional in-process result caching with `use_cache=True`
+    - `clear_cache()` on writes, toggle with `enable_cache()` / `disable_cache()`
   </Card>
   <Card title="GraphAnalytics" icon="chart-line">
-    Degree centrality, connected components, shortest path, and neighbor traversal.
+    - Degree centrality ordered by degree DESC
+    - Connected component assignment
+    - Shortest path between nodes, neighbor traversal up to N hops
   </Card>
   <Card title="Bulk Operations" icon="layer-group">
-    Batched node and edge loading — faster than individual writes.
+    - `create_nodes(list)` — one round-trip for many nodes
+    - `create_relationship()` with typed properties
+    - `delete_node(detach=True)` removes all connected relationships
   </Card>
   <Card title="Schema Management" icon="table">
-    Create indexes to optimize query performance.
+    - `create_index(label, property_name=)` — makes MATCH queries orders-of-magnitude faster
+    - `get_stats()` — node counts, edge counts, type breakdown
+    - Create indexes before bulk loading for best performance
   </Card>
   <Card title="Path Traversal" icon="route">
-    Find shortest paths between nodes and walk neighbors by depth.
+    - `shortest_path()` returns `length`, `nodes`, `relationships`
+    - `get_neighbors()` with direction and depth control
+    - Cross-backend path traversal via the unified API
   </Card>
 </CardGroup>
+
 
 ## Getting Started
 
@@ -128,10 +149,11 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
   </Step>
 </Steps>
 
+
 ## GraphStore Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `create_node(labels, properties)` | `dict` | Create a single node, returns node dict with `"id"` |
 | `create_nodes(nodes)` | `List[dict]` | Batch-create nodes from list of `{"labels", "properties"}` dicts |
 | `get_node(node_id)` | `dict \| None` | Retrieve a node by its backend ID |
@@ -147,6 +169,7 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
 | `get_neighbors(node_id, rel_type, direction, depth)` | `List[dict]` | Get neighboring nodes |
 | `shortest_path(start_node_id, end_node_id, rel_type, max_depth)` | `dict \| None` | Find shortest path between two nodes |
 | `get_stats()` | `dict` | Get graph statistics from the backend |
+
 
 ## Backends
 
@@ -169,7 +192,7 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
     store.connect()
     ```
 
-    Best for: production workloads, complex Cypher queries, Bloom visualization.
+    **Best for:** production workloads, complex Cypher queries, Bloom visualization.
   </Tab>
   <Tab title="FalkorDB">
     ```bash
@@ -186,7 +209,7 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
     store.connect()
     ```
 
-    Best for: ultra-low latency queries over Redis protocol, edge deployments.
+    **Best for:** ultra-low latency queries over Redis protocol, edge deployments.
   </Tab>
   <Tab title="Apache AGE">
     ```bash
@@ -202,7 +225,7 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
     store.connect()
     ```
 
-    Best for: teams already running PostgreSQL who want graph queries without a separate service.
+    **Best for:** teams already running PostgreSQL who want graph queries without a separate service.
   </Tab>
   <Tab title="Amazon Neptune">
     ```bash
@@ -225,12 +248,12 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
     )
     ```
 
-    Best for: managed AWS deployments. Neptune uses the Bolt protocol for OpenCypher queries — the same query API used for Neo4j.
+    **Best for:** managed AWS deployments. Neptune uses the Bolt protocol for OpenCypher queries — the same query API used for Neo4j.
   </Tab>
   <Tab title="Backend Comparison">
 
     | Backend | Query Language | Deployment | IAM Auth | Best For |
-    | ------- | -------------- | ---------- | -------- | -------- |
+    | :------- | :-------------- | :---------- | :-------- | :-------- |
     | Neo4j | Cypher | Self-hosted / Aura | No | Production, complex traversals, Bloom UI |
     | FalkorDB | OpenCypher | Redis-based | No | Ultra-low latency, edge deployments |
     | Apache AGE | OpenCypher | PostgreSQL extension | No | Teams already on Postgres |
@@ -324,12 +347,13 @@ engine.enable_cache()
 
 ### QueryEngine Methods
 
-| Method | Description |
-| ------ | ----------- |
-| `execute(query, parameters, use_cache)` | Execute Cypher, optionally using in-process cache |
-| `clear_cache()` | Flush all cached query results |
-| `enable_cache()` | Turn on caching (on by default) |
-| `disable_cache()` | Turn off caching |
+| Method | Returns | Description |
+| :------ | :------- | :----------- |
+| `execute(query, parameters, use_cache)` | `dict` | Execute Cypher, returns `{success, records, keys, metadata}` |
+| `clear_cache()` | `None` | Flush all cached query results |
+| `enable_cache()` | `None` | Turn on caching (on by default) |
+| `disable_cache()` | `None` | Turn off caching |
+
 
 ## GraphAnalytics
 
@@ -375,16 +399,17 @@ neighbors = analytics.get_neighbors(
 
 ### GraphAnalytics Methods
 
-| Method | Description |
-| ------ | ----------- |
-| `degree_centrality(labels, rel_type, direction)` | Degree-based node importance — returns list of records ordered by degree |
-| `connected_components(labels)` | Connected component assignment (requires GDS on Neo4j) |
-| `shortest_path(start_node_id, end_node_id, rel_type, max_depth)` | Returns path dict or None |
-| `get_neighbors(node_id, rel_type, direction, depth)` | Neighbor nodes up to `depth` hops |
+| Method | Returns | Description |
+| :------ | :------- | :----------- |
+| `degree_centrality(labels, rel_type, direction)` | `List[dict]` | Degree-based node importance — records ordered by degree DESC |
+| `connected_components(labels)` | `List[dict]` | Connected component assignment (requires GDS on Neo4j) |
+| `shortest_path(start_node_id, end_node_id, rel_type, max_depth)` | `dict \| None` | Path with `length`, `nodes`, `relationships` or `None` |
+| `get_neighbors(node_id, rel_type, direction, depth)` | `List[dict]` | Neighbor nodes up to `depth` hops |
 
 <Note>
   `betweenness_centrality()`, `pagerank()`, `detect_communities()`, and `all_paths()` are not implemented. Use Neo4j GDS procedures directly via `store.execute_query()` for those algorithms.
 </Note>
+
 
 ## Schema Management
 

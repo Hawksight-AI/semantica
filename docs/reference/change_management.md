@@ -4,16 +4,23 @@ description: "Version control, SHA-256 checksums, diff analysis, rollback, and a
 icon: "clock-rotate-left"
 ---
 
-`semantica.change_management` provides enterprise-grade versioning and audit trails for knowledge graphs and ontologies. Every snapshot carries a SHA-256 checksum, every modification is logged, and every state can be diffed or rolled back — giving you a complete, tamper-evident record suitable for regulated industries.
+**`semantica.change_management`** provides **enterprise-grade versioning and audit trails** for knowledge graphs and ontologies:
+
+- SHA-256 checksums on every snapshot — tamper detection without external infrastructure
+- Structural diff between any two versions: nodes added, removed, or modified
+- Full rollback to any named snapshot
+- Per-entity mutation history for audit trail queries
+- Compliance frameworks supported: HIPAA, SOX, GDPR, FDA 21 CFR Part 11
 
 <Note>
   Compliance frameworks supported out of the box: **HIPAA**, **SOX**, **GDPR**, and **FDA 21 CFR Part 11**.
 </Note>
 
+
 ## Exported Classes
 
 | Class | Role |
-| --- | --- |
+| :--- | :--- |
 | `TemporalVersionManager` | Snapshot, diff, rollback, and per-node mutation history for KGs |
 | `OntologyVersionManager` | Schema versioning with structural diff support |
 | `InMemoryVersionStorage` | Fast in-memory storage for dev and testing — no persistence |
@@ -97,7 +104,7 @@ Version control for knowledge graphs — snapshot, diff, and rollback.
 ### Constructor Parameters
 
 | Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
+| :--------- | :---- | :------- | :----------- |
 | `storage_path` | `str` | `None` | Path to SQLite database; uses in-memory if omitted |
 
 ### List and Retrieve
@@ -115,7 +122,7 @@ snapshot = manager.get_version("v1.0")
 ### TemporalVersionManager Methods
 
 | Method | Returns | Description |
-| ------ | ------- | ----------- |
+| :------ | :------- | :----------- |
 | `create_snapshot(graph, version_label, author, description)` | `Dict[str, Any]` | Create a version snapshot; returns the full snapshot dict including `checksum` |
 | `get_version(label)` | `Optional[Dict[str, Any]]` | Retrieve a snapshot dict for a specific version label |
 | `list_versions()` | `List[Dict[str, Any]]` | List all version metadata dicts |
