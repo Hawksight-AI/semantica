@@ -1025,6 +1025,18 @@ semantica        # startup dashboard
 semantica --help # full grouped command reference
 ```
 
+<div align="center">
+
+<img
+  src="docs/assets/img/semantica-cli-demo.gif"
+  alt="Semantica CLI startup dashboard, health checks, graph build, shell, and grouped commands"
+  width="900"
+/>
+
+</div>
+
+Start with `semantica`, verify with `doctor`, build a graph, and explore the command groups from one terminal.
+
 ### Startup Dashboard
 
 ```
