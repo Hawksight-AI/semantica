@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Provenance Module"
 description: "W3C PROV-O lineage tracking, source attribution, tamper-evident checksums, and audit trails across all modules."
 icon: "link"

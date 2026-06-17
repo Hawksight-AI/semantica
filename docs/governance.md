@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Governance"
 description: "Project governance model: roles, decision process, release cadence, and code review guidelines."
 icon: "scale-balanced"

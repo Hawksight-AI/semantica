@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Community"
 description: "Get help, connect with contributors, and share what you build with Semantica."
 icon: "users"

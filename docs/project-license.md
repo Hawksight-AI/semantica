@@ -1,4 +1,4 @@
-﻿---
+---
 title: "License"
 description: "Semantica is open source under the MIT License: free for personal and commercial use."
 icon: "file-contract"

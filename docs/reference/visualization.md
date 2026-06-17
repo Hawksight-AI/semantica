@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Visualization Module"
 description: "Interactive and static knowledge graph, ontology, embedding, and temporal visualization."
 icon: "chart-bar"

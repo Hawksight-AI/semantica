@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Use Cases"
 description: "Real-world applications of Semantica across domains, with linked cookbook notebooks for each."
 icon: "briefcase"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Normalize Module"
 description: "Text cleaning, entity canonicalization, date normalization, number conversion, language detection, and encoding repair: before extraction runs."
 icon: "broom"

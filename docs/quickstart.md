@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Quickstart"
 description: "Build your first knowledge graph in 5 minutes. No configuration required."
 icon: "rocket"

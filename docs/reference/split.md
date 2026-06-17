@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Split Module"
 description: "Text chunking with recursive, semantic, entity-aware, relation-aware, structural, and sliding window splitting."
 icon: "scissors"

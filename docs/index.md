@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Semantica"
 description: "The Accountability and Context Layer for AI: Context Graphs · Decision Intelligence · Full Provenance"
 ---

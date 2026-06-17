@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Snowflake Integration"
 description: "Ingest structured data from Snowflake tables and queries into Semantica's KG pipeline."
 icon: "snowflake"

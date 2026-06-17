@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Vector Store Module"
 description: "Unified interface for FAISS, Pinecone, Weaviate, Qdrant, Milvus, and PgVector with hybrid search."
 icon: "database"

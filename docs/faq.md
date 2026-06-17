@@ -1,4 +1,4 @@
-﻿---
+---
 title: "FAQ"
 description: "Common questions about Semantica: installation, features, integrations, and troubleshooting."
 icon: "circle-question"

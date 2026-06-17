@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Modules"
 description: "Every Semantica module works independently: use only what you need."
 icon: "puzzle-piece"

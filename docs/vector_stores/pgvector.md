@@ -1,4 +1,4 @@
-﻿---
+---
 title: "pgvector Store"
 description: "PostgreSQL with pgvector extension: cosine, L2, and inner product similarity search with IVFFlat and HNSW indexing."
 icon: "database"

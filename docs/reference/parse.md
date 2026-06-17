@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Parse Module"
 description: "Document parsing and text extraction: DocumentParser for standard formats and DoclingParser for complex layouts."
 icon: "file-lines"

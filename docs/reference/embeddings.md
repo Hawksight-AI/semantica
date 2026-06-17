@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Embeddings Module"
 description: "Text and graph embedding generation: FastEmbed, Sentence-Transformers, OpenAI, BGE: with pooling strategies and provider-agnostic API."
 icon: "vector-square"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Context Module"
 description: "Agent context graphs, decision tracking, causal chains, precedent search, policy enforcement, and multi-hop GraphRAG."
 icon: "brain"

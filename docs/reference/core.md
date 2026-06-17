@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Core Module"
 description: "Framework orchestration, lifecycle management, configuration, and plugin system."
 icon: "gear"

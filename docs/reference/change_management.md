@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Change Management Module"
 description: "Version control, SHA-256 checksums, diff analysis, rollback, and audit trails for knowledge graphs and ontologies."
 icon: "clock-rotate-left"

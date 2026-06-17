@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Knowledge Graph Module"
 description: "Graph construction, temporal models, analytics, similarity scoring, and structural embeddings."
 icon: "diagram-project"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Glossary"
 description: "Reference definitions for terms and concepts used throughout Semantica."
 icon: "book"

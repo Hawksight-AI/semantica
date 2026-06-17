@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Reasoning Module"
 description: "Forward chaining, Rete, deductive, abductive, SPARQL, Datalog, and temporal reasoning with explainable inference paths."
 icon: "microchip"

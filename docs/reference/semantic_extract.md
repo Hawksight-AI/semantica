@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Semantic Extract Module"
 description: "Named entity recognition, relation extraction, event detection, and triplet generation."
 icon: "magnifying-glass-chart"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Learning More"
 description: "Structured learning paths, configuration reference, troubleshooting, and performance guidance."
 icon: "graduation-cap"

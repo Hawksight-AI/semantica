@@ -1,4 +1,4 @@
-﻿---
+---
 title: "MCP Server"
 description: "Model Context Protocol server: expose Semantica's full capability set to Claude Desktop, VS Code, Cursor, and any MCP-aware tool."
 icon: "plug"

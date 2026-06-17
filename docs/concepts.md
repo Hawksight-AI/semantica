@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Core Concepts"
 description: "The fundamental ideas behind Semantica: knowledge graphs, reasoning, provenance, and temporal intelligence explained."
 icon: "book-open"

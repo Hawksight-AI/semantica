@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Deduplication Module"
 description: "Entity deduplication: similarity scoring, blocking, merging, and cluster-based batch processing."
 icon: "copy"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Architecture"
 description: "Four-layer, modular architecture designed for independent component use, clean separation of concerns, and full extensibility."
 icon: "building"

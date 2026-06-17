@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Pipeline Module"
 description: "Pipeline DSL with parallel workers, retry policies, failure handling, and progress tracking."
 icon: "gear"

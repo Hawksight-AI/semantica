@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Export Module"
 description: "Export knowledge graphs to RDF, Parquet, LPG, ArangoDB AQL, CSV, GraphML, OWL, JSON-LD, Arrow, and vector formats."
 icon: "file-export"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Cookbook"
 description: "Interactive Jupyter notebooks covering everything from your first knowledge graph to production GraphRAG systems."
 icon: "flask"

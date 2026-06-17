@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Graph Store Module"
 description: "Unified interface for Neo4j, FalkorDB, Apache AGE, and Amazon Neptune graph databases."
 icon: "server"

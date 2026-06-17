@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Conflicts Module"
 description: "Multi-source conflict detection and resolution: value, type, temporal, and logical conflicts with investigation guides."
 icon: "triangle-exclamation"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Explorer Setup"
 description: "Install the Explorer extras, save a ContextGraph to JSON, and launch the interactive browser dashboard."
 icon: "map"

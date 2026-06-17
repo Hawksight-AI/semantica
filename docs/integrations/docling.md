@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Docling Integration"
 description: "Native Docling integration for high-fidelity PDF, DOCX, and PPTX parsing with table extraction and OCR."
 icon: "file-lines"

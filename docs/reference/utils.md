@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Utils Module"
 description: "Shared utilities for logging, validation, error handling, progress tracking, and common operations."
 icon: "wrench"

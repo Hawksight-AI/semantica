@@ -1,4 +1,4 @@
-﻿---
+---
 title: "LLMs Module"
 description: "Unified interface for Groq, OpenAI, LiteLLM (Anthropic, Gemini, Ollama, DeepSeek, Azure, Bedrock, 100+ models), and HuggingFace."
 icon: "microchip"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "CLI Setup"
 description: "The five Semantica executables: what each one does, when to use it, and how to confirm it is working."
 icon: "terminal"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Contributing"
 description: "How to contribute code, documentation, tests, and community support to Semantica."
 icon: "code-pull-request"

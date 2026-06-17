@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Getting Started"
 description: "The context and intelligence layer for AI: turning raw data into explainable, auditable knowledge graphs."
 icon: "rocket"

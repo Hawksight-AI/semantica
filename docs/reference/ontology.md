@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Ontology Module"
 description: "Automated ontology generation, SHACL validation, OWL/RDF export, namespace management, and LLM-powered ontology generation."
 icon: "sitemap"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Citation"
 description: "How to cite Semantica in academic papers and research."
 icon: "quote-left"

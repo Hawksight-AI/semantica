@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Explorer"
 description: "Interactive FastAPI dashboard for knowledge graph exploration, ontology management, and graph analytics."
 icon: "map"

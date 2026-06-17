@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Apache AGE Graph Store"
 description: "PostgreSQL + Apache AGE backend for openCypher queries alongside standard SQL."
 icon: "database"

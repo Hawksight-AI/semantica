@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Installation"
 description: "Get Semantica installed in under a minute."
 icon: "download"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Agno Integration"
 description: "Wire Semantica's semantic intelligence stack into Agno multi-agent teams via five focused components."
 icon: "robot"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Seed Module"
 description: "Bootstrap Knowledge Graphs from verified, structured sources: taxonomies, reference tables, product catalogs, and domain anchors."
 icon: "database"

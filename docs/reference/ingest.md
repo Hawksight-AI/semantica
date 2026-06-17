@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Ingest Module"
 description: "Universal data ingestion from files, Parquet, XML, web, public APIs, feeds, streams, repositories, email, and databases."
 icon: "database"

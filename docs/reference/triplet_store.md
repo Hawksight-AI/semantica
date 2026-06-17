@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Triplet Store Module"
 description: "RDF triple storage with SPARQL queries and bulk loading: Blazegraph, Apache Jena, and RDF4J."
 icon: "table"

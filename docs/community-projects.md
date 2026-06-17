@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Community Projects"
 description: "Projects, extensions, and integrations built by the Semantica community."
 icon: "people-group"

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Evals Module"
 description: "Evaluation framework for measuring Knowledge Graph quality, extraction accuracy, and pipeline performance: coming soon."
 icon: "chart-line"
