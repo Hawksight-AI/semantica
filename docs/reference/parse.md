@@ -297,17 +297,7 @@ for source in sources:
   Docling is an optional dependency. If `docling` is not installed, `DoclingParser` raises an `ImportError` with installation instructions: `pip install docling`. `DocumentParser` is always available and requires no extras.
 </Note>
 
-<CardGroup cols={2}>
-  <Card title="Ingest" icon="database" href="ingest">
-    Load files before parsing.
-  </Card>
-  <Card title="Split" icon="scissors" href="split">
-    Chunk parsed text for embedding and extraction.
-  </Card>
-  <Card title="Docling Integration" icon="file-pdf" href="../integrations/docling">
-    Full Docling integration setup guide.
-  </Card>
-  <Card title="Semantic Extract" icon="magnifying-glass" href="semantic_extract">
-    Extract entities and relations from parsed text.
-  </Card>
-</CardGroup>
+- [Ingest](ingest) — Load files before parsing.
+- [Split](split) — Chunk parsed text for embedding and extraction.
+- [Docling Integration](../integrations/docling) — Full Docling integration setup guide.
+- [Semantic Extract](semantic_extract) — Extract entities and relations from parsed text.

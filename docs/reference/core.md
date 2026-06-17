@@ -18,20 +18,10 @@ icon: "gear"
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="Semantica" icon="arrows-turn-to-dots">
-    High-level orchestrator: coordinates the full KG construction pipeline from a single `config.yaml`. Entry point for application-level deployments.
-  </Card>
-  <Card title="ConfigManager" icon="sliders">
-    YAML config with deep-merge, `SEMANTICA_` env var overrides, and dot-notation nested key access. Keeps secrets out of source files.
-  </Card>
-  <Card title="LifecycleManager" icon="circle-play">
-    Ordered startup/shutdown hooks, health monitoring, and a 6-state machine. Essential for long-running services like FastAPI apps.
-  </Card>
-  <Card title="PluginRegistry" icon="plug">
-    Register custom ingestors, parsers, exporters, or any component. Load them by name at runtime: no imports required.
-  </Card>
-</CardGroup>
+- **Semantica** — High-level orchestrator: coordinates the full KG construction pipeline from a single `config.yaml`. Entry point for application-level deployments.
+- **ConfigManager** — YAML config with deep-merge, `SEMANTICA_` env var overrides, and dot-notation nested key access. Keeps secrets out of source files.
+- **LifecycleManager** — Ordered startup/shutdown hooks, health monitoring, and a 6-state machine. Essential for long-running services like FastAPI apps.
+- **PluginRegistry** — Register custom ingestors, parsers, exporters, or any component. Load them by name at runtime: no imports required.
 
 ## Exported Classes
 
@@ -236,17 +226,7 @@ result = build_knowledge_base(sources=["doc.pdf"], method="fast")
   Use `Semantica` and `LifecycleManager` only when building a long-running application (e.g. a FastAPI service) that needs ordered startup, health checks, and graceful shutdown. For scripts and notebooks, use individual modules directly.
 </Tip>
 
-<CardGroup cols={2}>
-  <Card title="Pipeline" icon="arrows-turn-to-dots" href="pipeline">
-    Pipeline execution and step orchestration.
-  </Card>
-  <Card title="Utils" icon="wrench" href="utils">
-    Shared utilities used by Core internally.
-  </Card>
-  <Card title="Getting Started" icon="play" href="../getting-started">
-    Learn the basics before using Core.
-  </Card>
-  <Card title="LLMs" icon="microchip" href="llms">
-    Configure LLM providers via ConfigManager.
-  </Card>
-</CardGroup>
+- [Pipeline](pipeline) — Pipeline execution and step orchestration.
+- [Utils](utils) — Shared utilities used by Core internally.
+- [Getting Started](../getting-started) — Learn the basics before using Core.
+- [LLMs](llms) — Configure LLM providers via ConfigManager.

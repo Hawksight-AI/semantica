@@ -49,11 +49,5 @@ Published research using Semantica? [Let us know](https://github.com/semantica-a
 
 ## See Also
 
-<CardGroup cols={2}>
-  <Card title="License" icon="file-contract" href="project-license">
-    MIT License details.
-  </Card>
-  <Card title="Community" icon="users" href="community">
-    Connect with the Semantica community.
-  </Card>
-</CardGroup>
+- [License](project-license) — MIT License details.
+- [Community](community) — Connect with the Semantica community.

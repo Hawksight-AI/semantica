@@ -12,17 +12,9 @@ Semantica transforms unstructured data: documents, web pages, reports, databases
 
 At its core, Semantica adds a **context and accountability layer** on top of your existing AI stack. It doesn't replace LangChain, LlamaIndex, or your LLM provider: it makes their outputs **grounded**, **traceable**, and **auditable**.
 
-<CardGroup cols={3}>
-  <Card title="Context Layer" icon="diagram-project">
-    Knowledge graphs, GraphRAG retrieval, semantic embeddings, and temporal intelligence ground every LLM response in structured, queryable facts.
-  </Card>
-  <Card title="Accountability Layer" icon="shield-check">
-    Provenance tracking, decision intelligence, conflict detection, and W3C PROV-O compliance make every claim in your AI stack auditable and explainable.
-  </Card>
-  <Card title="Extension Layer" icon="plug">
-    `PluginRegistry` and `MethodRegistry` let you replace or augment any component: ingestors, extractors, reasoning engines, backends: without changing framework code.
-  </Card>
-</CardGroup>
+- **Context Layer** — Knowledge graphs, GraphRAG retrieval, semantic embeddings, and temporal intelligence ground every LLM response in structured, queryable facts.
+- **Accountability Layer** — Provenance tracking, decision intelligence, conflict detection, and W3C PROV-O compliance make every claim in your AI stack auditable and explainable.
+- **Extension Layer** — `PluginRegistry` and `MethodRegistry` let you replace or augment any component: ingestors, extractors, reasoning engines, backends: without changing framework code.
 
 
 ## Knowledge Graphs
@@ -487,14 +479,6 @@ Semantica is designed for extension. Any component: ingestor, extractor, graph b
   </Accordion>
 </AccordionGroup>
 
-<CardGroup cols={2}>
-  <Card title="Quickstart Tutorial" icon="play" href="quickstart">
-    Build a full pipeline with code.
-  </Card>
-  <Card title="Modules Guide" icon="puzzle-piece" href="modules">
-    Every module explained with examples.
-  </Card>
-  <Card title="API Reference" icon="code" href="reference/context">
-    Complete technical reference.
-  </Card>
-</CardGroup>
+- [Quickstart Tutorial](quickstart) — Build a full pipeline with code.
+- [Modules Guide](modules) — Every module explained with examples.
+- [API Reference](reference/context) — Complete technical reference.

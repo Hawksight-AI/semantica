@@ -338,14 +338,6 @@ set PYTHONIOENCODING=utf-8
 
 ## Support
 
-<CardGroup cols={3}>
-  <Card title="Discord" icon="discord" href="https://discord.gg/sV34vps5hH">
-    Community chat and live support.
-  </Card>
-  <Card title="GitHub Issues" icon="github" href="https://github.com/semantica-agi/semantica/issues">
-    Bug reports and feature requests.
-  </Card>
-  <Card title="Contributing" icon="code-pull-request" href="contributing-guide">
-    Help improve Semantica.
-  </Card>
-</CardGroup>
+- [Discord](https://discord.gg/sV34vps5hH) — Community chat and live support.
+- [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — Bug reports and feature requests.
+- [Contributing](contributing-guide) — Help improve Semantica.

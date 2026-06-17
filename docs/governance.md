@@ -9,17 +9,9 @@ icon: "scale-balanced"
 
 ## Roles
 
-<CardGroup cols={3}>
-  <Card title="Maintainers" icon="shield-halved">
-    Hawksight AI team: review and merge PRs, manage releases and code quality, set project direction and community standards.
-  </Card>
-  <Card title="Contributors" icon="code-pull-request">
-    Submit code, documentation, and bug reports. Help with issues and reviews. Recognized in [CONTRIBUTORS.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTORS.md).
-  </Card>
-  <Card title="Community Members" icon="users">
-    Use Semantica, provide feedback, share use cases, and participate in GitHub Discussions and Discord.
-  </Card>
-</CardGroup>
+- **Maintainers** — Hawksight AI team: review and merge PRs, manage releases and code quality, set project direction and community standards.
+- **Contributors** — Submit code, documentation, and bug reports. Help with issues and reviews. Recognized in [CONTRIBUTORS.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTORS.md).
+- **Community Members** — Use Semantica, provide feedback, share use cases, and participate in GitHub Discussions and Discord.
 
 
 ## Decision Process
@@ -73,23 +65,11 @@ Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 ## Project Goals
 
-<CardGroup cols={3}>
-  <Card title="Usability" icon="hand-pointer">
-    Easy to use and understand: sensible defaults, clear documentation, minimal ceremony.
-  </Card>
-  <Card title="Reliability" icon="circle-check">
-    Production-ready quality: tested across Python versions, platforms, and real-world workloads.
-  </Card>
-  <Card title="Performance" icon="bolt">
-    Efficient and scalable: from single-machine notebooks to enterprise graph databases.
-  </Card>
-  <Card title="Extensibility" icon="puzzle-piece">
-    Easy to extend with plugins and custom modules via the `PluginRegistry` pattern.
-  </Card>
-  <Card title="Community" icon="heart">
-    Welcoming and inclusive: all backgrounds and experience levels contribute and are recognized.
-  </Card>
-</CardGroup>
+- **Usability** — Easy to use and understand: sensible defaults, clear documentation, minimal ceremony.
+- **Reliability** — Production-ready quality: tested across Python versions, platforms, and real-world workloads.
+- **Performance** — Efficient and scalable: from single-machine notebooks to enterprise graph databases.
+- **Extensibility** — Easy to extend with plugins and custom modules via the `PluginRegistry` pattern.
+- **Community** — Welcoming and inclusive: all backgrounds and experience levels contribute and are recognized.
 
 
 ## License
@@ -99,11 +79,5 @@ MIT License: see [LICENSE](https://github.com/semantica-agi/semantica/blob/main/
 
 ## See Also
 
-<CardGroup cols={2}>
-  <Card title="Contributing" icon="code-pull-request" href="contributing-guide">
-    How to submit changes.
-  </Card>
-  <Card title="Community" icon="users" href="community">
-    Community guidelines and channels.
-  </Card>
-</CardGroup>
+- [Contributing](contributing-guide) — How to submit changes.
+- [Community](community) — Community guidelines and channels.

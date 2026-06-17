@@ -5,7 +5,7 @@ icon: "rocket"
 ---
 
 <Info>
-  **v0.5.0**: Ontology Hub, Distance Intelligence, Parquet & XML ingestion, 12 security fixes. [What's new →](index#whats-new)
+  **v0.5.0** — Ontology Hub, Distance Intelligence, Parquet & XML ingestion, 12 security fixes. <a href="index#whats-new" style={{color:"#10B981",fontWeight:600,textDecoration:"none"}}>What's new →</a>
 </Info>
 
 This guide walks you through the end-to-end pipeline for building your first knowledge graph. Start here after installation. An LLM API key is optional: pattern-based extraction works out of the box.
@@ -420,17 +420,7 @@ pip install --upgrade semantica
 
 ## Next Steps
 
-<CardGroup cols={2}>
-  <Card title="Core Concepts" icon="book-open" href="concepts">
-    Knowledge graphs, ontologies, reasoning engines: the mental model behind Semantica.
-  </Card>
-  <Card title="Module Reference" icon="puzzle-piece" href="modules">
-    Every module explained with key classes and common chains.
-  </Card>
-  <Card title="API Reference" icon="rectangle-terminal" href="reference/context">
-    Complete documentation for every module, class, and parameter.
-  </Card>
-  <Card title="Cookbook" icon="flask" href="cookbook">
-    40+ interactive Jupyter notebooks with real-world datasets.
-  </Card>
-</CardGroup>
+- [Core Concepts](concepts) — Knowledge graphs, ontologies, reasoning engines: the mental model behind Semantica.
+- [Module Reference](modules) — Every module explained with key classes and common chains.
+- [API Reference](reference/context) — Complete documentation for every module, class, and parameter.
+- [Cookbook](cookbook) — 40+ interactive Jupyter notebooks with real-world datasets.

@@ -381,17 +381,7 @@ The `export_csv` convenience function delegates to `CSVExporter.export()`. For p
   **Match your export format to your consumer.** Neo4j → `cypher`; ArangoDB → `aql`; Gephi/yEd → `graphml` or `gexf`; semantic web tools → `turtle` or `json-ld`; analytics pipelines → `parquet`; zero-copy IPC → `arrow`.
 </Tip>
 
-<CardGroup cols={2}>
-  <Card title="Triplet Store" icon="table" href="triplet_store">
-    Store RDF exports in a SPARQL-queryable backend.
-  </Card>
-  <Card title="Ontology" icon="sitemap" href="ontology">
-    Export OWL ontologies.
-  </Card>
-  <Card title="Provenance" icon="link" href="provenance">
-    Include provenance metadata in RDF exports.
-  </Card>
-  <Card title="Pipeline" icon="gear" href="pipeline">
-    Add export as a final pipeline step.
-  </Card>
-</CardGroup>
+- [Triplet Store](triplet_store) — Store RDF exports in a SPARQL-queryable backend.
+- [Ontology](ontology) — Export OWL ontologies.
+- [Provenance](provenance) — Include provenance metadata in RDF exports.
+- [Pipeline](pipeline) — Add export as a final pipeline step.

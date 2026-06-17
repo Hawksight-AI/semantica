@@ -45,26 +45,12 @@ Semantica's conflict detection makes disagreements explicit and actionable:
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="ConflictDetector" icon="magnifying-glass">
-    Value, type, and relationship conflict detection across entity and relationship lists.
-  </Card>
-  <Card title="ConflictResolver" icon="check">
-    7 resolution strategies including voting, credibility-weighted, and temporal preference.
-  </Card>
-  <Card title="SourceTracker" icon="link">
-    Track which source each conflicting fact came from, with per-source credibility scores.
-  </Card>
-  <Card title="ConflictAnalyzer" icon="chart-line">
-    Pattern analysis, severity grouping, source-level statistics, and trend identification.
-  </Card>
-  <Card title="InvestigationGuideGenerator" icon="list-check">
-    Auto-generate step-by-step investigation checklists for human and expert review.
-  </Card>
-  <Card title="Convenience Functions" icon="bolt">
-    `detect_conflicts()` and `resolve_conflicts()` for one-call workflows.
-  </Card>
-</CardGroup>
+- **ConflictDetector** — Value, type, and relationship conflict detection across entity and relationship lists.
+- **ConflictResolver** — 7 resolution strategies including voting, credibility-weighted, and temporal preference.
+- **SourceTracker** — Track which source each conflicting fact came from, with per-source credibility scores.
+- **ConflictAnalyzer** — Pattern analysis, severity grouping, source-level statistics, and trend identification.
+- **InvestigationGuideGenerator** — Auto-generate step-by-step investigation checklists for human and expert review.
+- **Convenience Functions** — `detect_conflicts()` and `resolve_conflicts()` for one-call workflows.
 
 ## Quick Start
 
@@ -464,17 +450,7 @@ class InvestigationStep:
   </Accordion>
 </AccordionGroup>
 
-<CardGroup cols={2}>
-  <Card title="Deduplication" icon="copy" href="deduplication">
-    Resolve duplicate entities before conflict detection.
-  </Card>
-  <Card title="Ontology" icon="sitemap" href="ontology">
-    Logical conflicts use SHACL shapes and ontology axioms.
-  </Card>
-  <Card title="Provenance" icon="link" href="provenance">
-    Track which source each conflicting fact came from.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    The graph being checked for conflicts.
-  </Card>
-</CardGroup>
+- [Deduplication](deduplication) — Resolve duplicate entities before conflict detection.
+- [Ontology](ontology) — Logical conflicts use SHACL shapes and ontology axioms.
+- [Provenance](provenance) — Track which source each conflicting fact came from.
+- [Knowledge Graph](kg) — The graph being checked for conflicts.

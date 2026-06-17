@@ -32,38 +32,24 @@ icon: "database"
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="VectorStore" icon="database">
-    - Unified interface across FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector
-    - One-line backend swap: no application code changes
-    - `add_documents()` auto-embeds; `store_vectors()` for pre-computed embeddings
-  </Card>
-  <Card title="HybridSearch" icon="magnifying-glass">
-    - Dense vector similarity with metadata filtering
-    - RRF or weighted-average fusion strategies
-    - Multi-source fusion across separate collections
-  </Card>
-  <Card title="MetadataStore" icon="table">
-    - Rich metadata indexing by field values
-    - Update metadata fields without re-embedding
-    - OR and AND query operators
-  </Card>
-  <Card title="NamespaceManager" icon="folder-tree">
-    - Structural per-tenant namespace isolation
-    - Faster queries (smaller search space per tenant)
-    - Safer than metadata-filter-only separation
-  </Card>
-  <Card title="Batch Operations" icon="layer-group">
-    - Bulk add, delete, and metadata updates
-    - Parallel embedding with configurable `batch_size` and `workers`
-    - In-place vector updates without full re-indexing
-  </Card>
-  <Card title="FAISS Index Types" icon="chart-scatter">
-    - flat, ivf, hnsw, and pq index types
-    - Full configuration control via `FAISSStore.create_index()`
-    - `save()` / `load()` for disk persistence
-  </Card>
-</CardGroup>
+- **VectorStore** — Unified interface across FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector
+  - One-line backend swap: no application code changes
+  - `add_documents()` auto-embeds; `store_vectors()` for pre-computed embeddings
+- **HybridSearch** — Dense vector similarity with metadata filtering
+  - RRF or weighted-average fusion strategies
+  - Multi-source fusion across separate collections
+- **MetadataStore** — Rich metadata indexing by field values
+  - Update metadata fields without re-embedding
+  - OR and AND query operators
+- **NamespaceManager** — Structural per-tenant namespace isolation
+  - Faster queries (smaller search space per tenant)
+  - Safer than metadata-filter-only separation
+- **Batch Operations** — Bulk add, delete, and metadata updates
+  - Parallel embedding with configurable `batch_size` and `workers`
+  - In-place vector updates without full re-indexing
+- **FAISS Index Types** — flat, ivf, hnsw, and pq index types
+  - Full configuration control via `FAISSStore.create_index()`
+  - `save()` / `load()` for disk persistence
 
 
 ## Getting Started
@@ -602,17 +588,7 @@ store.create_index(index_type="pq", metric="L2", m=8)
   </Tab>
 </Tabs>
 
-<CardGroup cols={2}>
-  <Card title="Embeddings" icon="vector-square" href="embeddings">
-    Generate the vectors stored here.
-  </Card>
-  <Card title="Context" icon="brain" href="context">
-    AgentContext uses VectorStore for memory retrieval.
-  </Card>
-  <Card title="Split" icon="scissors" href="split">
-    Chunk documents before embedding and storing.
-  </Card>
-  <Card title="Ingest" icon="download" href="ingest">
-    Ingest documents before embedding and storing.
-  </Card>
-</CardGroup>
+- [Embeddings](embeddings) — Generate the vectors stored here.
+- [Context](context) — AgentContext uses VectorStore for memory retrieval.
+- [Split](split) — Chunk documents before embedding and storing.
+- [Ingest](ingest) — Ingest documents before embedding and storing.

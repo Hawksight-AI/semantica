@@ -58,17 +58,7 @@ print("Relation coverage: ", report["relation_completeness"]["relation_coverage"
 | `suggestions` | `List[str]` | Improvement suggestions |
 | `metrics` | `dict` | Detailed sub-metrics |
 
-<CardGroup cols={2}>
-  <Card title="Semantic Extract" icon="magnifying-glass" href="semantic_extract">
-    Extraction module.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    Graph quality assessment.
-  </Card>
-  <Card title="Pipeline" icon="gear" href="pipeline">
-    Pipeline performance metrics.
-  </Card>
-  <Card title="Ontology Evaluator" icon="sitemap" href="ontology">
-    Available now for ontology quality metrics.
-  </Card>
-</CardGroup>
+- [Semantic Extract](semantic_extract) — Extraction module.
+- [Knowledge Graph](kg) — Graph quality assessment.
+- [Pipeline](pipeline) — Pipeline performance metrics.
+- [Ontology Evaluator](ontology) — Available now for ontology quality metrics.

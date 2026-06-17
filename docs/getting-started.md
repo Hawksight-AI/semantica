@@ -10,20 +10,10 @@ icon: "rocket"
 
 ## What You Can Build
 
-<CardGroup cols={2}>
-  <Card title="GraphRAG Systems" icon="diagram-project">
-    Ground LLM responses in traceable, structured knowledge. Every claim links back to a source node.
-  </Card>
-  <Card title="Accountable AI Agents" icon="robot">
-    Agents with structured decision history, causal chains, and precedent search. Every choice is recorded and auditable.
-  </Card>
-  <Card title="Production Knowledge Graphs" icon="sitemap">
-    Build, validate, and maintain enterprise-grade semantic knowledge bases from multi-source data.
-  </Card>
-  <Card title="Compliance-Ready AI" icon="shield-check">
-    W3C PROV-O provenance on every fact. HIPAA, SOX, GDPR, FDA 21 CFR Part 11 infrastructure built in.
-  </Card>
-</CardGroup>
+- **GraphRAG Systems** — Ground LLM responses in traceable, structured knowledge. Every claim links back to a source node.
+- **Accountable AI Agents** — Agents with structured decision history, causal chains, and precedent search. Every choice is recorded and auditable.
+- **Production Knowledge Graphs** — Build, validate, and maintain enterprise-grade semantic knowledge bases from multi-source data.
+- **Compliance-Ready AI** — W3C PROV-O provenance on every fact. HIPAA, SOX, GDPR, FDA 21 CFR Part 11 infrastructure built in.
 
 
 ## Setup in 3 Steps
@@ -204,32 +194,12 @@ icon: "rocket"
 
 Semantica uses a modular, layered architecture: import only what you need.
 
-<CardGroup cols={3}>
-  <Card title="Input Layer" icon="database" href="reference/ingest">
-    Load and prepare data from any source.
-    **Modules:** `ingest`, `parse`, `split`, `normalize`
-  </Card>
-  <Card title="Semantic Layer" icon="microchip" href="reference/semantic_extract">
-    Extract meaning from raw text.
-    **Modules:** `semantic_extract`, `kg`, `ontology`, `reasoning`
-  </Card>
-  <Card title="Storage Layer" icon="hard-drive" href="reference/vector_store">
-    Persist knowledge for retrieval.
-    **Modules:** `embeddings`, `vector_store`, `graph_store`, `triplet_store`
-  </Card>
-  <Card title="Quality Layer" icon="check-circle" href="reference/deduplication">
-    Validate and deduplicate.
-    **Modules:** `deduplication`, `conflicts`
-  </Card>
-  <Card title="Context Layer" icon="brain" href="reference/context">
-    Track decisions and lineage.
-    **Modules:** `context`, `provenance`, `change_management`
-  </Card>
-  <Card title="Output Layer" icon="share-nodes" href="reference/export">
-    Deliver results downstream.
-    **Modules:** `export`, `visualization`, `pipeline`, `explorer`
-  </Card>
-</CardGroup>
+- **[Input Layer](reference/ingest)** — Load and prepare data from any source. Modules: `ingest`, `parse`, `split`, `normalize`
+- **[Semantic Layer](reference/semantic_extract)** — Extract meaning from raw text. Modules: `semantic_extract`, `kg`, `ontology`, `reasoning`
+- **[Storage Layer](reference/vector_store)** — Persist knowledge for retrieval. Modules: `embeddings`, `vector_store`, `graph_store`, `triplet_store`
+- **[Quality Layer](reference/deduplication)** — Validate and deduplicate. Modules: `deduplication`, `conflicts`
+- **[Context Layer](reference/context)** — Track decisions and lineage. Modules: `context`, `provenance`, `change_management`
+- **[Output Layer](reference/export)** — Deliver results downstream. Modules: `export`, `visualization`, `pipeline`, `explorer`
 
 
 ## "Which module do I need?" Quick Reference
@@ -252,32 +222,14 @@ Semantica uses a modular, layered architecture: import only what you need.
 
 ## Next Steps
 
-<CardGroup cols={2}>
-  <Card title="Core Concepts" icon="book-open" href="concepts">
-    Knowledge graphs, ontologies, and reasoning explained in depth.
-  </Card>
-  <Card title="Quickstart Tutorial" icon="play" href="quickstart">
-    Full 6-step pipeline walkthrough with working code.
-  </Card>
-  <Card title="Module Reference" icon="puzzle-piece" href="modules">
-    Every module, class, and common chain explained.
-  </Card>
-  <Card title="API Reference" icon="code" href="reference/context">
-    Complete module documentation for every class and method.
-  </Card>
-</CardGroup>
+- [Core Concepts](concepts) — Knowledge graphs, ontologies, and reasoning explained in depth.
+- [Quickstart Tutorial](quickstart) — Full 6-step pipeline walkthrough with working code.
+- [Module Reference](modules) — Every module, class, and common chain explained.
+- [API Reference](reference/context) — Complete module documentation for every class and method.
 
 
 ## Help
 
-<CardGroup cols={3}>
-  <Card title="Discord" icon="discord" href="https://discord.gg/sV34vps5hH">
-    Ask questions, share projects, get community support.
-  </Card>
-  <Card title="GitHub Issues" icon="github" href="https://github.com/semantica-agi/semantica/issues">
-    Report bugs or request features.
-  </Card>
-  <Card title="FAQ" icon="circle-question" href="faq">
-    Common questions answered.
-  </Card>
-</CardGroup>
+- [Discord](https://discord.gg/sV34vps5hH) — Ask questions, share projects, get community support.
+- [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — Report bugs or request features.
+- [FAQ](faq) — Common questions answered.

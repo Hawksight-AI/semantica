@@ -625,17 +625,7 @@ from semantica.ingest import ingest_file
 result = ingest_file("source_path", method="my_format")
 ```
 
-<CardGroup cols={2}>
-  <Card title="Parse" icon="file-lines" href="parse">
-    Parse raw sources into structured text and tables.
-  </Card>
-  <Card title="Pipeline" icon="gear" href="pipeline">
-    Orchestrate ingest as the first pipeline step.
-  </Card>
-  <Card title="Snowflake Integration" icon="snowflake" href="../integrations/snowflake">
-    Snowflake-specific setup and authentication guide.
-  </Card>
-  <Card title="Provenance" icon="link" href="provenance">
-    Track lineage from ingest through to inference.
-  </Card>
-</CardGroup>
+- [Parse](parse) — Parse raw sources into structured text and tables.
+- [Pipeline](pipeline) — Orchestrate ingest as the first pipeline step.
+- [Snowflake Integration](../integrations/snowflake) — Snowflake-specific setup and authentication guide.
+- [Provenance](provenance) — Track lineage from ingest through to inference.

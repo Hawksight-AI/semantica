@@ -171,17 +171,7 @@ if not connector.test_connection():
 
 ## See Also
 
-<CardGroup cols={2}>
-  <Card title="Ingest Module" icon="database" href="../reference/ingest">
-    Full SnowflakeIngestor and all other ingestors.
-  </Card>
-  <Card title="Pipeline" icon="gear" href="../reference/pipeline">
-    Use Snowflake ingestion as a pipeline step.
-  </Card>
-  <Card title="Installation" icon="download" href="../installation">
-    All optional dependency extras.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="../reference/kg">
-    Build a KG from ingested Snowflake data.
-  </Card>
-</CardGroup>
+- [Ingest Module](../reference/ingest) — Full SnowflakeIngestor and all other ingestors.
+- [Pipeline](../reference/pipeline) — Use Snowflake ingestion as a pipeline step.
+- [Installation](../installation) — All optional dependency extras.
+- [Knowledge Graph](../reference/kg) — Build a KG from ingested Snowflake data.

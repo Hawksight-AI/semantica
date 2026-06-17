@@ -9,20 +9,9 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
 ## Learning Paths
 
-<CardGroup cols={3}>
-  <Card title="Beginner (1–2 hrs)" icon="seedling">
-    New to Semantica and knowledge graphs.
-    [Start with Installation →](installation)
-  </Card>
-  <Card title="Intermediate (4–6 hrs)" icon="compass">
-    Comfortable with basics, building real applications.
-    [Start with Modules →](modules)
-  </Card>
-  <Card title="Advanced (8+ hrs)" icon="rocket">
-    Enterprise deployments, customization, and extension.
-    [Start with Architecture →](architecture)
-  </Card>
-</CardGroup>
+- **Beginner (1–2 hrs)** — New to Semantica and knowledge graphs. [Start with Installation →](installation)
+- **Intermediate (4–6 hrs)** — Comfortable with basics, building real applications. [Start with Modules →](modules)
+- **Advanced (8+ hrs)** — Enterprise deployments, customization, and extension. [Start with Architecture →](architecture)
 
 <Tabs>
   <Tab title="Beginner (1–2 hrs)">
@@ -247,14 +236,6 @@ The `blocking_v2`, `hybrid_v2`, and `semantic_v2` strategies reduce O(n²) compa
 - **Graph exports**: encrypt sensitive exports at rest; use the v0.5.0 SSRF-safe `base_url` validation when configuring custom LLM gateways
 - **XML ingestion**: always use `XMLIngestor` (v0.5.0), which uses the XXE-safe lxml backend; never parse untrusted XML with the standard library parser
 
-<CardGroup cols={2}>
-  <Card title="Cookbook" icon="flask" href="cookbook">
-    Interactive Jupyter notebooks from beginner to advanced.
-  </Card>
-  <Card title="FAQ" icon="circle-question" href="faq">
-    Common questions answered.
-  </Card>
-  <Card title="API Reference" icon="code" href="reference/core">
-    Complete technical documentation.
-  </Card>
-</CardGroup>
+- [Cookbook](cookbook) — Interactive Jupyter notebooks from beginner to advanced.
+- [FAQ](faq) — Common questions answered.
+- [API Reference](reference/core) — Complete technical documentation.

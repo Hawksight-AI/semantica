@@ -4,7 +4,7 @@ description: "The Accountability and Context Layer for AI: Context Graphs · Dec
 ---
 
 <Info>
-  **v0.5.0 is live**: Ontology Hub, Distance Intelligence, SHACL Studio, Parquet & XML ingestion, 12 security fixes. [What's new →](#whats-new)
+  **v0.5.0 is live** — Ontology Hub, Distance Intelligence, SHACL Studio, Parquet & XML ingestion, 12 security fixes. <a href="#whats-new" style={{color:"#10B981",fontWeight:600,textDecoration:"none"}}>What's new →</a>
 </Info>
 
 Your AI agent just made a decision. Now someone needs to explain it.
@@ -15,58 +15,42 @@ If your stack can't answer those questions with a traceable record, you have a g
 
 **Semantica closes that gap.** It's the context and accountability layer that sits beneath your existing agent framework: not a replacement for LangChain or LlamaIndex, but the infrastructure that makes their outputs trustworthy.
 
-<CardGroup cols={4}>
-  <Card title="1,000+ Tests" icon="circle-check">
-    Production-hardened with a full regression suite
-  </Card>
-  <Card title="25+ Modules" icon="puzzle-piece">
-    Every capability independently importable
-  </Card>
-  <Card title="12 LLM Providers" icon="microchip">
-    OpenAI, Anthropic, Ollama, Groq, and more
-  </Card>
-  <Card title="MIT Licensed" icon="code-branch">
-    Open source, no vendor lock-in, fully forkable
-  </Card>
-</CardGroup>
+<div style={{display:"flex",flexWrap:"wrap",gap:"3rem",margin:"2rem 0",padding:"1.5rem 2rem",borderRadius:"10px",border:"1px solid rgba(16,185,129,0.2)",background:"rgba(16,185,129,0.03)"}}>
+  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>1,000+</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>passing tests</div></div>
+  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>25+</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>modules</div></div>
+  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>12</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>LLM providers</div></div>
+  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>MIT</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>open source</div></div>
+</div>
 
 
 ## The Problem Every Production AI Team Hits
 
 Powerful agents aren't automatically trustworthy ones. Five structural blind spots make modern AI systems impossible to deploy in regulated environments:
 
-<CardGroup cols={2}>
-  <Card title="No memory structure" icon="brain">
-    Agents store embeddings, not meaning.
-    - No way to ask *why* a fact was recalled
-    - No link from a recalled fact back to its source document
-    - Context is a black box that resets on every run
-  </Card>
-  <Card title="No decision trail" icon="clock-rotate-left">
-    Agents act continuously but record nothing.
-    - No history to hand to a regulator or auditor
-    - No way to replay or reproduce a past decision
-    - Debugging means re-running, not reviewing
-  </Card>
-  <Card title="No provenance" icon="link-slash">
-    Outputs can't be traced to source facts.
-    - In healthcare, finance, and legal: this is a hard compliance blocker
-    - No lineage from inference back to the original document
-    - Impossible to demonstrate what the agent actually relied on
-  </Card>
-  <Card title="No reasoning transparency" icon="eye-slash">
-    Black-box answers with no explanation.
-    - Impossible to validate the reasoning path
-    - Impossible to contest a specific conclusion
-    - No basis for improving or correcting future behavior
-  </Card>
-  <Card title="No conflict detection" icon="triangle-exclamation">
-    Contradictory facts silently coexist in vector stores.
-    - No detection when two sources disagree
-    - Outputs become inconsistent and unpredictable over time
-    - Silent failures compound as the knowledge base grows
-  </Card>
-</CardGroup>
+**No memory structure** — agents store embeddings, not meaning
+- No way to ask *why* a fact was recalled
+- No link from a recalled fact back to its source document
+- Context is a black box that resets on every run
+
+**No decision trail** — agents act continuously but record nothing
+- No history to hand to a regulator or auditor
+- No way to replay or reproduce a past decision
+- Debugging means re-running, not reviewing
+
+**No provenance** — outputs can't be traced to source facts
+- In healthcare, finance, and legal: this is a hard compliance blocker
+- No lineage from inference back to the original document
+- Impossible to demonstrate what the agent actually relied on
+
+**No reasoning transparency** — black-box answers with no explanation
+- Impossible to validate the reasoning path
+- Impossible to contest a specific conclusion
+- No basis for improving or correcting future behavior
+
+**No conflict detection** — contradictory facts silently coexist in vector stores
+- No detection when two sources disagree
+- Outputs become inconsistent and unpredictable over time
+- Silent failures compound as the knowledge base grows
 
 <Note>
   These aren't edge cases. They're why enterprise AI pilots stall: and why your compliance team keeps saying *not yet*.
@@ -77,50 +61,41 @@ Powerful agents aren't automatically trustworthy ones. Five structural blind spo
 
 Semantica gives every agent the infrastructure it needs to be accountable. Drop it into your existing setup in minutes:
 
-<CardGroup cols={2}>
-  <Card title="Context Graphs" icon="diagram-project">
-    A structured, queryable graph of everything your agent knows, decides, and reasons about.
-    - Persistent across agent runs: no context loss between sessions
-    - Queryable with SPARQL and full graph algorithms
-    - Temporal model with `valid_from` / `valid_until` on nodes and edges
-    - Point-in-time snapshots of the full knowledge state
-  </Card>
-  <Card title="Decision Intelligence" icon="check-circle">
-    Every decision is a first-class object in your system.
-    - `record_decision()` captures full lifecycle and causal chain
-    - Hybrid precedent search over past decisions for consistency
-    - `analyze_decision_impact()` shows downstream consequences
-    - Causal chain visualization from trigger to outcome
-  </Card>
-  <Card title="Full Provenance" icon="shield-check">
-    Every fact links to its source document and ingestion event.
-    - W3C PROV-O compliant lineage across all modules
-    - Full traceability from raw input to final inference
-    - `recorded_at` stamping with OWL-Time export
-    - Audit-ready for HIPAA, SOX, GDPR, FDA 21 CFR Part 11
-  </Card>
-  <Card title="Reasoning Engines" icon="microchip">
-    Explainable reasoning paths: not black boxes.
-    - Forward chaining, Rete, deductive, abductive
-    - SPARQL query-based inference over RDF graphs
-    - Datalog with recursive Horn clause rules
-    - Every conclusion backed by a traceable derivation path
-  </Card>
-  <Card title="Temporal Intelligence" icon="clock">
-    Your graph knows not just *what*: but *when*.
-    - Allen interval algebra: all 13 temporal relations
-    - Point-in-time queries over historical graph states
-    - Temporal provenance stamping on every fact
-    - OWL-Time export for standards-compliant archiving
-  </Card>
-  <Card title="Ontology Hub" icon="sitemap">
-    Full ontology lifecycle in the browser.
-    - Visual editor for schema design and editing
-    - SHACL Studio for constraint authoring and validation
-    - Alignment authoring across multiple ontologies
-    - Health dashboard and version control built in
-  </Card>
-</CardGroup>
+**Context Graphs** — a structured, queryable graph of everything your agent knows, decides, and reasons about
+- Persistent across agent runs: no context loss between sessions
+- Queryable with SPARQL and full graph algorithms
+- Temporal model with `valid_from` / `valid_until` on nodes and edges
+- Point-in-time snapshots of the full knowledge state
+
+**Decision Intelligence** — every decision is a first-class object in your system
+- `record_decision()` captures full lifecycle and causal chain
+- Hybrid precedent search over past decisions for consistency
+- `analyze_decision_impact()` shows downstream consequences
+- Causal chain visualization from trigger to outcome
+
+**Full Provenance** — every fact links to its source document and ingestion event
+- W3C PROV-O compliant lineage across all modules
+- Full traceability from raw input to final inference
+- `recorded_at` stamping with OWL-Time export
+- Audit-ready for HIPAA, SOX, GDPR, FDA 21 CFR Part 11
+
+**Reasoning Engines** — explainable reasoning paths, not black boxes
+- Forward chaining, Rete, deductive, abductive
+- SPARQL query-based inference over RDF graphs
+- Datalog with recursive Horn clause rules
+- Every conclusion backed by a traceable derivation path
+
+**Temporal Intelligence** — your graph knows not just *what*, but *when*
+- Allen interval algebra: all 13 temporal relations
+- Point-in-time queries over historical graph states
+- Temporal provenance stamping on every fact
+- OWL-Time export for standards-compliant archiving
+
+**Ontology Hub** — full ontology lifecycle in the browser
+- Visual editor for schema design and editing
+- SHACL Studio for constraint authoring and validation
+- Alignment authoring across multiple ontologies
+- Health dashboard and version control built in
 
 <Tip>
   Works alongside any LLM provider and any agent framework: add it to an existing stack without changing your architecture.
@@ -217,61 +192,50 @@ decision_id = context.record_decision(
 
 </CodeGroup>
 
-<CardGroup cols={3}>
-  <Card title="Full Quickstart" icon="rocket" href="quickstart">
-    Step-by-step pipeline walkthrough
-  </Card>
-  <Card title="Cookbook" icon="flask" href="cookbook">
-    40+ real-world Jupyter notebooks
-  </Card>
-  <Card title="Join Discord" icon="discord" href="https://discord.gg/sV34vps5hH">
-    Community chat and support
-  </Card>
-</CardGroup>
+- [Full Quickstart](quickstart) — Step-by-step pipeline walkthrough
+- [Cookbook](cookbook) — 40+ real-world Jupyter notebooks
+- [Join Discord](https://discord.gg/sV34vps5hH) — Community chat and support
 
 
 ## Built for Where Mistakes Have Consequences
 
 Semantica was designed for domains where every decision must be explainable and every fact must be traceable:
 
-<CardGroup cols={2}>
-  <Card title="Healthcare & Life Sciences" icon="heart-pulse">
-    - Clinical decision support with full audit trails
-    - Drug interaction and contraindication graphs
-    - Patient safety event tracking and root-cause analysis
-    - HIPAA-compliant provenance chains out of the box
-  </Card>
-  <Card title="Finance & Risk" icon="chart-line">
-    - Fraud detection knowledge graphs
-    - Risk assessment trails built to survive an audit
-    - SOX, GDPR, and MiFID II compliance infrastructure
-    - Model decision lineage for regulatory reporting
-  </Card>
-  <Card title="Legal & Compliance" icon="scale-balanced">
-    - Evidence-backed research with every cited fact provenance-linked
-    - Contract analysis with traceable clause extraction
-    - Regulatory change tracking across jurisdictions
-    - Full reasoning paths ready for court-admissible documentation
-  </Card>
-  <Card title="Cybersecurity" icon="shield">
-    - Threat attribution graphs linking actors, TTPs, and indicators
-    - Incident response timelines with full event provenance
-    - Security audit trails across the complete kill chain
-    - MITRE ATT&CK-aligned knowledge graph integration
-  </Card>
-  <Card title="Government & Defense" icon="building-columns">
-    - Policy decision trails from brief to outcome
-    - Classified information handling with provenance chains
-    - Chain-of-custody scrutiny for intelligence reporting
-    - Air-gapped deployment with local LLM support
-  </Card>
-  <Card title="Critical Infrastructure" icon="bolt">
-    - Power grid state tracking with temporal intelligence
-    - Transportation safety event graphs
-    - Emergency response coordination with decision audit trails
-    - Consequence modeling for high-stakes operational decisions
-  </Card>
-</CardGroup>
+**Healthcare & Life Sciences**
+- Clinical decision support with full audit trails
+- Drug interaction and contraindication graphs
+- Patient safety event tracking and root-cause analysis
+- HIPAA-compliant provenance chains out of the box
+
+**Finance & Risk**
+- Fraud detection knowledge graphs
+- Risk assessment trails built to survive an audit
+- SOX, GDPR, and MiFID II compliance infrastructure
+- Model decision lineage for regulatory reporting
+
+**Legal & Compliance**
+- Evidence-backed research with every cited fact provenance-linked
+- Contract analysis with traceable clause extraction
+- Regulatory change tracking across jurisdictions
+- Full reasoning paths ready for court-admissible documentation
+
+**Cybersecurity**
+- Threat attribution graphs linking actors, TTPs, and indicators
+- Incident response timelines with full event provenance
+- Security audit trails across the complete kill chain
+- MITRE ATT&CK-aligned knowledge graph integration
+
+**Government & Defense**
+- Policy decision trails from brief to outcome
+- Classified information handling with provenance chains
+- Chain-of-custody scrutiny for intelligence reporting
+- Air-gapped deployment with local LLM support
+
+**Critical Infrastructure**
+- Power grid state tracking with temporal intelligence
+- Transportation safety event graphs
+- Emergency response coordination with decision audit trails
+- Consequence modeling for high-stakes operational decisions
 
 
 ## Start Here
@@ -305,23 +269,11 @@ Semantica was designed for domains where every decision must be explainable and 
   </Step>
 </Steps>
 
-<CardGroup cols={2}>
-  <Card title="Installation" icon="download" href="installation">
-    Get Semantica installed in under a minute
-  </Card>
-  <Card title="Quickstart" icon="rocket" href="quickstart">
-    Build a complete knowledge graph pipeline in 5 minutes
-  </Card>
-  <Card title="Core Concepts" icon="book-open" href="concepts">
-    The mental model behind the API
-  </Card>
-  <Card title="API Reference" icon="rectangle-terminal" href="reference/context">
-    Exact module, class, and method details
-  </Card>
-  <Card title="Cookbook" icon="flask" href="cookbook">
-    Domain notebooks for real-world use cases
-  </Card>
-</CardGroup>
+- [Installation](installation) — Get Semantica installed in under a minute
+- [Quickstart](quickstart) — Build a complete knowledge graph pipeline in 5 minutes
+- [Core Concepts](concepts) — The mental model behind the API
+- [API Reference](reference/context) — Exact module, class, and method details
+- [Cookbook](cookbook) — Domain notebooks for real-world use cases
 
 
 ## What's New
@@ -332,15 +284,13 @@ Semantica was designed for domains where every decision must be explainable and 
 
 Released **May 11, 2026**
 
-| Area | Highlights |
-| :------ | :------------ |
-| **Ontology Hub** | Visual editor, SHACL Studio, alignment authoring, health dashboard, version control: full ontology lifecycle in the browser |
-| **Distance Intelligence** | Semantic neighborhoods, N×N distance matrices, ego-mode visualization, distance band classification, embedding cache optimization |
-| **Parquet Ingestion** | `ParquetIngestor` with PyArrow: single file, partitioned directories, Hive-style discovery, selective column reading |
-| **XML Ingestion** | `XMLIngestor` with XXE-safe lxml backend, XSD/DTD validation, namespace handling, directory scanning |
-| **Graph Explorer** | Landing page redesign, bidirectional path finding, indexed search (0.004ms on 118k nodes) |
-| **Security** | 12 vulnerability fixes: eval injection, pickle deserialization, SQL injection, XXE, SSRF, ReDoS, path traversal |
-| **Bug Fixes** | NER LLM silent fallback on enterprise gateways, ConflictDetector duplicate definition, Windows `[all]` install, cp1252 crash |
+- **Ontology Hub** — Visual editor, SHACL Studio, alignment authoring, health dashboard, version control: full ontology lifecycle in the browser
+- **Distance Intelligence** — Semantic neighborhoods, N×N distance matrices, ego-mode visualization, distance band classification, embedding cache optimization
+- **Parquet Ingestion** — `ParquetIngestor` with PyArrow: single file, partitioned directories, Hive-style discovery, selective column reading
+- **XML Ingestion** — `XMLIngestor` with XXE-safe lxml backend, XSD/DTD validation, namespace handling, directory scanning
+- **Graph Explorer** — Landing page redesign, bidirectional path finding, indexed search (0.004ms on 118k nodes)
+- **Security** — 12 vulnerability fixes: eval injection, pickle deserialization, SQL injection, XXE, SSRF, ReDoS, path traversal
+- **Bug Fixes** — NER LLM silent fallback on enterprise gateways, ConflictDetector duplicate definition, Windows `[all]` install, cp1252 crash
 
 ```bash
 pip install semantica==0.5.0
@@ -350,13 +300,11 @@ pip install semantica==0.5.0
 
 <Accordion title="v0.4.0: Temporal Intelligence & Knowledge Explorer" icon="clock">
 
-| Area | Highlights |
-| :------ | :------------ |
-| **Temporal Intelligence** | 6-PR system: temporal data model, point-in-time queries, Allen interval algebra (all 13 relations), OWL-Time export |
-| **Knowledge Explorer API** | Full FastAPI backend: 99 tests, 12 export formats, WebSocket progress, thread-safe sessions, audit trail |
-| **Ontology Foundations** | SHACL generation/validation, SKOS vocabulary, ontology alignment API, diff & migration tooling |
-| **Datalog Reasoning** | Pure-Python bottom-up semi-naive fixpoint, recursive Horn clause rules, guaranteed termination |
-| **Agno Integration** | 5 components: graph-backed memory, multi-hop GraphRAG, decision toolkit, KG toolkit, shared team context; 110 tests |
+- **Temporal Intelligence** — 6-PR system: temporal data model, point-in-time queries, Allen interval algebra (all 13 relations), OWL-Time export
+- **Knowledge Explorer API** — Full FastAPI backend: 99 tests, 12 export formats, WebSocket progress, thread-safe sessions, audit trail
+- **Ontology Foundations** — SHACL generation/validation, SKOS vocabulary, ontology alignment API, diff & migration tooling
+- **Datalog Reasoning** — Pure-Python bottom-up semi-naive fixpoint, recursive Horn clause rules, guaranteed termination
+- **Agno Integration** — 5 components: graph-backed memory, multi-hop GraphRAG, decision toolkit, KG toolkit, shared team context; 110 tests
 
 </Accordion>
 
@@ -483,26 +431,20 @@ pip install semantica==0.5.0
 
 ## Why Semantica?
 
-<CardGroup cols={3}>
-  <Card title="Open Source, MIT" icon="code-branch">
-    No vendor lock-in. No paywalled features.
-    - Full source available on GitHub
-    - Every line auditable by your security team
-    - Fork, extend, and self-host with no restrictions
-    - No telemetry, no usage reporting
-  </Card>
-  <Card title="Production Ready" icon="circle-check">
-    Built for teams that can't afford surprises.
-    - 1,000+ passing tests with full regression coverage
-    - `PipelineValidator` catches configuration errors at startup
-    - `FailureHandler` with exponential backoff and dead-letter queues
-    - 12 security vulnerabilities fixed in v0.5.0
-  </Card>
-  <Card title="Modular by Design" icon="puzzle-piece">
-    Import only what you need.
-    - Use `NERExtractor` without a graph store
-    - Use `ContextGraph` without vector storage
-    - Every component independently swappable and testable
-    - No framework lock-in: works with any agent stack
-  </Card>
-</CardGroup>
+**Open Source, MIT** — No vendor lock-in. No paywalled features.
+- Full source available on GitHub
+- Every line auditable by your security team
+- Fork, extend, and self-host with no restrictions
+- No telemetry, no usage reporting
+
+**Production Ready** — Built for teams that can't afford surprises.
+- 1,000+ passing tests with full regression coverage
+- `PipelineValidator` catches configuration errors at startup
+- `FailureHandler` with exponential backoff and dead-letter queues
+- 12 security vulnerabilities fixed in v0.5.0
+
+**Modular by Design** — Import only what you need.
+- Use `NERExtractor` without a graph store
+- Use `ContextGraph` without vector storage
+- Every component independently swappable and testable
+- No framework lock-in: works with any agent stack

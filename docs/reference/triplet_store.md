@@ -19,26 +19,12 @@ icon: "table"
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="TripletStore" icon="server">
-    Unified interface across Blazegraph, Apache Jena, and RDF4J: swap backends with one parameter.
-  </Card>
-  <Card title="SPARQL" icon="magnifying-glass">
-    Full SPARQL SELECT, ASK, CONSTRUCT, and UPDATE query support via `execute_query()`.
-  </Card>
-  <Card title="Bulk Loading" icon="layer-group">
-    `add_triplets()` batches writes with configurable batch size, retry logic, and progress tracking.
-  </Card>
-  <Card title="SKOS Vocabulary" icon="diagram-project">
-    Built-in helpers: `add_skos_concept()` and `get_skos_concepts()` for controlled vocabulary management.
-  </Card>
-  <Card title="Named Graphs" icon="folder-tree">
-    Blazegraph and RDF4J support named graph scoping via `graph=` on `execute_query()`.
-  </Card>
-  <Card title="Delta Computation" icon="code-compare">
-    `compute_delta(old_graph_uri, new_graph_uri)` returns added and removed triples between two named graph snapshots.
-  </Card>
-</CardGroup>
+- **TripletStore** — Unified interface across Blazegraph, Apache Jena, and RDF4J: swap backends with one parameter.
+- **SPARQL** — Full SPARQL SELECT, ASK, CONSTRUCT, and UPDATE query support via `execute_query()`.
+- **Bulk Loading** — `add_triplets()` batches writes with configurable batch size, retry logic, and progress tracking.
+- **SKOS Vocabulary** — Built-in helpers: `add_skos_concept()` and `get_skos_concepts()` for controlled vocabulary management.
+- **Named Graphs** — Blazegraph and RDF4J support named graph scoping via `graph=` on `execute_query()`.
+- **Delta Computation** — `compute_delta(old_graph_uri, new_graph_uri)` returns added and removed triples between two named graph snapshots.
 
 ## Getting Started
 
@@ -490,17 +476,7 @@ for row in result.bindings:
     print(row)
 ```
 
-<CardGroup cols={2}>
-  <Card title="Export" icon="file-export" href="export">
-    Export knowledge graphs to RDF formats.
-  </Card>
-  <Card title="Ontology" icon="sitemap" href="ontology">
-    Load OWL ontologies and store as RDF triples.
-  </Card>
-  <Card title="Reasoning" icon="microchip" href="reasoning">
-    SPARQL-based property chain inference.
-  </Card>
-  <Card title="Graph Store" icon="server" href="graph_store">
-    Property graph alternative for Cypher queries.
-  </Card>
-</CardGroup>
+- [Export](export) — Export knowledge graphs to RDF formats.
+- [Ontology](ontology) — Load OWL ontologies and store as RDF triples.
+- [Reasoning](reasoning) — SPARQL-based property chain inference.
+- [Graph Store](graph_store) — Property graph alternative for Cypher queries.

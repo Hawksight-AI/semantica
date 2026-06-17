@@ -28,38 +28,24 @@ icon: "server"
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="GraphStore" icon="server">
-    - Unified API across Neo4j, FalkorDB, Apache AGE, Amazon Neptune
-    - Context manager support for automatic connection cleanup
-    - `create_nodes()` for bulk loading: faster than individual calls
-  </Card>
-  <Card title="QueryEngine" icon="magnifying-glass">
-    - Parameterized Cypher construction prevents injection attacks
-    - Optional in-process result caching with `use_cache=True`
-    - `clear_cache()` on writes, toggle with `enable_cache()` / `disable_cache()`
-  </Card>
-  <Card title="GraphAnalytics" icon="chart-line">
-    - Degree centrality ordered by degree DESC
-    - Connected component assignment
-    - Shortest path between nodes, neighbor traversal up to N hops
-  </Card>
-  <Card title="Bulk Operations" icon="layer-group">
-    - `create_nodes(list)`: one round-trip for many nodes
-    - `create_relationship()` with typed properties
-    - `delete_node(detach=True)` removes all connected relationships
-  </Card>
-  <Card title="Schema Management" icon="table">
-    - `create_index(label, property_name=)`: makes MATCH queries orders-of-magnitude faster
-    - `get_stats()`: node counts, edge counts, type breakdown
-    - Create indexes before bulk loading for best performance
-  </Card>
-  <Card title="Path Traversal" icon="route">
-    - `shortest_path()` returns `length`, `nodes`, `relationships`
-    - `get_neighbors()` with direction and depth control
-    - Cross-backend path traversal via the unified API
-  </Card>
-</CardGroup>
+- **GraphStore** — Unified API across Neo4j, FalkorDB, Apache AGE, Amazon Neptune
+  - Context manager support for automatic connection cleanup
+  - `create_nodes()` for bulk loading: faster than individual calls
+- **QueryEngine** — Parameterized Cypher construction prevents injection attacks
+  - Optional in-process result caching with `use_cache=True`
+  - `clear_cache()` on writes, toggle with `enable_cache()` / `disable_cache()`
+- **GraphAnalytics** — Degree centrality ordered by degree DESC
+  - Connected component assignment
+  - Shortest path between nodes, neighbor traversal up to N hops
+- **Bulk Operations** — `create_nodes(list)`: one round-trip for many nodes
+  - `create_relationship()` with typed properties
+  - `delete_node(detach=True)` removes all connected relationships
+- **Schema Management** — `create_index(label, property_name=)`: makes MATCH queries orders-of-magnitude faster
+  - `get_stats()`: node counts, edge counts, type breakdown
+  - Create indexes before bulk loading for best performance
+- **Path Traversal** — `shortest_path()` returns `length`, `nodes`, `relationships`
+  - `get_neighbors()` with direction and depth control
+  - Cross-backend path traversal via the unified API
 
 
 ## Getting Started
@@ -517,17 +503,7 @@ stats = store.get_stats()
   </Tab>
 </Tabs>
 
-<CardGroup cols={2}>
-  <Card title="KG Module" icon="diagram-project" href="kg">
-    Build the graph before persisting it.
-  </Card>
-  <Card title="Triplet Store" icon="table" href="triplet_store">
-    RDF triple store for semantic web and SPARQL queries.
-  </Card>
-  <Card title="Visualization" icon="chart-bar" href="visualization">
-    Visualize graphs stored in any backend.
-  </Card>
-  <Card title="Context" icon="brain" href="context">
-    AgentContext uses GraphStore for memory retrieval.
-  </Card>
-</CardGroup>
+- [KG Module](kg) — Build the graph before persisting it.
+- [Triplet Store](triplet_store) — RDF triple store for semantic web and SPARQL queries.
+- [Visualization](visualization) — Visualize graphs stored in any backend.
+- [Context](context) — AgentContext uses GraphStore for memory retrieval.

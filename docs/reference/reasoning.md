@@ -31,26 +31,12 @@ icon: "microchip"
 
 ## Which Engine Should I Use?
 
-<CardGroup cols={2}>
-  <Card title="Reasoner" icon="arrow-right-arrow-left" href="#reasoner-forwardbackward-chaining">
-    IF/THEN rules, forward and backward chaining. **Start here**: covers 90% of use cases. No query language required.
-  </Card>
-  <Card title="GraphReasoner" icon="robot" href="#graphreasoner">
-    Natural language queries over a knowledge graph via LLM. No SPARQL or rules: just ask a question.
-  </Card>
-  <Card title="DatalogReasoner" icon="code" href="#datalogreasoner">
-    Recursive Horn clause rules with guaranteed termination. Use for complex multi-hop transitive rules.
-  </Card>
-  <Card title="ReteEngine" icon="bolt" href="#reteengine">
-    Rete pattern matching for high-frequency inference. Use when you need to match many facts against many rules simultaneously.
-  </Card>
-  <Card title="SPARQLReasoner" icon="database" href="#sparqlreasoner">
-    SPARQL query expansion and rule-based inference. Use when you're working with RDF/OWL data.
-  </Card>
-  <Card title="TemporalReasoningEngine" icon="clock" href="#temporalreasoningengine">
-    All 13 Allen interval algebra relations. Use for time-aware reasoning: overlaps, before/after, during, contains.
-  </Card>
-</CardGroup>
+- [Reasoner](#reasoner-forwardbackward-chaining) — IF/THEN rules, forward and backward chaining. **Start here**: covers 90% of use cases. No query language required.
+- [GraphReasoner](#graphreasoner) — Natural language queries over a knowledge graph via LLM. No SPARQL or rules: just ask a question.
+- [DatalogReasoner](#datalogreasoner) — Recursive Horn clause rules with guaranteed termination. Use for complex multi-hop transitive rules.
+- [ReteEngine](#reteengine) — Rete pattern matching for high-frequency inference. Use when you need to match many facts against many rules simultaneously.
+- [SPARQLReasoner](#sparqlreasoner) — SPARQL query expansion and rule-based inference. Use when you're working with RDF/OWL data.
+- [TemporalReasoningEngine](#temporalreasoningengine) — All 13 Allen interval algebra relations. Use for time-aware reasoning: overlaps, before/after, during, contains.
 
 
 ## Getting Started
@@ -479,17 +465,7 @@ step.confidence     # float
   `GraphReasoner` requires a configured LLM provider. If the provider fails to initialize, `reason()` returns an error string instead of raising. Check `reasoner.provider is not None` before calling if you need to surface failures explicitly.
 </Warning>
 
-<CardGroup cols={2}>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    The knowledge graph being reasoned over.
-  </Card>
-  <Card title="Ontology" icon="sitemap" href="ontology">
-    Ontology axioms and SHACL constraints for logical reasoning.
-  </Card>
-  <Card title="Triplet Store" icon="table" href="triplet_store">
-    RDF backend for SPARQL-based reasoning.
-  </Card>
-  <Card title="Context" icon="brain" href="context">
-    Reasoning integrated into agent decision intelligence.
-  </Card>
-</CardGroup>
+- [Knowledge Graph](kg) — The knowledge graph being reasoned over.
+- [Ontology](ontology) — Ontology axioms and SHACL constraints for logical reasoning.
+- [Triplet Store](triplet_store) — RDF backend for SPARQL-based reasoning.
+- [Context](context) — Reasoning integrated into agent decision intelligence.

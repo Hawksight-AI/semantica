@@ -30,26 +30,12 @@ icon: "copy"
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="DuplicateDetector" icon="copy">
-    Pairwise, batch, incremental, and group detection modes. Returns scored candidates with reasons.
-  </Card>
-  <Card title="EntityMerger" icon="code-merge">
-    Five merge strategies: keep first, last, most complete, highest confidence, or merge all fields.
-  </Card>
-  <Card title="SimilarityCalculator" icon="equals">
-    Multi-factor scoring across string edit distance, property overlap, relationship overlap, and embeddings.
-  </Card>
-  <Card title="ClusterBuilder" icon="diagram-project">
-    Union-Find and hierarchical clustering for batch deduplication at scale: handles 100k+ entity sets.
-  </Card>
-  <Card title="MergeStrategyManager" icon="sliders">
-    Per-property merge rules with conflict resolution priorities. Apply different strategies to different fields.
-  </Card>
-  <Card title="v2 Strategies" icon="bolt">
-    `blocking_v2`, `hybrid_v2`, `semantic_v2`: up to 7× faster than v1 for large entity sets.
-  </Card>
-</CardGroup>
+- **DuplicateDetector** — Pairwise, batch, incremental, and group detection modes. Returns scored candidates with reasons.
+- **EntityMerger** — Five merge strategies: keep first, last, most complete, highest confidence, or merge all fields.
+- **SimilarityCalculator** — Multi-factor scoring across string edit distance, property overlap, relationship overlap, and embeddings.
+- **ClusterBuilder** — Union-Find and hierarchical clustering for batch deduplication at scale: handles 100k+ entity sets.
+- **MergeStrategyManager** — Per-property merge rules with conflict resolution priorities. Apply different strategies to different fields.
+- **v2 Strategies** — `blocking_v2`, `hybrid_v2`, `semantic_v2`: up to 7× faster than v1 for large entity sets.
 
 
 ## Getting Started
@@ -451,17 +437,7 @@ result = calculate_similarity(entity_a, entity_b, method="drug_name")
   </Tab>
 </Tabs>
 
-<CardGroup cols={2}>
-  <Card title="Conflicts" icon="triangle-exclamation" href="conflicts">
-    Detect value conflicts between non-duplicate entities.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    GraphBuilder uses deduplication during construction.
-  </Card>
-  <Card title="Normalize" icon="broom" href="normalize">
-    Normalize entity names before deduplication.
-  </Card>
-  <Card title="Provenance" icon="link" href="provenance">
-    Track merged entity lineage.
-  </Card>
-</CardGroup>
+- [Conflicts](conflicts) — Detect value conflicts between non-duplicate entities.
+- [Knowledge Graph](kg) — GraphBuilder uses deduplication during construction.
+- [Normalize](normalize) — Normalize entity names before deduplication.
+- [Provenance](provenance) — Track merged entity lineage.

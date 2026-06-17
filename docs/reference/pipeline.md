@@ -29,26 +29,12 @@ icon: "gear"
 
 You could wire Semantica modules together with plain Python code. Pipelines add:
 
-<CardGroup cols={2}>
-  <Card title="Retry and failure handling" icon="arrow-rotate-right">
-    A single bad document doesn't crash a 10,000-document run.
-  </Card>
-  <Card title="Parallelism" icon="bolt">
-    Run extraction across multiple workers with one parameter.
-  </Card>
-  <Card title="Progress tracking" icon="chart-line">
-    tqdm console bar or WebSocket streaming to Explorer.
-  </Card>
-  <Card title="Reproducibility" icon="floppy-disk">
-    Save the exact pipeline configuration to YAML and replay on any machine.
-  </Card>
-  <Card title="Delta mode" icon="code-compare">
-    On re-runs, only process documents that changed since the last run.
-  </Card>
-  <Card title="Validation" icon="shield-check">
-    Catch misconfigured steps and dependency cycles before they fail mid-run.
-  </Card>
-</CardGroup>
+- **Retry and failure handling** — A single bad document doesn't crash a 10,000-document run.
+- **Parallelism** — Run extraction across multiple workers with one parameter.
+- **Progress tracking** — tqdm console bar or WebSocket streaming to Explorer.
+- **Reproducibility** — Save the exact pipeline configuration to YAML and replay on any machine.
+- **Delta mode** — On re-runs, only process documents that changed since the last run.
+- **Validation** — Catch misconfigured steps and dependency cycles before they fail mid-run.
 
 <Note>
   Use plain module calls for quick scripts and notebooks. Use pipelines for anything you run repeatedly, at scale, or in production.
@@ -322,48 +308,33 @@ manager = PipelineTemplateManager()
 
 The `create_pipeline_from_template(name)` method returns a configured `PipelineBuilder`. Call `.build(pipeline_name)` on it to produce a runnable `Pipeline`.
 
-<CardGroup cols={2}>
-  <Card title="document_processing" icon="diagram-project">
-    **Ingest → Parse → Normalize → Extract → Embed → Build KG**
+- **document_processing** — **Ingest → Parse → Normalize → Extract → Embed → Build KG** — Complete document processing from ingestion to knowledge graph.
 
-    Complete document processing from ingestion to knowledge graph.
+  ```python
+  builder  = manager.create_pipeline_from_template("document_processing")
+  pipeline = builder.build("doc_pipeline")
+  ```
 
-    ```python
-    builder  = manager.create_pipeline_from_template("document_processing")
-    pipeline = builder.build("doc_pipeline")
-    ```
-  </Card>
-  <Card title="rag_pipeline" icon="magnifying-glass">
-    **Ingest → Chunk → Embed → Store Vectors**
+- **rag_pipeline** — **Ingest → Chunk → Embed → Store Vectors** — RAG pipeline for question answering: builds a vector-indexed store.
 
-    RAG pipeline for question answering: builds a vector-indexed store.
+  ```python
+  builder  = manager.create_pipeline_from_template("rag_pipeline")
+  pipeline = builder.build("rag_pipeline")
+  ```
 
-    ```python
-    builder  = manager.create_pipeline_from_template("rag_pipeline")
-    pipeline = builder.build("rag_pipeline")
-    ```
-  </Card>
-  <Card title="kg_construction" icon="chart-bar">
-    **Ingest → Extract Entities → Extract Relations → Dedup → Resolve → Build Graph**
+- **kg_construction** — **Ingest → Extract Entities → Extract Relations → Dedup → Resolve → Build Graph** — Knowledge graph construction from multiple sources.
 
-    Knowledge graph construction from multiple sources.
+  ```python
+  builder  = manager.create_pipeline_from_template("kg_construction")
+  pipeline = builder.build("kg_pipeline")
+  ```
 
-    ```python
-    builder  = manager.create_pipeline_from_template("kg_construction")
-    pipeline = builder.build("kg_pipeline")
-    ```
-  </Card>
-  <Card title="ontology_generation" icon="shield-check">
-    **Extract Concepts → Infer Classes → Infer Properties → Generate OWL → Validate**
+- **ontology_generation** — **Extract Concepts → Infer Classes → Infer Properties → Generate OWL → Validate** — Ontology generation from extracted data.
 
-    Ontology generation from extracted data.
-
-    ```python
-    builder  = manager.create_pipeline_from_template("ontology_generation")
-    pipeline = builder.build("ontology_pipeline")
-    ```
-  </Card>
-</CardGroup>
+  ```python
+  builder  = manager.create_pipeline_from_template("ontology_generation")
+  pipeline = builder.build("ontology_pipeline")
+  ```
 
 <Tip>
   **Use templates from `PipelineTemplateManager` for common patterns.** `create_pipeline_from_template("kg_construction")` wires normalization, deduplication, conflict detection, and graph construction in the correct order: saving you from common mistakes like deduplicating before normalizing.
@@ -583,17 +554,7 @@ StepStatus.SKIPPED    # Skipped due to FailureHandler "skip" strategy
   </Accordion>
 </AccordionGroup>
 
-<CardGroup cols={2}>
-  <Card title="Ingest" icon="database" href="ingest">
-    First step in most pipelines.
-  </Card>
-  <Card title="Semantic Extract" icon="magnifying-glass" href="semantic_extract">
-    Core extraction step.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    Graph construction step.
-  </Card>
-  <Card title="Export" icon="file-export" href="export">
-    Final output step.
-  </Card>
-</CardGroup>
+- [Ingest](ingest) — First step in most pipelines.
+- [Semantic Extract](semantic_extract) — Core extraction step.
+- [Knowledge Graph](kg) — Graph construction step.
+- [Export](export) — Final output step.

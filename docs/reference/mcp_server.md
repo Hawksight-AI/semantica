@@ -40,26 +40,12 @@ python -m semantica.mcp_server
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="12 MCP Tools" icon="wrench">
-    Extract entities, extract relations, record decisions, query decisions, find precedents, trace causal chains, add entities, add relationships, run analytics, summarise graph, run reasoning, export graph.
-  </Card>
-  <Card title="3 Readable Resources" icon="book-open">
-    Live graph JSON (`semantica://graph/summary`), decision list, and schema/version info: readable by any MCP client.
-  </Card>
-  <Card title="Zero Infrastructure" icon="bolt">
-    Runs over stdio: no server, no port, no Docker required. One config block to activate in any MCP client.
-  </Card>
-  <Card title="Persistent Graphs" icon="database">
-    Point `SEMANTICA_KG_PATH` at a saved graph file to reload it automatically on every server startup.
-  </Card>
-  <Card title="Decision Intelligence" icon="brain">
-    Record decisions, find precedents via hybrid similarity search, and trace causal chains across agent runs.
-  </Card>
-  <Card title="REST Alternative" icon="globe">
-    The [Explorer](explorer) module offers a full HTTP API and browser dashboard if you prefer programmatic access.
-  </Card>
-</CardGroup>
+- **12 MCP Tools** — Extract entities, extract relations, record decisions, query decisions, find precedents, trace causal chains, add entities, add relationships, run analytics, summarise graph, run reasoning, export graph.
+- **3 Readable Resources** — Live graph JSON (`semantica://graph/summary`), decision list, and schema/version info: readable by any MCP client.
+- **Zero Infrastructure** — Runs over stdio: no server, no port, no Docker required. One config block to activate in any MCP client.
+- **Persistent Graphs** — Point `SEMANTICA_KG_PATH` at a saved graph file to reload it automatically on every server startup.
+- **Decision Intelligence** — Record decisions, find precedents via hybrid similarity search, and trace causal chains across agent runs.
+- **REST Alternative** — The [Explorer](explorer) module offers a full HTTP API and browser dashboard if you prefer programmatic access.
 
 ## Installation
 
@@ -459,17 +445,7 @@ The MCP server exposes three readable resources:
 | `semantica://decisions/list` | All recorded decisions (up to 50) |
 | `semantica://schema/info` | Server version and available tools |
 
-<CardGroup cols={2}>
-  <Card title="Context" icon="brain" href="context">
-    The ContextGraph that the MCP server operates on.
-  </Card>
-  <Card title="Semantic Extract" icon="magnifying-glass" href="semantic_extract">
-    NER and relation extraction powering the MCP tools.
-  </Card>
-  <Card title="Reasoning" icon="microchip" href="reasoning">
-    Forward-chaining engine behind run_reasoning.
-  </Card>
-  <Card title="Agno Integration" icon="robot" href="../integrations/agno">
-    Use Semantica inside Agno multi-agent teams.
-  </Card>
-</CardGroup>
+- [Context](context) — The ContextGraph that the MCP server operates on.
+- [Semantic Extract](semantic_extract) — NER and relation extraction powering the MCP tools.
+- [Reasoning](reasoning) — Forward-chaining engine behind run_reasoning.
+- [Agno Integration](../integrations/agno) — Use Semantica inside Agno multi-agent teams.

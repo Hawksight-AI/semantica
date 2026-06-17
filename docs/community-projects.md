@@ -114,17 +114,7 @@ See [Architecture](architecture#extension-points) for the full extension guide.
 
 ## How to Contribute
 
-<CardGroup cols={2}>
-  <Card title="Contributing Guide" icon="code-pull-request" href="contributing-guide">
-    Submit code, documentation, tests, or cookbook notebooks.
-  </Card>
-  <Card title="GitHub Issues" icon="circle-dot" href="https://github.com/semantica-agi/semantica/issues">
-    Report bugs, request features, or propose integrations.
-  </Card>
-  <Card title="Discord" icon="discord" href="https://discord.gg/sV34vps5hH">
-    Share what you're building with the community.
-  </Card>
-  <Card title="GitHub Discussions" icon="comments" href="https://github.com/semantica-agi/semantica/discussions">
-    Long-form questions, design discussions, and ideas.
-  </Card>
-</CardGroup>
+- [Contributing Guide](contributing-guide) — Submit code, documentation, tests, or cookbook notebooks.
+- [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — Report bugs, request features, or propose integrations.
+- [Discord](https://discord.gg/sV34vps5hH) — Share what you're building with the community.
+- [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions) — Long-form questions, design discussions, and ideas.

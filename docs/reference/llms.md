@@ -439,17 +439,7 @@ extractor = NERExtractor(
 )
 ```
 
-<CardGroup cols={2}>
-  <Card title="Semantic Extract" icon="magnifying-glass" href="semantic_extract">
-    Use LLMs for NER and relation extraction.
-  </Card>
-  <Card title="Agno Integration" icon="robot" href="../integrations/agno">
-    LLM providers in Agno multi-agent teams.
-  </Card>
-  <Card title="Reasoning" icon="brain" href="reasoning">
-    LLM-backed deductive and abductive reasoning.
-  </Card>
-  <Card title="Context" icon="diagram-project" href="context">
-    GraphRAG uses LLMs for reasoning over knowledge graphs.
-  </Card>
-</CardGroup>
+- [Semantic Extract](semantic_extract) — Use LLMs for NER and relation extraction.
+- [Agno Integration](../integrations/agno) — LLM providers in Agno multi-agent teams.
+- [Reasoning](reasoning) — LLM-backed deductive and abductive reasoning.
+- [Context](context) — GraphRAG uses LLMs for reasoning over knowledge graphs.

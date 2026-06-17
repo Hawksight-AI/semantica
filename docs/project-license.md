@@ -76,11 +76,5 @@ By contributing to Semantica, you agree that your contributions will be licensed
 
 ## See Also
 
-<CardGroup cols={2}>
-  <Card title="Contributing" icon="code-pull-request" href="contributing-guide">
-    How to contribute to the project.
-  </Card>
-  <Card title="Citation" icon="quote-left" href="citation">
-    How to cite Semantica in research.
-  </Card>
-</CardGroup>
+- [Contributing](contributing-guide) — How to contribute to the project.
+- [Citation](citation) — How to cite Semantica in research.

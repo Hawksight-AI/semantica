@@ -584,17 +584,7 @@ normalized = normalize_text("Apple Inc.", method="expand_suffixes")
 # → "Apple Incorporated"
 ```
 
-<CardGroup cols={2}>
-  <Card title="Parse" icon="file-lines" href="parse">
-    Parse documents before normalization.
-  </Card>
-  <Card title="Split" icon="scissors" href="split">
-    Chunk normalized text for embedding.
-  </Card>
-  <Card title="Deduplication" icon="copy" href="deduplication">
-    Resolve duplicate entities after normalization.
-  </Card>
-  <Card title="Pipeline" icon="gear" href="pipeline">
-    Include normalization as a named pipeline step.
-  </Card>
-</CardGroup>
+- [Parse](parse) — Parse documents before normalization.
+- [Split](split) — Chunk normalized text for embedding.
+- [Deduplication](deduplication) — Resolve duplicate entities after normalization.
+- [Pipeline](pipeline) — Include normalization as a named pipeline step.

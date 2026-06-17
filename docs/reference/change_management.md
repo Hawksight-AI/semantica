@@ -30,26 +30,12 @@ icon: "clock-rotate-left"
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="TemporalVersionManager" icon="code-branch">
-    Snapshot, diff, rollback, and per-entity audit trail for knowledge graphs.
-  </Card>
-  <Card title="OntologyVersionManager" icon="sitemap">
-    Version control for OWL ontologies with diff and schema migration support.
-  </Card>
-  <Card title="VersionStorage" icon="database">
-    Pluggable backends: `InMemoryVersionStorage` for tests, `SQLiteVersionStorage` for production.
-  </Card>
-  <Card title="Integrity Verification" icon="shield-check">
-    SHA-256 checksums on every snapshot to detect any unauthorised modification.
-  </Card>
-  <Card title="ChangeLogEntry" icon="list-check">
-    Internal metadata validated on every snapshot: ISO 8601 timestamp, email author, and description (max 500 chars).
-  </Card>
-  <Card title="Version History" icon="file-shield">
-    Full tamper-evident version history via `list_versions()` and `diff()` for regulatory review.
-  </Card>
-</CardGroup>
+- **TemporalVersionManager** — Snapshot, diff, rollback, and per-entity audit trail for knowledge graphs.
+- **OntologyVersionManager** — Version control for OWL ontologies with diff and schema migration support.
+- **VersionStorage** — Pluggable backends: `InMemoryVersionStorage` for tests, `SQLiteVersionStorage` for production.
+- **Integrity Verification** — SHA-256 checksums on every snapshot to detect any unauthorised modification.
+- **ChangeLogEntry** — Internal metadata validated on every snapshot: ISO 8601 timestamp, email author, and description (max 500 chars).
+- **Version History** — Full tamper-evident version history via `list_versions()` and `diff()` for regulatory review.
 
 ## Typical Workflow
 
@@ -364,17 +350,7 @@ for record in history:
   </Accordion>
 </AccordionGroup>
 
-<CardGroup cols={2}>
-  <Card title="Provenance" icon="link" href="provenance">
-    W3C PROV-O lineage tracking.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    The graph being versioned.
-  </Card>
-  <Card title="Export" icon="file-export" href="export">
-    Export versioned snapshots.
-  </Card>
-  <Card title="Conflicts" icon="triangle-exclamation" href="conflicts">
-    Detect conflicts introduced between versions.
-  </Card>
-</CardGroup>
+- [Provenance](provenance) — W3C PROV-O lineage tracking.
+- [Knowledge Graph](kg) — The graph being versioned.
+- [Export](export) — Export versioned snapshots.
+- [Conflicts](conflicts) — Detect conflicts introduced between versions.

@@ -41,26 +41,12 @@ Semantica uses embeddings for:
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="EmbeddingGenerator" icon="vector-square">
-    Main entry point: provider-agnostic, handles batching automatically across all backends.
-  </Card>
-  <Card title="TextEmbedder" icon="text-size">
-    Text-specific with automatic batching and progress tracking. Default method is FastEmbed.
-  </Card>
-  <Card title="GraphEmbeddingManager" icon="diagram-project">
-    Node and edge embeddings for graph databases: Neo4j, NetworkX, FalkorDB.
-  </Card>
-  <Card title="VectorEmbeddingManager" icon="database">
-    Prepare, normalize, and format embeddings for FAISS, Weaviate, Qdrant, and Milvus.
-  </Card>
-  <Card title="Provider Stores" icon="plug">
-    `OpenAIStore`, `BGEStore`, `FastEmbedStore`, and `ProviderStoreFactory`.
-  </Card>
-  <Card title="Pooling Strategies" icon="layer-group">
-    Mean, Max, CLS, Attention, and Hierarchical: control token-to-vector aggregation.
-  </Card>
-</CardGroup>
+- **EmbeddingGenerator** — Main entry point: provider-agnostic, handles batching automatically across all backends.
+- **TextEmbedder** — Text-specific with automatic batching and progress tracking. Default method is FastEmbed.
+- **GraphEmbeddingManager** — Node and edge embeddings for graph databases: Neo4j, NetworkX, FalkorDB.
+- **VectorEmbeddingManager** — Prepare, normalize, and format embeddings for FAISS, Weaviate, Qdrant, and Milvus.
+- **Provider Stores** — `OpenAIStore`, `BGEStore`, `FastEmbedStore`, and `ProviderStoreFactory`.
+- **Pooling Strategies** — Mean, Max, CLS, Attention, and Hierarchical: control token-to-vector aggregation.
 
 ## Provider Setup
 
@@ -633,17 +619,7 @@ providers = check_available_providers()
 # → {"sentence_transformers": True, "fastembed": True, "openai": False}
 ```
 
-<CardGroup cols={2}>
-  <Card title="Vector Store" icon="database" href="vector_store">
-    Store and search the generated embeddings.
-  </Card>
-  <Card title="Split" icon="scissors" href="split">
-    Chunk text before embedding for better retrieval quality.
-  </Card>
-  <Card title="KG Module" icon="diagram-project" href="kg">
-    Distance Intelligence uses graph embeddings for semantic neighbourhoods.
-  </Card>
-  <Card title="Deduplication" icon="copy" href="deduplication">
-    Semantic deduplication uses embedding distance for entity resolution.
-  </Card>
-</CardGroup>
+- [Vector Store](vector_store) — Store and search the generated embeddings.
+- [Split](split) — Chunk text before embedding for better retrieval quality.
+- [KG Module](kg) — Distance Intelligence uses graph embeddings for semantic neighbourhoods.
+- [Deduplication](deduplication) — Semantic deduplication uses embedding distance for entity resolution.

@@ -36,26 +36,12 @@ Most users won't call utils directly: it's the **shared foundation** for all mod
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="Logging" icon="scroll">
-    Structured logging with `@log_execution_time` decorator and quality metrics via environment variables.
-  </Card>
-  <Card title="Validation" icon="shield-check">
-    `validate_entity` and `validate_config` with a typed `ValidationError` carrying field and value context.
-  </Card>
-  <Card title="Progress Tracking" icon="bars-progress">
-    `track_progress` wraps any iterable: auto-detects console vs Jupyter for the right renderer.
-  </Card>
-  <Card title="Helper Functions" icon="wrench">
-    `clean_text`, `hash_data`, `safe_filename`, and nested dict utilities used throughout the framework.
-  </Card>
-  <Card title="Exception Hierarchy" icon="triangle-exclamation">
-    `SemanticaError` → `ValidationError`, `ProcessingError`: typed exceptions for targeted recovery.
-  </Card>
-  <Card title="File Utilities" icon="file">
-    `read_json_file` raises `FileNotFoundError` or `json.JSONDecodeError` on failure: no boilerplate try/except around JSON I/O.
-  </Card>
-</CardGroup>
+- **Logging** — Structured logging with `@log_execution_time` decorator and quality metrics via environment variables.
+- **Validation** — `validate_entity` and `validate_config` with a typed `ValidationError` carrying field and value context.
+- **Progress Tracking** — `track_progress` wraps any iterable: auto-detects console vs Jupyter for the right renderer.
+- **Helper Functions** — `clean_text`, `hash_data`, `safe_filename`, and nested dict utilities used throughout the framework.
+- **Exception Hierarchy** — `SemanticaError` → `ValidationError`, `ProcessingError`: typed exceptions for targeted recovery.
+- **File Utilities** — `read_json_file` raises `FileNotFoundError` or `json.JSONDecodeError` on failure: no boilerplate try/except around JSON I/O.
 
 ## Logging
 
@@ -226,11 +212,5 @@ from semantica.utils import read_json_file
 config = read_json_file("config.json")
 ```
 
-<CardGroup cols={2}>
-  <Card title="Core" icon="gear" href="core">
-    Framework orchestration that uses Utils internally.
-  </Card>
-  <Card title="Pipeline" icon="arrows-turn-to-dots" href="pipeline">
-    Uses ProgressTracker for per-step tracking.
-  </Card>
-</CardGroup>
+- [Core](core) — Framework orchestration that uses Utils internally.
+- [Pipeline](pipeline) — Uses ProgressTracker for per-step tracking.

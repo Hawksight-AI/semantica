@@ -11,20 +11,10 @@ icon: "file-lines"
 
 Docling is integrated into Semantica's `parse` module via the **`DoclingParser`**. Documents pass through Docling's **layout engine**, then feed directly into Semantica's extraction and KG pipeline.
 
-<CardGroup cols={2}>
-  <Card title="Multi-format" icon="file">
-    PDF, DOCX, PPTX, HTML, and more.
-  </Card>
-  <Card title="Table Extraction" icon="table">
-    High-fidelity table parsing with header detection.
-  </Card>
-  <Card title="OCR Support" icon="eye">
-    Built-in OCR for scanned documents.
-  </Card>
-  <Card title="Markdown Export" icon="markdown">
-    Clean Markdown output optimized for LLM consumption.
-  </Card>
-</CardGroup>
+- **Multi-format** — PDF, DOCX, PPTX, HTML, and more.
+- **Table Extraction** — High-fidelity table parsing with header detection.
+- **OCR Support** — Built-in OCR for scanned documents.
+- **Markdown Export** — Clean Markdown output optimized for LLM consumption.
 
 
 ## Installation
@@ -100,17 +90,7 @@ print(f"Pages: {result.get('total_pages')}")
 
 ## See Also
 
-<CardGroup cols={2}>
-  <Card title="Parse Module" icon="file-lines" href="../reference/parse">
-    Full DocumentParser and DoclingParser reference.
-  </Card>
-  <Card title="Ingest Module" icon="file-import" href="../reference/ingest">
-    Loading documents before parsing.
-  </Card>
-  <Card title="Semantic Extract" icon="magnifying-glass" href="../reference/semantic_extract">
-    NER and relation extraction on parsed text.
-  </Card>
-  <Card title="Pipeline" icon="gear" href="../reference/pipeline">
-    Using DoclingParser in a full pipeline.
-  </Card>
-</CardGroup>
+- [Parse Module](../reference/parse) — Full DocumentParser and DoclingParser reference.
+- [Ingest Module](../reference/ingest) — Loading documents before parsing.
+- [Semantic Extract](../reference/semantic_extract) — NER and relation extraction on parsed text.
+- [Pipeline](../reference/pipeline) — Using DoclingParser in a full pipeline.

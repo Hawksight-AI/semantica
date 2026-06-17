@@ -410,17 +410,7 @@ triplets      = trip.extract(text)
 | `ml` | Fast | Free | High | Limited |
 | `llm` | Medium | API cost | Highest | Yes (schema) |
 
-<CardGroup cols={2}>
-  <Card title="LLM Providers" icon="microchip" href="llms">
-    Configure which LLM is used for extraction.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    Build graphs from extracted entities and relationships.
-  </Card>
-  <Card title="Parse Module" icon="file-lines" href="parse">
-    Parse documents before extraction.
-  </Card>
-  <Card title="Deduplication" icon="copy" href="deduplication">
-    Resolve duplicate entities after extraction.
-  </Card>
-</CardGroup>
+- [LLM Providers](llms) — Configure which LLM is used for extraction.
+- [Knowledge Graph](kg) — Build graphs from extracted entities and relationships.
+- [Parse Module](parse) — Parse documents before extraction.
+- [Deduplication](deduplication) — Resolve duplicate entities after extraction.

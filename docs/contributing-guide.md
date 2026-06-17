@@ -22,20 +22,10 @@ New to the project? Start with [`good-first-issue`](https://github.com/semantica
 
 ## Ways to Contribute
 
-<CardGroup cols={2}>
-  <Card title="Code" icon="code">
-    Fix bugs, implement features, optimize performance, or add new ingestors, parsers, and exporters using the plugin registry.
-  </Card>
-  <Card title="Documentation" icon="book">
-    Fix typos, improve clarity, add missing examples, write tutorials, or keep the API reference accurate as modules evolve.
-  </Card>
-  <Card title="Testing" icon="flask">
-    Add test coverage for untested modules or edge cases, reproduce reported bugs with minimal repros, or improve cross-platform reliability.
-  </Card>
-  <Card title="Community" icon="users">
-    Answer questions in GitHub Issues and Discussions, review pull requests with constructive feedback, or share Semantica in blog posts and talks.
-  </Card>
-</CardGroup>
+- **Code** — Fix bugs, implement features, optimize performance, or add new ingestors, parsers, and exporters using the plugin registry.
+- **Documentation** — Fix typos, improve clarity, add missing examples, write tutorials, or keep the API reference accurate as modules evolve.
+- **Testing** — Add test coverage for untested modules or edge cases, reproduce reported bugs with minimal repros, or improve cross-platform reliability.
+- **Community** — Answer questions in GitHub Issues and Discussions, review pull requests with constructive feedback, or share Semantica in blog posts and talks.
 
 
 ## Development Setup
@@ -95,11 +85,5 @@ All contributors are expected to follow the [Contributor Covenant Code of Conduc
 - [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions)
 - [Discord](https://discord.gg/sV34vps5hH)
 
-<CardGroup cols={2}>
-  <Card title="Community" icon="users" href="community">
-    Community guidelines and values.
-  </Card>
-  <Card title="Governance" icon="scale-balanced" href="governance">
-    How decisions are made and the project is run.
-  </Card>
-</CardGroup>
+- [Community](community) — Community guidelines and values.
+- [Governance](governance) — How decisions are made and the project is run.

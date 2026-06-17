@@ -115,26 +115,12 @@ EXPLORER_CORS_ORIGINS="http://myapp.example.com" \
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="Graph Explorer" icon="diagram-project">
-    Interactive node/edge search, path finding, and neighborhood expansion. Indexed search at 0.004ms on 118k-node graphs.
-  </Card>
-  <Card title="Ontology Hub" icon="sitemap">
-    SKOS vocabulary management, SHACL shape generation and validation, ontology alignment, health dashboard, and versioning.
-  </Card>
-  <Card title="Analytics" icon="chart-line">
-    Degree centrality, community detection, connectivity analysis, graph validation, and distance matrices.
-  </Card>
-  <Card title="REST API" icon="code">
-    All features available as a REST API: fully documented at `/docs`.
-  </Card>
-  <Card title="WebSocket Updates" icon="bolt">
-    Real-time graph mutation events streamed over WebSocket at `/ws/graph-updates`.
-  </Card>
-  <Card title="CLI Launcher" icon="terminal">
-    `semantica-explorer --graph my_graph.json` for instant local startup.
-  </Card>
-</CardGroup>
+- **Graph Explorer** — Interactive node/edge search, path finding, and neighborhood expansion. Indexed search at 0.004ms on 118k-node graphs.
+- **Ontology Hub** — SKOS vocabulary management, SHACL shape generation and validation, ontology alignment, health dashboard, and versioning.
+- **Analytics** — Degree centrality, community detection, connectivity analysis, graph validation, and distance matrices.
+- **REST API** — All features available as a REST API: fully documented at `/docs`.
+- **WebSocket Updates** — Real-time graph mutation events streamed over WebSocket at `/ws/graph-updates`.
+- **CLI Launcher** — `semantica-explorer --graph my_graph.json` for instant local startup.
 
 ## Features
 
@@ -412,17 +398,7 @@ Semantic neighborhood requires node embeddings stored in node properties (keys `
 **Session state lost after restart**
 Session state is in-memory only. Use `POST /api/export` to save a JSON snapshot before shutting down.
 
-<CardGroup cols={2}>
-  <Card title="Context" icon="brain" href="context">
-    Build and save the ContextGraph that Explorer loads.
-  </Card>
-  <Card title="Ontology" icon="sitemap" href="ontology">
-    Programmatic ontology management and SHACL generation.
-  </Card>
-  <Card title="Visualization" icon="chart-bar" href="visualization">
-    Programmatic graph rendering without the Explorer server.
-  </Card>
-  <Card title="Export" icon="file-export" href="export">
-    Export to RDF, Parquet, and other formats without launching a server.
-  </Card>
-</CardGroup>
+- [Context](context) — Build and save the ContextGraph that Explorer loads.
+- [Ontology](ontology) — Programmatic ontology management and SHACL generation.
+- [Visualization](visualization) — Programmatic graph rendering without the Explorer server.
+- [Export](export) — Export to RDF, Parquet, and other formats without launching a server.

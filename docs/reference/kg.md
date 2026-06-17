@@ -316,20 +316,10 @@ kg:
     default_validity: infinite
 ```
 
-<CardGroup cols={2}>
-  <Card title="Graph Store" icon="server" href="graph_store">
-    Persist graphs in Neo4j, FalkorDB, or Apache AGE.
-  </Card>
-  <Card title="Semantic Extract" icon="magnifying-glass" href="semantic_extract">
-    Source of entities and relationships fed to GraphBuilder.
-  </Card>
-  <Card title="Visualization" icon="chart-bar" href="visualization">
-    Visualize knowledge graphs interactively.
-  </Card>
-  <Card title="Conflicts" icon="triangle-exclamation" href="conflicts">
-    Conflict detection and resolution.
-  </Card>
-</CardGroup>
+- [Graph Store](graph_store) — Persist graphs in Neo4j, FalkorDB, or Apache AGE.
+- [Semantic Extract](semantic_extract) — Source of entities and relationships fed to GraphBuilder.
+- [Visualization](visualization) — Visualize knowledge graphs interactively.
+- [Conflicts](conflicts) — Conflict detection and resolution.
 
 ### Cookbooks
 

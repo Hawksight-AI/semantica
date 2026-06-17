@@ -12,26 +12,12 @@ Semantica is organized into **27 modules** across six logical layers. Each modul
 
 ## Architecture Overview
 
-<CardGroup cols={3}>
-  <Card title="Input Layer" icon="database">
-    Data ingestion and preparation. **Modules:** Ingest, Parse, Split, Normalize
-  </Card>
-  <Card title="Core Processing" icon="microchip">
-    Intelligence and understanding. **Modules:** Semantic Extract, KG, Ontology, Reasoning
-  </Card>
-  <Card title="Storage" icon="hard-drive">
-    Persistent data storage. **Modules:** Embeddings, Vector Store, Graph Store, Triplet Store
-  </Card>
-  <Card title="Quality Assurance" icon="check-circle">
-    Data quality and consistency. **Modules:** Deduplication, Conflicts
-  </Card>
-  <Card title="Context & Memory" icon="brain">
-    Agent memory and decision tracking. **Modules:** Context, Provenance, Change Management
-  </Card>
-  <Card title="Output & Orchestration" icon="share-nodes">
-    Export, visualization, and workflows. **Modules:** Export, Visualization, Pipeline, Explorer
-  </Card>
-</CardGroup>
+- **Input Layer** — Data ingestion and preparation. Modules: `ingest`, `parse`, `split`, `normalize`
+- **Core Processing** — Intelligence and understanding. Modules: `semantic_extract`, `kg`, `ontology`, `reasoning`
+- **Storage** — Persistent data storage. Modules: `embeddings`, `vector_store`, `graph_store`, `triplet_store`
+- **Quality Assurance** — Data quality and consistency. Modules: `deduplication`, `conflicts`
+- **Context & Memory** — Agent memory and decision tracking. Modules: `context`, `provenance`, `change_management`
+- **Output & Orchestration** — Export, visualization, and workflows. Modules: `export`, `visualization`, `pipeline`, `explorer`
 
 
 ## Input Layer
@@ -712,14 +698,6 @@ versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description=
 | [core](reference/core) | Base classes & registry | `Semantica`, `ConfigManager`, `PluginRegistry`, `LifecycleManager` |
 | [utils](reference/utils) | Shared utilities | `helpers`, `validators` |
 
-<CardGroup cols={2}>
-  <Card title="Getting Started" icon="rocket" href="getting-started">
-    Your first knowledge graph in 5 minutes.
-  </Card>
-  <Card title="Cookbook" icon="flask" href="cookbook">
-    40+ domain notebooks with real-world examples.
-  </Card>
-  <Card title="API Reference" icon="code" href="reference/context">
-    Full technical documentation.
-  </Card>
-</CardGroup>
+- [Getting Started](getting-started) — Your first knowledge graph in 5 minutes.
+- [Cookbook](cookbook) — 40+ domain notebooks with real-world examples.
+- [API Reference](reference/context) — Full technical documentation.

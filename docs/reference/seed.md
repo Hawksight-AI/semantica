@@ -23,26 +23,12 @@ icon: "database"
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="SeedDataManager" icon="database">
-    Register sources, build a foundation graph, validate quality, and merge with extracted data.
-  </Card>
-  <Card title="SeedDataSource" icon="file-code">
-    Typed source definition supporting CSV, JSON, SQL, and API with format-specific config.
-  </Card>
-  <Card title="Foundation Graph" icon="circle-plus">
-    Build a foundation graph from all registered sources in one pass, ready to merge with extracted data.
-  </Card>
-  <Card title="Merge Strategies" icon="arrows-merge">
-    `seed_first`, `extracted_first`, and `merge` with property-level conflict detection.
-  </Card>
-  <Card title="Validation" icon="shield-check">
-    Required field checks, ID uniqueness, type consistency, reference integrity, and encoding validation before loading.
-  </Card>
-  <Card title="Versioning" icon="clock-rotate-left">
-    Track seed data versions across pipeline runs and diff changes between versions.
-  </Card>
-</CardGroup>
+- **SeedDataManager** — Register sources, build a foundation graph, validate quality, and merge with extracted data.
+- **SeedDataSource** — Typed source definition supporting CSV, JSON, SQL, and API with format-specific config.
+- **Foundation Graph** — Build a foundation graph from all registered sources in one pass, ready to merge with extracted data.
+- **Merge Strategies** — `seed_first`, `extracted_first`, and `merge` with property-level conflict detection.
+- **Validation** — Required field checks, ID uniqueness, type consistency, reference integrity, and encoding validation before loading.
+- **Versioning** — Track seed data versions across pipeline runs and diff changes between versions.
 
 <Tip>
   **When to use the Seed Module:** Bootstrapping with structured reference data (taxonomies, user lists, product catalogs), loading immutable facts (ISO country codes, standard ontology terms) that extracted data should not override, ensuring test reproducibility with deterministic datasets, and anchoring entity disambiguation with canonical forms.
@@ -335,17 +321,7 @@ export SEMANTICA_SEED_MERGE_STRATEGY=seed_first
   **Use YAML configuration for production deployments.** Hard-coding source paths in Python scripts makes environment-switching (dev → staging → prod) fragile. Declare sources in `config.yaml` under the `seed:` key and override paths with `SEMANTICA_SEED_DATA_DIR`. This way, the same code runs in every environment.
 </Tip>
 
-<CardGroup cols={2}>
-  <Card title="Ingest" icon="file-import" href="ingest">
-    Load unstructured data alongside seed data.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    The target graph that seed data populates.
-  </Card>
-  <Card title="Deduplication" icon="copy" href="deduplication">
-    Handle duplicates during seed-extracted merge.
-  </Card>
-  <Card title="Pipeline" icon="gear" href="pipeline">
-    Incorporate seed loading as a named pipeline step.
-  </Card>
-</CardGroup>
+- [Ingest](ingest) — Load unstructured data alongside seed data.
+- [Knowledge Graph](kg) — The target graph that seed data populates.
+- [Deduplication](deduplication) — Handle duplicates during seed-extracted merge.
+- [Pipeline](pipeline) — Incorporate seed loading as a named pipeline step.

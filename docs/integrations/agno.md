@@ -24,23 +24,11 @@ pip install "semantica[agno,graph-neo4j,vectorstore-pgvector]"
 
 ## Components at a Glance
 
-<CardGroup cols={2}>
-  <Card title="AgnoContextStore" icon="database">
-    `AgentMemory(db=…)`: Replaces Agno's flat storage with hybrid vector + context graph memory. Adds decision tracking and precedent search to any agent.
-  </Card>
-  <Card title="AgnoKnowledgeGraph" icon="diagram-project">
-    `Agent(knowledge=…)`: Documents flow through the full Semantica extraction pipeline into a queryable `ContextGraph` with multi-hop GraphRAG.
-  </Card>
-  <Card title="AgnoDecisionKit" icon="list-check">
-    `Agent(tools=[…])`: 6 decision intelligence tools: record decisions, find precedents, trace causal chains, analyze impact, check policies, summarize history.
-  </Card>
-  <Card title="AgnoKGToolkit" icon="wrench">
-    `Agent(tools=[…])`: 7 KG construction tools: extract entities, extract relations, add to graph, query graph, find related, infer facts, export subgraph.
-  </Card>
-  <Card title="AgnoSharedContext" icon="users">
-    Team-level: A single `ContextGraph` shared across all agents. Each agent gets a role-scoped view via `bind_agent()`. Writes are tagged by role.
-  </Card>
-</CardGroup>
+- **AgnoContextStore** — `AgentMemory(db=…)`: Replaces Agno's flat storage with hybrid vector + context graph memory. Adds decision tracking and precedent search to any agent.
+- **AgnoKnowledgeGraph** — `Agent(knowledge=…)`: Documents flow through the full Semantica extraction pipeline into a queryable `ContextGraph` with multi-hop GraphRAG.
+- **AgnoDecisionKit** — `Agent(tools=[…])`: 6 decision intelligence tools: record decisions, find precedents, trace causal chains, analyze impact, check policies, summarize history.
+- **AgnoKGToolkit** — `Agent(tools=[…])`: 7 KG construction tools: extract entities, extract relations, add to graph, query graph, find related, infer facts, export subgraph.
+- **AgnoSharedContext** — Team-level: A single `ContextGraph` shared across all agents. Each agent gets a role-scoped view via `bind_agent()`. Writes are tagged by role.
 
 
 ## Component Details
@@ -233,17 +221,7 @@ All five classes are usable without `agno` installed: they carry the full Semant
 
 ## See Also
 
-<CardGroup cols={2}>
-  <Card title="Context Module" icon="brain" href="../reference/context">
-    AgentContext and ContextGraph backing the integration.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="../reference/kg">
-    KG construction used by AgnoKnowledgeGraph.
-  </Card>
-  <Card title="LLMs" icon="microchip" href="../reference/llms">
-    Configure LLM providers for Agno agents.
-  </Card>
-  <Card title="Vector Store" icon="vector-square" href="../reference/vector_store">
-    Vector backend for AgnoContextStore.
-  </Card>
-</CardGroup>
+- [Context Module](../reference/context) — AgentContext and ContextGraph backing the integration.
+- [Knowledge Graph](../reference/kg) — KG construction used by AgnoKnowledgeGraph.
+- [LLMs](../reference/llms) — Configure LLM providers for Agno agents.
+- [Vector Store](../reference/vector_store) — Vector backend for AgnoContextStore.

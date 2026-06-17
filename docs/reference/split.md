@@ -51,23 +51,11 @@ Semantica's chunking methods are designed to avoid these failure modes.
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="TextSplitter" icon="scissors">
-    Unified interface for 11 chunking strategies: swap methods without changing downstream code.
-  </Card>
-  <Card title="Semantic Chunking" icon="brain">
-    Embedding-based topic shift detection: splits only when the topic actually changes.
-  </Card>
-  <Card title="Entity-Aware Chunking" icon="user">
-    Entity spans never cross chunk boundaries: guaranteed by boundary adjustment.
-  </Card>
-  <Card title="Relation-Aware Chunking" icon="arrows-left-right">
-    Subject–predicate–object triplets kept within a single chunk for KG pipelines.
-  </Card>
-  <Card title="Chunk Object" icon="box">
-    Output dataclass with text, character offsets, optional id, and method-specific metadata.
-  </Card>
-</CardGroup>
+- **TextSplitter** — Unified interface for 11 chunking strategies: swap methods without changing downstream code.
+- **Semantic Chunking** — Embedding-based topic shift detection: splits only when the topic actually changes.
+- **Entity-Aware Chunking** — Entity spans never cross chunk boundaries: guaranteed by boundary adjustment.
+- **Relation-Aware Chunking** — Subject–predicate–object triplets kept within a single chunk for KG pipelines.
+- **Chunk Object** — Output dataclass with text, character offsets, optional id, and method-specific metadata.
 
 ## Quick Start
 
@@ -385,17 +373,7 @@ for chunk in chunks:
 
 For the full pipeline orchestration API, see the [Pipeline reference](pipeline).
 
-<CardGroup cols={2}>
-  <Card title="Parse" icon="file-lines" href="parse">
-    Parse documents before chunking: produces sections and metadata.
-  </Card>
-  <Card title="Embeddings" icon="vector-square" href="embeddings">
-    Embed chunks for vector search and semantic chunking.
-  </Card>
-  <Card title="Semantic Extract" icon="magnifying-glass" href="semantic_extract">
-    Extract entities and relations from individual chunks.
-  </Card>
-  <Card title="Pipeline" icon="gear" href="pipeline">
-    Integrate splitting as a named pipeline step.
-  </Card>
-</CardGroup>
+- [Parse](parse) — Parse documents before chunking: produces sections and metadata.
+- [Embeddings](embeddings) — Embed chunks for vector search and semantic chunking.
+- [Semantic Extract](semantic_extract) — Extract entities and relations from individual chunks.
+- [Pipeline](pipeline) — Integrate splitting as a named pipeline step.

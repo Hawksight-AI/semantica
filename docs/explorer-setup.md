@@ -264,17 +264,7 @@ Once running, Explorer exposes a REST API and dashboard for:
 
 The full endpoint catalogue is documented in the Swagger UI at `/docs` and in the reference page below.
 
-<CardGroup cols={2}>
-  <Card title="Explorer Reference" icon="book-open" href="reference/explorer">
-    Every REST endpoint, WebSocket events, analytics, and all supported flags.
-  </Card>
-  <Card title="CLI Setup" icon="terminal" href="cli-setup">
-    All five Semantica executables and when to use each one.
-  </Card>
-  <Card title="Context Module" icon="brain" href="reference/context">
-    Full documentation for ContextGraph: build, query, save, and load.
-  </Card>
-  <Card title="Quickstart" icon="rocket" href="quickstart">
-    End-to-end pipeline: ingest → extract → build graph → export.
-  </Card>
-</CardGroup>
+- [Explorer Reference](reference/explorer) — Every REST endpoint, WebSocket events, analytics, and all supported flags.
+- [CLI Setup](cli-setup) — All five Semantica executables and when to use each one.
+- [Context Module](reference/context) — Full documentation for ContextGraph: build, query, save, and load.
+- [Quickstart](quickstart) — End-to-end pipeline: ingest → extract → build graph → export.

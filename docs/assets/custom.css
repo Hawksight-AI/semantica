@@ -110,6 +110,47 @@ nav a,
 }
 
 /* ============================================================
+   BULLET POINTS — cursor-animated hover (premium feel)
+   ============================================================ */
+ul > li,
+ol > li {
+  position: relative;
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.15s ease;
+  border-radius: 4px;
+  cursor: default;
+}
+
+ul > li:hover,
+ol > li:hover {
+  background-color: rgba(16, 185, 129, 0.06);
+  box-shadow: inset 3px 0 0 #10B981;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Animate the bullet marker green on hover */
+ul > li:hover::marker,
+ol > li:hover::marker {
+  color: #10B981;
+}
+
+/* Slide-in left accent bar for nested lists */
+ul > li > ul > li:hover,
+ol > li > ul > li:hover {
+  background-color: rgba(16, 185, 129, 0.04);
+  box-shadow: inset 2px 0 0 rgba(16, 185, 129, 0.6);
+}
+
+/* Strong text inside list items — subtle green tint on parent hover */
+ul > li:hover > strong,
+ol > li:hover > strong {
+  color: #10B981;
+  transition: color 0.15s ease;
+}
+
+/* ============================================================
    HIDE THEME TOGGLE (moon / sun emoji button)
    ============================================================ */
 button[aria-label="Switch to light mode"],

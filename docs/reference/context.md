@@ -29,48 +29,30 @@ icon: "brain"
 
 ## What You Get
 
-<CardGroup cols={2}>
-  <Card title="AgentContext" icon="brain">
-    - Memory, decision tracking, and graph-backed retrieval behind one API
-    - Conversation history and checkpoint diffing
-    - Persist and restore full context state to disk
-  </Card>
-  <Card title="ContextGraph" icon="diagram-project">
-    - Thread-safe in-memory knowledge graph
-    - PageRank, centrality, community detection, temporal validity
-    - Cross-graph navigation and link traversal
-  </Card>
-  <Card title="AgentMemory" icon="database">
-    - Embedding-backed memory with retention policy
-    - LRU eviction at configurable `max_memory_size`
-    - Per-conversation history isolation
-  </Card>
-  <Card title="DecisionRecorder" icon="list-check">
-    - Records decisions with causal chains and confidence scores
-    - Temporal validity windows (`valid_from` / `valid_until`)
-    - Cross-system context capture on every decision
-  </Card>
-  <Card title="PolicyEngine" icon="shield-check">
-    - Versioned policy storage in the knowledge graph
-    - Compliance checking against recorded decisions
-    - Policy exception tracking with approver audit trail
-  </Card>
-  <Card title="EntityLinker" icon="link">
-    - Maps entity text to stable URIs
-    - Creates typed links between entity IDs
-    - Prevents "Apple", "Apple Inc.", "AAPL" becoming separate nodes
-  </Card>
-  <Card title="ContextRetriever" icon="magnifying-glass">
-    - Fuses vector similarity, graph traversal, and agent memory
-    - Richer context than pure vector search
-    - Configurable `hybrid_alpha` and expansion hops
-  </Card>
-  <Card title="CausalChainAnalyzer" icon="arrow-trend-up">
-    - Traces upstream causes and downstream effects of any decision
-    - Explainability paths with relationship types
-    - Configurable depth and direction
-  </Card>
-</CardGroup>
+- **AgentContext** — Memory, decision tracking, and graph-backed retrieval behind one API
+  - Conversation history and checkpoint diffing
+  - Persist and restore full context state to disk
+- **ContextGraph** — Thread-safe in-memory knowledge graph
+  - PageRank, centrality, community detection, temporal validity
+  - Cross-graph navigation and link traversal
+- **AgentMemory** — Embedding-backed memory with retention policy
+  - LRU eviction at configurable `max_memory_size`
+  - Per-conversation history isolation
+- **DecisionRecorder** — Records decisions with causal chains and confidence scores
+  - Temporal validity windows (`valid_from` / `valid_until`)
+  - Cross-system context capture on every decision
+- **PolicyEngine** — Versioned policy storage in the knowledge graph
+  - Compliance checking against recorded decisions
+  - Policy exception tracking with approver audit trail
+- **EntityLinker** — Maps entity text to stable URIs
+  - Creates typed links between entity IDs
+  - Prevents "Apple", "Apple Inc.", "AAPL" becoming separate nodes
+- **ContextRetriever** — Fuses vector similarity, graph traversal, and agent memory
+  - Richer context than pure vector search
+  - Configurable `hybrid_alpha` and expansion hops
+- **CausalChainAnalyzer** — Traces upstream causes and downstream effects of any decision
+  - Explainability paths with relationship types
+  - Configurable depth and direction
 
 
 ## Quick Start
@@ -889,26 +871,10 @@ class EntityLink:
   </Tab>
 </Tabs>
 
-<CardGroup cols={2}>
-  <Card title="Vector Store" icon="database" href="vector_store">
-    Embedding storage backend for memory retrieval.
-  </Card>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    Graph algorithms and analytics used inside ContextGraph.
-  </Card>
-  <Card title="Reasoning" icon="microchip" href="reasoning">
-    Logical inference layered on top of context.
-  </Card>
-  <Card title="Provenance" icon="link" href="provenance">
-    W3C PROV-O lineage for every stored fact.
-  </Card>
-</CardGroup>
+- [Vector Store](vector_store) — Embedding storage backend for memory retrieval.
+- [Knowledge Graph](kg) — Graph algorithms and analytics used inside ContextGraph.
+- [Reasoning](reasoning) — Logical inference layered on top of context.
+- [Provenance](provenance) — W3C PROV-O lineage for every stored fact.
 
-<CardGroup cols={2}>
-  <Card title="Context Module" icon="book-open" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb">
-    Memory and decision tracking · Intermediate
-  </Card>
-  <Card title="Advanced Context Engineering" icon="flask" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb">
-    Production FAISS + Neo4j setup · Advanced
-  </Card>
-</CardGroup>
+- [Context Module](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb) — Memory and decision tracking · Intermediate
+- [Advanced Context Engineering](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb) — Production FAISS + Neo4j setup · Advanced

@@ -290,17 +290,7 @@ semantica-explorer --graph my_graph.json
 
 See the [Explorer reference](explorer) for the full feature set and REST API.
 
-<CardGroup cols={2}>
-  <Card title="Knowledge Graph" icon="diagram-project" href="kg">
-    The graph being visualized.
-  </Card>
-  <Card title="Ontology" icon="sitemap" href="ontology">
-    Visualize ontology class structure.
-  </Card>
-  <Card title="Embeddings" icon="vector-square" href="embeddings">
-    Generate the embeddings visualized here.
-  </Card>
-  <Card title="Explorer" icon="globe" href="explorer">
-    Full interactive Knowledge Explorer UI.
-  </Card>
-</CardGroup>
+- [Knowledge Graph](kg) — The graph being visualized.
+- [Ontology](ontology) — Visualize ontology class structure.
+- [Embeddings](embeddings) — Generate the embeddings visualized here.
+- [Explorer](explorer) — Full interactive Knowledge Explorer UI.
