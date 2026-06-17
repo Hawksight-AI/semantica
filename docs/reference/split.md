@@ -179,6 +179,10 @@ splitter = TextSplitter(
 | `relation_method` | `str` | `"ml"` | Relation extraction method for `relation_aware`: `"ml"` \| `"llm"` \| `"huggingface"` |
 | `tokenizer` | `str` | `"gpt-4"` | tiktoken model name for `token` method: unrecognised names fall back to `cl100k_base` |
 
+<Warning>
+  **`chunk_overlap` too small.** Without overlap, a fact that spans a chunk boundary is invisible in both chunks. A 10–20% overlap relative to `chunk_size` is a safe minimum: for `chunk_size=1000`, set `chunk_overlap=100` to `200`.
+</Warning>
+
 ## Splitting Method Details
 
 <Tabs>
@@ -217,6 +221,10 @@ splitter = TextSplitter(
     - Produces variable-length chunks: some topics are short, others long
     - Falls back to sentence splitting if `sentence-transformers` is not installed
     - Slower than `recursive` due to embedding computation; cache embeddings for repeated splits
+
+    <Tip>
+      **Semantic splitting needs enough sentences.** `semantic_transformer` needs several sentences to detect topic shifts. On documents shorter than ~300 words it behaves like `sentence` splitting: use `recursive` instead.
+    </Tip>
   </Tab>
   <Tab title="Entity-Aware">
     Runs NER internally, then adjusts chunk boundaries so no entity mention is split across two chunks:
@@ -346,6 +354,10 @@ The `token` method accepts a `tokenizer=` kwarg that is passed to `tiktoken.enco
 
 If `tiktoken` is not installed, the `token` method falls back to splitting by whitespace-separated words.
 
+<Warning>
+  **Wrong tokenizer.** The `token` method passes the `tokenizer=` value to `tiktoken.encoding_for_model()`. If the model name is not recognised by tiktoken it silently falls back to `cl100k_base`. Pass a valid tiktoken model name (e.g. `"gpt-4"`, `"gpt-3.5-turbo"`) to get deterministic behaviour.
+</Warning>
+
 ## Pipeline Integration
 
 `TextSplitter` can be used standalone or composed manually with other Semantica modules. The example below shows a sequential pattern: parse a file, split the text, then extract entities from each chunk:
@@ -372,20 +384,6 @@ for chunk in chunks:
 ```
 
 For the full pipeline orchestration API, see the [Pipeline reference](pipeline).
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **`chunk_overlap` too small.** Without overlap, a fact that spans a chunk boundary is invisible in both chunks. A 10–20% overlap relative to `chunk_size` is a safe minimum: for `chunk_size=1000`, set `chunk_overlap=100` to `200`.
-</Warning>
-
-<Warning>
-  **Wrong tokenizer.** The `token` method passes the `tokenizer=` value to `tiktoken.encoding_for_model()`. If the model name is not recognised by tiktoken it silently falls back to `cl100k_base`. Pass a valid tiktoken model name (e.g. `"gpt-4"`, `"gpt-3.5-turbo"`) to get deterministic behaviour.
-</Warning>
-
-<Tip>
-  **Semantic splitting needs enough sentences.** `semantic_transformer` needs several sentences to detect topic shifts. On documents shorter than ~300 words it behaves like `sentence` splitting: use `recursive` instead.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Parse" icon="file-lines" href="parse">

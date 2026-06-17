@@ -97,6 +97,10 @@ You could wire Semantica modules together with plain Python code. Pipelines add:
         for warning in result.warnings:
             print(f"Warning: {warning}")
     ```
+
+    <Tip>
+      **Use `PipelineValidator` before running in production.** It catches dependency cycles, missing step names, and misconfigured connections that would only surface as errors mid-run. Validation is instant; catching them after a 30-minute extraction job is not.
+    </Tip>
   </Step>
   <Step title="Execute and inspect results">
     ```python
@@ -111,6 +115,10 @@ You could wire Semantica modules together with plain Python code. Pipelines add:
     print(f"Steps failed:   {result.metrics['steps_failed']}")
     print(f"Duration:       {result.metrics['execution_time']:.1f}s")
     ```
+
+    <Tip>
+      **Inspect `result.metrics` to find bottlenecks.** `result.metrics['steps_executed']` and `result.metrics['execution_time']` give a quick read on overall pipeline health. For per-step timing, check `step.result` on each `PipelineStep` after the run.
+    </Tip>
   </Step>
 </Steps>
 
@@ -132,6 +140,10 @@ pipeline = builder.build("parallel_pipeline")
 engine   = ExecutionEngine(max_workers=4)
 result   = engine.execute_pipeline(pipeline, data="data/")
 ```
+
+<Tip>
+  **Set `workers=` based on workload type.** Thread workers for I/O-bound steps (web fetching, DB queries), process workers for CPU-bound steps (embedding, OCR, large NER batches). Mixing pool types on the wrong step type wastes resources without speed gains.
+</Tip>
 
 ## Retry and Error Handling
 
@@ -194,6 +206,10 @@ result   = engine.execute_pipeline(pipeline, data="data/")
 
 <Warning>
   In production, configure a `RetryPolicy` with limited retries so a single failing step does not stop the whole run. After execution, inspect `result.errors` to find and reprocess failed documents.
+</Warning>
+
+<Warning>
+  **Configure retry policies to contain failures in production.** Use `handler.set_retry_policy("step_type", RetryPolicy(max_retries=3))` so transient errors are retried without stopping the pipeline. After the run, inspect `result.errors` to find and reprocess any documents that exhausted retries.
 </Warning>
 
 ## Progress Tracking
@@ -348,6 +364,10 @@ The `create_pipeline_from_template(name)` method returns a configured `PipelineB
     ```
   </Card>
 </CardGroup>
+
+<Tip>
+  **Use templates from `PipelineTemplateManager` for common patterns.** `create_pipeline_from_template("kg_construction")` wires normalization, deduplication, conflict detection, and graph construction in the correct order: saving you from common mistakes like deduplicating before normalizing.
+</Tip>
 
 ## ExecutionEngine
 
@@ -562,28 +582,6 @@ StepStatus.SKIPPED    # Skipped due to FailureHandler "skip" strategy
 
   </Accordion>
 </AccordionGroup>
-
-## Tips and Common Pitfalls
-
-<Tip>
-  **Use `PipelineValidator` before running in production.** It catches dependency cycles, missing step names, and misconfigured connections that would only surface as errors mid-run. Validation is instant; catching them after a 30-minute extraction job is not.
-</Tip>
-
-<Tip>
-  **Set `workers=` based on workload type.** Thread workers for I/O-bound steps (web fetching, DB queries), process workers for CPU-bound steps (embedding, OCR, large NER batches). Mixing pool types on the wrong step type wastes resources without speed gains.
-</Tip>
-
-<Warning>
-  **Configure retry policies to contain failures in production.** Use `handler.set_retry_policy("step_type", RetryPolicy(max_retries=3))` so transient errors are retried without stopping the pipeline. After the run, inspect `result.errors` to find and reprocess any documents that exhausted retries.
-</Warning>
-
-<Tip>
-  **Use templates from `PipelineTemplateManager` for common patterns.** `create_pipeline_from_template("kg_construction")` wires normalization, deduplication, conflict detection, and graph construction in the correct order: saving you from common mistakes like deduplicating before normalizing.
-</Tip>
-
-<Tip>
-  **Inspect `result.metrics` to find bottlenecks.** `result.metrics['steps_executed']` and `result.metrics['execution_time']` give a quick read on overall pipeline health. For per-step timing, check `step.result` on each `PipelineStep` after the run.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Ingest" icon="database" href="ingest">

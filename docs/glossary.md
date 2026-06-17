@@ -4,9 +4,9 @@ description: "Reference definitions for terms and concepts used throughout Seman
 icon: "book"
 ---
 
-<Tip>
+<Info>
   Use Ctrl+F / Cmd+F to search this page for a specific term.
-</Tip>
+</Info>
 
 A quick-reference dictionary of every concept, data structure, algorithm, and standard referenced in Semantica's documentation and codebase.
 

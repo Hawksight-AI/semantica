@@ -108,6 +108,10 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
     store.create_node(labels=["Person"], properties={"name": "Bob"})
 ```
 
+<Warning>
+  **Call `connect()` before any operations.** `GraphStore` does not connect automatically on construction. Either call `store.connect()` explicitly or use the context manager form `with GraphStore(...) as store:`.
+</Warning>
+
 ## Quick Start
 
 <Steps>
@@ -226,6 +230,10 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
     ```
 
     **Best for:** teams already running PostgreSQL who want graph queries without a separate service.
+
+    <Warning>
+      **Apache AGE requires the PostgreSQL extension installed.** `backend="age"` calls the AGE extension functions. If AGE is not installed in your PostgreSQL instance, you'll get a `ProgrammingError`. See the [Apache AGE docs](https://age.apache.org/age-manual/master/intro/setup.html) for setup.
+    </Warning>
   </Tab>
   <Tab title="Amazon Neptune">
     ```bash
@@ -249,6 +257,10 @@ with GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", pass
     ```
 
     **Best for:** managed AWS deployments. Neptune uses the Bolt protocol for OpenCypher queries: the same query API used for Neo4j.
+
+    <Warning>
+      **Amazon Neptune uses `iam_auth=`, not `use_iam_auth=`.** The `AmazonNeptuneStore` and the `GraphStore` Neptune backend both use `iam_auth: bool = True` as the parameter name.
+    </Warning>
   </Tab>
   <Tab title="Backend Comparison">
 
@@ -311,6 +323,10 @@ if path:
     print(f"Hops: {path['length']}")
 ```
 
+<Tip>
+  **Use `create_nodes()` for bulk loading.** Individual `create_node()` calls issue one network round-trip each. `create_nodes(list)` is faster for initial graph population.
+</Tip>
+
 ## QueryEngine
 
 `QueryEngine` handles query execution and optional caching. Access it via `store.query_engine`:
@@ -353,6 +369,14 @@ engine.enable_cache()
 | `clear_cache()` | `None` | Flush all cached query results |
 | `enable_cache()` | `None` | Turn on caching (on by default) |
 | `disable_cache()` | `None` | Turn off caching |
+
+<Tip>
+  **Use `QueryEngine` caching for read-heavy workloads.** Access the engine via `store.query_engine`. Call `engine.execute(query, use_cache=True)` to cache identical queries in-process. Call `engine.clear_cache()` after writes that invalidate results.
+</Tip>
+
+<Warning>
+  **Use parameterized queries, never string interpolation.** `store.query("WHERE n.name = $name", parameters={"name": user_input})` prevents Cypher injection attacks. Never use `f"WHERE n.name = '{user_input}'"`.
+</Warning>
 
 
 ## GraphAnalytics
@@ -422,6 +446,14 @@ store.create_index(label="Organization", property_name="id")
 stats = store.get_stats()
 ```
 
+<Warning>
+  **Create indexes before bulk loading.** `store.create_index(label="Person", property_name="name")` makes `MATCH` queries on `name` orders of magnitude faster. Without indexes, every query does a full scan. Create indexes first, then load data.
+</Warning>
+
+<Warning>
+  **`create_index` parameter is `property_name=`, not `property=`.** `store.create_index(label="Person", property_name="name")`: using `property=` will be silently ignored.
+</Warning>
+
 ## Common Workflows
 
 <Tabs>
@@ -484,40 +516,6 @@ stats = store.get_stats()
     AGE supports one primary label per vertex. If you pass multiple labels, the first is used as the AGE label and the rest are stored in a `labels` property array. Parameterized queries use literal inlining internally (AGE does not support `$param` binding inside `cypher()` calls): the store handles escaping automatically.
   </Tab>
 </Tabs>
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **Call `connect()` before any operations.** `GraphStore` does not connect automatically on construction. Either call `store.connect()` explicitly or use the context manager form `with GraphStore(...) as store:`.
-</Warning>
-
-<Tip>
-  **Use `create_nodes()` for bulk loading.** Individual `create_node()` calls issue one network round-trip each. `create_nodes(list)` is faster for initial graph population.
-</Tip>
-
-<Warning>
-  **Create indexes before bulk loading.** `store.create_index(label="Person", property_name="name")` makes `MATCH` queries on `name` orders of magnitude faster. Without indexes, every query does a full scan. Create indexes first, then load data.
-</Warning>
-
-<Warning>
-  **Use parameterized queries, never string interpolation.** `store.query("WHERE n.name = $name", parameters={"name": user_input})` prevents Cypher injection attacks. Never use `f"WHERE n.name = '{user_input}'"`.
-</Warning>
-
-<Warning>
-  **`create_index` parameter is `property_name=`, not `property=`.** `store.create_index(label="Person", property_name="name")`: using `property=` will be silently ignored.
-</Warning>
-
-<Tip>
-  **Use `QueryEngine` caching for read-heavy workloads.** Access the engine via `store.query_engine`. Call `engine.execute(query, use_cache=True)` to cache identical queries in-process. Call `engine.clear_cache()` after writes that invalidate results.
-</Tip>
-
-<Warning>
-  **Apache AGE requires the PostgreSQL extension installed.** `backend="age"` calls the AGE extension functions. If AGE is not installed in your PostgreSQL instance, you'll get a `ProgrammingError`. See the [Apache AGE docs](https://age.apache.org/age-manual/master/intro/setup.html) for setup.
-</Warning>
-
-<Warning>
-  **Amazon Neptune uses `iam_auth=`, not `use_iam_auth=`.** The `AmazonNeptuneStore` and the `GraphStore` Neptune backend both use `iam_auth: bool = True` as the parameter name.
-</Warning>
 
 <CardGroup cols={2}>
   <Card title="KG Module" icon="diagram-project" href="kg">

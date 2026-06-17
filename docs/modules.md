@@ -4,9 +4,9 @@ description: "Every Semantica module works independently: use only what you need
 icon: "puzzle-piece"
 ---
 
-<Tip>
+<Info>
   Looking for a quick reference? Jump to the [Module Index](#module-index) at the bottom.
-</Tip>
+</Info>
 
 Semantica is organized into **27 modules** across six logical layers. Each module is independently importable: you never pay for what you don't use.
 

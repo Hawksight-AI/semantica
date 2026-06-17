@@ -91,6 +91,14 @@ for r in results:
     print(f"{r['id']}: score: {r['score']:.3f}")
 ```
 
+<Warning>
+  **Match vector dimension to your embedding model.** The `dimension` parameter must exactly match your embedding model's output size: `BAAI/bge-small-en-v1.5` = 384, `all-MiniLM-L6-v2` = 384, `all-mpnet-base-v2` = 768, `bge-large-en-v1.5` = 1024. A mismatch raises an error at insert time.
+</Warning>
+
+<Tip>
+  **Use `add_documents()` for text, `store_vectors()` for pre-computed embeddings.** `add_documents()` auto-embeds in parallel batches. If your embeddings are already computed (e.g. from a fine-tuned model), use `store_vectors()` directly to skip re-embedding.
+</Tip>
+
 ## Quick Start
 
 <Steps>
@@ -307,6 +315,10 @@ sources = [
 fused = search.multi_source_search(query_vector, sources, k=10)
 ```
 
+<Tip>
+  **Use `HybridSearch(vector_store=store)` to avoid passing raw vectors on every call.** When `vector_store` is set, `search()` pulls vectors and metadata from the store automatically: you only need to pass the query and filter.
+</Tip>
+
 ## Metadata Filtering
 
 `MetadataFilter` supports chained conditions: all conditions are ANDed:
@@ -394,6 +406,10 @@ ns = ns_manager.get_vector_namespace("vec_0")
 ns_manager.delete_namespace("tenant_a")
 ```
 
+<Tip>
+  **Use `NamespaceManager` for multi-tenant applications.** Storing all tenants' vectors in the same collection and filtering by metadata at query time is slow and risks data leakage if a filter is accidentally omitted. Namespace isolation is both faster (smaller search space) and safer (structural isolation).
+</Tip>
+
 ## Batch Operations
 
 ```python
@@ -436,6 +452,10 @@ store2.load("./vector_store_backup")
   Cloud backends (Pinecone, Weaviate, Qdrant, Milvus, PgVector) manage persistence themselves. `save()`/`load()` are for the in-memory and FAISS backends only.
 </Note>
 
+<Warning>
+  **inmemory and faiss backends lose data on process exit without `save()`.** Call `store.save(path)` after adding vectors. Cloud backends (Pinecone, Qdrant, Weaviate, Milvus, PgVector) persist automatically.
+</Warning>
+
 ## MetadataStore
 
 `MetadataStore` indexes structured metadata and lets you query by field values without a vector:
@@ -467,6 +487,10 @@ stats = meta_store.get_stats()
 # {"total_vectors": 2, "indexed_fields": 3, "field_counts": {...}}
 ```
 
+<Tip>
+  **Update metadata without re-embedding.** `MetadataStore.update_metadata(id, {...})` changes attached fields (status, tags, review date) without re-running the embedding model. Use this for state changes that don't affect semantic content.
+</Tip>
+
 ## FAISS Index Type Reference
 
 FAISS index type is configured by creating a `FAISSStore` directly and calling `create_index()`. Use lowercase type names:
@@ -495,6 +519,10 @@ store.create_index(index_type="pq", metric="L2", m=8)
 | `ivf` | Medium | Fast | ~95–98% | 100K–10M vectors, good balance |
 | `hnsw` | Medium-High | Very fast | ~97–99% | Low latency, production retrieval |
 | `pq` | Low | Fast | ~90–95% | Millions of vectors, memory-constrained |
+
+<Warning>
+  **FAISS index type names are lowercase.** The `FAISSStore.create_index()` method expects `"flat"`, `"ivf"`, `"hnsw"`, `"pq"`: not `"Flat"`, `"IVF"`, `"HNSW"`, `"PQ"`. Uppercase values raise `ValidationError`.
+</Warning>
 
 <Note>
   When using `VectorStore(backend="faiss")`, the underlying `FAISSStore` is initialised with a flat index by default. To use ivf/hnsw/pq, construct `FAISSStore` directly and call `create_index()` with the desired type.
@@ -573,36 +601,6 @@ store.create_index(index_type="pq", metric="L2", m=8)
     ```
   </Tab>
 </Tabs>
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **Match vector dimension to your embedding model.** The `dimension` parameter must exactly match your embedding model's output size: `BAAI/bge-small-en-v1.5` = 384, `all-MiniLM-L6-v2` = 384, `all-mpnet-base-v2` = 768, `bge-large-en-v1.5` = 1024. A mismatch raises an error at insert time.
-</Warning>
-
-<Warning>
-  **FAISS index type names are lowercase.** The `FAISSStore.create_index()` method expects `"flat"`, `"ivf"`, `"hnsw"`, `"pq"`: not `"Flat"`, `"IVF"`, `"HNSW"`, `"PQ"`. Uppercase values raise `ValidationError`.
-</Warning>
-
-<Warning>
-  **inmemory and faiss backends lose data on process exit without `save()`.** Call `store.save(path)` after adding vectors. Cloud backends (Pinecone, Qdrant, Weaviate, Milvus, PgVector) persist automatically.
-</Warning>
-
-<Tip>
-  **Use `HybridSearch(vector_store=store)` to avoid passing raw vectors on every call.** When `vector_store` is set, `search()` pulls vectors and metadata from the store automatically: you only need to pass the query and filter.
-</Tip>
-
-<Tip>
-  **Use `add_documents()` for text, `store_vectors()` for pre-computed embeddings.** `add_documents()` auto-embeds in parallel batches. If your embeddings are already computed (e.g. from a fine-tuned model), use `store_vectors()` directly to skip re-embedding.
-</Tip>
-
-<Tip>
-  **Use `NamespaceManager` for multi-tenant applications.** Storing all tenants' vectors in the same collection and filtering by metadata at query time is slow and risks data leakage if a filter is accidentally omitted. Namespace isolation is both faster (smaller search space) and safer (structural isolation).
-</Tip>
-
-<Tip>
-  **Update metadata without re-embedding.** `MetadataStore.update_metadata(id, {...})` changes attached fields (status, tags, review date) without re-running the embedding model. Use this for state changes that don't affect semantic content.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Embeddings" icon="vector-square" href="embeddings">

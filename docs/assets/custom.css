@@ -1,0 +1,127 @@
+/* ============================================================
+   TABLE — row & cell hover highlighting
+   ============================================================ */
+table tbody tr {
+  transition: background-color 0.15s ease;
+  cursor: default;
+}
+
+table tbody tr:hover {
+  background-color: rgba(16, 185, 129, 0.07) !important;
+}
+
+table tbody tr:hover td {
+  background-color: transparent !important;
+}
+
+table td,
+table th {
+  transition: background-color 0.15s ease;
+}
+
+/* ============================================================
+   CODE BLOCKS — glow on hover
+   ============================================================ */
+pre,
+[class*="codeblock"],
+[class*="code-group"],
+[class*="CodeBlock"],
+[data-rehype-pretty-code-fragment] {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+
+pre:hover,
+[class*="codeblock"]:hover,
+[class*="CodeBlock"]:hover,
+[data-rehype-pretty-code-fragment]:hover {
+  box-shadow: 0 0 0 1.5px rgba(16, 185, 129, 0.35),
+              0 4px 24px rgba(16, 185, 129, 0.09) !important;
+}
+
+/* ============================================================
+   CARDS — lift + glow on hover
+   ============================================================ */
+[class*="card"],
+[class*="Card"],
+[data-card],
+.group\/card {
+  transition: transform 0.2s ease,
+              box-shadow 0.2s ease,
+              border-color 0.2s ease !important;
+}
+
+[class*="card"]:hover,
+[class*="Card"]:hover,
+[data-card]:hover,
+.group\/card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 32px rgba(16, 185, 129, 0.13),
+              0 0 0 1px rgba(16, 185, 129, 0.28) !important;
+}
+
+/* ============================================================
+   CALLOUTS / NOTES / TIPS — subtle left-border highlight
+   ============================================================ */
+[class*="callout"],
+[class*="Callout"],
+[class*="admonition"] {
+  transition: box-shadow 0.2s ease !important;
+}
+
+[class*="callout"]:hover,
+[class*="Callout"]:hover,
+[class*="admonition"]:hover {
+  box-shadow: inset 3px 0 0 rgba(16, 185, 129, 0.55),
+              0 2px 12px rgba(16, 185, 129, 0.06) !important;
+}
+
+/* ============================================================
+   STEPS — highlight active step on hover
+   ============================================================ */
+[class*="step"],
+[class*="Step"] {
+  transition: background-color 0.15s ease !important;
+}
+
+[class*="step"]:hover,
+[class*="Step"]:hover {
+  background-color: rgba(16, 185, 129, 0.04) !important;
+}
+
+/* ============================================================
+   INLINE CODE — subtle green tint on hover
+   ============================================================ */
+:not(pre) > code {
+  transition: background-color 0.15s ease, color 0.15s ease !important;
+  cursor: text;
+}
+
+:not(pre) > code:hover {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+
+/* ============================================================
+   NAV / SIDEBAR LINKS — subtle hover underline accent
+   ============================================================ */
+nav a,
+[class*="sidebar"] a,
+[class*="Sidebar"] a {
+  transition: color 0.15s ease !important;
+}
+
+/* ============================================================
+   HIDE THEME TOGGLE (moon / sun emoji button)
+   ============================================================ */
+button[aria-label="Switch to light mode"],
+button[aria-label="Switch to dark mode"],
+button[aria-label*="theme"],
+button[title*="theme"],
+button[title*="Theme"],
+[data-theme-toggle],
+[class*="ThemeToggle"],
+[class*="theme-toggle"],
+[class*="ColorModeToggle"],
+[class*="DarkModeToggle"] {
+  display: none !important;
+  pointer-events: none !important;
+}

@@ -10,7 +10,6 @@ icon: "plug"
 - No Python code required after launch: configure once, use from any MCP-aware client
 - Compatible with Claude Desktop, Windsurf, Cline, Continue, VS Code, Roo Code, Cursor
 
-
 ## Server Interface
 
 ```json
@@ -34,6 +33,10 @@ python -m semantica.mcp_server
 <Tip>
   `semantica.mcp_server` is a **stdio server process**, not a Python library. It exposes no importable classes: all interaction happens through MCP tool calls from a connected AI client.
 </Tip>
+
+<Warning>
+  **The server communicates over stdio: don't add logging to stdout.** Any `print()` or logger output directed to stdout will corrupt the JSON-RPC message stream. All logging is written to `stderr` only. Configure log verbosity with the `SEMANTICA_LOG_LEVEL` environment variable.
+</Warning>
 
 ## What You Get
 
@@ -134,6 +137,10 @@ The MCP server is included in the base install: no extras required.
 
     </CodeGroup>
 
+    <Warning>
+      **Configure your MCP client's `command` field exactly.** The `command` field must point to the exact executable path (use `which semantica-mcp` on macOS/Linux to find it). A wrong path fails silently: the server just doesn't appear in the tools list. Test with the raw `echo | semantica-mcp` command first to confirm the binary works.
+    </Warning>
+
   </Step>
   <Step title="Test locally before configuring your client">
     ```bash
@@ -155,6 +162,14 @@ The MCP server is included in the base install: no extras required.
 | :-------- | :------- | :----------- |
 | `SEMANTICA_KG_PATH` | *(none: in-memory graph)* | Path to a persisted graph file to load on startup |
 | `SEMANTICA_LOG_LEVEL` | `WARNING` | Log verbosity: `DEBUG`, `INFO`, `WARNING` |
+
+<Warning>
+  **The graph starts empty unless you set `SEMANTICA_KG_PATH`.** The MCP server creates a fresh in-memory `ContextGraph` on first use. Set `SEMANTICA_KG_PATH` to a previously saved graph file to restore state across server restarts. Without it, all data is lost when the process exits.
+</Warning>
+
+<Tip>
+  **Enable debug logging for troubleshooting.** Set `SEMANTICA_LOG_LEVEL=DEBUG` in your MCP client's `env` block, or run `python -m semantica.mcp_server` directly and inspect stderr output.
+</Tip>
 
 ## Tools
 
@@ -293,6 +308,10 @@ Find past decisions similar to a given scenario using hybrid similarity search.
 ```
 
 `max_results` defaults to `5`, maximum `50`.
+
+<Tip>
+  **Use `find_precedents` before high-stakes decisions.** The tool performs hybrid similarity search across all recorded decisions. Call it at the start of any significant decision path: it surfaces past reasoning that may be directly applicable, reducing redundant work and improving consistency across agent runs.
+</Tip>
 
 </Accordion>
 
@@ -439,28 +458,6 @@ The MCP server exposes three readable resources:
 | `semantica://graph/summary` | High-level graph statistics |
 | `semantica://decisions/list` | All recorded decisions (up to 50) |
 | `semantica://schema/info` | Server version and available tools |
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **The graph starts empty unless you set `SEMANTICA_KG_PATH`.** The MCP server creates a fresh in-memory `ContextGraph` on first use. Set `SEMANTICA_KG_PATH` to a previously saved graph file to restore state across server restarts. Without it, all data is lost when the process exits.
-</Warning>
-
-<Tip>
-  **Use `find_precedents` before high-stakes decisions.** The tool performs hybrid similarity search across all recorded decisions. Call it at the start of any significant decision path: it surfaces past reasoning that may be directly applicable, reducing redundant work and improving consistency across agent runs.
-</Tip>
-
-<Warning>
-  **Configure your MCP client's `command` field exactly.** The `command` field must point to the exact executable path (use `which semantica-mcp` on macOS/Linux to find it). A wrong path fails silently: the server just doesn't appear in the tools list. Test with the raw `echo | semantica-mcp` command first to confirm the binary works.
-</Warning>
-
-<Warning>
-  **The server communicates over stdio: don't add logging to stdout.** Any `print()` or logger output directed to stdout will corrupt the JSON-RPC message stream. All logging is written to `stderr` only. Configure log verbosity with the `SEMANTICA_LOG_LEVEL` environment variable.
-</Warning>
-
-<Tip>
-  **Enable debug logging for troubleshooting.** Set `SEMANTICA_LOG_LEVEL=DEBUG` in your MCP client's `env` block, or run `python -m semantica.mcp_server` directly and inspect stderr output.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Context" icon="brain" href="context">

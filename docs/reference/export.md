@@ -116,6 +116,18 @@ export_lpg(graph,  "import.cypher", method="cypher")
     exporter.export_knowledge_graph(graph, "output.ttl", format="turtle")
     ```
 
+    <Warning>
+      **`export_to_rdf()` returns a string: it does not write a file.** Call `export()` or `export_knowledge_graph()` to write directly to disk.
+    </Warning>
+
+    <Tip>
+      **Use `export_to_rdf()` + string for inspection, `export()` for production.** In notebooks or debug sessions, `export_to_rdf()` is handy for quick inspection. For CI pipelines and pipelines writing files, `export()` is a single call.
+    </Tip>
+
+    <Tip>
+      **Use `turtle` for human readability, `ntriples` for streaming.** Turtle is compact and readable for debugging and sharing. N-Triples (`.nt`) is line-oriented: one triple per line: making it safe to stream, concatenate, and process with standard Unix tools.
+    </Tip>
+
     **Namespace management:**
 
     ```python
@@ -166,6 +178,14 @@ export_lpg(graph,  "import.cypher", method="cypher")
     exporter.export(graph,    "output_base")
     ```
 
+    <Warning>
+      **`ParquetExporter` and `ArrowExporter` require `pyarrow`.** Both fall back to a no-op stub class if `pyarrow` is not installed. Install with `pip install pyarrow` before using these exporters.
+    </Warning>
+
+    <Tip>
+      **Use `ParquetExporter` for downstream analytics.** Parquet preserves column types (int, float, datetime) that CSV loses and is natively supported by Spark, BigQuery, Databricks, and Snowflake. Use `compression="snappy"` for a good balance of speed and compression.
+    </Tip>
+
     Requires `pyarrow`: `pip install pyarrow`. Schema is explicitly typed.
 
     ```python
@@ -215,6 +235,10 @@ export_lpg(graph,  "import.cypher", method="cypher")
     ```
 
     Both exporters write to a file and return `None`.
+
+    <Warning>
+      **`ArangoAQLExporter.export()` and `LPGExporter.export()` write to a file and return `None`.** They do not return the AQL/Cypher string. Write to a file and read it back if you need the string.
+    </Warning>
   </Tab>
   <Tab title="Visualization & OWL">
     ```python
@@ -285,6 +309,10 @@ export_lpg(graph,  "import.cypher", method="cypher")
 
     Available `include` columns: `source_id`, `source_type`, `target_id`, `target_type`, `hop_count`, `weighted_distance`, `semantic_similarity`, `distance_band`, `source_betweenness`, `target_betweenness`.
 
+    <Warning>
+      **`DistanceExporter` requires a graph at construction.** Instantiate as `DistanceExporter(graph)`, not `DistanceExporter()`. Semantic similarity columns (`semantic_similarity`) require the graph nodes to have embeddings in their properties.
+    </Warning>
+
     **ReportGenerator:**
 
     ```python
@@ -348,36 +376,6 @@ The `export_csv` convenience function delegates to `CSVExporter.export()`. For p
 | `"binary"` | `binary` | `VectorExporter` | `.bin` | Raw float32 binary |
 | `"faiss"` | `faiss` | `VectorExporter` | `.faiss` | Direct FAISS index files |
 | `"html"` / `"markdown"` / `"json"` / `"text"` |: | `ReportGenerator` | `.html` / `.md` / `.json` / `.txt` | Analytics reports |
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **`export_to_rdf()` returns a string: it does not write a file.** Call `export()` or `export_knowledge_graph()` to write directly to disk.
-</Warning>
-
-<Warning>
-  **`ArangoAQLExporter.export()` and `LPGExporter.export()` write to a file and return `None`.** They do not return the AQL/Cypher string. Write to a file and read it back if you need the string.
-</Warning>
-
-<Warning>
-  **`DistanceExporter` requires a graph at construction.** Instantiate as `DistanceExporter(graph)`, not `DistanceExporter()`. Semantic similarity columns (`semantic_similarity`) require the graph nodes to have embeddings in their properties.
-</Warning>
-
-<Warning>
-  **`ParquetExporter` and `ArrowExporter` require `pyarrow`.** Both fall back to a no-op stub class if `pyarrow` is not installed. Install with `pip install pyarrow` before using these exporters.
-</Warning>
-
-<Tip>
-  **Use `export_to_rdf()` + string for inspection, `export()` for production.** In notebooks or debug sessions, `export_to_rdf()` is handy for quick inspection. For CI pipelines and pipelines writing files, `export()` is a single call.
-</Tip>
-
-<Tip>
-  **Use `turtle` for human readability, `ntriples` for streaming.** Turtle is compact and readable for debugging and sharing. N-Triples (`.nt`) is line-oriented: one triple per line: making it safe to stream, concatenate, and process with standard Unix tools.
-</Tip>
-
-<Tip>
-  **Use `ParquetExporter` for downstream analytics.** Parquet preserves column types (int, float, datetime) that CSV loses and is natively supported by Spark, BigQuery, Databricks, and Snowflake. Use `compression="snappy"` for a good balance of speed and compression.
-</Tip>
 
 <Tip>
   **Match your export format to your consumer.** Neo4j → `cypher`; ArangoDB → `aql`; Gephi/yEd → `graphml` or `gexf`; semantic web tools → `turtle` or `json-ld`; analytics pipelines → `parquet`; zero-copy IPC → `arrow`.

@@ -83,6 +83,10 @@ Semantica uses embeddings for:
     <Check>
       Default model is `BAAI/bge-small-en-v1.5`. Zero cost, zero GPU, works on any machine.
     </Check>
+
+    <Warning>
+      **FastEmbed ignores the `device` parameter.** FastEmbed uses ONNX Runtime and manages its own execution providers: passing `device="cuda"` has no effect. Switch to `method="sentence_transformers"` if you need explicit GPU control.
+    </Warning>
   </Tab>
   <Tab title="Sentence-Transformers">
     Broad model selection via HuggingFace. Runs locally, no API key.
@@ -103,6 +107,10 @@ Semantica uses embeddings for:
     ```
 
     Popular models: `all-MiniLM-L6-v2` (fast, small), `all-mpnet-base-v2` (balanced), `BAAI/bge-large-en-v1.5` (high accuracy).
+
+    <Warning>
+      **Sequence length limits.** Most sentence-transformers models have a 512-token limit. Text beyond that is silently truncated. Use `TextSplitter(method="hierarchical")` + `HierarchicalPooling` for long documents.
+    </Warning>
   </Tab>
   <Tab title="BGE">
     BAAI/bge models via sentence-transformers. State-of-the-art retrieval performance, runs locally.
@@ -177,6 +185,10 @@ embeddings = generator.generate_embeddings(["Text about AI", "Machine learning c
 score = generator.compare_embeddings(embeddings[0], embeddings[1], method="cosine")
 print(f"Similarity: {score:.3f}")
 ```
+
+<Tip>
+  **Always use the same model for indexing and querying.** Vectors from different models are not comparable: they live in different vector spaces. Switching models requires re-embedding your entire corpus.
+</Tip>
 
 To switch provider after construction:
 
@@ -344,6 +356,14 @@ dim = embedder.get_embedding_dimension()
 - If FastEmbed or sentence-transformers is unavailable, falls back to a 128-dimensional hash-based embedding. Hash embeddings are deterministic but not semantic: do not use in production.
 - Large batches are chunked internally by the underlying library to avoid OOM.
 
+<Warning>
+  **Dimension mismatch.** The dimension you pass to your vector store must exactly match your embedding model's output. `BAAI/bge-small-en-v1.5` → 384, `all-MiniLM-L6-v2` → 384, `all-mpnet-base-v2` → 768, `BAAI/bge-large-en-v1.5` → 1024. Check with `embedder.get_embedding_dimension()` before creating the store.
+</Warning>
+
+<Tip>
+  **Fallback embeddings are not semantic.** If neither FastEmbed nor sentence-transformers loads successfully, TextEmbedder silently falls back to 128-dimensional SHA-256 hash embeddings. These are deterministic but carry no semantic meaning. Check `embedder.get_method()`: if it returns `"fallback"`, install your intended provider.
+</Tip>
+
 ## Provider Stores
 
 Use provider stores directly when you need fine-grained control over a single backend:
@@ -377,6 +397,10 @@ store = ProviderStoreFactory.create(provider="bge", model_name="BAAI/bge-large-e
 <Note>
   `LlamaStore` exists in the module but is a placeholder: it does not connect to Ollama and always raises `ProcessingError` at embed time. Do not use it in production.
 </Note>
+
+<Warning>
+  **LlamaStore is not functional.** `LlamaStore` exists in the module but does not connect to Ollama. It always raises `ProcessingError` at embed time. Use `FastEmbedStore` for local ONNX-based embeddings or `BGEStore` for sentence-transformers-based local embeddings instead.
+</Warning>
 
 ## Pooling Strategies
 
@@ -608,32 +632,6 @@ pooled = pool_embeddings(embs, method="mean")
 providers = check_available_providers()
 # → {"sentence_transformers": True, "fastembed": True, "openai": False}
 ```
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **Dimension mismatch.** The dimension you pass to your vector store must exactly match your embedding model's output. `BAAI/bge-small-en-v1.5` → 384, `all-MiniLM-L6-v2` → 384, `all-mpnet-base-v2` → 768, `BAAI/bge-large-en-v1.5` → 1024. Check with `embedder.get_embedding_dimension()` before creating the store.
-</Warning>
-
-<Warning>
-  **LlamaStore is not functional.** `LlamaStore` exists in the module but does not connect to Ollama. It always raises `ProcessingError` at embed time. Use `FastEmbedStore` for local ONNX-based embeddings or `BGEStore` for sentence-transformers-based local embeddings instead.
-</Warning>
-
-<Warning>
-  **Sequence length limits.** Most sentence-transformers models have a 512-token limit. Text beyond that is silently truncated. Use `TextSplitter(method="hierarchical")` + `HierarchicalPooling` for long documents.
-</Warning>
-
-<Warning>
-  **FastEmbed ignores the `device` parameter.** FastEmbed uses ONNX Runtime and manages its own execution providers: passing `device="cuda"` has no effect. Switch to `method="sentence_transformers"` if you need explicit GPU control.
-</Warning>
-
-<Tip>
-  **Always use the same model for indexing and querying.** Vectors from different models are not comparable: they live in different vector spaces. Switching models requires re-embedding your entire corpus.
-</Tip>
-
-<Tip>
-  **Fallback embeddings are not semantic.** If neither FastEmbed nor sentence-transformers loads successfully, TextEmbedder silently falls back to 128-dimensional SHA-256 hash embeddings. These are deterministic but carry no semantic meaning. Check `embedder.get_method()`: if it returns `"fallback"`, install your intended provider.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Vector Store" icon="database" href="vector_store">

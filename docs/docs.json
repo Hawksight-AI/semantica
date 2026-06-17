@@ -24,8 +24,10 @@
     }
   },
   "appearance": {
-    "default": "dark"
+    "default": "dark",
+    "strict": true
   },
+  "css": "/assets/custom.css",
   "background": {
     "color": {
       "dark": "#080C10",
@@ -206,41 +208,29 @@
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Discord",
-          "href": "https://discord.gg/sV34vps5hH",
-          "icon": "discord"
-        },
-        {
-          "anchor": "GitHub",
-          "href": "https://github.com/semantica-agi/semantica",
-          "icon": "github"
-        },
-        {
-          "anchor": "PyPI",
-          "href": "https://pypi.org/project/semantica/",
-          "icon": "python"
-        },
-        {
-          "anchor": "Follow on X",
-          "href": "https://x.com/BuildSemantica",
-          "icon": "x-twitter"
-        }
-      ]
-    }
+    ]
   },
   "navbar": {
     "links": [
       {
-        "label": "GitHub",
-        "href": "https://github.com/semantica-agi/semantica"
+        "label": "Discord",
+        "href": "https://discord.gg/sV34vps5hH",
+        "icon": "discord"
       },
       {
-        "label": "Discord",
-        "href": "https://discord.gg/sV34vps5hH"
+        "label": "GitHub",
+        "href": "https://github.com/semantica-agi/semantica",
+        "icon": "github"
+      },
+      {
+        "label": "PyPI",
+        "href": "https://pypi.org/project/semantica/",
+        "icon": "python"
+      },
+      {
+        "label": "Follow on X",
+        "href": "https://x.com/BuildSemantica",
+        "icon": "x-twitter"
       }
     ],
     "primary": {

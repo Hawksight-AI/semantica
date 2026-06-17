@@ -22,7 +22,7 @@ Unstructured data is inconsistent by nature. Without normalization, the same rea
 - `"Apple Inc."`, `"Apple Computer Inc."`, `"APPLE INC."`: multiple nodes, one company
 - `"Jan 1st, 2020"`, `"01/01/2020"`, `"2020-01-01"`: three formats, one date
 - `"$1.2B"`, `"1,200,000,000"`, `"1.2 billion USD"`: three strings, one number
-- `"Hello World"` vs `"Hello\u00a0World"`: a non-breaking space that breaks string matching
+- `"Hello World"` vs `"Hello World"`: a non-breaking space that breaks string matching
 
 Normalization collapses these variants before any extractor, deduplicator, or graph builder sees the data.
 
@@ -51,7 +51,7 @@ from semantica.normalize import (
 
 # Text: normalize unicode, collapse whitespace, replace smart quotes
 normalizer = TextNormalizer()
-clean = normalizer.normalize_text("  Hello,\u00a0 World\u2026  ")
+clean = normalizer.normalize_text("  Hello,  World…  ")
 # → "Hello, World..."
 
 # Date
@@ -90,6 +90,10 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
     # convert_to_utf8 returns a str
     utf8_text = handler.convert_to_utf8(raw_bytes)
     ```
+
+    <Warning>
+      **Run encoding repair before anything else.** A single cp1252 character in a UTF-8 stream silently corrupts the surrounding text. Call `handler.convert_to_utf8(raw_bytes)` first, before any other normalizer sees the data.
+    </Warning>
   </Step>
   <Step title="TextNormalizer: unicode, whitespace, special chars">
     ```python
@@ -103,6 +107,10 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
         case="preserve",
     )
     ```
+
+    <Warning>
+      **Don't lowercase before NER.** `normalize_text(text, case="lower")` before entity extraction destroys capitalization signals that NER relies on. Apply case normalization only after extraction if needed.
+    </Warning>
   </Step>
   <Step title="EntityNormalizer: canonicalize entity names">
     ```python
@@ -118,6 +126,10 @@ utf8_text = handler.convert_to_utf8(raw_bytes)
     )
     # → "Apple Inc." (if the alias_map contains it, else title-cased input)
     ```
+
+    <Warning>
+      **`EntityNormalizer` has no built-in corporate suffix expansion.** There is no automatic mapping of `"Apple Computer Inc."` → `"Apple Inc."`. To canonicalize corporate names, provide an explicit `alias_map` with lowercase keys: `EntityNormalizer(alias_map={"apple computer inc.": "Apple Inc."})`.
+    </Warning>
   </Step>
   <Step title="DateNormalizer and NumberNormalizer: parse structured values">
     ```python
@@ -210,13 +222,13 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
 
     # Batch normalization
     results = normalizer.process_batch(
-        ["  hello  ", "WORLD", "caf\u00e9"],
+        ["  hello  ", "WORLD", "café"],
         unicode_form="NFKC",
         case="lower",
     )
 
     # normalize() accepts str or List[Dict] (parsed docs from DocumentParser)
-    docs = [{"content": "Hello\u00a0world"}, {"content": "test text"}]
+    docs = [{"content": "Hello world"}, {"content": "test text"}]
     normalized_docs = normalizer.normalize(docs)
     ```
 
@@ -244,14 +256,14 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     )
 
     unicode_norm = UnicodeNormalizer()
-    text = unicode_norm.normalize_unicode("caf\u00e9", form="NFC")
+    text = unicode_norm.normalize_unicode("café", form="NFC")
 
     ws_norm = WhitespaceNormalizer()
     text    = ws_norm.normalize_whitespace("Hello\t\t World\n\n")
     # → "Hello  World\n\n"
 
     processor = SpecialCharacterProcessor()
-    text      = processor.normalize_punctuation("\u2018Hello\u2019")
+    text      = processor.normalize_punctuation("‘Hello’")
     # → "'Hello'"
     ```
   </Tab>
@@ -313,6 +325,10 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     canonical = handler.normalize_name_format("Dr. JOHN P. SMITH Jr.")
     # → "John P. Smith Jr." (removes leading title)
     ```
+
+    <Tip>
+      **`AliasResolver` uses lowercase key lookup.** Register aliases with lowercase keys even if the canonical form is title-cased. The resolver converts the input to lowercase before lookup.
+    </Tip>
   </Tab>
   <Tab title="DateNormalizer">
     `DateNormalizer` takes `config=None, **kwargs`. The `format` and `timezone`
@@ -427,6 +443,10 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
       `detect()` requires at least 10 characters for reliable detection. On shorter text it returns the `default_language` (default: `"en"`).
     </Note>
 
+    <Warning>
+      **`LanguageDetector.detect()` returns a `str`, not a dict.** Use `detect_with_confidence()` for `(language_code, confidence)` tuple, or `detect_multiple()` for `List[(code, confidence)]`.
+    </Warning>
+
     ### EncodingHandler
 
     Detect and repair character encoding issues. Requires `chardet`: `pip install chardet`.
@@ -457,6 +477,10 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
       then falls back through `latin-1`, `cp1252`, `iso-8859-1`
     - Always run `EncodingHandler` first: broken bytes cause cascading failures
       in every downstream normalizer
+
+    <Warning>
+      **`EncodingHandler.detect()` returns a `(str, float)` tuple, not a dict.** Unpack with `encoding, confidence = handler.detect(data)`.
+    </Warning>
   </Tab>
 </Tabs>
 
@@ -511,6 +535,14 @@ print(f"Warnings: {len(result.warnings)}")
 | `validate_data(dataset, schema)` | `ValidationResult` | Validate records against a schema dict |
 | `handle_missing_values(dataset, strategy)` | `List[Dict]` | Remove, fill, or impute missing values |
 
+<Tip>
+  **`DataCleaner.remove_duplicates()` does not exist as a standalone method.** Use `detect_duplicates()` to get `DuplicateGroup` objects, or call `clean_data(records, remove_duplicates=True)` to remove them in-place.
+</Tip>
+
+<Tip>
+  **`DataCleaner` operates on flat records, not graph entities.** For entity-level semantic deduplication, use `DuplicateDetector` from the Deduplication module instead.
+</Tip>
+
 ## Pipeline Integration
 
 ```python
@@ -551,40 +583,6 @@ from semantica.normalize import normalize_text
 normalized = normalize_text("Apple Inc.", method="expand_suffixes")
 # → "Apple Incorporated"
 ```
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **Run encoding repair before anything else.** A single cp1252 character in a UTF-8 stream silently corrupts the surrounding text. Call `handler.convert_to_utf8(raw_bytes)` first, before any other normalizer sees the data.
-</Warning>
-
-<Warning>
-  **Don't lowercase before NER.** `normalize_text(text, case="lower")` before entity extraction destroys capitalization signals that NER relies on. Apply case normalization only after extraction if needed.
-</Warning>
-
-<Warning>
-  **`EntityNormalizer` has no built-in corporate suffix expansion.** There is no automatic mapping of `"Apple Computer Inc."` → `"Apple Inc."`. To canonicalize corporate names, provide an explicit `alias_map` with lowercase keys: `EntityNormalizer(alias_map={"apple computer inc.": "Apple Inc."})`.
-</Warning>
-
-<Tip>
-  **`AliasResolver` uses lowercase key lookup.** Register aliases with lowercase keys even if the canonical form is title-cased. The resolver converts the input to lowercase before lookup.
-</Tip>
-
-<Warning>
-  **`LanguageDetector.detect()` returns a `str`, not a dict.** Use `detect_with_confidence()` for `(language_code, confidence)` tuple, or `detect_multiple()` for `List[(code, confidence)]`.
-</Warning>
-
-<Warning>
-  **`EncodingHandler.detect()` returns a `(str, float)` tuple, not a dict.** Unpack with `encoding, confidence = handler.detect(data)`.
-</Warning>
-
-<Tip>
-  **`DataCleaner.remove_duplicates()` does not exist as a standalone method.** Use `detect_duplicates()` to get `DuplicateGroup` objects, or call `clean_data(records, remove_duplicates=True)` to remove them in-place.
-</Tip>
-
-<Tip>
-  **`DataCleaner` operates on flat records, not graph entities.** For entity-level semantic deduplication, use `DuplicateDetector` from the Deduplication module instead.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Parse" icon="file-lines" href="parse">

@@ -73,41 +73,6 @@ icon: "brain"
 </CardGroup>
 
 
-## Getting Started
-
-```python
-from semantica.context import AgentContext, ContextGraph
-from semantica.vector_store import VectorStore
-
-context = AgentContext(
-    vector_store=VectorStore(backend="faiss", dimension=768),
-    knowledge_graph=ContextGraph(advanced_analytics=True),
-    decision_tracking=True,   # requires knowledge_graph to be set
-)
-
-# Store a fact
-memory_id = context.store(
-    "GPT-4 outperforms GPT-3.5 on reasoning benchmarks by 40%",
-    metadata={"source": "openai_blog", "date": "2024-01"}
-)
-
-# Retrieve by semantic similarity
-results = context.retrieve("LLM benchmark comparisons", max_results=5)
-for r in results:
-    print("{} (score: {:.3f})".format(r["content"], r["score"]))
-
-# Record a decision
-decision_id = context.record_decision(
-    category="model_selection",
-    scenario="Choose LLM for production reasoning pipeline",
-    reasoning="GPT-4 benchmark advantage justifies 3x cost increase",
-    outcome="selected_gpt4",
-    confidence=0.91,
-    entities=["gpt-4", "gpt-3.5"],
-    decision_maker="pipeline_agent",
-)
-```
-
 ## Quick Start
 
 <Steps>
@@ -228,9 +193,6 @@ decision_id = context.record_decision(
     precedents = context.find_precedents("model selection", limit=5)
     ```
 
-    <Note>
-      `decision_tracking=True` silently no-ops unless `knowledge_graph` is also provided at construction time.
-    </Note>
   </Tab>
   <Tab title="GraphRAG Query">
     Load a pre-built knowledge graph and answer complex questions with multi-hop graph traversal.
@@ -323,9 +285,13 @@ decision_id = context.record_decision(
 | `advanced_analytics` | `bool` | `True` | Enables PageRank, centrality, and community analysis |
 | `kg_algorithms` | `bool` | `True` | Adds path-finding and link prediction |
 
-<Note>
-  `decision_tracking=True` has no effect unless `knowledge_graph` is also provided. Both must be set at construction time for decision tracking to be active.
-</Note>
+<Tip>
+  **Set `retention_days` to avoid memory bloat.** The default of `30` prunes automatically. Compliance-critical agents may need `retention_days=None` with explicit archival via `export()`.
+</Tip>
+
+<Tip>
+  **Persist your vector store between runs.** Pass `index_path="context.faiss"` to `VectorStore` so the FAISS index survives process restarts.
+</Tip>
 
 ### Memory Methods
 
@@ -343,6 +309,10 @@ decision_id = context.record_decision(
 | `load(path)` | `None` | Restore context state from disk |
 | `export(conversation_id, format)` | `str \| Dict` | Export memories as JSON or dict |
 | `import_data(data, format)` | `int` | Import memories from JSON or dict |
+
+<Tip>
+  **`retrieve()` uses `max_results=`, not `top_k=`.** The parameter is `max_results` (default `5`). Pass `use_graph=True` to force GraphRAG or `use_graph=False` to force vector-only retrieval regardless of whether a `knowledge_graph` is configured.
+</Tip>
 
 ### Conversation Methods
 
@@ -395,6 +365,14 @@ print("Sources used: {}".format(result["num_sources"]))
 | `get_causal_chain(decision_id, direction, max_depth)` | `List[Decision]` | Trace `"upstream"` causes or `"downstream"` effects |
 | `trace_decision_explainability(decision_id)` | `Dict` | Full explainability: causes, effects, relationship paths |
 | `get_policy_engine()` | `PolicyEngine` | Access the active `PolicyEngine` instance |
+
+<Warning>
+  `decision_tracking=True` requires `knowledge_graph` to also be set. Without it, `record_decision()` raises `RuntimeError`.
+</Warning>
+
+<Tip>
+  **Use `find_precedents()` before every significant decision.** This is how the context module prevents agents from making contradictory choices across runs. Surface precedents to the LLM as context: "we chose X for similar reasons before."
+</Tip>
 
 ### Checkpoint Methods
 
@@ -515,7 +493,7 @@ print("Reachable: {}, hops: {}".format(path["reachable"], path["hop_count"]))
 ```
 
 
-## AgentMemory (Low-Level)
+## AgentMemory
 
 For fine-grained control over memory storage and retrieval:
 
@@ -635,6 +613,10 @@ web = linker.build_entity_web()
 print("Entities:", web["statistics"]["total_entities"])
 print("Links:   ", web["statistics"]["total_links"])
 ```
+
+<Warning>
+  **`EntityLinker.link_entities()` links two entity IDs, not a list.** Call `link_entities(entity1_id, entity2_id, link_type)` to create a typed edge between two known IDs. For linking entities extracted from text, use `link(text, entities=[...])` instead.
+</Warning>
 
 `LinkedEntity` fields returned by `link()`:
 
@@ -907,37 +889,6 @@ class EntityLink:
   </Tab>
 </Tabs>
 
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **`decision_tracking=True` silently does nothing without `knowledge_graph`.** Both must be set at construction. Passing only `decision_tracking=True` without a `knowledge_graph` instance leaves the decision backend uninitialised: `record_decision()` will raise `RuntimeError`.
-</Warning>
-
-<Warning>
-  **Persist your vector store between runs.** Pass `index_path="context.faiss"` to `VectorStore`: without it the FAISS index lives only in memory and is lost on shutdown.
-</Warning>
-
-<Tip>
-  **Use `find_precedents()` before every significant decision.** This is how the context module prevents agents from making contradictory choices across runs. Surface precedents to the LLM as context: "we chose X for similar reasons before."
-</Tip>
-
-<Tip>
-  **`retrieve()` uses `max_results=`, not `top_k=`.** The parameter is `max_results` (default `5`). Pass `use_graph=True` to force GraphRAG or `use_graph=False` to force vector-only retrieval regardless of whether a `knowledge_graph` is configured.
-</Tip>
-
-<Tip>
-  **Set `retention_days` to avoid memory bloat.** The default `AgentContext.retention_days=30` prunes automatically. Compliance-critical agents may need `retention_days=None` with explicit archival via `export()`.
-</Tip>
-
-<Tip>
-  **Use `checkpoint()` + `diff_checkpoints()` to audit reasoning loops.** Take a snapshot before and after a reasoning pass to see exactly which decisions and relationships were added.
-</Tip>
-
-<Warning>
-  **`EntityLinker.link_entities()` links two entity IDs, not a list.** Call `link_entities(entity1_id, entity2_id, link_type)` to create a typed edge between two known IDs. For linking entities extracted from text, use `link(text, entities=[...])` instead.
-</Warning>
-
 <CardGroup cols={2}>
   <Card title="Vector Store" icon="database" href="vector_store">
     Embedding storage backend for memory retrieval.
@@ -953,7 +904,11 @@ class EntityLink:
   </Card>
 </CardGroup>
 
-### Cookbooks
-
-- [Context Module](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb): memory and decision tracking · Intermediate
-- [Advanced Context Engineering](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb): production FAISS + Neo4j setup · Advanced
+<CardGroup cols={2}>
+  <Card title="Context Module" icon="book-open" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb">
+    Memory and decision tracking · Intermediate
+  </Card>
+  <Card title="Advanced Context Engineering" icon="flask" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb">
+    Production FAISS + Neo4j setup · Advanced
+  </Card>
+</CardGroup>

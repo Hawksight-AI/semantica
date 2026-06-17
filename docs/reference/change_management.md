@@ -97,6 +97,10 @@ icon: "clock-rotate-left"
   </Step>
 </Steps>
 
+<Warning>
+  **Snapshot before every destructive operation.** Call `manager.create_snapshot()` before running deduplication, conflict resolution, or merge operations. `restore_snapshot()` is only possible if a snapshot exists before the change.
+</Warning>
+
 ## TemporalVersionManager
 
 Version control for knowledge graphs: snapshot, diff, and rollback.
@@ -155,6 +159,10 @@ for item in diff["entities_modified"]:
     for field, change in item["changes"].items():
         print("  %s: %s -> %s" % (field, change["from"], change["to"]))
 ```
+
+<Tip>
+  **Use `diff()` for code review and incident investigation.** `manager.diff("v1.0", "v2.0")` returns a plain dict with `"summary"`, `"entities_added"`, `"entities_removed"`, and `"entities_modified"`: use the `"summary"` sub-dict to get counts and `"entities_modified"` to inspect property-level changes.
+</Tip>
 
 <Accordion title="diff() return schema">
 
@@ -237,6 +245,10 @@ print("Properties added: ", diff["properties_added"])
   The default `TemporalVersionManager()` with no arguments uses in-memory storage. Always pass `storage_path="versions.db"` or an explicit `SQLiteVersionStorage` in production: otherwise your entire version history disappears on restart.
 </Warning>
 
+<Tip>
+  **Use `SQLiteVersionStorage` in production.** The default in-memory storage loses all version history when the process exits. Pass `storage_path="versions.db"` to `TemporalVersionManager` or create `SQLiteVersionStorage(db_path="versions.db")` explicitly.
+</Tip>
+
 ## Integrity Verification
 
 SHA-256 checksums detect any unauthorized modification to a graph between snapshots:
@@ -311,6 +323,10 @@ print("Added: %d | Removed: %d | Modified: %d" % (
     s["entities_added"], s["entities_removed"], s["entities_modified"]))
 ```
 
+<Tip>
+  **Use `list_versions()` and `diff()` for compliance reviews.** `manager.list_versions()` returns a list of metadata dicts (with `label`, `author`, `timestamp`, `checksum`). Run `verify_checksum(snapshot)` on the dict returned by `get_version()` to confirm integrity before any export.
+</Tip>
+
 Use `verify_checksum()` before any compliance export to confirm snapshot integrity:
 
 ```python
@@ -347,24 +363,6 @@ for record in history:
     Every snapshot dict includes `author`, `timestamp`, and `checksum`: the three fields required for a compliant electronic record. `verify_checksum(snapshot)` provides the tamper-evidence required by 21 CFR § 11.10(e).
   </Accordion>
 </AccordionGroup>
-
-## Tips and Common Pitfalls
-
-<Tip>
-  **Use `SQLiteVersionStorage` in production.** The default in-memory storage loses all version history when the process exits. Pass `storage_path="versions.db"` to `TemporalVersionManager` or create `SQLiteVersionStorage(db_path="versions.db")` explicitly.
-</Tip>
-
-<Warning>
-  **Snapshot before every destructive operation.** Call `manager.create_snapshot()` before running deduplication, conflict resolution, or merge operations. `restore_snapshot()` is only possible if a snapshot exists before the change.
-</Warning>
-
-<Tip>
-  **Use `diff()` for code review and incident investigation.** `manager.diff("v1.0", "v2.0")` returns a plain dict with `"summary"`, `"entities_added"`, `"entities_removed"`, and `"entities_modified"`: use the `"summary"` sub-dict to get counts and `"entities_modified"` to inspect property-level changes.
-</Tip>
-
-<Tip>
-  **Use `list_versions()` and `diff()` for compliance reviews.** `manager.list_versions()` returns a list of metadata dicts (with `label`, `author`, `timestamp`, `checksum`). Run `verify_checksum(snapshot)` on the dict returned by `get_version()` to confirm integrity before any export.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Provenance" icon="link" href="provenance">

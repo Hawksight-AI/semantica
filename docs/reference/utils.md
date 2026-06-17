@@ -67,6 +67,10 @@ Most users won't call utils directly: it's the **shared foundation** for all mod
     setup_logging(level="INFO")   # "DEBUG" | "INFO" | "WARNING" | "ERROR"
     logger = get_logger(__name__)
     ```
+
+    <Warning>
+      **Call `setup_logging(level="INFO")` once at application startup.** Without it, Semantica falls back to Python's root logger, which may be silent or misconfigured. Call it before importing other Semantica modules to capture initialization messages.
+    </Warning>
   </Step>
   <Step title="Instrument expensive functions with the performance decorator">
     ```python
@@ -77,6 +81,10 @@ Most users won't call utils directly: it's the **shared foundation** for all mod
         ...
     # Logs: "expensive_step completed in 2.34s"
     ```
+
+    <Tip>
+      **`@log_execution_time` is the performance decorator.** Apply it to any function to automatically log its name, execution time, and success/failure. `log_performance` is a lower-level function for logging metrics you've already collected: it is not a decorator.
+    </Tip>
   </Step>
   <Step title="Configure via environment variables">
     ```bash
@@ -119,9 +127,14 @@ for item in track_progress(items, desc="Processing documents"):
 ```
 
 Supports:
+
 - **Console**: tqdm progress bar with ETA
 - **Jupyter**: notebook-compatible widget (auto-detected)
 - **File**: write progress to a log file
+
+<Tip>
+  **`track_progress` auto-detects Jupyter.** In a terminal it renders a tqdm progress bar; in a Jupyter notebook it renders an interactive widget. You don't need to check the environment: the same call works in both.
+</Tip>
 
 ## Helper Functions
 
@@ -137,6 +150,10 @@ uid   = hash_data({"key": "value"})         # -> hex digest string
 # Sanitize a string for use as a filename
 fname = safe_filename("My File?.txt")       # -> "My_File.txt"
 ```
+
+<Tip>
+  **`hash_data()` is deterministic across runs.** Given the same input dict (any JSON-serializable object), `hash_data()` always returns the same SHA-256 hex string: suitable as a cache key or idempotency token in pipeline steps.
+</Tip>
 
 ## Nested Dict Utilities
 
@@ -196,6 +213,10 @@ except SemanticaError as e:
   </Accordion>
 </AccordionGroup>
 
+<Tip>
+  **Catch `SemanticaError` as the broadest exception net.** All framework errors inherit from `SemanticaError`, so `except SemanticaError` catches validation failures, processing errors, and everything in between. Use specific subclasses for targeted recovery logic.
+</Tip>
+
 ## File Utilities
 
 ```python
@@ -204,28 +225,6 @@ from semantica.utils import read_json_file
 # Read and parse a JSON file: raises FileNotFoundError or json.JSONDecodeError on failure
 config = read_json_file("config.json")
 ```
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **Call `setup_logging(level="INFO")` once at application startup.** Without it, Semantica falls back to Python's root logger, which may be silent or misconfigured. Call it before importing other Semantica modules to capture initialization messages.
-</Warning>
-
-<Tip>
-  **`@log_execution_time` is the performance decorator.** Apply it to any function to automatically log its name, execution time, and success/failure. `log_performance` is a lower-level function for logging metrics you've already collected: it is not a decorator.
-</Tip>
-
-<Tip>
-  **`hash_data()` is deterministic across runs.** Given the same input dict (any JSON-serializable object), `hash_data()` always returns the same SHA-256 hex string: suitable as a cache key or idempotency token in pipeline steps.
-</Tip>
-
-<Tip>
-  **Catch `SemanticaError` as the broadest exception net.** All framework errors inherit from `SemanticaError`, so `except SemanticaError` catches validation failures, processing errors, and everything in between. Use specific subclasses for targeted recovery logic.
-</Tip>
-
-<Tip>
-  **`track_progress` auto-detects Jupyter.** In a terminal it renders a tqdm progress bar; in a Jupyter notebook it renders an interactive widget. You don't need to check the environment: the same call works in both.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Core" icon="gear" href="core">

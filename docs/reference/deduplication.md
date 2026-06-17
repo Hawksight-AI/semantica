@@ -87,6 +87,10 @@ for op in operations:
     ))
 ```
 
+<Tip>
+  **Normalize entity names before deduplication.** Canonical forms such as `"Apple Inc."` vs `"apple inc"` may score below threshold due to case alone. Run `EntityNormalizer` or `TextNormalizer` first for reliable matching.
+</Tip>
+
 ## DuplicateDetector
 
 Find duplicate entity pairs:
@@ -124,6 +128,14 @@ new_entities = [{"id": "4", "name": "Apple Corp.", "type": "Company"}]
 candidates   = detector.incremental_detect(new_entities, entities)
 ```
 
+<Tip>
+  **Tune `similarity_threshold` before `confidence_threshold`.** The similarity threshold gates which entity pairs are even considered. The confidence threshold further filters those pairs based on multi-factor scoring. Start with `similarity_threshold=0.7` and raise it to reduce false positives.
+</Tip>
+
+<Tip>
+  **Use `detect_duplicate_groups()` when you need to merge.** The `"group"` detection strategy uses union-find to form transitive clusters: if A≈B and B≈C, all three land in the same group. Plain `detect_duplicates()` returns individual pairs without transitivity.
+</Tip>
+
 ### `detect_duplicates()` detection methods
 
 The `method=` parameter of the `detect_duplicates()` convenience function controls how
@@ -147,6 +159,10 @@ method used internally:
 | `confidence` | `float` | Confidence score (0–1) |
 | `reasons` | `List[str]` | Why they are considered duplicates |
 | `metadata` | `Dict` | Additional metadata |
+
+<Warning>
+  **`DuplicateCandidate` fields are `entity1`, `entity2`, `similarity_score`: not `entity_a`, `entity_b`, `similarity`.** Accessing the wrong field names raises `AttributeError`.
+</Warning>
 
 ### DuplicateGroup fields
 
@@ -188,6 +204,10 @@ history = merger.get_merge_history()
 print("Total merges performed:", len(history))
 ```
 
+<Warning>
+  **`merge_entities()` and `EntityMerger.merge_duplicates()` return `List[MergeOperation]`, not a list of entity dicts.** Access `.merged_entity` on each operation to get the merged dict.
+</Warning>
+
 ### Merge strategies
 
 Pass as a string to `strategy=` on `merge_duplicates()` or `merge_entity_group()`:
@@ -228,6 +248,10 @@ merger.merge_strategy_manager.add_property_rule(
 
 operations = merger.merge_duplicates(entities)
 ```
+
+<Warning>
+  **`PropertyMergeRule` is a dataclass, not an Enum.** The merge strategy Enum is `MergeStrategy` (`KEEP_FIRST`, `KEEP_LAST`, `KEEP_MOST_COMPLETE`, `KEEP_HIGHEST_CONFIDENCE`, `MERGE_ALL`). Per-property rules are added via `merger.merge_strategy_manager.add_property_rule(name, strategy)`.
+</Warning>
 
 ### MergeOperation fields
 
@@ -426,32 +450,6 @@ result = calculate_similarity(entity_a, entity_b, method="drug_name")
     ```
   </Tab>
 </Tabs>
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **`DuplicateCandidate` fields are `entity1`, `entity2`, `similarity_score`: not `entity_a`, `entity_b`, `similarity`.** Accessing the wrong field names raises `AttributeError`.
-</Warning>
-
-<Warning>
-  **`merge_entities()` and `EntityMerger.merge_duplicates()` return `List[MergeOperation]`, not a list of entity dicts.** Access `.merged_entity` on each operation to get the merged dict.
-</Warning>
-
-<Warning>
-  **`PropertyMergeRule` is a dataclass, not an Enum.** The merge strategy Enum is `MergeStrategy` (`KEEP_FIRST`, `KEEP_LAST`, `KEEP_MOST_COMPLETE`, `KEEP_HIGHEST_CONFIDENCE`, `MERGE_ALL`). Per-property rules are added via `merger.merge_strategy_manager.add_property_rule(name, strategy)`.
-</Warning>
-
-<Tip>
-  **Tune `similarity_threshold` before `confidence_threshold`.** The similarity threshold gates which entity pairs are even considered. The confidence threshold further filters those pairs based on multi-factor scoring. Start with `similarity_threshold=0.7` and raise it to reduce false positives.
-</Tip>
-
-<Tip>
-  **Use `detect_duplicate_groups()` when you need to merge.** The `"group"` detection strategy uses union-find to form transitive clusters: if A≈B and B≈C, all three land in the same group. Plain `detect_duplicates()` returns individual pairs without transitivity.
-</Tip>
-
-<Tip>
-  **Normalize entity names before deduplication.** Canonical forms such as `"Apple Inc."` vs `"apple inc"` may score below threshold due to case alone. Run `EntityNormalizer` or `TextNormalizer` first for reliable matching.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Conflicts" icon="triangle-exclamation" href="conflicts">

@@ -139,6 +139,10 @@ Semantica's conflict detection makes disagreements explicit and actionable:
   </Step>
 </Steps>
 
+<Warning>
+  **Detect before you merge, not after.** Run conflict detection on raw entity data before deduplication and graph construction. Detecting conflicts in a live graph that already contains merged entities is harder: you lose the original source attribution.
+</Warning>
+
 ## ConflictDetector
 
 ```python
@@ -159,6 +163,10 @@ conflicts = detector.detect_value_conflicts(entities, "revenue")
 | `TEMPORAL` | Conflicting timestamps or validity windows | CEO at two companies simultaneously |
 | `LOGICAL` | Logically inconsistent property combinations | `is_alive=True` but `death_date` set |
 | `RELATIONSHIP` | Inconsistent relationship properties across sources | Edge weight 0.9 vs 0.3 from two sources |
+
+<Warning>
+  **`TEMPORAL` and `LOGICAL` conflict detection is not implemented on `ConflictDetector` directly.** The `ConflictType` enum includes these types for use in custom pipelines, but the detector class only implements `detect_value_conflicts`, `detect_type_conflicts`, `detect_relationship_conflicts`, and `detect_entity_conflicts`.
+</Warning>
 
 Run targeted detection by type:
 
@@ -198,6 +206,10 @@ for result in results:
     print("Resolved '%s' -> %s" % (result.conflict_id, result.resolved_value))
     print("  Strategy: %s  Confidence: %.2f" % (result.resolution_strategy, result.confidence))
 ```
+
+<Tip>
+  **Don't auto-resolve everything.** Use `MANUAL_REVIEW` for conflicts with `severity == "critical"` or `severity == "high"`: high severity means the disagreement is large and the stakes of getting it wrong are high.
+</Tip>
 
 ### Choosing a Resolution Strategy
 
@@ -314,6 +326,14 @@ chain = tracker.get_traceability_chain("apple_inc")
 - Credibility scores default to 0.50 for any source not explicitly set
 - `SourceTracker` stores property-level provenance: so you can trace exactly which source contributed each value
 
+<Warning>
+  **Always set credibility scores.** The default credibility is 0.50 for all sources. Without explicit scores, `CREDIBILITY_WEIGHTED` behaves identically to `VOTING`. The power of this strategy is in the differentiation.
+</Warning>
+
+<Tip>
+  **Combine with provenance.** The `SourceTracker` feeds directly into the [Provenance](provenance) module's audit trail. If you need to explain how a resolved value was chosen, provenance records give you the full chain.
+</Tip>
+
 ## ConflictAnalyzer
 
 ```python
@@ -337,6 +357,14 @@ for t in trends:
 - `analyze_conflicts()["patterns"]` returns a list of `ConflictPattern` objects: use `pattern.pattern_type` and `pattern.frequency` to find systemic data quality issues
 - `analyze_conflicts()["by_source"]` includes `counts` and `top_sources`: sources appearing in many conflicts may have upstream data quality problems
 - `analyze_trends()` returns a list of per-period dicts (`period`, `conflict_count`, `trend`, `trend_direction`): `trend` is `"increasing"`, `"decreasing"`, or `"stable"`
+
+<Tip>
+  **Use `analyze_conflicts()["by_source"]["top_sources"]` to identify bad data feeds.** A single source appearing in many conflicts is a data quality problem upstream, not a conflict to resolve record by record. Flag it and investigate the source pipeline.
+</Tip>
+
+<Tip>
+  **Severity is a string label, not a score.** `ConflictDetector` assigns `"critical"`, `"high"`, or `"medium"` based on property importance and value differences. Critical fields (`id`, `name`, `type`, `revenue`) always yield `"critical"`. Domain context determines what to prioritize.
+</Tip>
 
 ## InvestigationGuideGenerator
 
@@ -435,36 +463,6 @@ class InvestigationStep:
 
   </Accordion>
 </AccordionGroup>
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **Detect before you merge, not after.** Run conflict detection on raw entity data before deduplication and graph construction. Detecting conflicts in a live graph that already contains merged entities is harder: you lose the original source attribution.
-</Warning>
-
-<Warning>
-  **Always set credibility scores.** The default credibility is 0.50 for all sources. Without explicit scores, `CREDIBILITY_WEIGHTED` behaves identically to `VOTING`. The power of this strategy is in the differentiation.
-</Warning>
-
-<Tip>
-  **Don't auto-resolve everything.** Use `MANUAL_REVIEW` for conflicts with `severity == "critical"` or `severity == "high"`: high severity means the disagreement is large and the stakes of getting it wrong are high.
-</Tip>
-
-<Warning>
-  **`TEMPORAL` and `LOGICAL` conflict detection is not implemented on `ConflictDetector` directly.** The `ConflictType` enum includes these types for use in custom pipelines, but the detector class only implements `detect_value_conflicts`, `detect_type_conflicts`, `detect_relationship_conflicts`, and `detect_entity_conflicts`.
-</Warning>
-
-<Tip>
-  **Use `analyze_conflicts()["by_source"]["top_sources"]` to identify bad data feeds.** A single source appearing in many conflicts is a data quality problem upstream, not a conflict to resolve record by record. Flag it and investigate the source pipeline.
-</Tip>
-
-<Tip>
-  **Severity is a string label, not a score.** `ConflictDetector` assigns `"critical"`, `"high"`, or `"medium"` based on property importance and value differences. Critical fields (`id`, `name`, `type`, `revenue`) always yield `"critical"`. Domain context determines what to prioritize.
-</Tip>
-
-<Tip>
-  **Combine with provenance.** The `SourceTracker` feeds directly into the [Provenance](provenance) module's audit trail. If you need to explain how a resolved value was chosen, provenance records give you the full chain.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Deduplication" icon="copy" href="deduplication">

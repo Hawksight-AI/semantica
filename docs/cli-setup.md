@@ -169,9 +169,11 @@ No other environment variables are read by these commands.
 
 ## Troubleshooting
 
-### `command not found`
+<AccordionGroup>
 
-The executables are placed in the `bin/` (Linux/Mac) or `Scripts/` (Windows) directory of the active Python environment. If the command is not found, that directory is likely not on `PATH`.
+<Accordion title="command not found" icon="terminal">
+
+The executables land in `bin/` (Linux/Mac) or `Scripts/` (Windows) of the active Python environment. If the command is not found, that directory is likely not on `PATH`.
 
 Activate your virtual environment first:
 
@@ -185,23 +187,27 @@ Find where pip placed the scripts:
 
 ```bash
 python -m site --user-scripts   # user-level install
-pip show -f semantica           # shows installed files
+pip show -f semantica           # shows all installed files
 ```
 
-### Command found but crashes on import
+</Accordion>
+
+<Accordion title="Command found but crashes on import" icon="triangle-exclamation">
 
 ```bash
 pip install --upgrade semantica
 python -c "import semantica; print(semantica.__version__)"
 ```
 
-If you have multiple Python environments, make sure you are installing into the same one the shell resolves:
+If you have multiple Python environments, install into the one the shell resolves:
 
 ```bash
 python -m pip install semantica
 ```
 
-### `semantica-explorer`: "uvicorn is required"
+</Accordion>
+
+<Accordion title="semantica-explorer: uvicorn is required" icon="map">
 
 The Explorer extras are not included in the base install:
 
@@ -209,7 +215,9 @@ The Explorer extras are not included in the base install:
 pip install semantica[explorer]
 ```
 
-### `semantica-mcp` silent failure in a MCP client
+</Accordion>
+
+<Accordion title="semantica-mcp silent failure inside a MCP client" icon="plug">
 
 The MCP server communicates over stdio. Test it directly from the shell first:
 
@@ -219,9 +227,15 @@ echo '{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}' | semantica-mcp
 
 A response of `{"jsonrpc":"2.0","id":1,"result":{}}` confirms the server is working. If you see nothing, check that the command is on `PATH` and the base package is installed.
 
-### Windows: DLL errors on startup
+</Accordion>
+
+<Accordion title="Windows: DLL errors on startup" icon="windows">
 
 Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe). This is a Windows system dependency required by PyTorch and related packages, not a Semantica bug.
+
+</Accordion>
+
+</AccordionGroup>
 
 
 ## Next Steps

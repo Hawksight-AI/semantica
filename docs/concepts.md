@@ -4,9 +4,9 @@ description: "The fundamental ideas behind Semantica: knowledge graphs, reasonin
 icon: "book-open"
 ---
 
-<Tip>
+<Info>
   New here? Start with [Getting Started](getting-started) for hands-on examples, then return here for deeper understanding.
-</Tip>
+</Info>
 
 Semantica transforms unstructured data: documents, web pages, reports, databases: into **knowledge graphs**: structured representations that AI systems can query, reason about, and trace back to sources.
 

@@ -164,7 +164,6 @@ ontology  = generator.generate_ontology_from_text(
     text="A biomedical ontology for clinical trial protocols involving patients, trials, interventions, and outcomes."
 )
 ```
-```
 
 ## OWL / RDF Export
 

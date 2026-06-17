@@ -61,6 +61,10 @@ icon: "database"
     manager.register_source("taxonomy",   "json", "data/taxonomy.json")
     manager.register_source("employees",  "csv",  "data/employees.csv")
     ```
+
+    <Tip>
+      **Register all sources before calling `create_foundation_graph()`.** `create_foundation_graph()` processes all registered sources in one pass. Registering a source after calling it means that source is silently excluded. Register all sources at the start of your script, then call `create_foundation_graph()` once.
+    </Tip>
   </Step>
   <Step title="Build the foundation graph">
     ```python
@@ -82,11 +86,15 @@ icon: "database"
     else:
         print(f"Validated {report['metrics']['entity_count']} entities: no issues found")
     ```
+
+    <Warning>
+      **Validate before loading.** `manager.validate_quality(seed_data)` catches missing required fields, type inconsistencies, and duplicate IDs before they corrupt your graph. Running validation after loading means you'll need to roll back. Validation is fast: always run it first.
+    </Warning>
   </Step>
   <Step title="Merge with extracted data">
     ```python
     from semantica.semantic_extract import NERExtractor
-    
+
     extractor = NERExtractor(method="ml")
     new_entities = extractor.extract("Apple Inc. partners with Microsoft Corp.")
     
@@ -97,6 +105,10 @@ icon: "database"
         merge_strategy="merge"
     )
     ```
+
+    <Warning>
+      **Load seed data before extracted data.** Seed data is your ground truth: normalised, curated, and already de-duplicated. Load it first with `create_foundation_graph()`, then merge extracted entities on top. Merging in the wrong order lets noisy extracted data overwrite trusted reference values.
+    </Warning>
   </Step>
 </Steps>
 
@@ -230,6 +242,10 @@ Different strategies for resolving conflicts during `integrate_with_extracted()`
   </Tab>
 </Tabs>
 
+<Tip>
+  **Use `seed_first` merge strategy for reference data.** When seed data encodes authoritative facts (official company names, canonical taxonomy IDs, employee records), `merge_strategy="seed_first"` ensures those values win over extracted values. Use `merge` only when extracted data may be more current than the seed.
+</Tip>
+
 ## Full Pipeline Example
 
 ```python
@@ -314,24 +330,6 @@ Environment variable overrides:
 export SEMANTICA_SEED_DATA_DIR=./data/seed
 export SEMANTICA_SEED_MERGE_STRATEGY=seed_first
 ```
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **Load seed data before extracted data.** Seed data is your ground truth: normalised, curated, and already de-duplicated. Load it first with `create_foundation_graph()`, then merge extracted entities on top. Merging in the wrong order lets noisy extracted data overwrite trusted reference values.
-</Warning>
-
-<Tip>
-  **Use `seed_first` merge strategy for reference data.** When seed data encodes authoritative facts (official company names, canonical taxonomy IDs, employee records), `merge_strategy="seed_first"` ensures those values win over extracted values. Use `merge` only when extracted data may be more current than the seed.
-</Tip>
-
-<Warning>
-  **Validate before loading.** `manager.validate_quality(seed_data)` catches missing required fields, type inconsistencies, and duplicate IDs before they corrupt your graph. Running validation after loading means you'll need to roll back. Validation is fast: always run it first.
-</Warning>
-
-<Tip>
-  **Register all sources before calling `create_foundation_graph()`.** `create_foundation_graph()` processes all registered sources in one pass. Registering a source after calling it means that source is silently excluded. Register all sources at the start of your script, then call `create_foundation_graph()` once.
-</Tip>
 
 <Tip>
   **Use YAML configuration for production deployments.** Hard-coding source paths in Python scripts makes environment-switching (dev → staging → prod) fragile. Declare sources in `config.yaml` under the `seed:` key and override paths with `SEMANTICA_SEED_DATA_DIR`. This way, the same code runs in every environment.

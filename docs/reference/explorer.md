@@ -103,6 +103,10 @@ The `semantica-explorer` command accepts exactly four flags:
   There are no flags for authentication, CORS, or log level in the CLI. CORS allowed origins are configured via the `EXPLORER_CORS_ORIGINS` environment variable (comma-separated, default: `http://localhost:5173,http://127.0.0.1:5173`).
 </Note>
 
+<Tip>
+  **CORS origins are configured via environment variable.** Set `EXPLORER_CORS_ORIGINS` to a comma-separated list of allowed origins before launching (e.g. `EXPLORER_CORS_ORIGINS="http://myapp.example.com"`).
+</Tip>
+
 ```bash
 # Full example
 EXPLORER_CORS_ORIGINS="http://myapp.example.com" \
@@ -144,6 +148,10 @@ EXPLORER_CORS_ORIGINS="http://myapp.example.com" \
     - **Filter by entity type**: `GET /api/graph/nodes?type=Person`
     - **Semantic neighborhood**: `GET /api/graph/semantic-neighborhood?node_id=&top_k=20`
     - **Distance matrix**: `POST /api/graph/distance-matrix`
+
+    <Warning>
+      **Filter large graphs before saving to JSON.** The CLI loads the entire JSON file into memory. For graphs > 10k nodes, filter to the relevant subgraph before exporting: the force-directed layout becomes unusable on very large graphs.
+    </Warning>
   </Tab>
   <Tab title="Ontology Hub">
     Ontology lifecycle management in the browser:
@@ -164,6 +172,10 @@ EXPLORER_CORS_ORIGINS="http://myapp.example.com" \
     - **Enrich: deduplication**: `POST /api/enrich/dedup`
     - **Enrich: entity extraction**: `POST /api/enrich/extract`
     - **Temporal**: `GET /api/temporal/snapshot`, `GET /api/temporal/diff`, `GET /api/temporal/bounds`
+
+    <Tip>
+      **Use `/api/analytics/validation` to check graph quality.** The validator detects orphaned nodes, missing types, and other structural issues before you expose the graph to downstream pipelines.
+    </Tip>
   </Tab>
   <Tab title="Decisions & Provenance">
     Decision tracking and provenance queries:
@@ -174,6 +186,10 @@ EXPLORER_CORS_ORIGINS="http://myapp.example.com" \
     - **Compliance**: `GET /api/decisions/{id}/compliance`
     - **Provenance**: `GET /api/provenance?node_id=`, `GET /api/provenance/report?node_id=`
     - **Annotations**: `GET/POST /api/annotations`, `DELETE /api/annotations/{id}`
+
+    <Tip>
+      **Use the REST API for automation, Explorer UI for exploration.** Explorer's REST endpoints are a stable programmatic API: pipe them into scripts to automate batch annotation, SPARQL querying, or exports.
+    </Tip>
   </Tab>
 </Tabs>
 
@@ -352,6 +368,10 @@ WebSocket message schema:
 
 Event types broadcast over the WebSocket include: `connection_ack`, `pong`, and `graph_mutation` (fired when nodes or edges are added/updated/removed via import or enrichment). Send the text `"ping"` to receive a `pong` response.
 
+<Warning>
+  **Session state is lost on server restart.** There is no auto-save. Call `POST /api/export` with body `{"format": "json"}` to download the current state before shutting down.
+</Warning>
+
 ## Performance
 
 | Scenario | Latency |
@@ -391,28 +411,6 @@ Semantic neighborhood requires node embeddings stored in node properties (keys `
 
 **Session state lost after restart**
 Session state is in-memory only. Use `POST /api/export` to save a JSON snapshot before shutting down.
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **Filter large graphs before saving to JSON.** The CLI loads the entire JSON file into memory. For graphs > 10k nodes, filter to the relevant subgraph before exporting: the force-directed layout becomes unusable on very large graphs.
-</Warning>
-
-<Warning>
-  **Session state is lost on server restart.** There is no auto-save. Call `POST /api/export` with body `{"format": "json"}` to download the current state before shutting down.
-</Warning>
-
-<Tip>
-  **Use the REST API for automation, Explorer UI for exploration.** Explorer's REST endpoints are a stable programmatic API: pipe them into scripts to automate batch annotation, SPARQL querying, or exports.
-</Tip>
-
-<Tip>
-  **CORS origins are configured via environment variable.** Set `EXPLORER_CORS_ORIGINS` to a comma-separated list of allowed origins before launching (e.g. `EXPLORER_CORS_ORIGINS="http://myapp.example.com"`).
-</Tip>
-
-<Tip>
-  **Use `/api/analytics/validation` to check graph quality.** The validator detects orphaned nodes, missing types, and other structural issues before you expose the graph to downstream pipelines.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Context" icon="brain" href="context">

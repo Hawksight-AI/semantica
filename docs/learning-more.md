@@ -108,7 +108,9 @@ All settings can be overridden with environment variables: no code changes neede
 
 ## Troubleshooting
 
-### `ModuleNotFoundError: No module named 'semantica'`
+<AccordionGroup>
+
+<Accordion title="ModuleNotFoundError: No module named 'semantica'" icon="circle-xmark">
 
 Verify installation and that the correct Python environment is active:
 
@@ -124,16 +126,20 @@ pip install "semantica[llm-openai]"   # OpenAI provider
 pip install "semantica[gpu]"          # GPU acceleration
 ```
 
-### `AuthenticationError`
+</Accordion>
 
-Set your API key as an environment variable: never hardcode keys in source files:
+<Accordion title="AuthenticationError" icon="lock">
+
+Set your API key as an environment variable — never hardcode keys in source files:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
 export GROQ_API_KEY="gsk_..."
 ```
 
-### `MemoryError` or OOM crashes
+</Accordion>
+
+<Accordion title="MemoryError or OOM crashes" icon="memory">
 
 Switch from the default in-memory NetworkX backend to a persistent graph database:
 
@@ -147,7 +153,9 @@ builder = GraphBuilder(merge_entities=True, graph_store=store)
 
 Also reduce batch sizes and enable streaming ingestion for large corpora.
 
-### Slow processing on large datasets
+</Accordion>
+
+<Accordion title="Slow processing on large datasets" icon="gauge">
 
 Enable parallel execution and GPU acceleration:
 
@@ -162,7 +170,9 @@ pipeline.run(sources)
 pip install "semantica[gpu]"  # CUDA-backed embeddings
 ```
 
-### Windows `[all]` installation fails
+</Accordion>
+
+<Accordion title="Windows [all] installation fails" icon="windows">
 
 Fixed in **v0.5.0**. Upgrade:
 
@@ -172,40 +182,65 @@ pip install --upgrade semantica
 
 Or install extras individually: `pip install "semantica[core]"`, then add `[llm-openai]`, `[gpu]`, etc. as needed.
 
-### cp1252 encoding crash on Windows
+</Accordion>
 
-Fixed in **v0.5.0**. For earlier versions, pass encoding explicitly or set the environment variable:
+<Accordion title="cp1252 encoding crash on Windows" icon="windows">
+
+Fixed in **v0.5.0**. For earlier versions, set the encoding environment variable:
 
 ```bash
 set PYTHONIOENCODING=utf-8
 ```
 
+</Accordion>
+
+</AccordionGroup>
+
 
 ## Performance Optimization
 
-### Backend Selection
+<AccordionGroup>
+
+<Accordion title="Backend selection: development vs. production" icon="server">
 
 | Operation | NetworkX (default) | Neo4j / FalkorDB |
 | :--------- | :------------------ | :---------------- |
 | Graph construction | Fast | Moderate |
 | Query performance | Moderate | Fast |
-| Scalability | Low: in-memory only | High: persistent |
+| Scalability | In-memory only | Persistent, production-scale |
 | Recommended for | Development, small graphs | Production, large corpora |
 
 Use NetworkX for local development and prototyping. Switch to a persistent backend before deploying to production.
 
-### Batch Processing
+</Accordion>
+
+<Accordion title="Batch processing for large corpora" icon="layer-group">
 
 Process documents in batches rather than one at a time. Configure `chunk_size` based on available RAM: a good starting point is 1,000 documents per batch on a 16 GB machine.
 
-### Deduplication v2
+```python
+from semantica.pipeline import Pipeline
 
-If deduplication is a bottleneck, switch from v1 strategies to v2:
+pipeline = Pipeline(workers=8, batch_size=32)
+pipeline.run(sources)
+```
+
+</Accordion>
+
+<Accordion title="Deduplication v2: up to 7× faster" icon="bolt">
+
+If deduplication is a bottleneck, switch from v1 strategies to the v2 engine:
 
 ```python
 resolver = EntityResolver()
 merged   = resolver.resolve(entities, strategy="semantic_v2")  # up to 7x faster
 ```
+
+The `blocking_v2`, `hybrid_v2`, and `semantic_v2` strategies reduce O(n²) comparisons via candidate blocking before similarity scoring.
+
+</Accordion>
+
+</AccordionGroup>
 
 
 ## Security Best Practices

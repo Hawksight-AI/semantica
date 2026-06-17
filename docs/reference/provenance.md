@@ -98,6 +98,10 @@ ProvenanceManager(
 
 If both `storage` and `storage_path` are omitted, an `InMemoryStorage` is used.
 
+<Warning>
+  **`InMemoryStorage` does not persist across restarts.** Pass `storage_path="provenance.db"` or an explicit `SQLiteStorage` instance in any environment where the audit trail must survive process exits.
+</Warning>
+
 ### Tracking Methods
 
 ```python
@@ -195,6 +199,10 @@ prov = manager.get_provenance("apple_inc")
 if prov:
     print(prov["source_document"])
 ```
+
+<Note>
+  `get_lineage()` returns an aggregated **dict**, not a `ProvenanceEntry`. Use `trace_lineage()` to get the raw `ProvenanceEntry` objects when you need field-level access such as `entry.checksum`.
+</Note>
 
 ### Utility Methods
 
@@ -338,6 +346,10 @@ if not is_valid:
 
 The checksum covers `entity_id`, `entity_type`, `activity_id`, `source_document`, `timestamp`, and `confidence`.
 
+<Tip>
+  **Run `verify_checksum(entry)` before any compliance export.** Pass the `ProvenanceEntry` object returned by `trace_lineage()` directly. If the stored checksum no longer matches, raise an error before the export proceeds.
+</Tip>
+
 ## Bridge Axiom Translation Chains
 
 `BridgeAxiom` and `TranslationChain` are available in `semantica.provenance.bridge_axiom` for tracking multi-layer domain translations with full coefficient attribution:
@@ -419,6 +431,10 @@ for entity in entities:
 lineage = manager.get_lineage(entities[0].id)
 print(lineage["source_documents"])
 ```
+
+<Note>
+  Setting `provenance=True` on `NERExtractor` embeds metadata on the extracted entity objects — it does not automatically call `ProvenanceManager.track_entity()`. You must call `track_entity()` yourself after extraction.
+</Note>
 
 ## Common Workflows
 

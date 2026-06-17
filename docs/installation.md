@@ -120,49 +120,65 @@ pip install git+https://github.com/semantica-agi/semantica.git@main
 
 ## Troubleshooting
 
-### ModuleNotFoundError
+<AccordionGroup>
 
-Make sure you're in the right environment:
+<Accordion title="ModuleNotFoundError: No module named 'semantica'" icon="circle-xmark">
+
+Make sure you're in the right virtual environment:
 
 ```bash
 pip list | grep semantica
 pip install --upgrade semantica
 ```
 
-### Installation fails with dependency errors
+</Accordion>
+
+<Accordion title="Installation fails with dependency errors" icon="triangle-exclamation">
 
 ```bash
 pip install --upgrade pip
 pip install build wheel
-pip install semantica --no-deps  # install without optional deps first
+pip install semantica --no-deps  # install core first, then add extras
 ```
 
-### GPU dependencies fail
+</Accordion>
 
-Install CPU-only first, then add GPU support:
+<Accordion title="GPU dependencies fail to install" icon="bolt">
+
+Install CPU-only first, then layer in GPU support:
 
 ```bash
 pip install semantica
 pip install semantica[gpu]
 ```
 
-### Permission denied
+</Accordion>
+
+<Accordion title="Permission denied" icon="lock">
 
 ```bash
 pip install --user semantica  # or use a virtual environment
 ```
 
-### Windows `[all]` install fails
+</Accordion>
 
-This was fixed in **v0.5.0**. Upgrade to the latest release:
+<Accordion title="Windows [all] install fails" icon="windows">
+
+Fixed in **v0.5.0**. Upgrade to the latest release:
 
 ```bash
 pip install --upgrade semantica
 ```
 
-### Windows PyTorch DLL errors
+</Accordion>
+
+<Accordion title="Windows PyTorch DLL errors on startup" icon="windows">
 
 Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe). This is a Windows system dependency, not a Semantica bug.
+
+</Accordion>
+
+</AccordionGroup>
 
 
 ## Next Steps

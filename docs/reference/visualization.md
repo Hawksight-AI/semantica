@@ -61,6 +61,10 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
   </Step>
 </Steps>
 
+<Warning>
+  **`plotly` is required for all visualizers.** Install before use: `pip install plotly`. All visualizer methods raise `ProcessingError` if Plotly is not installed.
+</Warning>
+
 ## Visualizers
 
 <Tabs>
@@ -93,6 +97,18 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
     # Relationship frequency heatmap
     viz.visualize_relationship_matrix(graph, output="interactive")
     ```
+
+    <Warning>
+      **Use `max_nodes` for large graphs.** Force-directed layouts become unreadable and slow above ~1,000 nodes. Filter to a subgraph before visualizing large graphs.
+    </Warning>
+
+    <Tip>
+      **HTML output is always the best starting point.** Interactive HTML lets you zoom, pan, and hover for details. Only export to PNG/SVG/PDF when embedding in a report.
+    </Tip>
+
+    <Tip>
+      **For interactive dashboards, prefer Explorer.** `KGVisualizer.visualize_network()` generates a self-contained HTML file. The Explorer CLI (`semantica-explorer`) gives a full live web app with search, filtering, path-finding, and REST API.
+    </Tip>
 
     **Layout options (`layout=`):**
 
@@ -148,6 +164,10 @@ Requires `plotly`: `pip install plotly`. Some exporters also need `matplotlib` o
     | `umap` | Fast | Global + local structure | Large datasets, cluster discovery |
     | `tsne` | Medium | Local structure | Tight cluster separation |
     | `pca` | Very fast | Variance | Quick overview, linear structure |
+
+    <Tip>
+      **UMAP is faster than t-SNE at scale.** For embedding spaces with >5,000 points, UMAP completes in seconds; t-SNE may take minutes. Both produce good cluster separation.
+    </Tip>
   </Tab>
   <Tab title="TemporalVisualizer">
     Visualize how a knowledge graph changes over time:
@@ -231,6 +251,10 @@ viz = KGVisualizer(color_scheme="vibrant")
 | `light` | White background, thin edges | Publications, print |
 | `colorblind` | Okabe-Ito safe palette | Accessibility |
 
+<Tip>
+  **Use `color_scheme="colorblind"` in publications and dashboards.** The Okabe-Ito palette is readable for everyone, including the ~8% of readers who are red-green colorblind.
+</Tip>
+
 ## Export Formats
 
 | Format | Interactive | Scalable | Best For |
@@ -265,32 +289,6 @@ semantica-explorer --graph my_graph.json
 ```
 
 See the [Explorer reference](explorer) for the full feature set and REST API.
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **`plotly` is required for all visualizers.** Install before use: `pip install plotly`. All visualizer methods raise `ProcessingError` if Plotly is not installed.
-</Warning>
-
-<Warning>
-  **Use `max_nodes` for large graphs.** Force-directed layouts become unreadable and slow above ~1,000 nodes. Filter to a subgraph before visualizing large graphs.
-</Warning>
-
-<Tip>
-  **HTML output is always the best starting point.** Interactive HTML lets you zoom, pan, and hover for details. Only export to PNG/SVG/PDF when embedding in a report.
-</Tip>
-
-<Tip>
-  **Use `color_scheme="colorblind"` in publications and dashboards.** The Okabe-Ito palette is readable for everyone, including the ~8% of readers who are red-green colorblind.
-</Tip>
-
-<Tip>
-  **UMAP is faster than t-SNE at scale.** For embedding spaces with >5,000 points, UMAP completes in seconds; t-SNE may take minutes. Both produce good cluster separation.
-</Tip>
-
-<Tip>
-  **For interactive dashboards, prefer Explorer.** `KGVisualizer.visualize_network()` generates a self-contained HTML file. The Explorer CLI (`semantica-explorer`) gives a full live web app with search, filtering, path-finding, and REST API.
-</Tip>
 
 <CardGroup cols={2}>
   <Card title="Knowledge Graph" icon="diagram-project" href="kg">

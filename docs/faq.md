@@ -4,9 +4,9 @@ description: "Common questions about Semantica: installation, features, integrat
 icon: "circle-question"
 ---
 
-<Tip>
+<Info>
   Use **Ctrl+F** / **Cmd+F** to search this page. Common jumps: [Installation](#installation) · [Data & Features](#data--features) · [Troubleshooting](#troubleshooting)
-</Tip>
+</Info>
 
 ## Quick Answers
 

@@ -56,6 +56,10 @@ for f in files:
     print(f.name, f.file_type, f.size)
 ```
 
+<Tip>
+  **`FileIngestor` is always the fastest path for local files.** It auto-detects format from extension, handles ZIP/TAR archives automatically, and reads content into `.content` bytes or the `.text` property. Use `read_content=False` when you only need file metadata.
+</Tip>
+
 For web, database, or stream sources, each ingestor exposes its own typed method:
 
 ```python
@@ -195,6 +199,10 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
 
     Requires `pyarrow`: `pip install pyarrow`.
 
+    <Tip>
+      **Use `ParquetIngestor` instead of `FileIngestor` for structured analytical data.** Parquet ingestion preserves column types (int, float, datetime) that CSV reading loses. Use `columns=["id", "text"]` to avoid loading unused columns: critical for wide tables with hundreds of columns.
+    </Tip>
+
     ### XMLIngestor
 
     XXE-safe lxml-based ingestion with optional schema validation:
@@ -220,6 +228,10 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
     <Note>
       `XMLIngestor` uses lxml with `resolve_entities=False` to prevent XML External Entity (XXE) injection attacks.
     </Note>
+
+    <Warning>
+      **`XMLIngestor` is XXE-safe by default.** Do not use standard `xml.etree.ElementTree` to pre-parse XML before passing to Semantica: it does not block XXE attacks. `XMLIngestor` uses lxml with `resolve_entities=False` to safely parse untrusted XML.
+    </Warning>
   </Tab>
   <Tab title="Web & Feed">
     ### WebIngestor
@@ -247,6 +259,10 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
     ```
 
     Requires `beautifulsoup4`: `pip install beautifulsoup4`.
+
+    <Tip>
+      **Rate-limit web crawling.** `WebIngestor(delay=1.0, respect_robots=True)` is the responsible default. Without rate limiting you risk getting blocked by the target server or violating its terms of service.
+    </Tip>
 
     ### PublicAPIIngestor
 
@@ -403,6 +419,10 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
 
     Requires `sqlalchemy`: `pip install sqlalchemy` plus your database driver.
 
+    <Warning>
+      **`DBIngestor()` takes no connection string in its constructor.** Pass the connection string to `ingest_database()`, `execute_query()`, or `export_table()` as the first positional argument: not to `DBIngestor()` itself.
+    </Warning>
+
     ### SnowflakeIngestor
 
     ```python
@@ -467,6 +487,10 @@ result = ingest("ontology.ttl")             # -> {"ontology": OntologyData}
     ```
 
     Stream processors require the appropriate client library (kafka-python, pika, boto3, pulsar-client).
+
+    <Warning>
+      **`StreamIngestor` methods require the target broker's client library to be installed.** `ingest_kafka` needs `kafka-python`, `ingest_rabbitmq` needs `pika`, `ingest_kinesis` needs `boto3`, and `ingest_pulsar` needs `pulsar-client`. Missing dependencies raise `ImportError` at call time, not at import time.
+    </Warning>
   </Tab>
 </Tabs>
 
@@ -600,32 +624,6 @@ method_registry.register("file", "my_format", my_ingestor)
 from semantica.ingest import ingest_file
 result = ingest_file("source_path", method="my_format")
 ```
-
-## Tips and Common Pitfalls
-
-<Warning>
-  **`DBIngestor()` takes no connection string in its constructor.** Pass the connection string to `ingest_database()`, `execute_query()`, or `export_table()` as the first positional argument: not to `DBIngestor()` itself.
-</Warning>
-
-<Tip>
-  **`FileIngestor` is always the fastest path for local files.** It auto-detects format from extension, handles ZIP/TAR archives automatically, and reads content into `.content` bytes or the `.text` property. Use `read_content=False` when you only need file metadata.
-</Tip>
-
-<Tip>
-  **Use `ParquetIngestor` instead of `FileIngestor` for structured analytical data.** Parquet ingestion preserves column types (int, float, datetime) that CSV reading loses. Use `columns=["id", "text"]` to avoid loading unused columns: critical for wide tables with hundreds of columns.
-</Tip>
-
-<Warning>
-  **`XMLIngestor` is XXE-safe by default.** Do not use standard `xml.etree.ElementTree` to pre-parse XML before passing to Semantica: it does not block XXE attacks. `XMLIngestor` uses lxml with `resolve_entities=False` to safely parse untrusted XML.
-</Warning>
-
-<Tip>
-  **Rate-limit web crawling.** `WebIngestor(delay=1.0, respect_robots=True)` is the responsible default. Without rate limiting you risk getting blocked by the target server or violating its terms of service.
-</Tip>
-
-<Warning>
-  **`StreamIngestor` methods require the target broker's client library to be installed.** `ingest_kafka` needs `kafka-python`, `ingest_rabbitmq` needs `pika`, `ingest_kinesis` needs `boto3`, and `ingest_pulsar` needs `pulsar-client`. Missing dependencies raise `ImportError` at call time, not at import time.
-</Warning>
 
 <CardGroup cols={2}>
   <Card title="Parse" icon="file-lines" href="parse">

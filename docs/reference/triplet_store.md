@@ -163,7 +163,9 @@ for row in result.bindings:
 
     **Best for:** local development with rdflib, SPARQL read queries against a Fuseki endpoint.
 
-    **Note on inference:** `JenaStore` accepts `enable_inference=True` in config but OWL reasoning is a placeholder and does not produce inferred triples in the current implementation.
+    <Warning>
+      **`backend="jena"` OWL inference is a placeholder.** `enable_inference=True` is accepted but the inference call returns 0 inferred triples. For production OWL reasoning, use Jena Fuseki directly with its built-in reasoner configuration.
+    </Warning>
   </Tab>
   <Tab title="RDF4J">
     ```bash
@@ -191,6 +193,10 @@ for row in result.bindings:
   </Tab>
 </Tabs>
 
+<Tip>
+  **Use Apache Jena for development, Blazegraph for production.** Jena initializes with rdflib in-memory: no server required for local testing. Switch to Blazegraph for high-throughput persistent workloads by changing `backend=`.
+</Tip>
+
 ## Triplet Object
 
 All store operations use the `Triplet` dataclass from `semantica.semantic_extract.types`:
@@ -214,6 +220,10 @@ t = Triplet(
 | `object` | `str` | **required** | Object URI or literal |
 | `confidence` | `float` | `1.0` | Confidence score (0–1) |
 | `metadata` | `dict` | `{}` | Arbitrary metadata |
+
+<Warning>
+  **`add_triplet()` takes a `Triplet` object, not keyword arguments.** Use `Triplet(subject=..., predicate=..., object=...)` from `semantica.semantic_extract.types` and pass the object: not `subject=`, `predicate=`, `obj=` to `add_triplet`.
+</Warning>
 
 ## TripletStore Methods
 
@@ -277,6 +287,10 @@ store.execute_query("""
 | `execution_time` | `float` | Seconds elapsed |
 | `metadata` | `dict` | Query, graph scope, cache hit flag |
 
+<Warning>
+  **`execute_query()` returns `QueryResult`, not a list.** Iterate `result.bindings`, not `result` directly. Each binding is a dict mapping variable name → `{"value": ..., "type": ...}`.
+</Warning>
+
 ## SPARQL Result Pagination
 
 For large result sets, paginate with LIMIT and OFFSET:
@@ -298,6 +312,10 @@ while True:
     process_batch(result.bindings)
     offset += page_size
 ```
+
+<Warning>
+  **Paginate large SPARQL result sets.** A `SELECT * WHERE { ?s ?p ?o }` against a large store returns all triples. Always include `LIMIT` and `OFFSET` in exploratory queries. `QueryEngine` adds `LIMIT 1000` automatically unless you specify one.
+</Warning>
 
 ## Named Graph Scoping
 
@@ -332,6 +350,10 @@ result = store.execute_query("""
 <Note>
   Named graph support is only available for Blazegraph and RDF4J backends. The `graph=` parameter is silently ignored for the Jena backend.
 </Note>
+
+<Tip>
+  **Use named graphs to isolate sources.** Pass `graph="http://example.org/source_A"` to `execute_query()` to scope a query to a specific named graph. Blazegraph and RDF4J support named graphs; Jena (rdflib backend) does not.
+</Tip>
 
 ## Bulk Loading
 
@@ -467,32 +489,6 @@ result = store.execute_query("SELECT * WHERE { ?s ?p ?o } LIMIT 10")
 for row in result.bindings:
     print(row)
 ```
-
-## Tips and Common Pitfalls
-
-<Tip>
-  **Use Apache Jena for development, Blazegraph for production.** Jena initializes with rdflib in-memory: no server required for local testing. Switch to Blazegraph for high-throughput persistent workloads by changing `backend=`.
-</Tip>
-
-<Warning>
-  **`execute_query()` returns `QueryResult`, not a list.** Iterate `result.bindings`, not `result` directly. Each binding is a dict mapping variable name → `{"value": ..., "type": ...}`.
-</Warning>
-
-<Warning>
-  **`add_triplet()` takes a `Triplet` object, not keyword arguments.** Use `Triplet(subject=..., predicate=..., object=...)` from `semantica.semantic_extract.types` and pass the object: not `subject=`, `predicate=`, `obj=` to `add_triplet`.
-</Warning>
-
-<Warning>
-  **Paginate large SPARQL result sets.** A `SELECT * WHERE { ?s ?p ?o }` against a large store returns all triples. Always include `LIMIT` and `OFFSET` in exploratory queries. `QueryEngine` adds `LIMIT 1000` automatically unless you specify one.
-</Warning>
-
-<Tip>
-  **Use named graphs to isolate sources.** Pass `graph="http://example.org/source_A"` to `execute_query()` to scope a query to a specific named graph. Blazegraph and RDF4J support named graphs; Jena (rdflib backend) does not.
-</Tip>
-
-<Warning>
-  **`backend="jena"` OWL inference is a placeholder.** `enable_inference=True` is accepted but the inference call returns 0 inferred triples. For production OWL reasoning, use Jena Fuseki directly with its built-in reasoner configuration.
-</Warning>
 
 <CardGroup cols={2}>
   <Card title="Export" icon="file-export" href="export">

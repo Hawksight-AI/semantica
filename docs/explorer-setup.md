@@ -190,28 +190,34 @@ python -m semantica.explorer --graph my_graph.json --port 8080
 
 ## Common Startup Errors
 
-**`Error: graph file not found: my_graph.json`**
+<AccordionGroup>
 
-The path passed to `--graph` must point to an existing file. The CLI checks with `os.path.isfile()` before attempting to load anything.
+<Accordion title="Error: graph file not found" icon="file-circle-xmark">
+
+The path passed to `--graph` must point to an existing file. The CLI checks with `os.path.isfile()` before loading anything.
 
 ```bash
 # Confirm the file exists
-ls my_graph.json           # Linux / Mac
-dir my_graph.json          # Windows
+ls my_graph.json                                          # Linux / Mac
+dir my_graph.json                                         # Windows
 
 # Use the full path if needed
 semantica-explorer --graph /absolute/path/to/my_graph.json
 ```
 
-**`Error: uvicorn is required`**
+</Accordion>
 
-The `[explorer]` extra was not installed:
+<Accordion title="Error: uvicorn is required" icon="triangle-exclamation">
+
+The `[explorer]` extra was not installed alongside the base package:
 
 ```bash
 pip install semantica[explorer]
 ```
 
-**Explorer launches but shows zero nodes**
+</Accordion>
+
+<Accordion title="Explorer launches but shows zero nodes" icon="circle-xmark">
 
 The file loaded but contains no nodes. Verify with Python:
 
@@ -222,9 +228,11 @@ g.load_from_file("my_graph.json")
 print(g.stats())  # check node_count
 ```
 
-A `node_count` of `0` means the file was saved empty or the nodes key is absent. Make sure you called `add_node` before `save_to_file`.
+A `node_count` of `0` means the graph was saved before any nodes were added. Make sure you called `add_node()` before `save_to_file()`.
 
-**`Connection refused` from another machine**
+</Accordion>
+
+<Accordion title="Connection refused from another machine" icon="network-wired">
 
 The default `--host 127.0.0.1` only accepts connections from the same machine. To allow remote access:
 
@@ -232,9 +240,15 @@ The default `--host 127.0.0.1` only accepts connections from the same machine. T
 semantica-explorer --graph my_graph.json --host 0.0.0.0
 ```
 
-**Browser tab does not open**
+</Accordion>
 
-This is expected in headless, SSH, and container environments. Add `--no-browser` to suppress the warning and open `http://127.0.0.1:8000` in a browser that has network access to the server.
+<Accordion title="Browser tab does not open" icon="browser">
+
+Expected in headless, SSH, and container environments. Pass `--no-browser` to suppress the warning, then open `http://127.0.0.1:8000` in a browser that has network access to the server.
+
+</Accordion>
+
+</AccordionGroup>
 
 
 ## What Explorer Gives You
