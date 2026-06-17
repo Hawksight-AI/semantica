@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "venus",
+  "theme": "mint",
   "name": "Semantica",
   "description": "The Accountability and Context Layer for AI — Context Graphs · Decision Intelligence · Full Provenance",
   "colors": {
