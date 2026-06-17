@@ -1,1 +1,0 @@
-{"entities": [{"id": "python_org", "name": "Python Software Foundation", "type": "Organization"}, {"id": "guido_van_rossum", "name": "Guido van Rossum", "type": "Person"}], "relationships": [{"source": "guido_van_rossum", "target": "python_org", "type": "FOUNDED"}]}

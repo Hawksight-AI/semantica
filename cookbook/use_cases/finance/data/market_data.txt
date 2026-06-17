@@ -1,6 +1,0 @@
-
-    AAPL stock price: $150.25, market cap: $2.4T, volume: 50M shares, sector: Technology
-    MSFT stock price: $380.50, market cap: $2.8T, volume: 30M shares, sector: Technology
-    GOOGL stock price: $140.75, market cap: $1.8T, volume: 25M shares, sector: Technology
-    JPM stock price: $145.30, market cap: $420B, volume: 15M shares, sector: Financial
-    

@@ -1,3 +1,0 @@
-OSINT: Public records show connection between Entity A and Location X on 2024-01-15.
-Threat Intel: Threat actor group Y operates in Region Z. Date: 2024-01-16.
-Geospatial: Activity detected at coordinates 40.7128, -74.0060 on 2024-01-17.

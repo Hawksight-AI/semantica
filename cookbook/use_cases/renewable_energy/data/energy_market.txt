@@ -1,8 +1,0 @@
-
-    2024-01-01: Solar energy price $50/MWh in Region A, trend: increasing
-    2024-01-02: Wind energy price $45/MWh in Region B, trend: stable
-    2024-01-03: Solar energy price $52/MWh in Region A, trend: increasing
-    2024-01-04: Forecast: Solar prices expected to rise to $55/MWh in Region A
-    2024-01-05: Solar energy price $54/MWh in Region A, trend: increasing
-    2024-01-06: Wind energy price $47/MWh in Region B, trend: increasing
-    

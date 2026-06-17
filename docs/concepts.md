@@ -494,9 +494,6 @@ Semantica is designed for extension. Any component: ingestor, extractor, graph b
   <Card title="Modules Guide" icon="puzzle-piece" href="modules">
     Every module explained with examples.
   </Card>
-  <Card title="Use Cases" icon="briefcase" href="use-cases">
-    Real-world domain examples.
-  </Card>
   <Card title="API Reference" icon="code" href="reference/context">
     Complete technical reference.
   </Card>

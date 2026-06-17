@@ -7,7 +7,7 @@ icon: "flask"
 <Tip>
   **Where to start:**
   - **New to Semantica**: begin with [Core Tutorials](#core-tutorials)
-  - **Building an application**: see [Advanced Concepts](#advanced-concepts) or [Industry Use Cases](#industry-use-cases)
+  - **Building an application**: see [Advanced Concepts](#advanced-concepts)
   - **Need installation help**: see the [Installation Guide](installation)
 </Tip>
 
@@ -23,21 +23,6 @@ icon: "flask"
     Go from raw text to a queryable knowledge graph in 20 minutes.
 
     **Topics:** Extraction, Graph Construction, Visualization · **Difficulty:** Beginner
-  </Card>
-  <Card title="GraphRAG Complete" icon="robot" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb">
-    Build a production-ready Graph Retrieval Augmented Generation system with hybrid retrieval and logical inference.
-
-    **Topics:** RAG, LLMs, Vector Search, Graph Traversal · **Difficulty:** Advanced
-  </Card>
-  <Card title="RAG vs. GraphRAG Comparison" icon="scale-balanced" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/02_RAG_vs_GraphRAG_Comparison.ipynb">
-    Side-by-side benchmark of standard RAG vs. GraphRAG on real-world data.
-
-    **Topics:** RAG, GraphRAG, Benchmarking · **Difficulty:** Intermediate
-  </Card>
-  <Card title="Real-Time Anomaly Detection" icon="shield-halved" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/01_Real_Time_Anomaly_Detection.ipynb">
-    Detect anomalies in streaming data using dynamic knowledge graphs.
-
-    **Topics:** Streaming, Security, Dynamic Graphs · **Difficulty:** Advanced
   </Card>
 </CardGroup>
 
@@ -154,99 +139,6 @@ Deep dive into advanced features, customization, and complex workflows.
     Modeling and querying data that changes over time.
 
     **Topics:** Time Series, Temporal Logic, Allen Algebra · **Difficulty:** Advanced
-  </Card>
-</CardGroup>
-
-
-## Industry Use Cases
-
-### Biomedical
-
-<CardGroup cols={2}>
-  <Card title="Drug Discovery Pipeline" icon="pills" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/01_Drug_Discovery_Pipeline.ipynb">
-    Accelerating drug discovery by connecting genes, proteins, and drugs using PubMed RSS feeds, entity-aware chunking, GraphRAG, and vector similarity search.
-
-    **Topics:** Bioinformatics, KG Construction, GraphRAG · **Difficulty:** Advanced
-  </Card>
-  <Card title="Genomic Variant Analysis" icon="dna" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/biomedical/02_Genomic_Variant_Analysis.ipynb">
-    Analyzing genomic variants and their implications using bioRxiv RSS feeds, temporal KGs, deduplication, and pathway analysis.
-
-    **Topics:** Genomics, Temporal KGs, Graph Analytics · **Difficulty:** Advanced
-  </Card>
-</CardGroup>
-
-### Finance
-
-<CardGroup cols={2}>
-  <Card title="Financial Data Integration (MCP)" icon="chart-line" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/01_Financial_Data_Integration_MCP.ipynb">
-    Merging financial data from Alpha Vantage API, MCP servers, RSS feeds, and market feeds.
-
-    **Topics:** Finance, Data Fusion, MCP Integration · **Difficulty:** Intermediate
-  </Card>
-  <Card title="Fraud Detection" icon="user-secret" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/finance/02_Fraud_Detection.ipynb">
-    Identifying fraudulent activities in transaction networks using temporal KGs, conflict detection, and pattern recognition.
-
-    **Topics:** Anomaly Detection, Graph Mining, Temporal Analysis · **Difficulty:** Advanced
-  </Card>
-</CardGroup>
-
-### Blockchain
-
-<CardGroup cols={2}>
-  <Card title="DeFi Protocol Intelligence" icon="bitcoin-sign" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/01_DeFi_Protocol_Intelligence.ipynb">
-    Analyzing decentralized finance protocols and transaction flows using CoinDesk RSS feeds, ontology-aware chunking, and conflict detection.
-
-    **Topics:** Blockchain, DeFi, Smart Contracts, Ontology · **Difficulty:** Advanced
-  </Card>
-  <Card title="Transaction Network Analysis" icon="network-wired" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/blockchain/02_Transaction_Network_Analysis.ipynb">
-    Mapping and analyzing blockchain transaction networks using deduplication and network pattern detection.
-
-    **Topics:** Blockchain Analytics, Network Analysis · **Difficulty:** Advanced
-  </Card>
-</CardGroup>
-
-### Cybersecurity
-
-<CardGroup cols={2}>
-  <Card title="Real-Time Anomaly Detection" icon="shield-halved" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/01_Real_Time_Anomaly_Detection.ipynb">
-    Detecting anomalies in real-time network traffic streams using CVE RSS feeds, Kafka streams, and temporal KGs.
-
-    **Topics:** Network Security, Streaming, Temporal KGs · **Difficulty:** Advanced
-  </Card>
-  <Card title="Threat Intelligence Hybrid RAG" icon="robot" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/cybersecurity/02_Threat_Intelligence_Hybrid_RAG.ipynb">
-    Combining enhanced GraphRAG with threat intelligence for security insights.
-
-    **Topics:** Threat Intelligence, GraphRAG, Hybrid Retrieval · **Difficulty:** Advanced
-  </Card>
-</CardGroup>
-
-### Intelligence
-
-<CardGroup cols={2}>
-  <Card title="Criminal Network Analysis" icon="users" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/01_Criminal_Network_Analysis.ipynb">
-    Analyze criminal networks with graph analytics and key player detection using OSINT RSS feeds and network centrality analysis.
-
-    **Topics:** Forensics, Social Network Analysis · **Difficulty:** Advanced
-  </Card>
-  <Card title="Intelligence Analysis Orchestrator" icon="file-magnifying-glass" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/intelligence/02_Intelligence_Analysis_Orchestrator_Worker.ipynb">
-    Comprehensive intelligence analysis using pipeline orchestrator with multiple RSS feeds and multi-source integration.
-
-    **Topics:** Intelligence Analysis, Pipeline Orchestration · **Difficulty:** Advanced
-  </Card>
-</CardGroup>
-
-### Renewable Energy & Supply Chain
-
-<CardGroup cols={2}>
-  <Card title="Energy Market Analysis" icon="wind" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/renewable_energy/01_Energy_Market_Analysis.ipynb">
-    Analyzing trends and pricing in the renewable energy market using EIA API, temporal KGs, and TemporalPatternDetector.
-
-    **Topics:** Energy, Time Series, Temporal Analysis · **Difficulty:** Intermediate
-  </Card>
-  <Card title="Supply Chain Data Integration" icon="truck" href="https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/supply_chain/01_Supply_Chain_Data_Integration.ipynb">
-    Integrating supply chain data to optimize logistics and reduce risk.
-
-    **Topics:** Logistics, Risk Management, Deduplication · **Difficulty:** Advanced
   </Card>
 </CardGroup>
 

@@ -59,11 +59,8 @@ Whether you're running your first pipeline or deploying Semantica in production,
       <Step title="Add semantic search">
         [Embeddings notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb): providers, pooling strategies, vector stores.
       </Step>
-      <Step title="Build a GraphRAG system">
-        [GraphRAG Complete notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb): hybrid retrieval, reasoning, source attribution.
-      </Step>
       <Step title="Multi-source integration">
-        [Multi-Source Data Integration notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb) and [Use Cases](use-cases) for domain-specific patterns.
+        [Multi-Source Data Integration notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb) for multi-source patterns.
       </Step>
     </Steps>
   </Tab>
@@ -259,8 +256,5 @@ The `blocking_v2`, `hybrid_v2`, and `semantic_v2` strategies reduce O(n²) compa
   </Card>
   <Card title="API Reference" icon="code" href="reference/core">
     Complete technical documentation.
-  </Card>
-  <Card title="Use Cases" icon="briefcase" href="use-cases">
-    Domain-specific examples with notebooks.
   </Card>
 </CardGroup>

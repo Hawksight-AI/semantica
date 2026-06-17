@@ -1,9 +1,0 @@
-
-    Aspirin (acetylsalicylic acid) is a medication used to reduce pain, fever, or inflammation. 
-    It targets cyclooxygenase enzymes COX-1 and COX-2. Aspirin is commonly used for cardiovascular protection.
-    Ibuprofen is a nonsteroidal anti-inflammatory drug (NSAID) that targets COX-1 and COX-2 enzymes.
-    Metformin is an antidiabetic medication that targets AMP-activated protein kinase (AMPK).
-    Insulin targets the insulin receptor (INSR) to regulate glucose metabolism.
-    Warfarin is an anticoagulant that targets vitamin K epoxide reductase complex subunit 1 (VKORC1).
-    Atorvastatin is a statin medication that targets HMG-CoA reductase.
-    

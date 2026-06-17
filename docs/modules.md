@@ -722,7 +722,4 @@ versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description=
   <Card title="API Reference" icon="code" href="reference/context">
     Full technical documentation.
   </Card>
-  <Card title="Use Cases" icon="briefcase" href="use-cases">
-    Domain-specific examples.
-  </Card>
 </CardGroup>
