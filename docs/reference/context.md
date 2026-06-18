@@ -443,7 +443,81 @@ print("Nodes: {}, Edges: {}".format(stats["node_count"], stats["edge_count"]))
 | `cross_graph_path(source_node_id, target_graph, target_node_id, max_hops)` | `Dict` | Shortest path across linked graphs |
 | `clear()` | `None` | Reset graph state and all indexes |
 
-### Cross-Graph Navigation
+### Distance Intelligence (v0.5.0)
+
+`ContextGraph` exposes a full Distance Intelligence API for exploring semantic neighborhoods and blending proximity into retrieval.
+
+<Info>
+  Full Distance Intelligence reference — distance matrices, API endpoints, embedding cache, Explorer UI — is covered in the dedicated [Distance Intelligence](distance) page. This section documents the context-layer API.
+</Info>
+
+### Neighbors with Distance Metadata
+
+Pass `include_distance_metadata=True` to `get_neighbors()` to receive distance band, confidence decay, and path information alongside every neighbor:
+
+```python
+graph = ContextGraph(advanced_analytics=True)
+
+# ... populate graph ...
+
+neighbors = graph.get_neighbors(
+    "python",
+    hops=3,
+    include_distance_metadata=True,
+    min_weight=0.3,   # exclude low-confidence edges
+)
+
+for n in neighbors:
+    print(
+        f"{n['node_id']:15s}  "
+        f"band={n['distance_band']:10s}  "
+        f"decay={n['confidence_decay']:.3f}  "
+        f"hops={n['hop_count']}"
+    )
+```
+
+| Added field | Type | Description |
+| :---------- | :---- | :----------- |
+| `distance_band` | `str` | `"direct"` (1 hop) / `"near"` (2) / `"mid-range"` (3–4) / `"distant"` (5+) |
+| `confidence_decay` | `float` | `edge_weight ^ hop_count` — decays with each hop |
+| `path_to_anchor` | `List[str]` | Shortest path from anchor node to this neighbor |
+| `hop_count` | `int` | BFS depth from anchor |
+
+### Proximity-Blended Retrieval
+
+Set `proximity_weight` on `AgentContext` to blend graph proximity into every `retrieve()` and `find_precedents()` call:
+
+```python
+context = AgentContext(
+    vector_store=VectorStore(backend="faiss", dimension=768),
+    knowledge_graph=ContextGraph(advanced_analytics=True),
+    proximity_weight=0.3,   # 0.7×semantic + 0.3×proximity
+)
+
+# combined_score is returned alongside semantic_score and proximity_score
+results = context.retrieve("web API frameworks", max_results=10)
+for r in results:
+    print(
+        f"[{r['combined_score']:.3f}]  "
+        f"semantic={r['semantic_score']:.3f}  "
+        f"proximity={r['proximity_score']:.3f}  "
+        f"{r['content'][:60]}"
+    )
+
+# Override weight per-call
+precedents = context.find_precedents(
+    "infrastructure scaling decisions",
+    proximity_weight=0.5,
+    limit=5,
+)
+```
+
+<Tip>
+  `proximity_weight=0.0` disables proximity blending entirely (pure semantic). `proximity_weight=1.0` returns results ranked purely by graph proximity to the query anchor. Values between `0.2`–`0.4` work well for most production use cases.
+</Tip>
+
+
+## Cross-Graph Navigation
 
 Link multiple independent `ContextGraph` instances so agents can traverse across problem spaces:
 

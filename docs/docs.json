@@ -120,6 +120,8 @@
             "pages": [
               "reference/context",
               "reference/kg",
+              "reference/temporal",
+              "reference/distance",
               "reference/semantic_extract",
               "reference/reasoning",
               "reference/ontology"

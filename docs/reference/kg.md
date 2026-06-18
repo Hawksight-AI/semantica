@@ -23,7 +23,17 @@ icon: "diagram-project"
 | `EntityResolver` | Entity deduplication and merging during graph construction |
 | `GraphAnalyzer` | Unified analytics wrapper: runs centrality, community detection, and connectivity in one call |
 | `ConnectivityAnalyzer` | Connected component detection, bridge identification, density, and degree statistics |
-| `TemporalGraphQuery` | Point-in-time snapshots, temporal diffs, and all 13 Allen interval queries |
+| `TemporalGraphQuery` | Point-in-time snapshots, range queries, evolution analysis, temporal path finding |
+| `TemporalPatternDetector` | Sequence and cycle pattern detection over temporal edges |
+| `TemporalReasoningEngine` | All 13 Allen interval algebra relations over `TemporalInterval` objects |
+| `TemporalInterval` | Frozen dataclass `(start: datetime, end: datetime \| TemporalBound, label?)` |
+| `IntervalRelation` | Enum of all 13 Allen relation labels (`BEFORE`, `AFTER`, `MEETS`, …) |
+| `BiTemporalFact` | Dataclass wrapping `valid_from`, `valid_until`, `recorded_at`, `superseded_at`. Factory: `BiTemporalFact.from_relationship(rel_dict)` |
+| `TemporalBound` | Sentinel enum for open-ended intervals — single value: `TemporalBound.OPEN` |
+| `TemporalNormalizer` | Parse NL temporal expressions to `(datetime, datetime)` tuples — zero LLM calls |
+| `TemporalQueryRewriter` | Extract temporal intent from free-text queries; returns `TemporalQueryResult` |
+| `TemporalQueryResult` | Dataclass output of `TemporalQueryRewriter.rewrite()` |
+| `TemporalVersionManager` | Versioned snapshots with SHA-256 integrity, SQLite-backed persistent storage |
 | `CentralityCalculator` | PageRank, degree, betweenness, closeness, eigenvector centrality |
 | `CommunityDetector` | Louvain, Leiden, Label Propagation, and K-Clique community detection |
 | `PathFinder` | Dijkstra, A*, BFS, and K-Shortest path algorithms |
@@ -31,6 +41,11 @@ icon: "diagram-project"
 | `NodeEmbedder` | Node2Vec structural embeddings for downstream ML |
 | `SimilarityCalculator` | Cosine, Euclidean, Manhattan, and correlation similarity scoring |
 | `GraphValidator` | Schema and constraint validation before persistence |
+| `AlgorithmTrackerWithProvenance` | Algorithm execution tracking with provenance metadata |
+| `AlgorithmRegistry` / `algorithm_registry` | Registry for registered algorithms; `algorithm_registry` is the shared singleton |
+| `ProvenanceTracker` | W3C PROV-O provenance tracking for graph operations |
+| `SeedManager` | Reproducible random seed management across algorithms |
+| `KGConfig` / `kg_config` | Module-level configuration; `kg_config` is the shared singleton |
 
 
 <Tip>
@@ -57,56 +72,200 @@ kg = builder.build({"entities": entities, "relationships": relationships})
 | `build_single_source(data)` | `dict` | Build graph from a single data source dict |
 
 
-## Temporal Knowledge Graphs (v0.4.0)
+## Temporal Knowledge Graphs (v0.4.0+)
 
-Use **`TemporalGraphQuery`** to attach `valid_from`/`valid_until` windows and query **point-in-time snapshots** of any graph:
+<Info>
+  Full temporal reference including `BiTemporalFact`, `TemporalReasoningEngine`, Allen interval algebra, and `TemporalNormalizer` is covered in the dedicated [Temporal Intelligence](temporal) page. This section documents the KG-layer temporal API.
+</Info>
+
+The temporal stack — see the [Temporal Intelligence](temporal) page for the full reference.
+
+### Building a Temporal Graph
 
 ```python
 from semantica.kg import GraphBuilder, TemporalGraphQuery, TemporalVersionManager
-from datetime import datetime
 
-# Build a time-aware graph
 builder = GraphBuilder()
 kg = builder.build(sources=[
     {
         "entities": [
             {"id": "alice",     "type": "Person"},
             {"id": "acme_corp", "type": "Organization"},
+            {"id": "beta_ltd",  "type": "Organization"},
         ],
         "relationships": [
             {
                 "source": "alice", "target": "acme_corp", "type": "ceo_of",
-                "valid_from":  "2020-01-01",
-                "valid_until": "2023-06-01",
-            }
-        ]
+                "valid_from":  "2018-01-01",
+                "valid_until": "2022-06-01",
+            },
+            {
+                "source": "alice", "target": "beta_ltd", "type": "ceo_of",
+                "valid_from":  "2022-06-01",
+                # No valid_until → open-ended (TemporalBound.OPEN)
+            },
+        ],
     }
 ])
-
-# Point-in-time snapshot: TemporalGraphQuery takes no positional graph arg;
-# pass the graph into each query method instead.
-query         = TemporalGraphQuery()
-snapshot_2021 = query.reconstruct_at_time(kg, "2021-06-15")
-snapshot_2023 = query.reconstruct_at_time(kg, "2023-01-01")
-
-# Relationships active within a date range
-range_result = query.query_time_range(kg, "", "2020-01-01", "2023-01-01")
-print(f"Relationships in range: {range_result['num_relationships']}")
-
-# Versioned snapshots: author and description are required
-versioner = TemporalVersionManager()
-versioner.create_snapshot(kg, version_label="2024-Q1",
-                          author="user@example.com",
-                          description="Q1 2024 snapshot")
 ```
 
-Supports all 13 Allen interval algebra relations:
+### Point-in-Time Queries
 
-- before, after, meets, met_by
-- overlaps, overlapped_by
-- during, contains, starts, started_by, finishes, finished_by, equals
+`TemporalGraphQuery` accepts optional constructor args; pass the graph into each query call:
 
-OWL-Time export available.
+```python
+from semantica.kg import TemporalGraphQuery
+
+query = TemporalGraphQuery(
+    temporal_granularity="day",        # second|minute|hour|day|week|month|year
+    enable_temporal_reasoning=True,
+)
+
+# Primary API: query_at_time returns counts + filtered data
+result_2020 = query.query_at_time(kg, "", at_time="2020-06-15")
+result_2023 = query.query_at_time(kg, "", at_time="2023-01-01")
+print(f"Rels in 2020: {result_2020['num_relationships']}")
+
+# Low-level: reconstruct_at_time returns a deep-copied subgraph dict
+snapshot = query.reconstruct_at_time(kg, "2020-06-15")
+
+# Range query: all relationships active during any part of 2021
+range_result = query.query_time_range(kg, "", "2021-01-01", "2021-12-31")
+
+# Compare two snapshots: use TemporalVersionManager.compare_versions()
+# (temporal_diff() does not exist — see TemporalVersionManager below)
+```
+
+### Bi-Temporal Facts
+
+`BiTemporalFact` is a **dataclass** — use the `from_relationship()` factory, not a positional constructor:
+
+```python
+from semantica.kg import BiTemporalFact, TemporalBound
+
+rel = {
+    "source": "alice", "target": "acme_corp", "type": "ceo_of",
+    "valid_from":    "2018-01-01",
+    "valid_until":   "2022-06-01",
+    "recorded_at":   "2018-01-05T09:32:00Z",
+    "superseded_at": None,   # None → TemporalBound.OPEN (still current)
+}
+fact = BiTemporalFact.from_relationship(rel)
+
+print(fact.valid_from)      # datetime(2018, 1, 1, tzinfo=utc)
+print(fact.valid_until)     # datetime(2022, 6, 1, tzinfo=utc)
+print(fact.superseded_at)   # TemporalBound.OPEN
+
+# Open-ended fact (no valid_until → TemporalBound.OPEN)
+open_rel = {"source": "alice", "target": "beta_ltd", "type": "ceo_of",
+            "valid_from": "2022-06-01"}
+open_fact = BiTemporalFact.from_relationship(open_rel)
+print(open_fact.valid_until)   # TemporalBound.OPEN
+
+# Serialize back to dict fields for storage
+fields = fact.to_relationship_fields()
+```
+
+### Allen Interval Algebra
+
+`TemporalReasoningEngine` implements **all 13 Allen relations** deterministically — no LLM, no probability. It operates on `TemporalInterval` objects (not plain dicts):
+
+```python
+from semantica.kg import (
+    TemporalReasoningEngine, TemporalInterval, IntervalRelation
+)
+from datetime import datetime, timezone
+
+def dt(y, m, d): return datetime(y, m, d, tzinfo=timezone.utc)
+
+engine = TemporalReasoningEngine()
+
+h1_2020 = TemporalInterval(start=dt(2020, 1, 1), end=dt(2020, 6, 30))
+q2_q4   = TemporalInterval(start=dt(2020, 4, 1), end=dt(2020, 12, 31))
+
+relation = engine.relation(h1_2020, q2_q4)   # primary method
+print(relation)          # IntervalRelation.OVERLAPS
+print(relation.value)    # "overlaps"
+
+print(engine.overlaps(h1_2020, q2_q4))  # True
+print(engine.contains(q2_q4, h1_2020))  # False
+print(engine.active_at(h1_2020, dt(2020, 3, 15)))  # True
+```
+
+| `IntervalRelation` | `.value` | Description |
+| :--- | :--- | :--- |
+| `BEFORE` | `"before"` | A ends strictly before B starts |
+| `MEETS` | `"meets"` | A ends exactly when B starts |
+| `OVERLAPS` | `"overlaps"` | A and B share a period; A starts and ends first |
+| `STARTS` | `"starts"` | Same start; A ends before B |
+| `DURING` | `"during"` | A is entirely within B |
+| `FINISHES` | `"finishes"` | Same end; B started earlier |
+| `EQUALS` | `"equals"` | Identical interval |
+| `AFTER`, `MET_BY`, `OVERLAPPED_BY`, `STARTED_BY`, `CONTAINS`, `FINISHED_BY` | *(inverses)* | Mirror relations |
+
+### Natural Language Temporal Parsing
+
+```python
+from semantica.kg import TemporalNormalizer, TemporalQueryRewriter
+from datetime import datetime, timezone
+
+# reference_date set at construction time (required for relative phrases)
+norm = TemporalNormalizer(reference_date=datetime(2024, 6, 15, tzinfo=timezone.utc))
+
+# Returns Optional[Tuple[datetime, datetime]] — not a dict
+result = norm.normalize("last quarter")
+start, end = result
+print(start)   # datetime(2024, 1, 1, tzinfo=utc)
+print(end)     # datetime(2024, 3, 31, tzinfo=utc)
+
+result = norm.normalize("2022")
+# (datetime(2022, 1, 1, tzinfo=utc), datetime(2022, 12, 31, tzinfo=utc))
+
+result = norm.normalize("unparseable phrase")
+print(result)  # None
+
+# TemporalQueryRewriter: primary method is rewrite(), returns TemporalQueryResult
+rewriter = TemporalQueryRewriter()
+result = rewriter.rewrite("Who was CEO before the 2022 restructuring?")
+print(result.temporal_intent)    # "before"
+print(result.at_time.year)       # 2022
+print(result.rewritten_query)    # "Who was CEO"
+print(result.confidence)         # 0.85
+print(result.has_temporal_context())  # True
+```
+
+### Versioned Snapshots
+
+```python
+from semantica.kg import TemporalVersionManager
+
+# In-memory (default); pass storage_path="versions.db" for SQLite persistence
+versioner = TemporalVersionManager()
+
+# author and description are required for create_snapshot
+versioner.create_snapshot(kg, version_label="2024-Q1",
+                          author="user@example.com",
+                          description="Q1 2024 baseline")
+
+# List versions (not list_snapshots)
+for v in versioner.list_versions():
+    print(f"{v['label']:12s}  {v['author']}")
+
+# Compare two versions (not diff_versions)
+diff = versioner.compare_versions("2023-Q4", "2024-Q1")
+print(f"Entities added:      {diff['summary']['entities_added']}")
+print(f"Relationships added: {diff['summary']['relationships_added']}")
+
+# Retrieve a version (not restore_snapshot)
+past_kg = versioner.get_version("2023-Q4")
+
+# SHA-256 integrity check
+versioner.verify_checksum(past_kg)
+```
+
+<Tip>
+  See the [Temporal Intelligence](temporal) reference for the full class API, domain examples (personnel changes, policy evolution, financial timelines), and configuration options.
+</Tip>
 
 
 ## Similarity Scoring

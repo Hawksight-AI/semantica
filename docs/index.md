@@ -15,10 +15,12 @@ If your stack can't answer those questions with a traceable record, you have a g
 
 **Semantica closes that gap.** It's the context and accountability layer that sits beneath your existing agent framework: not a replacement for LangChain or LlamaIndex, but the infrastructure that makes their outputs trustworthy.
 
-<div style={{display:"flex",flexWrap:"wrap",gap:"3rem",margin:"2rem 0",padding:"1.5rem 2rem",borderRadius:"10px",border:"1px solid rgba(16,185,129,0.2)",background:"rgba(16,185,129,0.03)"}}>
+<div style={{display:"flex",flexWrap:"wrap",gap:"2rem",margin:"2rem 0",padding:"1.5rem 2rem",borderRadius:"10px",border:"1px solid rgba(16,185,129,0.2)",background:"rgba(16,185,129,0.03)"}}>
   <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>1,000+</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>passing tests</div></div>
-  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>25+</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>modules</div></div>
-  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>12</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>LLM providers</div></div>
+  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>29</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>modules</div></div>
+  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>13</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>LLM providers</div></div>
+  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>6,000×</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>search speedup</div></div>
+  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>109</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>REST endpoints</div></div>
   <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>MIT</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>open source</div></div>
 </div>
 
@@ -300,11 +302,37 @@ pip install semantica==0.5.0
 
 <Accordion title="v0.4.0: Temporal Intelligence & Knowledge Explorer" icon="clock">
 
-- **Temporal Intelligence** — 6-PR system: temporal data model, point-in-time queries, Allen interval algebra (all 13 relations), OWL-Time export
-- **Knowledge Explorer API** — Full FastAPI backend: 99 tests, 12 export formats, WebSocket progress, thread-safe sessions, audit trail
-- **Ontology Foundations** — SHACL generation/validation, SKOS vocabulary, ontology alignment API, diff & migration tooling
+Released **April 8, 2026**
+
+- **Temporal Intelligence** — Bi-temporal data model (`BiTemporalFact`, `TemporalBound`), point-in-time query engine, Allen interval algebra (all 13 relations), `TemporalNormalizer` (zero LLM calls), `TemporalQueryRewriter`, OWL-Time export
+- **Knowledge Explorer API** — Full FastAPI backend: 99 integration tests, 12 export formats, WebSocket progress, thread-safe `RLock` sessions, audit trail, rollback protection
+- **Ontology Foundations** — SHACL generation/validation (basic/standard/strict tiers), SKOS vocabulary, ontology alignment API, diff & migration with change impact analysis
 - **Datalog Reasoning** — Pure-Python bottom-up semi-naive fixpoint, recursive Horn clause rules, guaranteed termination
 - **Agno Integration** — 5 components: graph-backed memory, multi-hop GraphRAG, decision toolkit, KG toolkit, shared team context; 110 tests
+- **Novita AI provider** — OpenAI-compatible provider for 200+ open-weight models
+
+```bash
+pip install semantica==0.4.0
+```
+
+</Accordion>
+
+<Accordion title="v0.3.0: Context Graph Features & Decision Intelligence" icon="brain">
+
+Released **March 10, 2026**
+
+- **Context Graph completeness** — `valid_from`/`valid_until` on every node, `find_active_nodes()` temporal filtering, `get_neighbors(min_weight)` confidence-filtered traversal
+- **Cross-graph navigation** — `link_graph()`, `navigate_to()`, `resolve_links()`, `cross_graph_path()` for multi-graph agent architectures
+- **Decision tracking system** — Full lifecycle: `record_decision()` → `add_causal_relationship()` → `find_similar_decisions()` → `trace_decision_chain()` → `analyze_decision_impact()` → `check_decision_rules()` → `get_decision_insights()`
+- **Advanced KG algorithms** — Node2Vec embeddings, betweenness / closeness / eigenvector centrality, Louvain community detection
+- **Policy management** — Versioned policy storage with policy exception tracking and approver audit trail
+- **Vector store** — Hybrid search (dense + sparse), PgVector HNSW/IVFFlat indexing with JSONB metadata filtering
+- **Apache AGE backend** — Full graph store support for PostgreSQL-native AGE graphs
+- **ResourceScheduler fix** — `RLock` deadlock fix for concurrent agent pipelines
+
+```bash
+pip install semantica==0.3.0
+```
 
 </Accordion>
 
