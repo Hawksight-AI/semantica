@@ -65,6 +65,7 @@
             "pages": [
               "concepts",
               "modules",
+              "choose-your-module",
               "glossary"
             ]
           },
@@ -104,10 +105,11 @@
             "group": "Get Started",
             "pages": [
               "installation",
-              "cli-setup",
-              "explorer-setup",
+              "getting-started",
               "quickstart",
-              "getting-started"
+              "choose-your-module",
+              "cli-setup",
+              "explorer-setup"
             ]
           }
         ]

@@ -8,6 +8,10 @@ icon: "puzzle-piece"
   Looking for a quick reference? Jump to the [Module Index](#module-index) at the bottom.
 </Info>
 
+<Tip>
+  Not sure which module to use? The [Choose the Right Module](choose-your-module) guide maps 35+ developer goals to modules with code examples — start there if you're orienting for the first time.
+</Tip>
+
 Semantica is organized into **27 modules** across six logical layers. Each module is independently importable: you never pay for what you don't use.
 
 ## Architecture Overview

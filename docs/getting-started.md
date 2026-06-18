@@ -202,22 +202,9 @@ Semantica uses a modular, layered architecture: import only what you need.
 - **[Output Layer](reference/export)** — Deliver results downstream. Modules: `export`, `visualization`, `pipeline`, `explorer`
 
 
-## "Which module do I need?" Quick Reference
+## Which Module Do I Need?
 
-| I want to... | Module | Key class |
-| :------------ | :------ | :--------- |
-| Load a PDF / web page / database | `ingest` | `FileIngestor`, `WebIngestor` |
-| Extract text and tables from a PDF | `parse` | `DocumentParser`, `DoclingParser` |
-| Find entities in text | `semantic_extract` | `NERExtractor` |
-| Build a knowledge graph | `kg` | `GraphBuilder` |
-| Store and search vectors | `vector_store` | `VectorStore` |
-| Give my agent persistent memory | `context` | `AgentContext` |
-| Record AI decisions with audit trail | `context` | `AgentContext.record_decision()` |
-| Query my graph with natural language | `reasoning` | `GraphReasoner` |
-| Export to RDF / Neo4j / Parquet | `export` | `RDFExporter`, `LPGExporter` |
-| Visualize a knowledge graph | `visualization` | `KGVisualizer` |
-| Run a reproducible pipeline | `pipeline` | `PipelineBuilder` |
-| Use Semantica from Claude Desktop | `mcp_server` | `semantica-mcp` |
+See the [Choose the Right Module](choose-your-module) guide — it maps 35+ developer goals to the right starting point across all 27 modules, with working code for the most common paths.
 
 
 ## Next Steps
