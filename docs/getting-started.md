@@ -94,9 +94,9 @@ icon: "rocket"
 
     # 4. Build
     graph = GraphBuilder(merge_entities=True).build(
-        entities=entities, relationships=relationships
+        {"entities": entities, "relationships": relationships}
     )
-    print(f"{len(graph['nodes'])} nodes, {len(graph['relationships'])} edges")
+    print(f"{len(graph['entities'])} nodes, {len(graph['relationships'])} edges")
     ```
 
     **Next:** [Full pipeline walkthrough →](quickstart)

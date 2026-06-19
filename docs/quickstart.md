@@ -151,13 +151,9 @@ Assemble extracted entities and relationships into a queryable knowledge graph.
 from semantica.kg import GraphBuilder
 
 builder = GraphBuilder(merge_entities=True)
-graph   = builder.build(entities=entities, relationships=relationships)
+graph   = builder.build({"entities": entities, "relationships": relationships})
 
-print(f"Graph: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
-
-# Query the graph
-apple    = graph.get_node("Apple Inc.")
-founders = graph.get_neighbors("Apple Inc.", predicate="founded_by")
+print(f"Graph: {len(graph['entities'])} nodes, {len(graph['relationships'])} edges")
 ```
 
 <Note>
@@ -289,7 +285,7 @@ for doc in parsed_docs:
     all_entities.extend(entities)
     all_rels.extend(rels)
 
-graph = builder.build(entities=all_entities, relationships=all_rels)
+graph = builder.build({"entities": all_entities, "relationships": all_rels})
 ```
 
 </Accordion>
@@ -297,18 +293,34 @@ graph = builder.build(entities=all_entities, relationships=all_rels)
 <Accordion title="Temporal knowledge graph with point-in-time queries" icon="clock">
 
 ```python
-from semantica.kg import TemporalKnowledgeGraph
-from datetime import datetime
+from semantica.kg import GraphBuilder, TemporalGraphQuery
 
-tkg = TemporalKnowledgeGraph()
+builder = GraphBuilder()
+kg = builder.build({
+    "entities": [
+        {"id": "alice",     "type": "Person"},
+        {"id": "acme_corp", "type": "Organization"},
+        {"id": "beta_ltd",  "type": "Organization"},
+    ],
+    "relationships": [
+        {
+            "source": "alice", "target": "acme_corp", "type": "ceo_of",
+            "valid_from": "2018-01-01", "valid_until": "2022-06-01",
+        },
+        {
+            "source": "alice", "target": "beta_ltd", "type": "ceo_of",
+            "valid_from": "2022-06-01",
+        },
+    ],
+})
 
-tkg.add_node("Tim Cook",   role="CEO", valid_from=datetime(2011, 8, 24))
-tkg.add_node("Steve Jobs", role="CEO", valid_from=datetime(1997, 9, 16),
-             valid_until=datetime(2011, 8, 24))
+tq = TemporalGraphQuery(temporal_granularity="day")
 
-# What did the graph look like on Jan 1, 2005?
-snapshot = tkg.at(datetime(2005, 1, 1))
-print(snapshot.get_node("Steve Jobs"))  # role: CEO
+result_2020 = tq.query_at_time(kg, query="", at_time="2020-06-15")
+result_2023 = tq.query_at_time(kg, query="", at_time="2023-01-01")
+
+print(f"Relationships active in 2020: {result_2020['num_relationships']}")
+print(f"Relationships active in 2023: {result_2023['num_relationships']}")
 ```
 
 </Accordion>
@@ -326,7 +338,7 @@ store = Neo4jStore(
 )
 
 builder = GraphBuilder(merge_entities=True, graph_store=store)
-graph   = builder.build(entities=entities, relationships=relationships)
+graph   = builder.build({"entities": entities, "relationships": relationships})
 # Graph persisted to Neo4j: survives process restarts
 ```
 
@@ -340,17 +352,7 @@ from semantica.kg import GraphBuilder
 
 tracker = ProvenanceTracker()
 builder = GraphBuilder(merge_entities=True, provenance=tracker)
-graph   = builder.build(entities=entities, relationships=relationships)
-
-# Every node and edge has full lineage
-node = graph.get_node("Apple Inc.")
-print(node.provenance)
-# {
-#   "source_document": "data/report.pdf",
-#   "extraction_method": "NERExtractor:llm",
-#   "extracted_at": "2026-05-22T10:30:00Z",
-#   "confidence": 0.98
-# }
+graph   = builder.build({"entities": entities, "relationships": relationships})
 ```
 
 </Accordion>
