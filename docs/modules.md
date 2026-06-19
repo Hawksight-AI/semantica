@@ -397,10 +397,8 @@ result = pipeline.run("data/")
 
 FastAPI Knowledge Explorer with Ontology Hub, WebSocket progress, bidirectional path finding, and indexed search (0.004ms on 118k nodes).
 
-```python
-# Launch via CLI
-# semantica explore --port 8080
-# Opens at http://localhost:8080
+```bash
+semantica-explorer --graph my_graph.json
 ```
 
 **Routes:** graph, ontology, provenance, decisions, analytics, SPARQL, temporal, annotations, export/import, vocabulary
@@ -694,7 +692,7 @@ versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description=
 | [export](reference/export) | Data export | `RDFExporter`, `ParquetExporter` |
 | [visualization](reference/visualization) | Graph visualization | `GraphVisualizer` |
 | [pipeline](reference/pipeline) | Workflow orchestration | `Pipeline`, `PipelineBuilder` |
-| [explorer](reference/explorer) | Knowledge Explorer UI | `start_explorer` |
+| [explorer](reference/explorer) | Knowledge Explorer UI | `semantica-explorer --graph <file>` |
 | [llms](reference/llms) | LLM providers | `Groq`, `OpenAI`, `create_provider` |
 | [mcp_server](reference/mcp_server) | MCP stdio server | `python -m semantica.mcp_server` |
 | [seed](reference/seed) | KG bootstrapping from structured sources | `SeedManager` |
