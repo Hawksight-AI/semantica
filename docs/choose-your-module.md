@@ -207,24 +207,17 @@ Pick your goal to see the minimum imports and a working skeleton.
     from semantica.export import RDFExporter, ParquetExporter, LPGExporter, ArangoAQLExporter
 
     # RDF — multiple serialization formats
-    RDFExporter().export_to_rdf(graph, format="turtle",  output="graph.ttl")
-    RDFExporter().export_to_rdf(graph, format="json-ld", output="graph.jsonld")
-
-    # With provenance embedded (for compliance)
-    RDFExporter().export_to_rdf(
-    graph,
-    format="turtle",
-    output="audit.ttl"
-    )
+    RDFExporter().export(graph, "graph.ttl",    format="turtle")
+    RDFExporter().export(graph, "graph.jsonld", format="jsonld")
 
     # Parquet — for Spark, BigQuery, Databricks, Snowflake
-    ParquetExporter().export(graph, output_dir="output/")
+    ParquetExporter().export(graph, "output/graph.parquet")
 
     # Neo4j / Memgraph via Cypher
-    LPGExporter().export(graph, output="graph.cypher")
+    LPGExporter().export(graph, "graph.cypher")
 
     # ArangoDB AQL inserts
-    ArangoAQLExporter().export(graph)
+    ArangoAQLExporter().export(graph, "graph.aql")
     ```
 
     **Formats:** Turtle · JSON-LD · N-Triples · RDF/XML · Parquet · Cypher · Arrow · OWL · CSV · ArangoDB AQL
