@@ -348,16 +348,16 @@ diff     = manager.diff("v1.0", "v1.1")
 Serializes graphs to downstream formats for analytics, semantic web, or graph databases.
 
 ```python
-from semantica.export import RDFExporter, ParquetExporter, ArangoDBExporter
+from semantica.export import RDFExporter, ParquetExporter, ArangoAQLExporter
 
 # RDF formats
-RDFExporter().export_to_rdf(graph, format="turtle", output="graph.ttl")
+RDFExporter().export(graph, file_path="graph.ttl", format="turtle")
 
 # Analytics
-ParquetExporter().export(graph, output_dir="output/")
+ParquetExporter().export(graph, file_path="output/graph.parquet")
 
 # ArangoDB
-aql = ArangoDBExporter().export(graph)
+aql = ArangoAQLExporter().export(graph)
 ```
 
 **Export formats:** RDF (Turtle, JSON-LD, N-Triples, XML), Parquet, ArangoDB AQL, CSV, OWL, Arrow, LPG, YAML, distance matrices
@@ -367,13 +367,13 @@ aql = ArangoDBExporter().export(graph)
 Renders interactive and static knowledge graph visualizations.
 
 ```python
-from semantica.visualization import GraphVisualizer
+from semantica.visualization import KGVisualizer
 
-viz = GraphVisualizer()
-viz.visualize(graph, output="graph.html")
+viz = KGVisualizer()
+viz.visualize_network(graph, output="html", file_path="graph.html")
 ```
 
-**Visualizers:** `GraphVisualizer`, `OntologyVisualizer`, `EmbeddingVisualizer`, `SemanticNetworkVisualizer`, `TemporalVisualizer`, `AnalyticsVisualizer`
+**Visualizers:** `KGVisualizer`, `OntologyVisualizer`, `EmbeddingVisualizer`, `SemanticNetworkVisualizer`, `TemporalVisualizer`, `AnalyticsVisualizer`
 
 **Layout algorithms:** force-directed, hierarchical, circular
 
@@ -609,7 +609,7 @@ graph    = GraphBuilder(merge_entities=True).build(entities=entities, relationsh
 prov     = ProvenanceManager()
 lineage  = prov.get_entity_lineage("entity_id")
 
-RDFExporter(include_provenance=True).export_to_rdf(graph, format="turtle", output="audit.ttl")
+RDFExporter(include_provenance=True).export(graph, file_path="audit.ttl", format="turtle")
 ```
 
     **Best for:** HIPAA, SOX, GDPR, FDA 21 CFR Part 11 deployments
@@ -690,7 +690,7 @@ versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description=
 | [provenance](reference/provenance) | W3C PROV-O lineage | `ProvenanceManager` |
 | [change_management](reference/change_management) | Version control | `TemporalVersionManager` |
 | [export](reference/export) | Data export | `RDFExporter`, `ParquetExporter` |
-| [visualization](reference/visualization) | Graph visualization | `GraphVisualizer` |
+| [visualization](reference/visualization) | Graph visualization | `KGVisualizer` |
 | [pipeline](reference/pipeline) | Workflow orchestration | `Pipeline`, `PipelineBuilder` |
 | [explorer](reference/explorer) | Knowledge Explorer UI | `semantica-explorer --graph <file>` |
 | [llms](reference/llms) | LLM providers | `Groq`, `OpenAI`, `create_provider` |

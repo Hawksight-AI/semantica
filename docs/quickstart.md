@@ -167,14 +167,12 @@ print(f"Graph: {len(graph['entities'])} nodes, {len(graph['relationships'])} edg
 Render an interactive, zoomable knowledge graph in the browser.
 
 ```python
-from semantica.visualization import GraphVisualizer
+from semantica.visualization import KGVisualizer
 
-viz = GraphVisualizer(
+viz = KGVisualizer(
     layout="force",        # "force" | "hierarchical" | "circular"
-    node_color_by="type",  # color nodes by entity type
-    show_confidence=True,
 )
-viz.visualize(graph, output="graph.html")
+viz.visualize_network(graph, output="html", file_path="graph.html", node_color_by="type")
 ```
 
 Open `graph.html` in any browser: pan, zoom, click nodes for details, filter by entity type.
@@ -191,23 +189,23 @@ Export to any downstream format.
 from semantica.export import RDFExporter
 
 exporter = RDFExporter()
-exporter.export_to_rdf(graph, format="turtle",  output="graph.ttl")
-exporter.export_to_rdf(graph, format="json-ld", output="graph.jsonld")
-exporter.export_to_rdf(graph, format="nt",      output="graph.nt")
+exporter.export(graph, file_path="graph.ttl",    format="turtle")
+exporter.export(graph, file_path="graph.jsonld", format="json-ld")
+exporter.export(graph, file_path="graph.nt",     format="nt")
 ```
 
 ```python Parquet / Analytics
 from semantica.export import ParquetExporter
 
 exporter = ParquetExporter()
-exporter.export(graph, output_dir="output/")
+exporter.export(graph, file_path="output/graph.parquet")
 # Writes nodes.parquet + edges.parquet: ready for Spark, BigQuery, Databricks
 ```
 
 ```python ArangoDB
-from semantica.export import ArangoDBExporter
+from semantica.export import ArangoAQLExporter
 
-exporter = ArangoDBExporter()
+exporter = ArangoAQLExporter()
 aql      = exporter.export(graph)
 # Returns ready-to-run AQL INSERT statements
 ```
