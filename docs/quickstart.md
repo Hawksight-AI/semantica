@@ -316,7 +316,8 @@ kg = builder.build({
 
 tq = TemporalGraphQuery(temporal_granularity="day")
 
-result_2020 = tq.query_at_time(kg, query="", at_time="2020-06-15")
+result_2020 = tq.query_at_time(kg, query="",  # query reserved for future use
+                               at_time="2020-06-15")
 result_2023 = tq.query_at_time(kg, query="", at_time="2023-01-01")
 
 print(f"Relationships active in 2020: {result_2020['num_relationships']}")
@@ -347,12 +348,20 @@ graph   = builder.build({"entities": entities, "relationships": relationships})
 <Accordion title="Full provenance pipeline: W3C PROV-O" icon="link">
 
 ```python
-from semantica.provenance import ProvenanceTracker
-from semantica.kg import GraphBuilder
+from semantica.kg import GraphBuilder, ProvenanceTracker
 
 tracker = ProvenanceTracker()
-builder = GraphBuilder(merge_entities=True, provenance=tracker)
+
+# Record where each entity came from before or after extraction
+tracker.track_entity("Apple Inc.", "data/report.pdf", metadata={"confidence": 0.98})
+
+builder = GraphBuilder(merge_entities=True)
 graph   = builder.build({"entities": entities, "relationships": relationships})
+
+# Retrieve full lineage for any entity
+sources = tracker.get_all_sources("Apple Inc.")
+print(sources[0])
+# {"source": "data/report.pdf", "recorded_at": "2026-05-22T10:30:00Z", "confidence": 0.98}
 ```
 
 </Accordion>
