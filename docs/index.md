@@ -3,10 +3,6 @@ title: "Semantica"
 description: "The Accountability and Context Layer for AI: Context Graphs · Decision Intelligence · Full Provenance"
 ---
 
-<Info>
-  **v0.5.0 is live** — Ontology Hub, Distance Intelligence, SHACL Studio, Parquet & XML ingestion, 12 security fixes. <a href="#whats-new" style={{color:"#10B981",fontWeight:600,textDecoration:"none"}}>What's new →</a>
-</Info>
-
 Your AI agent just made a decision. Now someone needs to explain it.
 
 *What did it know at the time? Which facts shaped the outcome? Where did those facts come from? Has it made the same call before: and did that go well?*
@@ -14,15 +10,6 @@ Your AI agent just made a decision. Now someone needs to explain it.
 If your stack can't answer those questions with a traceable record, you have a gap. Not a capability gap: an **accountability gap**. It's the reason AI hasn't landed at scale in healthcare, finance, legal, and government. And it's why teams building for those markets keep rebuilding the same guardrails from scratch.
 
 **Semantica closes that gap.** It's the context and accountability layer that sits beneath your existing agent framework: not a replacement for LangChain or LlamaIndex, but the infrastructure that makes their outputs trustworthy.
-
-<div style={{display:"flex",flexWrap:"wrap",gap:"2rem",margin:"2rem 0",padding:"1.5rem 2rem",borderRadius:"10px",border:"1px solid rgba(16,185,129,0.2)",background:"rgba(16,185,129,0.03)"}}>
-  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>1,000+</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>passing tests</div></div>
-  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>29</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>modules</div></div>
-  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>13</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>LLM providers</div></div>
-  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>6,000×</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>search speedup</div></div>
-  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>109</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>REST endpoints</div></div>
-  <div><div style={{fontSize:"1.75rem",fontWeight:700,color:"#10B981",lineHeight:1.1}}>MIT</div><div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.5)",marginTop:"4px"}}>open source</div></div>
-</div>
 
 
 ## The Problem Every Production AI Team Hits
@@ -276,67 +263,7 @@ Semantica was designed for domains where every decision must be explainable and 
 - [Core Concepts](concepts) — The mental model behind the API
 - [API Reference](reference/context) — Exact module, class, and method details
 - [Cookbook](cookbook) — Domain notebooks for real-world use cases
-
-
-## What's New
-
-<AccordionGroup>
-
-<Accordion title="v0.5.0: Ontology Hub & Distance Intelligence" icon="star" defaultOpen={true}>
-
-Released **May 11, 2026**
-
-- **Ontology Hub** — Visual editor, SHACL Studio, alignment authoring, health dashboard, version control: full ontology lifecycle in the browser
-- **Distance Intelligence** — Semantic neighborhoods, N×N distance matrices, ego-mode visualization, distance band classification, embedding cache optimization
-- **Parquet Ingestion** — `ParquetIngestor` with PyArrow: single file, partitioned directories, Hive-style discovery, selective column reading
-- **XML Ingestion** — `XMLIngestor` with XXE-safe lxml backend, XSD/DTD validation, namespace handling, directory scanning
-- **Graph Explorer** — Landing page redesign, bidirectional path finding, indexed search (0.004ms on 118k nodes)
-- **Security** — 12 vulnerability fixes: eval injection, pickle deserialization, SQL injection, XXE, SSRF, ReDoS, path traversal
-- **Bug Fixes** — NER LLM silent fallback on enterprise gateways, ConflictDetector duplicate definition, Windows `[all]` install, cp1252 crash
-
-```bash
-pip install semantica==0.5.0
-```
-
-</Accordion>
-
-<Accordion title="v0.4.0: Temporal Intelligence & Knowledge Explorer" icon="clock">
-
-Released **April 8, 2026**
-
-- **Temporal Intelligence** — Bi-temporal data model (`BiTemporalFact`, `TemporalBound`), point-in-time query engine, Allen interval algebra (all 13 relations), `TemporalNormalizer` (zero LLM calls), `TemporalQueryRewriter`, OWL-Time export
-- **Knowledge Explorer API** — Full FastAPI backend: 99 integration tests, 12 export formats, WebSocket progress, thread-safe `RLock` sessions, audit trail, rollback protection
-- **Ontology Foundations** — SHACL generation/validation (basic/standard/strict tiers), SKOS vocabulary, ontology alignment API, diff & migration with change impact analysis
-- **Datalog Reasoning** — Pure-Python bottom-up semi-naive fixpoint, recursive Horn clause rules, guaranteed termination
-- **Agno Integration** — 5 components: graph-backed memory, multi-hop GraphRAG, decision toolkit, KG toolkit, shared team context; 110 tests
-- **Novita AI provider** — OpenAI-compatible provider for 200+ open-weight models
-
-```bash
-pip install semantica==0.4.0
-```
-
-</Accordion>
-
-<Accordion title="v0.3.0: Context Graph Features & Decision Intelligence" icon="brain">
-
-Released **March 10, 2026**
-
-- **Context Graph completeness** — `valid_from`/`valid_until` on every node, `find_active_nodes()` temporal filtering, `get_neighbors(min_weight)` confidence-filtered traversal
-- **Cross-graph navigation** — `link_graph()`, `navigate_to()`, `resolve_links()`, `cross_graph_path()` for multi-graph agent architectures
-- **Decision tracking system** — Full lifecycle: `record_decision()` → `add_causal_relationship()` → `find_similar_decisions()` → `trace_decision_chain()` → `analyze_decision_impact()` → `check_decision_rules()` → `get_decision_insights()`
-- **Advanced KG algorithms** — Node2Vec embeddings, betweenness / closeness / eigenvector centrality, Louvain community detection
-- **Policy management** — Versioned policy storage with policy exception tracking and approver audit trail
-- **Vector store** — Hybrid search (dense + sparse), PgVector HNSW/IVFFlat indexing with JSONB metadata filtering
-- **Apache AGE backend** — Full graph store support for PostgreSQL-native AGE graphs
-- **ResourceScheduler fix** — `RLock` deadlock fix for concurrent agent pipelines
-
-```bash
-pip install semantica==0.3.0
-```
-
-</Accordion>
-
-</AccordionGroup>
+- [Changelog](changelog) — Release history
 
 
 ## Full Capabilities
