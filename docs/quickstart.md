@@ -348,20 +348,19 @@ graph   = builder.build({"entities": entities, "relationships": relationships})
 <Accordion title="Full provenance pipeline: W3C PROV-O" icon="link">
 
 ```python
-from semantica.kg import GraphBuilder, ProvenanceTracker
+from semantica.provenance import ProvenanceManager
+from semantica.kg import GraphBuilder
 
-tracker = ProvenanceTracker()
-
-# Record where each entity came from before or after extraction
-tracker.track_entity("Apple Inc.", "data/report.pdf", metadata={"confidence": 0.98})
+prov    = ProvenanceManager()
+prov.track_entity("Apple Inc.", "data/report.pdf", metadata={"confidence": 0.98})
 
 builder = GraphBuilder(merge_entities=True)
 graph   = builder.build({"entities": entities, "relationships": relationships})
 
 # Retrieve full lineage for any entity
-sources = tracker.get_all_sources("Apple Inc.")
+sources = prov.get_all_sources("Apple Inc.")
 print(sources[0])
-# {"source": "data/report.pdf", "recorded_at": "2026-05-22T10:30:00Z", "confidence": 0.98}
+# {"source": "data/report.pdf", "location": None, "timestamp": "...", "confidence": 0.98}
 ```
 
 </Accordion>
