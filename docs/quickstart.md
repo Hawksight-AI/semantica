@@ -5,7 +5,7 @@ icon: "rocket"
 ---
 
 <Info>
-  **v0.5.0** — Ontology Hub, Distance Intelligence, Parquet & XML ingestion, 12 security fixes. <a href="index#whats-new" style={{color:"#10B981",fontWeight:600,textDecoration:"none"}}>What's new →</a>
+  **v0.5.0** — Ontology Hub, Distance Intelligence, Parquet & XML ingestion, 12 security fixes. <a href="changelog" style={{color:"#10B981",fontWeight:600,textDecoration:"none"}}>What's new →</a>
 </Info>
 
 This guide walks you through the end-to-end pipeline for building your first knowledge graph. Start here after installation. An LLM API key is optional: pattern-based extraction works out of the box.
