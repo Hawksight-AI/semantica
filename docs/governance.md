@@ -74,7 +74,7 @@ Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 ## License
 
-MIT License: see [LICENSE](https://github.com/semantica-agi/semantica/blob/main/LICENSE) and the [License page](license).
+MIT License: see [LICENSE](https://github.com/semantica-agi/semantica/blob/main/LICENSE) and the [License page](project-license).
 
 
 ## See Also

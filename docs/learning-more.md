@@ -61,7 +61,7 @@ Whether you're running your first pipeline or deploying Semantica in production,
         [Architecture Guide](architecture): four-layer design, extension points, and design decisions.
       </Step>
       <Step title="Temporal intelligence">
-        [Temporal Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/04_Temporal_Graphs.ipynb): `valid_from`/`valid_until`, Allen interval algebra, point-in-time queries.
+        [Temporal Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/10_Temporal_Knowledge_Graphs.ipynb): `valid_from`/`valid_until`, Allen interval algebra, point-in-time queries.
       </Step>
       <Step title="Ontology-driven knowledge bases">
         [Ontology notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb): auto-generation, SHACL validation, Ontology Hub (v0.5.0).
