@@ -13,6 +13,8 @@ This guide demonstrates how to use the export module for exporting knowledge gra
 7. [OWL Export](#owl-export)
 8. [Vector Export](#vector-export)
 9. [LPG Export](#lpg-export)
+   - [Cypher Query Export](#cypher-query-export)
+   - [Neo4j Bulk CSV Export](#neo4j-bulk-csv-export)
 10. [Report Generation](#report-generation)
 11. [Knowledge Graph Export](#knowledge-graph-export)
 12. [Using Methods](#using-methods)
@@ -442,6 +444,66 @@ exporter.export_knowledge_graph(kg, "graph.cypher")
 # mgconsole < graph.cypher
 ```
 
+### Neo4j Bulk CSV Export
+
+The `Neo4jCSVExporter` generates node and relationship CSV files specifically structured for Neo4j's high-performance bulk import utility (`neo4j-admin database import`).
+
+#### Basic Usage
+
+```python
+from semantica.export import Neo4jCSVExporter
+
+# Initialize the exporter
+exporter = Neo4jCSVExporter(
+    node_label_sep=";",       # Separator for multi-label nodes (default: ";")
+    strict_validation=True    # Validate CSV schema before writing (default: True)
+)
+
+# Export a knowledge graph to separate nodes and relationships CSV files
+exporter.export_knowledge_graph(
+    kg,
+    nodes_path="nodes.csv",
+    rels_path="relationships.csv"
+)
+```
+
+#### Convenience Method
+
+You can also use the convenience wrapper `export_neo4j_csv`:
+
+```python
+from semantica.export.methods import export_neo4j_csv
+
+export_neo4j_csv(
+    kg,
+    nodes_path="nodes.csv",
+    rels_path="relationships.csv",
+    strict_validation=True
+)
+```
+
+#### Importing into Neo4j
+
+Once the CSV files are generated, they can be imported into a new Neo4j database using the `neo4j-admin database import` command:
+
+```bash
+neo4j-admin database import full \
+  --nodes=nodes.csv \
+  --relationships=relationships.csv \
+  neo4j
+```
+
+#### Mapping Assumptions & Rules
+
+- **Header Specification**:
+  - Node CSV headers are generated as `:id` (node identifier) and `:LABEL` (labels).
+  - Relationship CSV headers are generated as `:START_ID` (source node), `:END_ID` (target node), and `:TYPE` (relationship type).
+  - Custom attributes/properties are written as standard columns.
+- **Node Labels**: Supports multiple labels per node. Labels are serialized into a single string column using the configured `node_label_sep` (default `;`).
+- **Stable Node IDs**: Reuses `id` (or `entity_id` / `node_id`) from node dictionaries. If a node is missing an ID, a stable content-derived ID is generated via a SHA-256 hash of its properties, ensuring reproducibility.
+- **Relationship Endpoint Resolution**: If a relationship refers to nodes by their `name`, `text`, or `label` rather than their exact `id`, the exporter resolves these aliases automatically to their stable node IDs to guarantee that `:START_ID` and `:END_ID` strictly match existing node IDs.
+- **Property Serialization**: Flat values (strings, numbers, booleans) are serialized directly. Nested properties (e.g. dicts, lists, sets) are serialized into a canonical JSON representation.
+
 ## Report Generation
 
 ### HTML Report
@@ -553,7 +615,8 @@ from semantica.export.methods import (
     export_yaml,
     export_owl,
     export_vector,
-    export_lpg
+    export_lpg,
+    export_neo4j_csv
 )
 
 # RDF export
@@ -579,6 +642,9 @@ export_vector(vectors, "vectors.json", format="json")
 
 # LPG export
 export_lpg(kg, "graph.cypher", method="cypher")
+
+# Neo4j CSV bulk export
+export_neo4j_csv(kg, nodes_path="nodes.csv", rels_path="relationships.csv")
 ```
 
 ## Using Registry
@@ -799,16 +865,16 @@ from semantica.export.methods import export_json
 def custom_jsonld_export(data, file_path, **kwargs):
     """Custom JSON-LD export with specific context."""
     from semantica.export import JSONExporter
-    
+
     exporter = JSONExporter(format="json-ld")
-    
+
     # Add custom context
     if isinstance(data, dict) and "@context" not in data:
         data["@context"] = {
             "@vocab": "http://example.org/vocab#",
             "ex": "http://example.org/ns#"
         }
-    
+
     exporter.export(data, file_path, format="json-ld", **kwargs)
 
 # Register custom method
@@ -921,7 +987,7 @@ for format_name, file_path, export_func, kwargs in export_configs:
 2. **Parallel Export**: Export to multiple formats in parallel
    ```python
    from concurrent.futures import ThreadPoolExecutor
-   
+
    with ThreadPoolExecutor() as executor:
        executor.submit(export_json, kg, "output.json")
        executor.submit(export_rdf, kg, "output.ttl", format="turtle")
@@ -954,4 +1020,3 @@ for format_name, file_path, export_func, kwargs in export_configs:
        with gzip.open("output.json.gz", "wb") as f_out:
            f_out.writelines(f_in)
    ```
-

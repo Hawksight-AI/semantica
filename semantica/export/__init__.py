@@ -61,6 +61,14 @@ CSV Export:
     - Multi-file Export: Knowledge graph split into multiple CSV files
       (entities, relationships)
 
+Neo4j Bulk CSV Export:
+    - Neo4j Admin Import CSV: Deterministic nodes.csv and relationships.csv
+      files compatible with neo4j-admin database import
+    - Stable Node IDs: Reuse existing graph IDs or derive deterministic IDs
+      from node contents
+    - Label and Property Mapping: Multi-label :LABEL values and sorted
+      property columns
+
 Graph Export:
     - GraphML Serialization: GraphML format generation for graph visualization tools
     - GEXF Serialization: GEXF format generation for Gephi and similar tools
@@ -124,6 +132,7 @@ Main Classes:
     - RDFExporter: RDF format export (Turtle, RDF/XML, JSON-LD)
     - JSONExporter: JSON and JSON-LD format export
     - CSVExporter: CSV format export for tabular data
+    - Neo4jCSVExporter: Neo4j bulk import CSV export
     - ParquetExporter: Parquet format export for analytics and data warehousing
     - GraphExporter: Graph format export (GraphML, GEXF, DOT)
     - YAMLExporter: YAML format export for semantic networks
@@ -162,8 +171,8 @@ License: MIT
 """
 
 from .arango_aql_exporter import ArangoAQLExporter
-from .distance_exporter import DistanceExporter
 from .config import ExportConfig, export_config
+from .distance_exporter import DistanceExporter
 
 try:
     from .arrow_exporter import ArrowExporter
@@ -188,6 +197,7 @@ from .methods import (
     export_graph,
     export_json,
     export_lpg,
+    export_neo4j_csv,
     export_owl,
     export_parquet,
     export_rdf,
@@ -197,6 +207,7 @@ from .methods import (
     get_export_method,
     list_available_methods,
 )
+from .neo4j_csv_exporter import Neo4jCSVExporter
 from .owl_exporter import OWLExporter
 
 try:
@@ -228,6 +239,7 @@ __all__ = [
     "NamespaceManager",
     "JSONExporter",
     "CSVExporter",
+    "Neo4jCSVExporter",
     "ParquetExporter",
     "GraphExporter",
     "SemanticNetworkYAMLExporter",
@@ -249,6 +261,7 @@ __all__ = [
     "export_owl",
     "export_vector",
     "export_lpg",
+    "export_neo4j_csv",
     "export_arango",
     "generate_report",
     "get_export_method",

@@ -47,6 +47,9 @@ LPG Export:
     - "cypher": Cypher query format for Neo4j/Memgraph
     - "lpg": Labeled Property Graph format
 
+Neo4j Bulk CSV Export:
+    - "neo4j_csv": CSV files for ``neo4j-admin database import``
+
 Report Generation:
     - "html": HTML report format
     - "markdown": Markdown report format
@@ -168,6 +171,7 @@ from .csv_exporter import CSVExporter
 from .graph_exporter import GraphExporter
 from .json_exporter import JSONExporter
 from .lpg_exporter import LPGExporter
+from .neo4j_csv_exporter import Neo4jCSVExporter
 from .owl_exporter import OWLExporter
 
 try:
@@ -693,6 +697,48 @@ def export_lpg(
         raise
 
 
+def export_neo4j_csv(
+    knowledge_graph: Any,
+    output_dir: Union[str, Path],
+    method: str = "default",
+    **kwargs,
+) -> Dict[str, Path]:
+    """
+    Export knowledge graph to Neo4j bulk-import CSV files.
+
+    This wrapper writes deterministic ``nodes.csv`` and ``relationships.csv``
+    files that can be imported with ``neo4j-admin database import``.
+
+    Args:
+        knowledge_graph: Knowledge graph dictionary or object with graph attributes.
+        output_dir: Output directory for Neo4j CSV files.
+        method: Export method (default: "default").
+        **kwargs: Additional options passed to ``Neo4jCSVExporter``.
+
+    Returns:
+        Mapping with ``"nodes"`` and ``"relationships"`` output paths.
+    """
+    custom_method = method_registry.get("neo4j_csv", method)
+    if custom_method and custom_method is not export_neo4j_csv:
+        try:
+            return custom_method(knowledge_graph, output_dir, **kwargs)
+        except Exception as e:
+            logger.warning(
+                f"Custom method {method} failed: {e}, falling back to default"
+            )
+
+    try:
+        config = export_config.get_method_config("neo4j_csv")
+        config.update(kwargs)
+
+        exporter = Neo4jCSVExporter(**config)
+        return exporter.export_knowledge_graph(knowledge_graph, output_dir, **kwargs)
+
+    except Exception as e:
+        logger.error(f"Failed to export Neo4j CSV: {e}")
+        raise
+
+
 def export_arango(
     knowledge_graph: Dict[str, Any],
     file_path: Union[str, Path],
@@ -713,12 +759,18 @@ def export_arango(
             - vertex_collection: Override default vertex collection name
             - edge_collection: Override default edge collection name
             - batch_size: Batch size for INSERT operations
-            - include_collection_creation: Whether to include collection creation statements
+            - include_collection_creation: Whether to include collection
+              creation statements
 
     Examples:
         >>> from semantica.export.methods import export_arango
         >>> export_arango(kg, "output.aql")
-        >>> export_arango(kg, "graph.aql", vertex_collection="nodes", edge_collection="links")
+        >>> export_arango(
+        ...     kg,
+        ...     "graph.aql",
+        ...     vertex_collection="nodes",
+        ...     edge_collection="links",
+        ... )
     """
     # Check for custom method in registry
     custom_method = method_registry.get("arango", method)
@@ -872,6 +924,8 @@ def export_knowledge_graph(
         export_owl(knowledge_graph, file_path, format=format, method=method, **kwargs)
     elif format == "cypher":
         export_lpg(knowledge_graph, file_path, method=method, **kwargs)
+    elif format in ["neo4j_csv", "neo4j-csv", "neo4j"]:
+        export_neo4j_csv(knowledge_graph, file_path, method=method, **kwargs)
     elif format == "aql":
         export_arango(knowledge_graph, file_path, method=method, **kwargs)
     elif format == "parquet":
@@ -944,6 +998,9 @@ method_registry.register("vector", "json", export_vector)
 method_registry.register("vector", "numpy", export_vector)
 method_registry.register("lpg", "default", export_lpg)
 method_registry.register("lpg", "cypher", export_lpg)
+method_registry.register("neo4j_csv", "default", export_neo4j_csv)
+method_registry.register("neo4j_csv", "neo4j_csv", export_neo4j_csv)
+method_registry.register("neo4j_csv", "neo4j-csv", export_neo4j_csv)
 method_registry.register("arango", "default", export_arango)
 method_registry.register("arango", "aql", export_arango)
 method_registry.register("report", "default", generate_report)

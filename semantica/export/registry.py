@@ -9,6 +9,7 @@ Supported Registration Types:
         * "rdf": RDF export methods
         * "json": JSON/JSON-LD export methods
         * "csv": CSV export methods
+        * "neo4j_csv": Neo4j Bulk CSV export methods
         * "graph": Graph format export methods
         * "yaml": YAML export methods
         * "owl": OWL export methods
@@ -26,7 +27,8 @@ Algorithms Used:
 
 Key Features:
     - Method registry for custom export methods
-    - Task-based method organization (rdf, json, csv, graph, yaml, owl, vector, lpg, report, export)
+    - Task-based method organization (rdf, json, csv, neo4j_csv, graph,
+      yaml, owl, vector, lpg, report, export)
     - Dynamic registration and unregistration
     - Easy discovery of available methods
     - Support for community-contributed extensions
@@ -43,7 +45,7 @@ Example Usage:
     >>> available = method_registry.list_all("json")
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 
 class MethodRegistry:
@@ -53,6 +55,7 @@ class MethodRegistry:
         "rdf": {},
         "json": {},
         "csv": {},
+        "neo4j_csv": {},
         "graph": {},
         "yaml": {},
         "owl": {},
@@ -68,7 +71,8 @@ class MethodRegistry:
         Register a custom export method.
 
         Args:
-            task: Task type ("rdf", "json", "csv", "graph", "yaml", "owl", "vector", "lpg", "report", "export")
+            task: Task type ("rdf", "json", "csv", "neo4j_csv", "graph",
+                "yaml", "owl", "vector", "lpg", "report", "export")
             name: Method name
             method_func: Method function
         """
@@ -82,7 +86,8 @@ class MethodRegistry:
         Get method by task and name.
 
         Args:
-            task: Task type ("rdf", "json", "csv", "graph", "yaml", "owl", "vector", "lpg", "report", "export")
+            task: Task type ("rdf", "json", "csv", "neo4j_csv", "graph",
+                "yaml", "owl", "vector", "lpg", "report", "export")
             name: Method name
 
         Returns:
@@ -111,7 +116,8 @@ class MethodRegistry:
         Unregister a method.
 
         Args:
-            task: Task type ("rdf", "json", "csv", "graph", "yaml", "owl", "vector", "lpg", "report", "export")
+            task: Task type ("rdf", "json", "csv", "neo4j_csv", "graph",
+                "yaml", "owl", "vector", "lpg", "report", "export")
             name: Method name
         """
         if task in cls._methods and name in cls._methods[task]:
