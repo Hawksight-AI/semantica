@@ -459,8 +459,8 @@ def run_threat_reasoning(graph: ContextGraph) -> dict:
     reasoner = Reasoner()
 
     for edge in graph.find_edges():
-        src = edge.get("source_name", edge.get("source_id", ""))
-        dst = edge.get("target_name", edge.get("target_id", ""))
+        src = edge.get("source", "")
+        dst = edge.get("target", "")
         rel = edge.get("type", "related_to")
         if src and dst:
             reasoner.add_fact("{}({}, {})".format(rel.replace(" ", "_"), src, dst))

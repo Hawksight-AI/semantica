@@ -233,19 +233,9 @@ exception_id = recorder.record_exception(
 print("Policy exception recorded:", exception_id)
 ```
 
-For multi-level approvals that happen outside systems — a Zoom call between the CISO and legal, for example — record the full approval chain:
+For multi-level approval workflows, use `DecisionRecorder.record_approval_chain()` with a graph database backend (for example Neo4j/FalkorDB). The in-memory `ContextGraph` examples used in this guide do not support approval-chain persistence via `execute_query()`.
 
-```python
-recorder.record_approval_chain(
-    decision_id = "dec_low_conf",
-    approvers   = ["ciso_director", "legal_counsel"],
-    methods     = ["zoom_call", "email"],
-    contexts    = [
-        "CISO approved bypass at 03:14 UTC based on active exploitation evidence",
-        "Legal confirmed no regulatory objection to emergency attribution disclosure",
-    ],
-)
-```
+
 
 ## Generating a Decision Audit Report
 
