@@ -193,7 +193,7 @@ gpu = [
 agno = ["agno>=1.0.0"]
 
 # ---- File Watching ----
-watch = ["watchdog>=3.0.0"]
+watch = ["watchdog>=6.0.0"]
 
 # ---- Splitting / Chunking ----
 split-tiktoken = ["tiktoken>=0.5.0"]
