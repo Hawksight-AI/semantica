@@ -241,7 +241,7 @@ events = detector.detect_events(
 text = "Warfarin inhibits VKORC1 enzyme activity, reducing vitamin K-dependent clotting factor synthesis."
 triplets = extract_triplets_llm(text, provider="groq", model="llama-3.1-8b-instant")
 for t in triplets:
-    print("{} -> {} -> {}".format(t.get("subject"), t.get("predicate"), t.get("object")))
+    print("{} -> {} -> {}".format(t.subject, t.predicate, t.object))
 # warfarin -> inhibits -> VKORC1 enzyme activity
 # warfarin -> reduces -> vitamin K-dependent clotting factor synthesis
 ```
