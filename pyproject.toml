@@ -222,7 +222,7 @@ dev = [
 explorer = [
   "fastapi>=0.100.0",
   "uvicorn[standard]>=0.22.0",
-  "websockets>=11.0",
+  "websockets>=15.0.1",
   "python-multipart>=0.0.6"
 ]
 explorer-lite = [
