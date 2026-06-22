@@ -186,7 +186,7 @@ if actor:
     print(actor["content"])  # "Russian state-sponsored group..."
     print(actor["metadata"]) # {"origin": "Russia", "motivation": "espionage", ...}
 
-# find_nodes(node_type=None, filters=None, limit=100) -> List[Dict]
+# find_nodes(node_type=None, skip=0, limit=None) -> List[Dict]
 all_actors = graph.find_nodes(node_type="ThreatActor")
 all_vulns  = graph.find_nodes(node_type="Vulnerability")
 ```
@@ -353,19 +353,27 @@ victim_graph.add_node("SolarWinds", "Victim", "SolarWinds Corporation")
 victim_graph.add_node("Treasury",   "Victim", "US Department of Treasury")
 victim_graph.add_edge("SolarWinds", "Treasury", "supply_chain_compromised")
 
-# link_graph(other_graph, link_type="related", metadata=None) -> None
-actor_graph.link_graph(victim_graph, link_type="targets")
+link_id = actor_graph.link_graph(
+    victim_graph,
+    "APT29",
+    "SolarWinds",
+    link_type="targets",
+)
 
-# navigate_to(other_graph) -> Optional[ContextGraph]
-target = actor_graph.navigate_to(victim_graph)
-if target:
-    sw = target.find_node("SolarWinds")
-    print("Reached:", sw["id"])   # Reached: SolarWinds
+other_graph, target_node_id = actor_graph.navigate_to(link_id)
 
-# cross_graph_path(start_node_id, end_node_id, other_graph) -> Optional[List[str]]
-path = actor_graph.cross_graph_path("APT29", "Treasury", victim_graph)
-if path:
-    print(" → ".join(path))
+sw = other_graph.find_node(target_node_id)
+if sw:
+    print("Reached:", sw["id"])
+
+result = actor_graph.cross_graph_path(
+    "APT29",
+    victim_graph,
+    "Treasury",
+)
+
+if result.get("reachable"):
+    print(f"Reached in {result['hop_count']} hops")
 # APT29 → SUNBURST → SolarWinds → Treasury
 ```
 

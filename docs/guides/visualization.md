@@ -78,9 +78,19 @@ from semantica.visualization import AnalyticsVisualizer
 
 # The community dict you get from graph analytics
 communities = {
-    "cluster_0": ["apt29", "hammertoss", "nobelium", "sunburst"],
-    "cluster_1": ["cve-2024-3400", "pan-os", "globalprotect"],
-    "cluster_2": ["solarwinds", "orion-platform", "cve-2020-10148"],
+    "node_assignments": {
+        "apt29": 0,
+        "hammertoss": 0,
+        "nobelium": 0,
+        "sunburst": 0,
+        "cve-2024-3400": 1,
+        "pan-os": 1,
+        "globalprotect": 1,
+        "solarwinds": 2,
+        "orion-platform": 2,
+        "cve-2020-10148": 2,
+    },
+    "num_communities": 3,
 }
 
 # Network view with community colouring
@@ -107,11 +117,13 @@ The centrality dict maps node IDs to scores. Two calls cover the two use cases: 
 
 ```python
 centrality = {
-    "apt29":         0.14,
-    "cve-2024-3400": 0.11,
-    "pan-os":        0.07,
-    "hammertoss":    0.06,
-    "nobelium":      0.05,
+    "centrality": {
+        "apt29": 0.14,
+        "cve-2024-3400": 0.11,
+        "pan-os": 0.07,
+        "hammertoss": 0.06,
+        "nobelium": 0.05,
+    }
 }
 
 # Network coloured and sized by centrality score
