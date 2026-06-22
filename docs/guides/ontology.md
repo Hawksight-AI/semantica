@@ -37,7 +37,7 @@ ctx.store(
 # At this point we have ~8 nodes and several edges, but no formal schema.
 # "APT29" and a hypothetical "Lazarus Group" are both ThreatActors —
 # but nothing enforces that both must have an attribution_confidence property.
-print(f"Graph nodes: {len(graph.to_dict().get('entities', []))}")
+print(f"Graph nodes: {len(graph.to_dict().get('nodes', []))}")
 ```
 
 ---
