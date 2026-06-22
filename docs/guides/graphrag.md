@@ -331,10 +331,15 @@ clinical_context = AgentContext(
     retention_days=None,   # clinical records: no expiry
 )
 
-fda_label_text   = "Warfarin sodium: narrow therapeutic index anticoagulant. CYP2C9 is the "
-                   "primary metabolic pathway. Amiodarone is a potent CYP2C9 inhibitor..."
-guideline_text   = "ESC 2023 AF Guidelines: bridging therapy with heparin is not recommended "
-                   "for most patients with AF undergoing elective procedures..."
+fda_label_text = (
+    "Warfarin sodium: narrow therapeutic index anticoagulant. CYP2C9 is the "
+    "primary metabolic pathway. Amiodarone is a potent CYP2C9 inhibitor..."
+)
+
+guideline_text = (
+    "ESC 2023 AF Guidelines: bridging therapy with heparin is not recommended "
+    "for most patients with AF undergoing elective procedures..."
+)
 
 clinical_context.store(
     [
