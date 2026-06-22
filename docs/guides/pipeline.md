@@ -20,12 +20,14 @@ from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 
 # --- Define handler functions ---
+# The engine calls handler(data, **step_config), so the first positional
+# argument is always the upstream data; step config arrives as kwargs.
 
-def ingest_stix_bundles(config, data=None):
+def ingest_stix_bundles(data, **config):
     files = ingest_file(config["path"], method="directory")
     return [f.text for f in files if f.file_type == "json"]
 
-def extract_entities(config, data=None):
+def extract_entities(data, **config):
     # data is the output from the previous step
     threshold = config.get("confidence_threshold", 0.7)
     results = []
@@ -34,7 +36,7 @@ def extract_entities(config, data=None):
         results.append({"text": text, "entities": [], "threshold": threshold})
     return results
 
-def build_graph(config, data=None):
+def build_graph(data, **config):
     graph   = ContextGraph(advanced_analytics=True)
     context = AgentContext(
         vector_store    = VectorStore(backend="faiss", dimension=768),
@@ -47,15 +49,13 @@ def build_graph(config, data=None):
             "edge_count": graph.stats()["edge_count"]}
 
 # --- Build the pipeline ---
+# Pass handler= directly in add_step() so each PipelineStep carries its callable.
 
 builder = PipelineBuilder()
-builder.register_step_handler("stix_ingest",  ingest_stix_bundles)
-builder.register_step_handler("ner_extract",  extract_entities)
-builder.register_step_handler("kg_build",     build_graph)
 
-builder.add_step("ingest",  "stix_ingest",  path="./stix_bundles/")
-builder.add_step("extract", "ner_extract",  confidence_threshold=0.75)
-builder.add_step("store",   "kg_build",     output_path="./cti_output/")
+builder.add_step("ingest",  "stix_ingest",  handler=ingest_stix_bundles, path="./stix_bundles/")
+builder.add_step("extract", "ner_extract",  handler=extract_entities,    confidence_threshold=0.75)
+builder.add_step("store",   "kg_build",     handler=build_graph,         output_path="./cti_output/")
 
 builder.connect_steps("ingest",  "extract")
 builder.connect_steps("extract", "store")
@@ -163,10 +163,10 @@ builder.register_step_handler("ner_extract",     run_ner)
 builder.register_step_handler("triplet_extract", run_triplets)
 builder.register_step_handler("kg_merge",        merge_into_graph)
 
-builder.add_step("ingest",   "file_ingest",     path="./stix_bundles/")
-builder.add_step("ner",      "ner_extract",     confidence_threshold=0.75)
-builder.add_step("triplets", "triplet_extract", include_temporal=True)
-builder.add_step("store",    "kg_merge",        output_path="./cti_output/")
+builder.add_step("ingest",   "file_ingest",     handler=ingest_stix_bundles, path="./stix_bundles/")
+builder.add_step("ner",      "ner_extract",     handler=run_ner,             confidence_threshold=0.75)
+builder.add_step("triplets", "triplet_extract", handler=run_triplets,        include_temporal=True)
+builder.add_step("store",    "kg_merge",        handler=merge_into_graph,    output_path="./cti_output/")
 
 # ingest feeds both ner and triplets in parallel
 builder.connect_steps("ingest",   "ner")
@@ -196,13 +196,14 @@ builder.register_step_handler("kg_append",   append_to_graph)
 
 builder.add_step(
     "ingest", "stix_ingest",
+    handler           = ingest_stix_bundles,
     path              = "./stix_bundles/",
     delta_mode        = True,
     base_version_id   = "2024-11-30",   # last successful run
     target_version_id = "2024-12-01",   # today's snapshot
 )
-builder.add_step("extract", "ner_extract")
-builder.add_step("store",   "kg_append", output_path="./cti_output/")
+builder.add_step("extract", "ner_extract", handler=run_ner)
+builder.add_step("store",   "kg_append",   handler=append_to_graph, output_path="./cti_output/")
 
 builder.connect_steps("ingest",  "extract")
 builder.connect_steps("extract", "store")
@@ -298,14 +299,14 @@ from semantica.semantic_extract import NamedEntityRecognizer
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 
-def ingest_classified_stix(config, data=None):
+def ingest_classified_stix(data, **config):
     files = ingest_file(config["path"], method="directory")
     return [
         {"text": f.text, "source": f.name, "classification": config["classification"]}
         for f in files if f.file_type == "json"
     ]
 
-def extract_cti_entities(config, data=None):
+def extract_cti_entities(data, **config):
     ner = NamedEntityRecognizer(
         methods=["pattern", "ml"],
         custom_labels=["THREAT_ACTOR", "MALWARE", "CVE", "C2_DOMAIN", "CAMPAIGN"],
@@ -317,7 +318,7 @@ def extract_cti_entities(config, data=None):
         results.append({**doc, "entities": [e.__dict__ for e in entities]})
     return results
 
-def build_cti_graph(config, data=None):
+def build_cti_graph(data, **config):
     graph   = ContextGraph(advanced_analytics=True, community_detection=True)
     context = AgentContext(
         vector_store    = VectorStore(backend="faiss", dimension=768),
@@ -335,10 +336,11 @@ builder.register_step_handler("cti_ner",           extract_cti_entities)
 builder.register_step_handler("cti_graph",         build_cti_graph)
 
 builder.add_step("ingest",  "classified_ingest",
+                 handler=ingest_classified_stix,
                  path="./classified/stix/",
                  classification="SECRET//REL TO USA FVEY")
-builder.add_step("extract", "cti_ner", confidence_threshold=0.85)
-builder.add_step("store",   "cti_graph", output_path="./cti_state/")
+builder.add_step("extract", "cti_ner", handler=extract_cti_entities, confidence_threshold=0.85)
+builder.add_step("store",   "cti_graph", handler=build_cti_graph, output_path="./cti_state/")
 
 builder.connect_steps("ingest",  "extract")
 builder.connect_steps("extract", "store")
@@ -367,12 +369,12 @@ from semantica.ingest import ingest_file, DBIngestor
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 
-def ingest_siem_alerts(config, data=None):
+def ingest_siem_alerts(data, **config):
     files = ingest_file(config["path"], method="directory")
     return [{"text": f.text, "source": f.name}
             for f in files if f.file_type == "csv"]
 
-def enrich_with_cves(config, data=None):
+def enrich_with_cves(data, **config):
     db = DBIngestor()
     cve_rows = db.execute_query(config["db_url"], config["query"])
     cve_lookup = {r["cve_id"]: r for r in cve_rows}
@@ -380,7 +382,7 @@ def enrich_with_cves(config, data=None):
         doc["cve_enrichment"] = cve_lookup
     return data
 
-def update_incident_graph(config, data=None):
+def update_incident_graph(data, **config):
     graph   = ContextGraph(advanced_analytics=True)
     context = AgentContext(
         vector_store    = VectorStore(backend="faiss", dimension=768),
@@ -402,12 +404,13 @@ builder.register_step_handler("siem_ingest",  ingest_siem_alerts)
 builder.register_step_handler("db_enrich",    enrich_with_cves)
 builder.register_step_handler("graph_update", update_incident_graph)
 
-builder.add_step("ingest",  "siem_ingest",  path="./siem_exports/")
+builder.add_step("ingest",  "siem_ingest",  handler=ingest_siem_alerts, path="./siem_exports/")
 builder.add_step("enrich",  "db_enrich",
+                 handler=enrich_with_cves,
                  db_url="postgresql://ro:pass@cvedb:5432/nvd",
                  query="SELECT cve_id, description, cvss_v3_score FROM cve_records "
                        "WHERE cve_id = ANY(ARRAY['CVE-2024-3400','CVE-2024-21762'])")
-builder.add_step("store",   "graph_update", output_path="./incident_state/")
+builder.add_step("store",   "graph_update", handler=update_incident_graph, output_path="./incident_state/")
 
 builder.connect_steps("ingest",  "enrich")
 builder.connect_steps("enrich",  "store")
@@ -434,14 +437,14 @@ from semantica.provenance import ProvenanceManager, SourceReference
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 
-def ingest_ehr_notes(config, data=None):
+def ingest_ehr_notes(data, **config):
     files = ingest_file(config["path"], method="directory")
     return [
         {"text": f.text, "patient_id": f.name.split("_")[0], "source": f.name}
         for f in files
     ]
 
-def run_biomedical_ner(config, data=None):
+def run_biomedical_ner(data, **config):
     ner = NamedEntityRecognizer(
         methods=["huggingface"],
         huggingface_model="d4data/biomedical-ner-all",
@@ -454,7 +457,7 @@ def run_biomedical_ner(config, data=None):
         results.append({**doc, "entities": entities})
     return results
 
-def track_provenance_and_store(config, data=None):
+def track_provenance_and_store(data, **config):
     manager = ProvenanceManager(storage_path=config["provenance_db"])
     graph   = ContextGraph(advanced_analytics=True)
     context = AgentContext(
@@ -485,12 +488,14 @@ builder.register_step_handler("bio_ner",       run_biomedical_ner)
 builder.register_step_handler("prov_store",    track_provenance_and_store)
 
 builder.add_step("ingest",  "ehr_ingest",
+                 handler=ingest_ehr_notes,
                  path="./ehr_exports/month_12/",
                  delta_mode=True,
                  base_version_id="2024-11",
                  target_version_id="2024-12")
-builder.add_step("extract", "bio_ner", confidence_threshold=0.82)
+builder.add_step("extract", "bio_ner", handler=run_biomedical_ner, confidence_threshold=0.82)
 builder.add_step("store",   "prov_store",
+                 handler=track_provenance_and_store,
                  provenance_db="./provenance/trial_Q4.db",
                  output_path="./trial_state/")
 
@@ -518,7 +523,7 @@ from semantica.semantic_extract import NamedEntityRecognizer, TripletExtractor
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 
-def ingest_bis_pages(config, data=None):
+def ingest_bis_pages(data, **config):
     pages = ingest_web(config["sitemap"], method="sitemap")
     return [
         {"text": p.text, "url": p.url}
@@ -528,7 +533,7 @@ def ingest_bis_pages(config, data=None):
         )
     ]
 
-def extract_regulatory_entities(config, data=None):
+def extract_regulatory_entities(data, **config):
     ner = NamedEntityRecognizer(
         methods=["pattern", "ml"],
         custom_labels=["REGULATION", "CAPITAL_RATIO", "RISK_WEIGHT", "THRESHOLD"],
@@ -544,7 +549,7 @@ def extract_regulatory_entities(config, data=None):
         results.append({**doc, "entities": entities, "triplets": triplets})
     return results
 
-def append_to_compliance_graph(config, data=None):
+def append_to_compliance_graph(data, **config):
     graph = ContextGraph(advanced_analytics=True)
     graph.load_from_file(config["existing_graph"])
     context = AgentContext(
@@ -563,12 +568,14 @@ builder.register_step_handler("rule_extract", extract_regulatory_entities)
 builder.register_step_handler("graph_append", append_to_compliance_graph)
 
 builder.add_step("ingest",  "bis_ingest",
+                 handler=ingest_bis_pages,
                  sitemap="https://www.bis.org/sitemap.xml",
                  delta_mode=True,
                  base_version_id="2024-11",
                  target_version_id="2024-12")
-builder.add_step("extract", "rule_extract", confidence_threshold=0.75)
+builder.add_step("extract", "rule_extract", handler=extract_regulatory_entities, confidence_threshold=0.75)
 builder.add_step("store",   "graph_append",
+                 handler=append_to_compliance_graph,
                  existing_graph="./compliance_graph/knowledge_graph.json",
                  output_path="./compliance_graph/")
 
