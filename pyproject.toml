@@ -163,7 +163,7 @@ infra = [
 # ---- Cloud Providers ----
 cloud = [
   "boto3>=1.24.0",
-  "azure-storage-blob>=12.12.0",
+  "azure-storage-blob>=12.30.0",
   "google-cloud-storage>=2.5.0"
 ]
 
