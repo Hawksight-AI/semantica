@@ -5,6 +5,71 @@ description: "Go beyond vector search: retrieve facts, trace reasoning paths, an
 
 GraphRAG combines vector similarity with knowledge graph traversal so retrieval finds structurally connected facts, not just text that sounds related. When a `ContextGraph` is attached to `AgentContext`, every retrieval call automatically blends semantic search with multi-hop graph expansion — and `query_with_reasoning()` returns an auditable reasoning path alongside the LLM answer.
 
+## What Is GraphRAG?
+
+GraphRAG (Graph-Augmented Retrieval-Augmented Generation) enhances traditional RAG by combining vector similarity search with knowledge graph traversal. Instead of retrieving only semantically similar text, GraphRAG follows relationships between entities to find connected evidence across multiple documents.
+
+**GraphRAG vs. traditional vector-only RAG:** Vector RAG finds documents similar to your query text. GraphRAG finds documents similar to your query AND documents connected to those through entity relationships, even if they don't mention your query terms directly.
+
+**The role of graph traversal:** Starting from entities found in vector-similar documents, GraphRAG expands outward through relationship edges to discover related facts. This reveals connections that pure text similarity would miss — like finding that a threat actor targets healthcare by following the path: Actor → Tool → Victim Organization → Industry Sector.
+
+## Why Use GraphRAG?
+
+**Multi-hop discovery.** Find facts that are 2-3 relationship steps away from your query. A question about "APT29 healthcare targeting" can surface evidence about specific hospitals by traversing: APT29 → HAMMERTOSS → LifeCare → Healthcare Sector.
+
+**Connected evidence.** Instead of isolated document fragments, retrieve coherent chains of related entities and their relationships. This provides richer context for LLM responses and human analysis.
+
+**Investigation workflows.** Follow evidence trails by expanding from known entities through their connections. Start with a suspicious IP and discover the full infrastructure chain, or trace a drug interaction through metabolic pathways.
+
+**Richer retrieval context.** Graph expansion surfaces relevant context that keyword or semantic search alone would miss, leading to more complete and accurate LLM responses.
+
+**Explainability.** GraphRAG provides audit trails showing exactly which entities and relationships led to each piece of retrieved evidence, making the retrieval process transparent and verifiable.
+
+## When To Use / When Not To Use
+
+**GraphRAG adds value when:**
+- Your domain has rich entity relationships (threat intelligence, clinical data, regulatory documents)
+- Questions require connecting facts across multiple documents
+- Investigation workflows benefit from following entity connections
+- Explainability and audit trails are important
+- You have well-structured knowledge graphs with meaningful relationships
+
+**Simple vector search may be sufficient for:**
+- Document retrieval based on topic similarity
+- Single-document question answering
+- Exploratory search where you don't know what you're looking for
+- Domains with few meaningful entity relationships
+
+**Latency and complexity considerations:**
+- GraphRAG adds computational overhead from graph traversal
+- Multi-hop expansion increases retrieval time and token usage
+- Graph quality directly impacts retrieval quality
+- Setup requires entity extraction and relationship building
+
+**GraphRAG may be overkill for:**
+- Simple lookup queries with known answers in specific documents
+- Real-time applications where latency is critical
+- Domains where entity relationships don't provide additional value
+
+## Typical GraphRAG Workflow
+
+**Ingest → Build Graph → Retrieve → Expand Context → Reason → Answer**
+
+1. **Ingest** your documents using `AgentContext.store()` with entity extraction enabled
+2. **Build Graph** through Named Entity Recognition (NER) and relationship extraction to populate the `ContextGraph`
+3. **Retrieve** semantically similar documents and identify seed entities for graph expansion
+4. **Expand Context** by following entity relationships within your specified hop limit
+5. **Reason** (optional) using the expanded context with reasoning engines
+6. **Answer** by providing the enriched context to an LLM through `query_with_reasoning()`
+
+<Info>
+  **Graph Quality Dependency:** GraphRAG retrieval quality depends heavily on graph quality, consistent entity linking, and meaningful relationships. Poor entity extraction, duplicate entities, or weak relationships directly impact retrieval effectiveness.
+</Info>
+
+<Info>
+  **Context Expansion Warning:** Larger hop counts exponentially increase the amount of retrieved context, which can significantly increase LLM token usage and processing time. Start with 2-3 hops and monitor context size for your use case.
+</Info>
+
 <Info>
 GraphRAG activates automatically when you pass `knowledge_graph=` to `AgentContext`. There is no separate mode to switch on. The `hybrid_alpha` parameter and `proximity_weight` argument control how much influence graph structure has relative to vector similarity.
 </Info>
@@ -31,7 +96,7 @@ context = AgentContext(
 )
 ```
 
-Now ingest your documents. `store()` with `extract_entities=True` runs the full extraction pipeline internally — NER, relation extraction, and entity linking — and populates both the vector index and the graph simultaneously:
+Now ingest your documents. `store()` with `extract_entities=True` runs the full extraction pipeline internally — Named Entity Recognition (NER), relation extraction, and entity linking — and populates both the vector index and the graph simultaneously:
 
 ```python
 intel_documents = [
@@ -443,6 +508,18 @@ print(answer["reasoning_path"])
 </Tab>
 
 </Tabs>
+
+## Common Pitfalls
+
+**Excessive hop counts.** Setting `max_expansion_hops` too high (>4) creates exponentially large context that overwhelms LLMs and increases costs. Start with 2-3 hops and increase only if needed.
+
+**Poor graph quality.** GraphRAG amplifies graph quality issues. Duplicate entities, inconsistent naming, and weak relationships produce poor retrieval results. Clean your graph data before relying on GraphRAG for important queries.
+
+**Duplicate entities.** Having "APT-29", "APT29", and "Cozy Bear" as separate nodes breaks relationship traversal. Entity linking during ingestion helps, but manual deduplication may be necessary.
+
+**Using GraphRAG for simple lookup queries.** If you know the answer exists in a specific document and just need to retrieve it, traditional vector search is faster and simpler than GraphRAG.
+
+**Assuming graph expansion is always beneficial.** More context isn't always better. Sometimes precise, focused retrieval outperforms broad graph expansion. Test both approaches for your specific use cases.
 
 ## Tuning the vector-graph balance
 
