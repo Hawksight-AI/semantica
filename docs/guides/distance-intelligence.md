@@ -6,13 +6,65 @@ icon: "route"
 
 `ContextGraph` distance intelligence answers the structural question that pure semantic similarity cannot: given two nodes, what is their precise relationship in terms of graph topology, path weight, and inferential confidence? Use it to annotate attribution chains with hop counts and confidence decay, rank retrieval results by structural proximity to an anchor node, and surface implied connections for analyst review.
 
+## What Is Distance Intelligence?
+
+Distance intelligence quantifies and analyzes the structural relationships between nodes in your knowledge graph. It provides detailed metadata about graph paths including hop counts, distance bands, confidence decay, and path analysis.
+
+**Distance metadata** includes hop counts (number of edges between nodes), distance bands (semantic categories like "direct", "near", "distant"), confidence decay (accumulated trust along paths), and path analysis (finding optimal routes between nodes).
+
+**Hop counts** measure the number of edges you must traverse to reach one node from another. A hop count of 1 means direct connection; 3 means you traverse through 2 intermediate nodes.
+
+**Distance bands** convert raw hop counts into meaningful categories: "direct" (0-1 hops), "near" (2-3 hops), "mid-range" (4-6 hops), and "distant" (7+ hops). These categories help interpret the semantic meaning of graph distances.
+
+**Confidence decay** multiplies edge weights along a path to compute accumulated trust. If each edge has weight 0.8, a 3-hop path has confidence decay of 0.8³ = 0.512, indicating moderate confidence in the connection.
+
+**Path analysis** finds optimal routes between nodes using algorithms like Dijkstra's shortest path or Yen's k-shortest paths algorithm.
+
+**Distance intelligence vs. graph analytics:** Analytics computes statistical measures like centrality and communities across the entire graph. Distance intelligence focuses on specific paths and relationships between particular nodes.
+
+**Distance intelligence vs. graph traversal:** Simple traversal follows edges to find neighbors. Distance intelligence quantifies the quality and confidence of those connections using weights, paths, and decay metrics.
+
+## Why Use Distance Intelligence?
+
+**Confidence-aware retrieval.** Instead of treating all graph connections equally, distance intelligence weights results by path confidence, giving higher rankings to nodes connected through stronger, more direct relationships.
+
+**Relationship discovery.** Find not just whether two entities are connected, but how they're connected, through which intermediaries, and with what level of confidence across the full path.
+
+**Causal analysis.** Trace cause-and-effect chains through your knowledge graph with quantified confidence at each step, essential for decision tracking and audit trails.
+
+**Precedent search.** Find similar past cases by analyzing structural similarity and path patterns, not just content similarity.
+
+**Graph-aware ranking.** Blend semantic similarity with graph proximity to surface contextually relevant results that pure vector search would miss.
+
+## When To Use / When Not To Use
+
+**Use distance intelligence for:**
+- Multi-hop reasoning where path quality matters
+- Attribution analysis requiring confidence assessment
+- Causal chain analysis and decision tracing
+- Proximity-weighted retrieval from specific anchor nodes
+- Finding alternative connection routes for verification
+- Ranking results by both content relevance and structural proximity
+
+**Simple graph traversal may be sufficient for:**
+- Finding direct neighbors of a node
+- Basic graph exploration without confidence weighting
+- Cases where all edges have equal importance
+- Simple reachability queries (can A reach B?)
+
+**Distance intelligence may be unnecessary for:**
+- Single-hop neighbor lookups
+- Graphs where edge weights don't represent meaningful confidence
+- Simple existence queries rather than quality assessment
+- Scenarios where path analysis adds unnecessary complexity
+
 <Info>
   Distance Intelligence feeds into proximity-blended retrieval (`proximity_weight` on `retrieve()`), causal chain analysis (`trace_decision_causality()`), and advanced precedent search (`find_precedents_hybrid()`). Enable it by passing `include_distance_metadata=True` on neighbor queries or `proximity_weight > 0` on retrieval calls.
 </Info>
 
 ## Distance Bands: Turning Hop Counts into Meaning
 
-The first tool in distance intelligence is `classify_path_distance` — it maps any BFS depth to a human-readable band that carries semantic meaning.
+The first tool in distance intelligence is `classify_path_distance` — it maps any Breadth-First Search (BFS) depth to a human-readable band that carries semantic meaning.
 
 ```python
 from semantica.utils.helpers import classify_path_distance
@@ -37,6 +89,14 @@ These bands appear automatically on every result that uses `include_distance_met
 ## Confidence Decay: How Trust Erodes Along a Path
 
 Each hop along a path multiplies the accumulated confidence by the edge weight. The product — `confidence_decay` — is the single most useful signal for deciding whether a multi-hop inference is trustworthy.
+
+<Info>
+  **Confidence Decay and Edge Weights:** Confidence decay depends directly on edge weights in your graph. Weights should represent confidence, trust, relevance, or similar domain-specific signals where higher values indicate stronger relationships. Unweighted graphs (all edges weight 1.0) produce no meaningful decay analysis.
+</Info>
+
+<Info>
+  **Dense Graph Warning:** Very dense graphs can make path analysis computationally expensive and results harder to interpret. Dense connectivity creates many possible paths with similar weights, making distance-based rankings less discriminating.
+</Info>
 
 ```python
 from semantica.context import ContextGraph
@@ -137,7 +197,7 @@ path = pf.bfs_shortest_path(graph, "apt29", "nato_target")
 print("Hop count:", len(path) - 1)
 ```
 
-**K-shortest paths — Yen's algorithm.** Use when you need alternative attribution chains, redundancy analysis, or corroboration routes. Finding the three shortest paths and showing they all converge on the same target is stronger evidence than a single path.
+**K-shortest paths — Yen's algorithm.** Yen's algorithm finds multiple alternative paths between two nodes, ranked by total path cost. Use when you need alternative attribution chains, redundancy analysis, or corroboration routes. Finding the three shortest paths and showing they all converge on the same target is stronger evidence than a single path.
 
 ```python
 k_paths = pf.find_k_shortest_paths(graph, "apt29", "nato_target", k=3)
@@ -482,6 +542,18 @@ for chain in chains:
 </Tab>
 
 </Tabs>
+
+## Common Pitfalls
+
+**Treating confidence decay as statistical probability.** Confidence decay is a heuristic measure based on edge weights, not a statistical probability. A decay value of 0.6 doesn't mean "60% probability" — it means the path strength based on your domain-specific weight assignments.
+
+**Using unweighted graphs and expecting meaningful decay.** If all edges have weight 1.0, confidence decay will always be 1.0 regardless of path length, providing no useful discrimination between paths. Assign meaningful weights that reflect relationship strength.
+
+**Excessive path exploration on dense graphs.** Dense graphs with many interconnected nodes can generate exponentially large numbers of paths. Limit `max_hops`, use `min_confidence` thresholds, and consider whether simple neighbor lookup would be sufficient.
+
+**Overusing distance analysis when simple neighbor lookup is enough.** If you only need direct neighbors or one-hop connections, basic graph traversal is simpler and faster than full distance intelligence analysis.
+
+**Retrieving excessive graph neighborhoods.** Large `max_hops` values can retrieve massive subgraphs that overwhelm downstream processing. Start with 2-3 hops and increase only when needed for your specific use case.
 
 ## Related Guides
 
