@@ -5,13 +5,79 @@ description: "Build end-to-end data processing workflows with the PipelineBuilde
 
 `PipelineBuilder` solves the glue problem between processing steps. Declare your steps, register handler functions, wire the connections, and hand control to `ExecutionEngine` — it handles topological ordering, passes output between steps, retries on failure with configurable backoff, and returns a structured `ExecutionResult` you can log or alert on.
 
+## Why Use Pipelines?
+
+Pipelines solve coordination problems in multi-step data processing. Instead of writing monolithic scripts where each function calls the next, you define independent steps and declare their dependencies. The pipeline engine figures out the execution order, runs independent steps in parallel, and passes data between steps automatically.
+
+This becomes essential when you have:
+- Multiple data sources that need different processing
+- Steps that can run concurrently
+- Complex retry or error recovery requirements
+- Workflows that change frequently
+- Team environments where different people own different steps
+
+A five-step pipeline with two parallel branches executes faster than a linear script, and adding a sixth step requires only declaring where it fits in the DAG.
+
+## When To Use / When Not To Use
+
+**Use pipelines for:**
+- Multi-step ETL workflows with 3+ processing stages
+- Scheduled production jobs that run daily or hourly
+- Workflows where some steps can run in parallel
+- Complex data transformations that benefit from modular design
+- Team environments where different people maintain different steps
+
+**Don't use pipelines for:**
+- One-off scripts or prototypes (use simple functions instead)
+- Linear workflows with only 1-2 steps
+- Exploratory data analysis in Jupyter notebooks
+- Cases where the overhead of defining steps exceeds the workflow complexity
+
+## Typical Pipeline Workflow
+
+Most data pipelines follow a four-stage pattern regardless of domain:
+
+1. **Ingest** — Pull data from files, APIs, databases, or streams
+2. **Transform** — Clean, validate, normalize, and enrich the raw data
+3. **Extract** — Run entity recognition, relationship extraction, or other NLP tasks
+4. **Store** — Write results to vector stores, knowledge graphs, or output files
+
+Each stage can have multiple parallel steps. For example, the Ingest stage might fetch from three different REST APIs simultaneously, while Transform applies different cleaning rules to each source.
+
 <Info>
   `PipelineBuilder` and `ExecutionEngine` are in `semantica.pipeline`. Failure handling, retry policies, and parallelism management are separate classes you can import individually for fine-grained control. Custom step handlers are plain Python functions — no subclassing required.
 </Info>
 
 ## Your First Pipeline
 
-The minimum viable pipeline has three steps: ingest, extract, store. Define them, connect them, build, execute:
+The minimum viable pipeline has three steps: ingest, extract, store. Define them, connect them, build, execute.
+
+Every step is a function that takes `data` as the first positional argument and receives step configuration as keyword arguments. The pipeline engine calls your step handler with the upstream data (from dependencies) and passes any step configuration as `**kwargs`:
+
+```python
+def handler(data, **config):
+    # data contains outputs from all upstream dependencies
+    # config contains any parameters passed to add_step()
+    processed_data = transform_logic(data, config.get("param1", "default"))
+    return processed_data  # Always return data for downstream steps
+```
+
+Root steps (no dependencies) receive `None` as their `data` parameter — they generate data from scratch rather than transforming upstream outputs.
+
+There are two ways to wire up step handlers:
+
+**Option 1:** Register a handler function, then reference it by name:
+```python
+builder.register_step_handler("extract_entities", extract_entities_handler)
+builder.add_step("extract_step", handler="extract_entities", dependencies=["ingest_step"])
+```
+
+**Option 2:** Pass the handler function directly to `add_step()`:
+```python
+builder.add_step("extract_step", handler=extract_entities_handler, dependencies=["ingest_step"])
+```
+
+Both approaches work the same way — use whichever is clearer for your workflow.
 
 ```python
 from semantica.pipeline import PipelineBuilder, ExecutionEngine
@@ -24,6 +90,7 @@ from semantica.vector_store import VectorStore
 # argument is always the upstream data; step config arrives as kwargs.
 
 def ingest_stix_bundles(data, **config):
+    # Root step — data is None, generate data from config
     files = ingest_file(config["path"], method="directory")
     return [f.text for f in files if f.file_type == "json"]
 
@@ -184,7 +251,58 @@ result   = engine.execute_pipeline(pipeline)
 
 `set_parallelism(n)` tells the engine how many steps it may run simultaneously. The topological sort guarantees that only steps whose dependencies are all completed are eligible for concurrent execution — you cannot accidentally run a step before its inputs are ready.
 
+## Common Pitfalls
+
+**Forgetting to return data.** If a step handler doesn't return anything, downstream steps receive `None` as their `data` parameter. This usually causes crashes or silent failures. Every non-terminal step should return data for the next stage.
+
+**Excessive parallelism.** Setting `max_workers=50` on an 8-core machine creates more overhead than speedup. Start with `max_workers=4` and increase gradually while monitoring resource usage. Most I/O-bound steps work well with moderate parallelism.
+
+**Stateful handlers.** Step handlers should be pure functions — given the same input data and config, they should produce the same output. Avoid global variables, file handles, or database connections that persist between calls. Each step execution should be independent.
+
+**Debugging large pipelines.** When a 10-step pipeline fails on step 7, don't re-run the entire pipeline to debug. Extract the failing step into a standalone script, use the actual intermediate data as input, and fix it in isolation.
+
+## Development and Debugging
+
+Start small and validate each step individually before building the full pipeline:
+
+```python
+# Test individual handlers with known data
+test_data = [{"text": "sample data", "entities": []}]
+result = extract_entities(test_data, confidence_threshold=0.5)
+print(f"Processed {len(result)} items")
+
+# Add debug output in handlers during development
+def extract_entities(data, **config):
+    print(f"Processing {len(data)} items with threshold {config.get('confidence_threshold')}")
+    results = []
+    for item in data:
+        # Your processing logic
+        results.append({"text": item["text"], "entities": []})
+    print(f"Generated {len(results)} results")
+    return results
+```
+
+For complex pipelines, add checkpoints to save intermediate outputs:
+
+```python
+def save_checkpoint(data, **config):
+    """Save intermediate data for debugging"""
+    checkpoint_path = config.get("checkpoint_path", "checkpoint.json")
+    with open(checkpoint_path, "w") as f:
+        json.dump(data, f)
+    return data  # Pass data through unchanged
+
+builder.add_step(
+    "checkpoint_after_transform",
+    handler=save_checkpoint,
+    dependencies=["transform"],
+    checkpoint_path="transform_output.json"
+)
+```
+
 ## Delta / Incremental Processing
+
+Delta pipelines process only changes between two versions of your data, rather than reprocessing everything from scratch. This is essential for large datasets where full reprocessing is too slow or expensive.
 
 Your STIX bundle directory grows by 20–30 new files each night. Re-processing all 4,000 historical files every morning wastes time and compute. `delta_mode=True` on the ingest step tells the pipeline to process only files that have changed since the last version snapshot:
 
