@@ -6,6 +6,45 @@ icon: "brain"
 
 `AgentContext` maintains a persistent memory layer for LLM agents — storing observations as vector embeddings, retrieving them by semantic similarity, and optionally blending graph proximity into the ranking. Use it when your agent needs to recall past findings across sessions without re-reading source material on every restart.
 
+## What Is Agent Memory?
+
+Agent Memory provides persistent storage and intelligent retrieval of information across multiple agent sessions. `AgentContext` is the core component that orchestrates memory storage, retrieval, and management by combining three key systems:
+
+**VectorStore** handles semantic search using vector embeddings. It stores text as high-dimensional vectors and retrieves similar content through cosine similarity or other distance metrics.
+
+**ContextGraph** maintains structured knowledge as nodes (entities) and edges (relationships). This enables multi-hop traversal and graph-aware retrieval that follows connections between related entities.
+
+**AgentContext** orchestrates both components, providing a unified interface for storing memories, retrieving relevant context, and managing conversations across sessions.
+
+**Persistent memory vs stateless retrieval:** Traditional RAG systems lose context between sessions. Agent Memory persists learned information, conversation history, and accumulated knowledge across restarts, enabling long-term memory and cross-session recall.
+
+## Why Use Agent Memory?
+
+**Cross-session recall.** Agents remember previous interactions, findings, and decisions without re-processing source material after restarts.
+
+**Long-term knowledge accumulation.** Information builds up over time as agents process more documents, creating increasingly rich knowledge bases for future queries.
+
+**Conversation history.** Agents maintain context within conversations and can reference earlier parts of extended interactions or investigations.
+
+**Graph-aware retrieval.** Beyond simple semantic similarity, retrieval follows entity relationships to find connected information that pure vector search would miss.
+
+**Decision tracking.** Record decisions with full context and reasoning paths, enabling audit trails and precedent matching for similar future scenarios.
+
+## When To Use / When Not To Use
+
+**Use Agent Memory for:**
+- Long-running agents that need to accumulate knowledge over time
+- Research assistants that build understanding across multiple sessions
+- Investigation workflows where context builds incrementally
+- Systems that must remember prior interactions and decisions
+- Scenarios requiring audit trails and decision precedents
+
+**Do not use when:**
+- Building simple stateless RAG systems for one-time document queries
+- Performing one-off document searches without need for persistence
+- Running temporary experiments that don't require knowledge retention
+- Simple retrieval tasks where relationships between entities don't matter
+
 <Info>
   This guide covers the memory layer. For graph-enriched traversal and entity linking, see [Context Graphs](context-graphs). For decision accountability — recording, auditing, and causally tracing what the agent chose — see [Decision Intelligence](decision-intelligence).
 </Info>
@@ -141,7 +180,7 @@ results = ti_agent.retrieve(
     "cloud OAuth token theft campaigns",
     max_results=10,
     use_graph=True,
-    anchor_node="APT29",      # BFS starts from this node in the knowledge graph
+    anchor_node="APT29",      # Breadth-First Search (BFS) starts from this node in the knowledge graph
     max_hops=3,
     proximity_weight=0.35,    # 65% semantic + 35% proximity — tune to your graph density
     min_score=0.1,
@@ -604,6 +643,18 @@ old_cleared = ti_agent.clear(days_old=90)
 s = ti_agent.stats()
 print("Total memories: {}".format(s.get("total_items", 0)))
 ```
+
+## Common Pitfalls
+
+**Forgetting to persist memory before shutdown.** Agent Memory is stored in memory during execution. Without calling `save()` before process termination, all accumulated memories, graph relationships, and conversations are lost.
+
+**Using the same conversation namespace for unrelated tasks.** Conversation IDs should scope related interactions. Using a single conversation for multiple unrelated investigations pollutes retrieval results and makes context less focused.
+
+**Storing excessive low-value information.** Not every observation needs permanent storage. Focus on storing insights, decisions, and significant findings rather than verbose raw logs or temporary calculations.
+
+**Using Agent Memory when simple retrieval would be sufficient.** For one-time document lookups or stateless queries, traditional retrieval is simpler and more efficient than setting up persistent memory infrastructure.
+
+**Retrieving too much context and increasing latency.** Large `max_results`, high `max_hops`, or broad queries can retrieve excessive context, increasing LLM token usage and response latency. Start with focused retrieval parameters.
 
 ## Related Guides
 
