@@ -430,7 +430,6 @@ class Neo4jCSVExporter:
             {key for node in node_infos for key in node["properties"].keys()}
         )
 
-        node_id_lookup = {node["original_index"]: node["id"] for node in node_infos}
         alias_lookup = self._build_alias_lookup(node_infos)
         node_id_set = {node["id"] for node in node_infos}
 
@@ -485,7 +484,6 @@ class Neo4jCSVExporter:
             "relationship_rows": relationship_rows,
             "node_columns": node_columns,
             "relationship_columns": relationship_columns,
-            "node_id_lookup": node_id_lookup,
         }
         validation = self._validate_prepared(prepared)
         if not validation["valid"]:
@@ -821,6 +819,12 @@ class Neo4jCSVExporter:
             result = f"_{result}"
         return result
 
+    # Valid csv.writer dialect params other than delimiter/lineterminator/quoting
+    # (those three are always supplied explicitly below).
+    _CSV_WRITER_PARAMS = frozenset(
+        {"quotechar", "doublequote", "skipinitialspace", "escapechar", "strict"}
+    )
+
     def _write_csv(
         self,
         file_path: Path,
@@ -830,10 +834,13 @@ class Neo4jCSVExporter:
     ) -> None:
         lineterminator = options.get("lineterminator", "\n")
         quoting = options.get("quoting", csv.QUOTE_MINIMAL)
+        # Only forward recognised csv.writer dialect params so that arbitrary
+        # caller kwargs (e.g. encoding, validate, node_file_name) do not
+        # trigger TypeError: csv.writer() got unexpected keyword argument.
         writer_options = {
             key: value
             for key, value in options.items()
-            if key not in {"lineterminator", "quoting"}
+            if key in self._CSV_WRITER_PARAMS
         }
 
         with open(file_path, "w", encoding=self.encoding, newline="") as handle:

@@ -729,10 +729,25 @@ def export_neo4j_csv(
 
     try:
         config = export_config.get_method_config("neo4j_csv")
-        config.update(kwargs)
 
+        # Split kwargs: constructor-level settings vs per-call export() options.
+        # Passing all kwargs to both the constructor AND export_knowledge_graph
+        # causes dialect params like delimiter to reach csv.writer twice.
+        _init_params = frozenset({
+            "node_file_name",
+            "relationship_file_name",
+            "encoding",
+            "delimiter",
+            "label_separator",
+            "strict",
+            "config",
+        })
+        init_kwargs = {k: v for k, v in kwargs.items() if k in _init_params}
+        call_kwargs = {k: v for k, v in kwargs.items() if k not in _init_params}
+
+        config.update(init_kwargs)
         exporter = Neo4jCSVExporter(**config)
-        return exporter.export_knowledge_graph(knowledge_graph, output_dir, **kwargs)
+        return exporter.export_knowledge_graph(knowledge_graph, output_dir, **call_kwargs)
 
     except Exception as e:
         logger.error(f"Failed to export Neo4j CSV: {e}")
@@ -924,7 +939,9 @@ def export_knowledge_graph(
         export_owl(knowledge_graph, file_path, format=format, method=method, **kwargs)
     elif format == "cypher":
         export_lpg(knowledge_graph, file_path, method=method, **kwargs)
-    elif format in ["neo4j_csv", "neo4j-csv", "neo4j"]:
+    elif format in ["neo4j_csv", "neo4j-csv"]:
+        # file_path is treated as the output directory; nodes.csv and
+        # relationships.csv are written inside it.
         export_neo4j_csv(knowledge_graph, file_path, method=method, **kwargs)
     elif format == "aql":
         export_arango(knowledge_graph, file_path, method=method, **kwargs)

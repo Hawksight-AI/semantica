@@ -455,16 +455,12 @@ from semantica.export import Neo4jCSVExporter
 
 # Initialize the exporter
 exporter = Neo4jCSVExporter(
-    node_label_sep=";",       # Separator for multi-label nodes (default: ";")
-    strict_validation=True    # Validate CSV schema before writing (default: True)
+    label_separator=";",  # Separator for multi-label nodes (default: ";")
+    strict=True           # Raise on unresolved relationship endpoints (default: True)
 )
 
-# Export a knowledge graph to separate nodes and relationships CSV files
-exporter.export_knowledge_graph(
-    kg,
-    nodes_path="nodes.csv",
-    rels_path="relationships.csv"
-)
+# Export a knowledge graph — output_dir receives nodes.csv and relationships.csv
+exporter.export_knowledge_graph(kg, "neo4j_import/")
 ```
 
 #### Convenience Method
@@ -474,12 +470,13 @@ You can also use the convenience wrapper `export_neo4j_csv`:
 ```python
 from semantica.export.methods import export_neo4j_csv
 
-export_neo4j_csv(
-    kg,
-    nodes_path="nodes.csv",
-    rels_path="relationships.csv",
-    strict_validation=True
-)
+export_neo4j_csv(kg, "neo4j_import/")
+```
+
+Pass `validate=True` to run a post-export integrity check before returning:
+
+```python
+export_neo4j_csv(kg, "neo4j_import/", validate=True)
 ```
 
 #### Importing into Neo4j
@@ -499,7 +496,7 @@ neo4j-admin database import full \
   - Node CSV headers are generated as `:id` (node identifier) and `:LABEL` (labels).
   - Relationship CSV headers are generated as `:START_ID` (source node), `:END_ID` (target node), and `:TYPE` (relationship type).
   - Custom attributes/properties are written as standard columns.
-- **Node Labels**: Supports multiple labels per node. Labels are serialized into a single string column using the configured `node_label_sep` (default `;`).
+- **Node Labels**: Supports multiple labels per node. Labels are serialized into a single string column using the configured `label_separator` (default `;`).
 - **Stable Node IDs**: Reuses `id` (or `entity_id` / `node_id`) from node dictionaries. If a node is missing an ID, a stable content-derived ID is generated via a SHA-256 hash of its properties, ensuring reproducibility.
 - **Relationship Endpoint Resolution**: If a relationship refers to nodes by their `name`, `text`, or `label` rather than their exact `id`, the exporter resolves these aliases automatically to their stable node IDs to guarantee that `:START_ID` and `:END_ID` strictly match existing node IDs.
 - **Property Serialization**: Flat values (strings, numbers, booleans) are serialized directly. Nested properties (e.g. dicts, lists, sets) are serialized into a canonical JSON representation.
