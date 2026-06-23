@@ -11,6 +11,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Neo4j Bulk CSV Export** (#665) by @Luffy2208
+  - Added `Neo4jCSVExporter` for generating Neo4j bulk-import CSV files compatible with `neo4j-admin database import`
+  - Produces deterministic `nodes.csv` and `relationships.csv` with stable node IDs — reuses existing graph IDs or derives reproducible SHA-256 content-based IDs when none are present
+  - Multi-label support via Neo4j `:LABEL` convention with configurable `label_separator` (default `;`)
+  - Alphabetically sorted property columns and deterministic row ordering for reproducible output across permuted inputs
+  - Relationship endpoint resolution: aliases (`name`, `text`, `label`) automatically mapped to stable node IDs
+  - Nested property serialisation to canonical JSON; flat scalar values written directly
+  - `dry_run()` method for pre-flight CSV validation without writing files
+  - `validate_export()` for post-write integrity checks (unique `:id`, consistent column widths, valid endpoint references)
+  - `export_nodes()` and `export_relationships()` for partial exports
+  - `strict=True` mode raises `ValidationError` on unresolved relationship endpoints
+  - `export_neo4j_csv()` convenience function and `format="neo4j_csv"` / `format="neo4j-csv"` dispatch in `export_knowledge_graph()`
+  - Registry integration under the `neo4j_csv` task namespace
+  - Documentation added to `semantica/export/export_usage.md` with usage examples, mapping assumptions, and `neo4j-admin` import command
+  - 13 tests covering headers, node/relationship CSV structure, multi-label, missing properties, deterministic output, CSV quoting/escaping, Unicode, empty graphs, dry-run, duplicate ID detection, ambiguous alias handling, nested property serialisation, and `KnowledgeGraph` integration
+
+### Fixed
+
+- **Neo4j CSV exporter `_write_csv` crashed with `TypeError` on dialect kwargs** (#665) by @KaifAhmad1
+  - Passing `delimiter=`, `encoding=`, or any caller kwarg to `export_neo4j_csv` caused `csv.writer` to receive unknown or duplicate keyword arguments; `_write_csv` now whitelists only valid `csv.writer` dialect params (`quotechar`, `doublequote`, `skipinitialspace`, `escapechar`, `strict`)
+
+- **`export_neo4j_csv` double-passed kwargs to both the constructor and `export()`** (#665) by @KaifAhmad1
+  - Constructor-level settings (`node_file_name`, `relationship_file_name`, `encoding`, `delimiter`, `label_separator`, `strict`) were merged into config for the constructor then re-forwarded as `**kwargs` to `export_knowledge_graph`, causing dialect params to collide; kwargs are now split into `init_kwargs` and `call_kwargs` before forwarding
+
+- **Dead `node_id_lookup` dict removed from `_prepare_export`** (#665) by @KaifAhmad1
+  - The `{original_index → stable_id}` mapping was built on every export but never consumed; removed to avoid misleading future readers
+
+- **Dropped ambiguous `format="neo4j"` alias from `export_knowledge_graph` dispatch** (#665) by @KaifAhmad1
+  - `"neo4j"` is used throughout the codebase to identify the live Bolt/Cypher graph store backend; routing it silently to the offline bulk-CSV exporter would have confused callers; only `"neo4j_csv"` and `"neo4j-csv"` are accepted
+
+- **`export_usage.md` documented non-existent constructor and function parameters** (#665) by @KaifAhmad1
+  - Examples showed `node_label_sep` (correct: `label_separator`), `strict_validation` (correct: `strict`), and `nodes_path`/`rels_path` kwargs that do not exist; all three examples corrected to match the actual API
+
 - **Public API Ingestion Support** (#602) by @Luffy2208
   - Added `PublicAPIIngestor` class built on top of `RESTIngestor` for credential-free REST endpoints
   - Added `PublicAPIExample` and `PublicAPIExamples` catalog with 6 pre-configured no-auth examples:
