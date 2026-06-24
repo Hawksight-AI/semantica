@@ -4,15 +4,50 @@ description: "Connect Semantica's knowledge graph, decision intelligence, and re
 icon: "plug"
 ---
 
-The Semantica MCP server exposes your knowledge graph as 12 callable tools so any compatible AI client — Claude Desktop, Windsurf, VS Code extensions — can traverse the graph live, record decisions, run analytics, and export results during a conversation. Use it to give LLM agents direct, real-time access to graph data without writing custom tool wrappers.
+## What Is MCP?
+
+MCP stands for the Model Context Protocol. It is an open standard that allows external AI assistants (like Claude Desktop, Cursor, or Windsurf) to securely access local tools and data sources. 
+
+The Semantica MCP server exposes your knowledge graph as 12 callable tools. By connecting it, any compatible AI client can traverse the graph live, record decisions, run analytics, and export results during a conversation — without you having to write custom tool wrappers.
 
 <Info>
   The Semantica MCP server exposes 12 tools and 3 read-only resources. All tools accept and return JSON. No configuration beyond an optional environment variable for graph persistence is required.
 </Info>
 
+## Architecture & Communication
+
+It is important to understand how MCP works under the hood. **The Semantica MCP server is not a REST API.** There are no network ports, no HTTP endpoints, and no API keys required.
+
+Instead, the AI client launches `semantica-mcp` locally as a subprocess. All communication between the AI and Semantica happens securely through standard input and output (`stdio`). Because the server runs locally under your user account, it inherently has your local file permissions.
+
+## Why Use MCP With Semantica?
+
+- **Zero-Code Integration**: Instantly connect Semantica's graph capabilities to your favorite AI IDE or desktop chat app without writing any glue code.
+- **Real-Time Graph Updates**: Chat with an AI to extract entities from documents and watch them populate your live knowledge graph instantly.
+- **Auditable AI**: Use the AI to make decisions and have it automatically record the reasoning and causal chain directly into the graph via Semantica's decision intelligence tools.
+
+## When To Use / When Not To Use
+
+- **When to Use**: You want to use a third-party AI interface (like Claude Desktop or Windsurf) to manipulate, query, and reason over a Semantica knowledge graph on your local machine.
+- **When NOT to Use**: You are building an autonomous Python script or backend service. If you are writing Python code to build an agent, use `semantica.context.AgentContext` natively instead of spinning up an MCP server. The MCP server does not support remote hosting over HTTP/SSE.
+
+---
+
+## Typical Workflow
+
+Connecting your AI client follows a standard progression:
+
+1. **Install**: Install Semantica in your Python environment.
+2. **Configure Client**: Add the `semantica-mcp` command and absolute graph paths to your AI client's JSON configuration.
+3. **Start Client**: Launch Claude Desktop or Windsurf, which automatically spawns the MCP server.
+4. **Tool Calls**: Prompt the AI in natural language. The AI autonomously chains the 12 available tools.
+5. **Graph Updates**: The AI directly modifies your local graph, adding entities, edges, and decisions.
+
+---
+
 ## Starting the Server
 
-Install Semantica, then launch the MCP server. It starts in stdio mode by default — the protocol used by Claude Desktop, Windsurf, VS Code extensions, and most MCP clients.
+Install Semantica, then configure your client to launch the MCP server. The server runs using the `stdio` transport.
 
 ```bash
 pip install semantica
@@ -33,7 +68,7 @@ SEMANTICA_KG_PATH=/data/threat_graph.json semantica-mcp
 ```
 
 <Info>
-  Without `SEMANTICA_KG_PATH`, the graph resets when the server process exits. Always set this path for any session whose data should survive a restart.
+  Without `SEMANTICA_KG_PATH`, the graph resets when the server process exits. Always set this path using an absolute file path for any session whose data should survive a restart.
 </Info>
 
 ## Connecting to Claude Desktop
@@ -46,7 +81,7 @@ Edit the Claude Desktop config file — on macOS at `~/Library/Application Suppo
     "semantica": {
       "command": "semantica-mcp",
       "env": {
-        "SEMANTICA_KG_PATH": "/path/to/knowledge_graph.json",
+        "SEMANTICA_KG_PATH": "/absolute/path/to/knowledge_graph.json",
         "SEMANTICA_LOG_LEVEL": "INFO"
       }
     }
@@ -56,7 +91,7 @@ Edit the Claude Desktop config file — on macOS at `~/Library/Application Suppo
 
 Restart Claude Desktop after saving. The Semantica tools appear in the tool palette automatically — Claude can now call them during any conversation.
 
-If `semantica-mcp` is not on your system PATH (for example, if it is installed in a virtualenv), use the full binary path in `"command"`: `"/path/to/venv/bin/semantica-mcp"`.
+If `semantica-mcp` is not on your system PATH (for example, if it is installed in a virtualenv), use the full absolute binary path in `"command"`: `"/path/to/venv/bin/semantica-mcp"`.
 
 ## Connecting to Other Clients
 
@@ -66,7 +101,7 @@ If `semantica-mcp` is not on your system PATH (for example, if it is installed i
 {
   "semantica": {
     "command": "semantica-mcp",
-    "env": { "SEMANTICA_KG_PATH": "/path/to/knowledge_graph.json" }
+    "env": { "SEMANTICA_KG_PATH": "/absolute/path/to/knowledge_graph.json" }
   }
 }
 ```
@@ -93,7 +128,7 @@ If `semantica-mcp` is not on your system PATH (for example, if it is installed i
 ```bash
 docker run --rm -i \
   -e SEMANTICA_KG_PATH=/data/kg.json \
-  -v /local/path:/data \
+  -v /local/absolute/path:/data \
   ghcr.io/semantica-agi/semantica-mcp:latest
 ```
 
@@ -111,9 +146,36 @@ Once connected, the LLM can call any of these tools during a conversation. The a
 
 **Analytics and export** — `get_graph_analytics` computes PageRank centrality and community detection. `get_graph_summary` returns node count, decision count, and server status. `export_graph` serializes the current graph to Turtle, JSON-LD, N-Triples, or plain JSON.
 
+## Universal Example: Employee Directory
+
+Before diving into complex domain examples, here is a simple, universally understood session. An HR manager types a prompt into Claude Desktop:
+
+> "Extract entities from this meeting transcript about Alice transferring to Engineering, add them to the graph, and record a promotion decision."
+
+Claude chains four tool calls automatically:
+
+```text
+1. extract_entities(text="Alice is transferring to Engineering...")
+   → { "entities": [{"label": "Alice", "type": "Employee"}, {"label": "Engineering", "type": "Department"}] }
+
+2. add_entity(id="emp-alice", label="Alice", type="Employee")
+   add_entity(id="dept-eng", label="Engineering", type="Department")
+
+3. add_relationship(source="emp-alice", target="dept-eng", type="WORKS_IN")
+
+4. record_decision(
+       category="promotion",
+       scenario="Alice transferring to Engineering",
+       reasoning="Approved by Engineering Director",
+       outcome="transfer_approved",
+       confidence=1.0
+   )
+```
+The graph is updated instantly with the new organizational structure and a fully auditable decision trail.
+
 ## Watching a Real Agent Session
 
-Here is what happens when an analyst types a prompt into Claude Desktop and the graph is live. The prompt is:
+Here is what happens when a cybersecurity analyst types a prompt into Claude Desktop and the graph is live. The prompt is:
 
 > "Extract entities and relationships from this OSINT report, add them to the knowledge graph, then record an attribution decision for APT29 with confidence 0.88 and export the full graph as Turtle."
 
@@ -254,11 +316,23 @@ The result is a fully auditable credit decision trail with precedent links, read
 
 </Tabs>
 
+---
+
+## Common Pitfalls
+
+- **Treating MCP as an HTTP server**: Do not try to `curl` the MCP server or look for a port number. It communicates via `stdin/stdout` and waits for JSON-RPC messages from the parent AI client.
+- **Using relative paths for `SEMANTICA_KG_PATH`**: Because the AI client spawns the server as a subprocess, the working directory can be unpredictable. Always use absolute paths (e.g., `C:\Users\Name\graph.json` or `/Users/name/graph.json`) to avoid losing your data.
+- **Virtual environment PATH issues**: If you installed Semantica inside a Python virtual environment, Claude Desktop will not automatically find `semantica-mcp` on the global system PATH. You must provide the absolute path to the binary in the `"command"` field.
+- **Expecting remote hosting support**: Stdio-based MCP servers must run on the same local machine as the AI client. Remote execution over a network is not supported.
+- **Confusing MCP integration with `AgentContext`**: If you are writing your own Python code to orchestrate an LLM, do not use the MCP server. Use the `AgentContext` class natively within your code.
+
+---
+
 ## Troubleshooting
 
-**Server does not appear in Claude Desktop** — fully quit and reopen Claude Desktop after editing the config (close the window is not enough). Verify the binary is on PATH: `which semantica-mcp` on Unix, `where semantica-mcp` on Windows. If using a virtualenv, use the absolute binary path in `"command"`. Set `SEMANTICA_LOG_LEVEL=DEBUG` and check stderr for startup errors.
+**Server does not appear in Claude Desktop** — fully quit and reopen Claude Desktop after editing the config (closing the window is not enough). Verify the binary is on PATH: `which semantica-mcp` on Unix, `where semantica-mcp` on Windows. If using a virtualenv, use the absolute binary path in `"command"`. Set `SEMANTICA_LOG_LEVEL=DEBUG` and check stderr for startup errors.
 
-**Graph data not persisting between sessions** — set `SEMANTICA_KG_PATH` to an absolute file path. Without it the graph is in-memory only and resets on every server restart.
+**Graph data not persisting between sessions** — set `SEMANTICA_KG_PATH` to an absolute file path. Without it, the graph is in-memory only and resets on every server restart.
 
 **Tool calls returning empty results** — `get_graph_summary` returning `"node_count": 0` means the graph is empty. Populate it via `add_entity` and `add_relationship`, or run `extract_entities` on text first and then `add_entity` for each result.
 
