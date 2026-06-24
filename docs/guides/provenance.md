@@ -4,6 +4,59 @@ description: "How Semantica tracks the origin and lineage of every entity, relat
 icon: "file-certificate"
 ---
 
+## What Is Provenance?
+
+Provenance is the systematic recording of where data came from, how it was transformed, and who was responsible for each step in its lifecycle. Unlike ordinary graph metadata that simply describes entities, provenance creates an immutable audit trail that tracks the complete history of every piece of information in your system.
+
+**Key provenance concepts:**
+
+**Lineage** traces the chain of custody from original source through all transformations to the current state, showing exactly how data evolved over time.
+
+**Source attribution** records the specific document, database, API call, or human input that produced each data element, enabling precise citation and verification.
+
+**Integrity verification** uses cryptographic checksums to detect any unauthorized changes to provenance records after they were created.
+
+**Audit trails** provide regulatory compliance by maintaining tamper-evident logs of all data operations, transformations, and decisions.
+
+Provenance differs from simple metadata by creating legally defensible, cryptographically verifiable records that answer critical questions: "Where did this come from?", "Who processed it?", "When did it change?", and "Has it been tampered with?"
+
+## Why Use Provenance?
+
+**Compliance with regulatory requirements.** Meet FDA 21 CFR Part 11, ICH E6(R2) GCP, Basel III BCBS 239, and defense intelligence sharing agreements that mandate complete data traceability and electronic record integrity.
+
+**Source attribution and citation.** Trace every entity, relationship, and property value back to its exact source document, API response, or human input for scientific reproducibility and legal defensibility.
+
+**Auditability and transparency.** Provide auditors, regulators, and stakeholders with complete visibility into data processing workflows, including who performed each operation and when changes occurred.
+
+**Conflict resolution and data quality.** When multiple sources provide different values for the same property, provenance records enable evidence-based conflict resolution by comparing source credibility, recency, and confidence levels.
+
+**Tamper detection and forensics.** Cryptographic integrity verification detects unauthorized modifications to data records, supporting incident response and forensic analysis in security-sensitive environments.
+
+**Traceability for data lineage.** Answer complex questions about data ancestry, especially in multi-stage processing pipelines where entities undergo extraction, enrichment, fusion, and analysis transformations.
+
+## When To Use / When Not To Use
+
+**Use provenance tracking for:**
+- Regulated environments requiring audit trails (healthcare, finance, defense, pharmaceuticals)
+- Multi-source data fusion where conflicting information must be resolved with evidence
+- Long-lived knowledge graphs where data quality and source credibility matter
+- Production systems where data integrity and tamper detection are critical
+- Complex processing pipelines where entities undergo multiple transformations
+- Situations requiring legal defensibility of decisions based on extracted data
+
+**Provenance may be unnecessary for:**
+- Simple prototypes and proof-of-concept demonstrations where compliance is not required
+- Ephemeral workflows that process data once and discard results immediately
+- Stateless applications that don't persist data across sessions
+- Internal research projects with trusted single-source data
+- High-frequency, low-latency operations where provenance overhead impacts performance
+- Scenarios where all data comes from a single, highly trusted source that never changes
+
+**Consider simpler alternatives when:**
+- Basic metadata (creation timestamp, source file name) provides sufficient traceability
+- Data processing is transparent and reproducible through version control alone
+- Regulatory compliance does not require cryptographic integrity verification
+
 `ProvenanceManager` records a W3C PROV-O compliant entry for every entity, relationship, document chunk, and property value — with a SHA-256 checksum for tamper detection and automatic version chaining on every `track_entity()` call. Use it when you need to answer regulatory questions about where a value came from, who wrote it, and whether it has changed since first ingestion.
 
 <Info>
@@ -97,6 +150,8 @@ This version chaining happens automatically. You do not need to manage history e
 
 When the same property appears in multiple sources with different values — exactly the CVE score situation — use `track_property_source()` to record each attribution separately. This feeds directly into conflict detection downstream: the conflict module can compare all tracked values for a property and surface disagreements with full source metadata attached.
 
+**SourceReference** is a structured metadata container that captures exactly where a piece of information came from within a document. It includes the document identifier, specific location (page, section, byte range), confidence level, and custom metadata fields for domain-specific attribution requirements.
+
 ```python
 from semantica.provenance.schemas import SourceReference
 
@@ -134,7 +189,7 @@ When the regulator asks "where did the 9.8 come from?", this is the answer: `com
 
 ## Tracing the lineage of a node
 
-Six months after ingestion, run a lineage trace. `get_lineage()` returns the full version chain — every state the entity has passed through, oldest to newest — along with summary metadata:
+Once you have multiple provenance entries for an entity, you can trace its complete history to understand how it evolved over time. Six months after ingestion, run a lineage trace. `get_lineage()` returns the full version chain — every state the entity has passed through, oldest to newest — along with summary metadata:
 
 ```python
 lineage = prov.get_lineage("cve-2024-3400")
@@ -179,7 +234,9 @@ The chain answers all three of the regulator's questions. The 9.8 came from `com
 
 ## Verifying integrity
 
-Every `ProvenanceEntry` carries a SHA-256 checksum computed at write time. If any field is modified after the fact — by a misconfigured pipeline, a database migration, or deliberate tampering — the checksum will not match on recomputation. Run integrity checks as part of any compliance audit:
+Every `ProvenanceEntry` carries a SHA-256 checksum computed at write time. If any field is modified after the fact — by a misconfigured pipeline, a database migration, or deliberate tampering — the checksum will not match on recomputation. 
+
+Integrity verification is critical for regulatory compliance and forensic analysis. Run integrity checks as part of any compliance audit:
 
 ```python
 from semantica.provenance.integrity import compute_checksum
@@ -206,7 +263,9 @@ A `TAMPERED` status means the stored hash does not match what would be computed 
 
 ## Tracking document chunks and their children
 
-Provenance is not just for entities. When a document is split into chunks for RAG or NLP processing, each chunk needs its own provenance record linking it to the source file and byte range. Child chunks (from recursive splitting) link to their parent via `parent_chunk_id`, which maps to `prov:wasDerivedFrom` in the W3C model:
+Provenance is not just for entities. When a document is split into chunks for retrieval-augmented generation (RAG) or natural language processing workflows, each chunk needs its own provenance record linking it to the source file and byte range. 
+
+Child chunks (from recursive splitting) link to their parent via `parent_chunk_id`, which maps to `prov:wasDerivedFrom` in the W3C PROV-O standard:
 
 ```python
 # Track the parent chunk (a section of an advisory PDF)
@@ -259,6 +318,22 @@ Unique sources   : 12
 ```
 
 This summary is the starting point for a compliance attestation: you can state the total number of tracked records, the number of distinct data sources, and the breakdown by record type.
+
+## Common Pitfalls
+
+**Provenance does not guarantee truth.** Provenance records faithfully track where information came from and how it was processed, but it cannot verify that the original sources were accurate. A perfectly documented chain from a flawed or malicious source still produces unreliable data.
+
+**Reusing generic source identifiers.** Using non-specific source IDs like "daily_feed" or "batch_001" makes it impossible to trace individual records back to their exact origins. Always include timestamps, version numbers, or unique batch identifiers in source document names.
+
+**Bypassing provenance workflows.** Manually inserting data or using ad-hoc scripts that skip `track_entity()` calls creates gaps in the audit trail. Ensure all data entry points—automated pipelines, manual corrections, and administrative operations—record appropriate provenance.
+
+**Ignoring lineage verification.** Provenance chains can become complex in multi-stage processing pipelines. Regularly verify that `get_lineage()` and `trace_lineage()` return complete, logical chains without missing links or circular references.
+
+**Overusing provenance in low-value scenarios.** Recording provenance for every intermediate calculation or temporary variable creates storage overhead without compliance benefit. Focus provenance tracking on entities, relationships, and properties that have legal, regulatory, or business significance.
+
+**Failing to validate integrity checksums.** Cryptographic integrity verification only works if you actually check it. Include regular `compute_checksum()` validation in audit workflows and incident response procedures.
+
+**Mixing provenance granularities.** Tracking some entities at the document level and others at the sentence level creates inconsistent audit trails. Establish consistent granularity standards for each data type and processing workflow.
 
 ## Domain examples
 
