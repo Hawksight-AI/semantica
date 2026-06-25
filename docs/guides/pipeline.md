@@ -64,20 +64,12 @@ def handler(data, **config):
 
 Root steps (no dependencies) receive `None` as their `data` parameter — they generate data from scratch rather than transforming upstream outputs.
 
-There are two ways to wire up step handlers:
+Pass the handler function directly to `add_step()` as the `handler` keyword argument, alongside any step configuration:
 
-**Option 1:** Register a handler function, then reference it by name:
 ```python
-builder.register_step_handler("extract_entities", extract_entities_handler)
-builder.add_step("extract_step", handler="extract_entities", dependencies=["ingest_step"])
+builder.add_step("extract_step", "ner_extract", handler=extract_entities_handler)
+builder.connect_steps("ingest_step", "extract_step")
 ```
-
-**Option 2:** Pass the handler function directly to `add_step()`:
-```python
-builder.add_step("extract_step", handler=extract_entities_handler, dependencies=["ingest_step"])
-```
-
-Both approaches work the same way — use whichever is clearer for your workflow.
 
 ```python
 from semantica.pipeline import PipelineBuilder, ExecutionEngine
@@ -266,11 +258,6 @@ result   = engine.execute_pipeline(pipeline)
 Start small and validate each step individually before building the full pipeline:
 
 ```python
-# Test individual handlers with known data
-test_data = [{"text": "sample data", "entities": []}]
-result = extract_entities(test_data, confidence_threshold=0.5)
-print(f"Processed {len(result)} items")
-
 # Add debug output in handlers during development
 def extract_entities(data, **config):
     print(f"Processing {len(data)} items with threshold {config.get('confidence_threshold')}")
@@ -280,24 +267,29 @@ def extract_entities(data, **config):
         results.append({"text": item["text"], "entities": []})
     print(f"Generated {len(results)} results")
     return results
+
+# Test individual handlers with known data
+test_data = [{"text": "sample data", "entities": []}]
+result = extract_entities(test_data, confidence_threshold=0.5)
+print(f"Processed {len(result)} items")
 ```
 
 For complex pipelines, add checkpoints to save intermediate outputs:
 
 ```python
 def save_checkpoint(data, **config):
-    """Save intermediate data for debugging"""
+    # Save intermediate data for debugging
     checkpoint_path = config.get("checkpoint_path", "checkpoint.json")
     with open(checkpoint_path, "w") as f:
         json.dump(data, f)
     return data  # Pass data through unchanged
 
 builder.add_step(
-    "checkpoint_after_transform",
+    "checkpoint_after_transform", "checkpoint",
     handler=save_checkpoint,
-    dependencies=["transform"],
     checkpoint_path="transform_output.json"
 )
+builder.connect_steps("transform", "checkpoint_after_transform")
 ```
 
 ## Delta / Incremental Processing
