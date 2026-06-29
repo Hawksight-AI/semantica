@@ -51,7 +51,7 @@ dependencies = [
   "umap-learn>=0.5.12",
   "spacy>=3.4.0",
   "transformers>=4.20.0",
-  "torch>=1.12.0",
+  "torch>=1.13.1",
   "sentence-transformers>=2.2.0",
   "rdflib>=6.2.0",
   "networkx>=2.8.0",
@@ -129,7 +129,7 @@ db-all = [
 # ---- Embedding / Models ----
 models-huggingface = [
   "transformers>=4.20.0",
-  "torch>=1.12.0"
+  "torch>=1.13.1"
 ]
 
 # ---- Graph Backends ----
