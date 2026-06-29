@@ -104,7 +104,6 @@ entry_nvd = prov.track_entity(
     activity_id="nvd_feed_ingestion",
     source_location="CVE-2024-3400 JSON record",
     source_quote='{"cvssMetricV31":[{"cvssData":{"baseScore":10.0}}]}',
-    agent_id="nvd_ingest_pipeline_v2",
 )
 
 print(f"Entity tracked : {entry_nvd.entity_id}")
@@ -136,7 +135,6 @@ entry_commercial = prov.track_entity(
     confidence=0.91,
     entity_type="vulnerability",
     activity_id="commercial_feed_ingestion",
-    agent_id="threat_ingest_pipeline_v2",
 )
 
 # The NVD entry is now archived as cve-2024-3400:v:2024-04-12T14:22:07
@@ -216,16 +214,16 @@ Sources seen : ['NVD_feed_2024-04-12', 'commercial_feed_2024-04-12',
                 'NVD_feed_2024-07-18', 'commercial_feed_2024-10-08']
 
 Full version chain (oldest → newest):
-  [2024-04-12T14:22:07]  agent=nvd_ingest_pipeline_v2
+  [2024-04-12T14:22:07]  agent=semantica
     source=NVD_feed_2024-04-12
     activity=nvd_feed_ingestion
-  [2024-04-12T15:18:33]  agent=threat_ingest_pipeline_v2
+  [2024-04-12T15:18:33]  agent=semantica
     source=commercial_feed_2024-04-12
     activity=commercial_feed_ingestion
-  [2024-07-18T08:04:11]  agent=nvd_ingest_pipeline_v2
+  [2024-07-18T08:04:11]  agent=semantica
     source=NVD_feed_2024-07-18
     activity=nvd_feed_ingestion       # NVD updated their score
-  [2024-10-08T09:11:44]  agent=threat_ingest_pipeline_v2
+  [2024-10-08T09:11:44]  agent=semantica
     source=commercial_feed_2024-10-08
     activity=commercial_feed_ingestion
 ```
@@ -372,7 +370,6 @@ prov.track_entity(
     entity_type="threat_actor",
     activity_id="ner_extraction",
     source_location="paragraph_3",
-    agent_id="analyst_ALPHA",
 )
 
 # Tier 3: Campaign relationship from all-source fusion
@@ -382,7 +379,6 @@ prov.track_relationship(
     metadata={"type": "operates", "confidence": 0.81},
     confidence=0.81,
     activity_id="all_source_fusion",
-    agent_id="fusion_cell_BRAVO",
 )
 
 # Tier 4: Property from two independent INT sources
@@ -436,7 +432,6 @@ prov.track_entity(
     confidence=0.98,
     entity_type="vulnerability",
     activity_id="nvd_feed_ingestion",
-    agent_id="ingest_pipeline_v2",
 )
 
 # Six weeks later: NVD revised the score after PoC publication
@@ -447,7 +442,6 @@ prov.track_entity(
     confidence=0.98,
     entity_type="vulnerability",
     activity_id="nvd_feed_update",
-    agent_id="ingest_pipeline_v2",
 )
 
 # Track CISA KEV addition as a separate property source
@@ -508,7 +502,6 @@ prov.track_entity(
     entity_type="clinical_endpoint",
     activity_id="structured_data_extraction",
     source_quote="Vaccine efficacy against COVID-19 was 95.0% (95% CI, 90.3–97.6)",
-    agent_id="meddra_extraction_pipeline_v3",
 )
 
 # Multi-study property tracking for meta-analysis
@@ -608,7 +601,6 @@ prov.track_entity(
     confidence=0.89,
     entity_type="credit_decision",
     activity_id="automated_underwriting",
-    agent_id="underwriting_model_v4",
 )
 
 # SR 11-7 audit output
