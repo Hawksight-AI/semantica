@@ -61,7 +61,7 @@ semantica-mcp
 python -m semantica.mcp_server
 ```
 
-Startup info prints to stderr. Without `SEMANTICA_KG_PATH` the server initialises an empty in-memory graph — sufficient for testing. For a persistent graph that survives restarts, set the path:
+By default, the server logs at `WARNING` level and produces no startup output. Set `SEMANTICA_LOG_LEVEL=INFO` (or `DEBUG`) to see startup messages on stderr. Without `SEMANTICA_KG_PATH` the server initialises an empty in-memory graph — sufficient for testing. For a persistent graph that survives restarts, set the path:
 
 ```bash
 SEMANTICA_KG_PATH=/data/threat_graph.json semantica-mcp
@@ -144,7 +144,7 @@ Once connected, the LLM can call any of these tools during a conversation. The a
 
 **Reasoning** — `run_reasoning` applies forward-chaining IF/THEN rules over a set of facts and returns derived conclusions.
 
-**Analytics and export** — `get_graph_analytics` computes PageRank centrality and community detection. `get_graph_summary` returns node count, decision count, and server status. `export_graph` serializes the current graph to Turtle, JSON-LD, N-Triples, or plain JSON.
+**Analytics and export** — `get_graph_analytics` computes PageRank centrality and community detection. `get_graph_summary` returns node count, decision count, and server status. `export_graph` serializes the current graph to Turtle (`"turtle"` / `"ttl"`), RDF/XML (`"xml"`), N-Triples (`"nt"`), JSON-LD (`"json-ld"`), or plain JSON (`"json"`).
 
 ## Universal Example: Employee Directory
 
@@ -179,7 +179,7 @@ Here is what happens when a cybersecurity analyst types a prompt into Claude Des
 
 > "Extract entities and relationships from this OSINT report, add them to the knowledge graph, then record an attribution decision for APT29 with confidence 0.88 and export the full graph as Turtle."
 
-Claude chains five tool calls automatically:
+Claude chains six tool calls automatically:
 
 ```text
 1. extract_entities(text="<report text>")
@@ -219,7 +219,7 @@ Resources expose graph state without a tool call — the client can read them at
 
 | URI | Description |
 | :-- | :---------- |
-| `semantica://graph/summary` | Node count, edge count, server status |
+| `semantica://graph/summary` | Node count, decision count, server status |
 | `semantica://decisions/list` | Up to 50 most recent recorded decisions |
 | `semantica://schema/info` | Server version, capabilities, available tool list |
 
