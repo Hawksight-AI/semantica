@@ -114,7 +114,7 @@ llm-all = [
 ]
 
 # ---- Document Parsing ----
-parse-docling = ["docling>=1.0.0"]
+parse-docling = ["docling>=2.107.0"]
 
 # ---- Database Connectors ----
 db-snowflake = ["snowflake-connector-python>=4.6.0", "cryptography>=49.0.0"]
