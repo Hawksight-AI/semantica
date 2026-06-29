@@ -214,7 +214,7 @@ dev = [
   "isort>=6.1.0",
   "flake8>=4.0.0",
   "mypy>=0.971",
-  "pre-commit>=2.19.0",
+  "pre-commit>=4.6.0",
   "jupyter>=1.0.0",
   "ipykernel>=6.15.0"
 ]
