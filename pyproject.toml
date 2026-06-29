@@ -118,9 +118,9 @@ parse-docling = ["docling>=1.0.0"]
 
 # ---- Database Connectors ----
 db-snowflake = ["snowflake-connector-python>=4.6.0", "cryptography>=49.0.0"]
-db-arrow = ["pyarrow>=21.0.0"]
-ingest-parquet = ["pyarrow>=21.0.0"]
-ingest-arrow = ["pyarrow>=21.0.0"]
+db-arrow = ["pyarrow>=24.0.0"]
+ingest-parquet = ["pyarrow>=24.0.0"]
+ingest-arrow = ["pyarrow>=24.0.0"]
 
 db-all = [
   "semantica[db-snowflake,db-arrow]"
