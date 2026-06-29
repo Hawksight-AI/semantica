@@ -57,11 +57,10 @@ Configure the vector store, knowledge graph, and `AgentContext` together at star
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 
-# The FAISS index persists to disk at index_path — restart-safe
+# The VectorStore relies on explicit save()/load() for persistence
 ti_vs = VectorStore(
     backend="faiss",
     dimension=768,
-    index_path="ti_agent/memory.faiss",
 )
 
 # The ContextGraph holds entity nodes and their relationships
@@ -281,7 +280,7 @@ from semantica.llms import Groq
 
 ti_graph = ContextGraph(advanced_analytics=True, node_embeddings=True)
 ti_agent = AgentContext(
-    vector_store=VectorStore(backend="faiss", dimension=768, index_path="ti_memory.faiss"),
+    vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=ti_graph,
     retention_days=365,
     max_memories=50000,
@@ -336,7 +335,7 @@ from semantica.llms import Groq
 
 soc_graph = ContextGraph()
 soc_agent = AgentContext(
-    vector_store=VectorStore(backend="faiss", dimension=768, index_path="soc_memory.faiss"),
+    vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=soc_graph,
     retention_days=180,
     max_memories=100000,
@@ -409,7 +408,7 @@ from semantica.vector_store import VectorStore
 
 clinical_graph = ContextGraph(advanced_analytics=True)
 clinical_agent = AgentContext(
-    vector_store=VectorStore(backend="faiss", dimension=768, index_path="clinical.faiss"),
+    vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=clinical_graph,
     retention_days=3650,      # 10-year clinical record retention
     max_memories=500000,
@@ -485,7 +484,7 @@ from semantica.vector_store import VectorStore
 
 credit_graph = ContextGraph(advanced_analytics=True)
 credit_agent = AgentContext(
-    vector_store=VectorStore(backend="faiss", dimension=768, index_path="credit.faiss"),
+    vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=credit_graph,
     retention_days=2555,      # 7-year regulatory retention
     max_memories=1000000,
@@ -585,7 +584,7 @@ from semantica.vector_store import VectorStore
 
 # Create a fresh context with matching configuration
 ti_agent_restored = AgentContext(
-    vector_store=VectorStore(backend="faiss", dimension=768, index_path="ti_memory.faiss"),
+    vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=ContextGraph(advanced_analytics=True),
     retention_days=365,
     decision_tracking=True,
