@@ -147,27 +147,24 @@ With the graph populated, a plain `retrieve()` call already does more than vecto
 results = context.retrieve(
     "APT29 tactics against healthcare",
     use_graph=True,
-    proximity_weight=0.5,   # blend structural proximity into the final score
     max_results=10,
     expand_graph=True,
     max_hops=3,
 )
 
 for r in results:
-    print("[combined={:.3f}  vec={:.3f}  prox={:.3f}]  {}".format(
-        r.get("combined_score", r["score"]),
+    print("[score={:.3f}]  {}".format(
         r["score"],
-        r.get("proximity_score", 0.0),
         r["content"][:90],
     ))
 
-# [combined=0.921  vec=0.884  prox=0.957]  APT29 deployed HAMMERTOSS malware against NATO...
-# [combined=0.887  vec=0.701  prox=0.972]  HAMMERTOSS was subsequently observed on hosts in the LifeCare...
-# [combined=0.841  vec=0.623  prox=0.961]  LifeCare operates 47 acute-care hospitals...
-# [combined=0.798  vec=0.590  prox=0.907]  Healthcare critical infrastructure has been a high-priority...
+# [score=0.921]  APT29 deployed HAMMERTOSS malware against NATO...
+# [score=0.887]  HAMMERTOSS was subsequently observed on hosts in the LifeCare...
+# [score=0.841]  LifeCare operates 47 acute-care hospitals...
+# [score=0.798]  Healthcare critical infrastructure has been a high-priority...
 ```
 
-Notice the third and fourth results: their vector scores are modest (0.623 and 0.590) — neither document mentions APT29 or TTPs. But their proximity scores are high because they are structurally adjacent to the seed nodes in the graph. Pure vector retrieval would have ranked them much lower or excluded them entirely. GraphRAG surfaces them because the graph knows they are connected.
+Notice the top results: while pure vector search might rank connected facts lower because they lack keyword overlap, GraphRAG boosts their final `score` because they are structurally adjacent to the seed nodes in the graph. The returned `score` is a transparent blend of vector relevance and graph connectivity.
 
 When you know specifically which entity you want to anchor the traversal to, pass `anchor_node`:
 
@@ -364,11 +361,10 @@ print("Confidence: {:.1%}".format(triage["confidence"]))
 similar = soc_context.retrieve(
     "wmiprvse.exe encoded powershell scheduled task persistence",
     use_graph=True,
-    proximity_weight=0.5,
     max_results=5,
 )
 for inc in similar:
-    print("[{:.3f}] {}".format(inc.get("combined_score", inc["score"]), inc["content"][:100]))
+    print("[{:.3f}] {}".format(inc["score"], inc["content"][:100]))
 ```
 
 </Tab>
@@ -525,11 +521,13 @@ print(answer["reasoning_path"])
 
 The `hybrid_alpha` parameter set in the `AgentContext` constructor establishes a default blend between vector similarity and graph influence. `0.0` is pure vector retrieval; `1.0` is pure graph traversal. The recommended starting point is `0.5`.
 
-You can override this per call using `proximity_weight` in `retrieve()` without changing the constructor default:
+When targeting a specific `anchor_node`, you can apply `proximity_weight` in `retrieve()` to dynamically blend structural distance from the anchor into the final score:
 
 ```python
-# Exploratory query — let semantics lead, graph confirms
-results = context.retrieve(query, use_graph=True, proximity_weight=0.2)
+# Anchor node provided — let vector semantics lead, graph proximity only slightly boosts
+results = context.retrieve(
+    query, use_graph=True, anchor_node="APT29", proximity_weight=0.2
+)
 
 # Known-entity tracing — topology drives the retrieval
 results = context.retrieve(
