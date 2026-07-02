@@ -272,7 +272,7 @@ icon: "brain"
 </Tip>
 
 <Tip>
-  **Persist your vector store between runs.** Pass `index_path="context.faiss"` to `VectorStore` so the FAISS index survives process restarts.
+  **Persist your context between runs.** `VectorStore` does not auto-persist — passing `index_path=` to its constructor is a no-op. Call `context.save("agent_state/")` to write memory, the vector index, and the graph to disk, and `context.load("agent_state/")` on the next process to restore them. See the "Persist & Restore" tab under [Real-World Patterns](#real-world-patterns) below.
 </Tip>
 
 ### Memory Methods

@@ -468,8 +468,7 @@ def run_daily_ingest(since: datetime = None):
 
     graph   = ContextGraph(advanced_analytics=True)
     context = AgentContext(
-        vector_store    = VectorStore(backend="faiss", dimension=768,
-                                      index_path="cti_index.faiss"),
+        vector_store    = VectorStore(backend="faiss", dimension=768),
         knowledge_graph = graph,
         graph_expansion = True,
     )

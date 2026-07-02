@@ -559,7 +559,7 @@ context.save("agent_state/")
 
 # Start of next session
 context = AgentContext(
-    vector_store=VectorStore(backend="faiss", dimension=768, index_path="decisions.faiss"),
+    vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=ContextGraph(),
     decision_tracking=True,
 )

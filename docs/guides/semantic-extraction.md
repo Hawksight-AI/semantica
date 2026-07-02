@@ -313,7 +313,7 @@ def ingest_intel_report(
 # Process all 200 reports
 intel_graph = ContextGraph(advanced_analytics=True)
 intel_agent = AgentContext(
-    vector_store=VectorStore(backend="faiss", dimension=768, index_path="intel.faiss"),
+    vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=intel_graph,
     decision_tracking=True,
 )

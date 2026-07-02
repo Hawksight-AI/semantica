@@ -83,7 +83,7 @@ from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 
 # FAISS runs locally with no external dependencies
-vs = VectorStore(backend="faiss", dimension=768, index_path="intel.faiss")
+vs = VectorStore(backend="faiss", dimension=768)
 graph = ContextGraph(advanced_analytics=True)
 
 context = AgentContext(
