@@ -2,20 +2,15 @@
 
 <img src="Semantica Logo.png" alt="Semantica" width="420"/>
 
-### The Context & Accountability Layer for AI Systems
+### The Semantic Infrastructure for AI Decision Intelligence, Context & Knowledge Management
 
-**Auditable &nbsp;·&nbsp; Governed &nbsp;·&nbsp; Explainable &nbsp;·&nbsp; Production-Ready**
+*Palantir-grade intelligence, unlocked. 100% open source. Zero black boxes. Zero vendor lock-in. Self-hosted, so your most confidential data never leaves your infrastructure. From startup to Fortune 500, without the seven-figure contract.*
 
-[![PyPI](https://img.shields.io/pypi/v/semantica.svg?style=flat-square&color=0066CC)](https://pypi.org/project/semantica/)
-[![Total Downloads](https://static.pepy.tech/badge/semantica?style=flat-square)](https://pepy.tech/project/semantica)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg?style=flat-square)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![CI](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/ci.yml?style=flat-square&label=CI)](https://github.com/semantica-agi/semantica/actions)
-[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/sV34vps5hH)
-[![Docs](https://img.shields.io/badge/Docs-docs.getsemantica.ai-0099FF?style=flat-square&logo=readthedocs&logoColor=white)](https://docs.getsemantica.ai/)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/semantica-agi/semantica)
+**Open Source &nbsp;·&nbsp; Auditable &nbsp;·&nbsp; Governed &nbsp;·&nbsp; Explainable &nbsp;·&nbsp; Self-Hostable**
 
-**[Website](https://getsemantica.ai/)** &nbsp;·&nbsp; **[Docs](https://docs.getsemantica.ai/)** &nbsp;·&nbsp; **[Discord](https://discord.gg/sV34vps5hH)** &nbsp;·&nbsp; **[Twitter/X](https://x.com/BuildSemantica)** &nbsp;·&nbsp; **[YouTube](https://www.youtube.com/watch?v=QfnNZg4-dZA)** &nbsp;·&nbsp; **[PyPI](https://pypi.org/project/semantica/)** &nbsp;·&nbsp; **[Changelog](CHANGELOG.md)**
+[![GitHub Stars](https://img.shields.io/github/stars/semantica-agi/semantica?style=for-the-badge&color=FFD700&logo=github&logoColor=white&label=Stars)](https://github.com/semantica-agi/semantica) [![PyPI](https://img.shields.io/pypi/v/semantica.svg?style=for-the-badge&color=0066CC&logo=pypi&logoColor=white)](https://pypi.org/project/semantica/) [![Total Downloads](https://static.pepy.tech/badge/semantica?style=for-the-badge)](https://pepy.tech/project/semantica) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT) [![CI](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/ci.yml?style=for-the-badge&label=CI)](https://github.com/semantica-agi/semantica/actions) [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/sV34vps5hH) [![Docs](https://img.shields.io/badge/Docs-docs.getsemantica.ai-0099FF?style=for-the-badge&logo=readthedocs&logoColor=white)](https://docs.getsemantica.ai/) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/semantica-agi/semantica)
+
+[![Website](https://img.shields.io/badge/Website-getsemantica.ai-000000?style=for-the-badge&logo=googlechrome&logoColor=white)](https://getsemantica.ai/) [![Docs](https://img.shields.io/badge/Docs-docs.getsemantica.ai-0099FF?style=for-the-badge&logo=readthedocs&logoColor=white)](https://docs.getsemantica.ai/) [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/sV34vps5hH) [![Twitter/X](https://img.shields.io/badge/Follow-%40BuildSemantica-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/BuildSemantica) [![YouTube](https://img.shields.io/badge/YouTube-Watch%20Demos-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=QfnNZg4-dZA) [![PyPI](https://img.shields.io/badge/PyPI-semantica-0066CC?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/semantica/) [![Changelog](https://img.shields.io/badge/Changelog-View-6E40C9?style=for-the-badge&logo=keepachangelog&logoColor=white)](CHANGELOG.md)
 
 </div>
 
@@ -156,18 +151,19 @@ Every component is independently importable. Use one module or all of them.
 
 Most AI frameworks are built for retrieval. Semantica is built for accountability. The comparison below focuses on the intelligence capabilities that define the difference.
 
-| | LangChain | LlamaIndex | MS GraphRAG | Mem0 | Zep | **Semantica** |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Knowledge Graph construction** | ⚡ Plugin | ⚡ PropertyGraph | ⚡ Community KG | ❌ | ❌ | ✅ Native, full-stack |
-| **Decision tracking** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ First-class objects |
-| **Audit trail & provenance** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ W3C PROV-O, exportable |
-| **Explainable reasoning** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Rete · Datalog · SPARQL |
-| **Ontology (OWL / SHACL)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Generation + visual editor |
-| **Conflict detection** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ 5 resolution strategies |
-| **Bi-temporal graph & time travel** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Point-in-time snapshots |
-| **Entity resolution** | ❌ | ⚡ Partial | ⚡ Partial | ❌ | ⚡ Partial | ✅ Blocking + semantic dedup |
-| **Multi-agent shared context** | ⚡ LangGraph | ⚡ Partial | ❌ | ✅ | ⚡ Partial | ✅ Single shared graph |
-| **Policy enforcement** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ SHACL + rule engine |
+| | LangChain | LlamaIndex | MS GraphRAG | Mem0 | Zep | Palantir Foundry | **Semantica** |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Knowledge Graph construction** | ⚡ Plugin | ⚡ PropertyGraph | ⚡ Community KG | ❌ | ❌ | ✅ Ontology-driven | ✅ Native, full-stack |
+| **Decision tracking** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ First-class objects |
+| **Audit trail & provenance** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Proprietary | ✅ W3C PROV-O, exportable |
+| **Explainable reasoning** | ❌ | ❌ | ❌ | ❌ | ❌ | ⚡ Partial | ✅ Rete · Datalog · SPARQL |
+| **Ontology (OWL / SHACL)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Proprietary | ✅ Generation + visual editor |
+| **Conflict detection** | ❌ | ❌ | ❌ | ❌ | ❌ | ⚡ Partial | ✅ 5 resolution strategies |
+| **Bi-temporal graph & time travel** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ Point-in-time snapshots |
+| **Entity resolution** | ❌ | ⚡ Partial | ⚡ Partial | ❌ | ⚡ Partial | ✅ | ✅ Blocking + semantic dedup |
+| **Multi-agent shared context** | ⚡ LangGraph | ⚡ Partial | ❌ | ✅ | ⚡ Partial | ❌ | ✅ Single shared graph |
+| **Policy enforcement** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Proprietary | ✅ SHACL + rule engine |
+| **Open source / self-hostable** | ✅ | ✅ | ✅ | ✅ | ⚡ Partial | ❌ | ✅ MIT-licensed |
 
 > ✅ Full support &nbsp;&nbsp; ⚡ Partial / via plugin &nbsp;&nbsp; ❌ Not supported
 
