@@ -980,73 +980,11 @@ Every capability is available from the terminal. The CLI ships with the package,
 ```bash
 pip install semantica
 semantica        # startup dashboard
+semantica doctor # health check
 semantica --help # full grouped command reference
 ```
 
-<div align="center">
-
-<img
-  src="docs/assets/img/semantica-cli-demo.gif"
-  alt="Semantica CLI startup dashboard, health checks, graph build, shell, and grouped commands"
-  width="900"
-/>
-
-</div>
-
 Start with `semantica`, verify with `doctor`, build a graph, and explore the command groups from one terminal.
-
-### Startup Dashboard
-
-```
-$ semantica
-
-   ███████╗███████╗███╗   ███╗ █████╗ ███╗   ██╗████████╗██╗ ██████╗  █████╗
-   ██╔════╝██╔════╝████╗ ████║██╔══██╗████╗  ██║╚══██╔══╝██║██╔════╝ ██╔══██╗
-   ███████╗█████╗  ██╔████╔██║███████║██╔██╗ ██║   ██║   ██║██║      ███████║
-   ╚════██║██╔══╝  ██║╚██╔╝██║██╔══██║██║╚██╗██║   ██║   ██║██║      ██╔══██║
-   ███████║███████╗██║ ╚═╝ ██║██║  ██║██║ ╚████║   ██║   ██║╚██████╗ ██║  ██║
-   ╚══════╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═╝
-
-╭─────────────────────────────────────────────────────────────────────────────╮
-│                                                                             │
-│    Knowledge Intelligence Platform  •  v0.5.1                              │
-│                                                                             │
-│    🕸️  Context Graphs      ⚡ Decision Intelligence      🔍 Provenance      │
-│    🧩 Knowledge Fusion    🧠 Reasoning Engine          📊 Explainability    │
-│                                                                             │
-╰─────────────────────────────────────────────────────────────────────────────╯
-
-  Graph Store     neo4j
-  Vector Store    faiss
-  Profile         default
-  Config          ~/.semantica/config.yaml
-
-  Run semantica --help for all commands  •  semantica shell for interactive mode
-```
-
-### Knowledge Graph Build
-
-```
-$ semantica kg build -s ./contracts/ -s ./reports/ --store neo4j
-
-  contracts/    ████████████████████  12/12  4.2s
-  reports/      ████████████████████   8/8   2.9s
-
-  Knowledge graph built    1,847 nodes   4,203 edges   7.1s
-```
-
-### `semantica doctor`: Health Check
-
-```
-$ semantica doctor
-
-  Python 3.11.9         pass
-  semantica 0.5.1       pass
-  neo4j backend         pass     neo4j://localhost:7687
-  faiss vector store    pass
-  LLM provider          warn     OPENAI_API_KEY not set
-  Config file           pass     ~/.semantica/config.yaml
-```
 
 **Command groups:** `ingest` · `parse` · `extract` · `kg` · `reason` · `decision` · `temporal` · `provenance` · `ontology` · `embed` · `deduplicate` · `validate` · `export` · `visualize` · `pipeline` · `server` · `explorer` · `mcp` · `doctor` · `shell` · `init` · `watch`
 
