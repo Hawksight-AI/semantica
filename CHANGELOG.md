@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `pip install semantica[shacl]` referenced no matching extra in `pyproject.toml`, so `pyshacl` was never installed despite being documented as the fix in `ontology_validator.py`'s `ImportError` message, the Explorer API, the healthcare cookbook notebook, and the changelog
   - Added `shacl = ["pyshacl>=0.25.0"]` to `[project.optional-dependencies]` and folded `shacl` into the `all` extra
 
+- **`NodeEmbedder` `AttributeError` masked in `ContextGraph.analyze_graph_with_kg`** (#734) by @Sameer6305
+  - `analyze_graph_with_kg()` called a non-existent `NodeEmbedder.generate_embeddings()`, and the surrounding broad `except Exception` swallowed the resulting `AttributeError`, silently returning `{"error": "Graph analysis failed due to an internal error"}` from `get_causal_chain()`'s supporting analytics and `get_decision_insights()`
+  - Rewired the call site to the real `NodeEmbedder.compute_embeddings(graph_store, node_labels, relationship_types)` API, deriving `node_labels`/`relationship_types` from `self.node_type_index`/`self.edge_type_index`
+  - Added a dedicated `except AttributeError` branch that logs distinctly and re-raises, so a broken internal method call surfaces as a diagnosable error instead of being indistinguishable from a legitimately empty analysis result
+
 ---
 
 ## [0.5.1] - 2026-06-29
