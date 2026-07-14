@@ -116,6 +116,9 @@ llm-all = [
 # ---- Document Parsing ----
 parse-docling = ["docling>=2.107.0"]
 
+# ---- SHACL Validation ----
+shacl = ["pyshacl>=0.25.0"]
+
 # ---- Database Connectors ----
 db-snowflake = ["snowflake-connector-python>=4.6.0", "cryptography>=49.0.0"]
 db-arrow = ["pyarrow>=24.0.0"]
@@ -234,8 +237,8 @@ explorer-lite = [
 
 # Everything (cross-platform — gpu excluded; install semantica[gpu] separately on Linux)
 all = [
-  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,explorer]",
-  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,agno]"
+  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,explorer]",
+  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno]"
 ]
 
 # ---------------- ENTRYPOINTS ----------------
