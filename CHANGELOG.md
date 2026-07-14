@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixes `VectorStore.update_vectors`/`delete_vectors` to delegate to the active backend store instead of only mutating in-memory state, correcting existing behavior for all non-`inmemory` backends
   - 25 unit and integration tests in `tests/vector_store/test_sqlite_vec_store.py` covering init, add, search, get, update, delete, read-only mode, and stats
 
+### Fixed
+
+- **Missing `shacl` optional-dependency extra** (#736) by @Sameer6305
+  - `pip install semantica[shacl]` referenced no matching extra in `pyproject.toml`, so `pyshacl` was never installed despite being documented as the fix in `ontology_validator.py`'s `ImportError` message, the Explorer API, the healthcare cookbook notebook, and the changelog
+  - Added `shacl = ["pyshacl>=0.25.0"]` to `[project.optional-dependencies]` and folded `shacl` into the `all` extra
+
 ---
 
 ## [0.5.1] - 2026-06-29
