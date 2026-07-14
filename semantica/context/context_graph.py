@@ -2214,12 +2214,26 @@ class ContextGraph:
             
             # Node embeddings
             if "node_embedder" in self.kg_components:
-                embeddings = self.kg_components["node_embedder"].generate_embeddings(kg_graph)
-                analysis["node_embeddings"] = embeddings
+                node_labels = list(self.node_type_index.keys())
+                relationship_types = list(self.edge_type_index.keys())
+                if node_labels:
+                    embeddings = self.kg_components["node_embedder"].compute_embeddings(
+                        graph_store=self,
+                        node_labels=node_labels,
+                        relationship_types=relationship_types,
+                    )
+                    analysis["node_embeddings"] = embeddings
             
             self.logger.info("Completed comprehensive graph analysis")
             return analysis
             
+        except AttributeError as e:
+            # A broken internal method call (e.g. calling a method that doesn't
+            # exist on one of the kg_components) is a programming error, not a
+            # legitimate empty-analysis result. Log it distinctly and re-raise
+            # rather than masking it under the generic message below.
+            self.logger.error(f"Graph analysis failed due to a broken internal method call: {e}")
+            raise
         except Exception as e:
             self.logger.error(f"Failed to analyze graph with KG: {e}")
             return {"error": "Graph analysis failed due to an internal error"}
