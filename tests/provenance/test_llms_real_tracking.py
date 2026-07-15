@@ -109,7 +109,7 @@ class TestRealLLMProvenanceTracking:
             assert lineage is not None
             total_cost += lineage["metadata"]["total_cost"]
         
-        assert total_cost == sum(costs)
+        assert total_cost == pytest.approx(sum(costs))
     
     def test_llm_latency_tracking(self):
         """Test that LLM latency is tracked."""
