@@ -61,7 +61,7 @@ jobs:
       with:
         sarif_file: ${{ steps.msdo.outputs.sarifFile }}
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v7
       with:
         python-version: "3.12"
 
