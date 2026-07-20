@@ -4,13 +4,13 @@
 
 ### Context and Accountability Infrastructure for AI Agents
 
-[![The Open Source Palantir for AI Agents](https://img.shields.io/badge/The%20Open%20Source%20Palantir-for%20AI%20Agents-000000?style=for-the-badge)](https://github.com/semantica-agi/semantica)
+#### <mark>**The Open Source Palantir for AI Agents**</mark>
 
 > Ingest your enterprise data, extract what matters, build a Context Graph and knowledge graph (KG), and run graph analytics and causal reasoning over all of it, with full decision provenance baked in. Explainable, traceable, and trustworthy by design.
 
 **Decision Intelligence &nbsp;·&nbsp; Context Management &nbsp;·&nbsp; Deterministic Reasoning &nbsp;·&nbsp; Traceability**
 
-![Open Source](https://img.shields.io/badge/Open%20Source-0EA5E9?style=flat-square) ![Auditable](https://img.shields.io/badge/Auditable-0EA5E9?style=flat-square) ![Governed](https://img.shields.io/badge/Governed-0EA5E9?style=flat-square) ![Self--Hostable](https://img.shields.io/badge/Self--Hostable-0EA5E9?style=flat-square) ![Zero Vendor Lock--In](https://img.shields.io/badge/Zero%20Vendor%20Lock--In-0EA5E9?style=flat-square)
+**Open Source &nbsp;·&nbsp; Auditable &nbsp;·&nbsp; Governed &nbsp;·&nbsp; Self-Hostable &nbsp;·&nbsp; Zero Vendor Lock-In**
 
 [![GitHub Stars](https://img.shields.io/github/stars/semantica-agi/semantica?style=flat-square&color=FFD700&logo=github&logoColor=white&label=Stars)](https://github.com/semantica-agi/semantica) [![GitHub Forks](https://img.shields.io/github/forks/semantica-agi/semantica?style=flat-square&color=6E40C9&logo=github&logoColor=white&label=Forks)](https://github.com/semantica-agi/semantica/network/members) [![Contributors](https://img.shields.io/github/contributors/semantica-agi/semantica?style=flat-square&color=2EA043&logo=github&logoColor=white)](https://github.com/semantica-agi/semantica/graphs/contributors) [![PyPI](https://img.shields.io/pypi/v/semantica.svg?style=flat-square&color=0066CC&logo=pypi&logoColor=white)](https://pypi.org/project/semantica/) [![Total Downloads](https://static.pepy.tech/badge/semantica?style=flat-square)](https://pepy.tech/project/semantica) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT) [![CI](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/ci.yml?style=flat-square&label=CI)](https://github.com/semantica-agi/semantica/actions) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/semantica-agi/semantica)
 
