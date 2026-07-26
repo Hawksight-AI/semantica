@@ -632,6 +632,10 @@ def test_exported_filenames_cannot_escape_or_collide_with_destination(tmp_path):
     assert not (tmp_path / "outside.md").exists()
 
 
+@pytest.mark.skipif(
+    __import__("sys").platform == "win32",
+    reason="Symlink creation on Windows requires elevated privileges or Developer Mode",
+)
 def test_markdown_export_rejects_symlink_without_touching_target(tmp_path):
     memory = AgentMemory()
     memory.store(
