@@ -361,3 +361,39 @@ def test_health_shacl_dimension_degrades_gracefully_on_real_error(client):
     shacl_dim = next(d for d in payload["dimensions"] if d["key"] == "shacl")
     assert shacl_dim["status"] == "critical"
     assert "boom" in shacl_dim["detail"]
+
+
+@pytest.mark.asyncio
+async def test_data_graph_turtle_resolves_onto_prefix_and_unknown_curies(client):
+    from unittest.mock import MagicMock
+    from semantica.explorer.routes.ontology import _data_graph_turtle_for_uri
+
+    graph = client.app.state.session.graph
+    onto_uri = "http://example.org/onto-a"
+    person_a = "http://example.org/onto-a#Person"
+    person_inst = "http://example.org/onto-a#person-with-name"
+    graph.add_node(
+        person_inst,
+        node_type="owl:NamedIndividual",
+        content="Person With Name",
+        scheme_uri=onto_uri,
+        **{
+            "rdf:type": person_a,
+            "onto:name": "Alice",
+            "custom:prop": "http://custom.example/val",
+        },
+    )
+
+    ttl = await _data_graph_turtle_for_uri(MagicMock(), client.app.state.session, onto_uri)
+    assert "http://example.org/onto-a#name" in ttl or "onto:name" in ttl
+    assert "http://example.org/#onto:name" not in ttl
+    assert "http://example.org/onto-a#custom:prop" not in ttl
+
+
+def test_ontology_namespace_helper_handles_all_uri_forms():
+    from semantica.explorer.routes.ontology import _ontology_namespace
+
+    assert _ontology_namespace("http://example.org/onto-a") == "http://example.org/onto-a#"
+    assert _ontology_namespace("http://example.org/onto-a/") == "http://example.org/onto-a/"
+    assert _ontology_namespace("http://example.org/onto-a#") == "http://example.org/onto-a#"
+    assert _ontology_namespace("http://example.org/onto-a#schema") == "http://example.org/onto-a#"

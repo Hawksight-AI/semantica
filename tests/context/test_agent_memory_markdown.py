@@ -13,6 +13,7 @@ class TrackingVectorStore:
         self.items = {}
         self.events = []
         self.fail_after_add = False
+        self.fail_on_delete = False
 
     def add(self, items):
         memory_ids = []
@@ -25,6 +26,8 @@ class TrackingVectorStore:
         return memory_ids
 
     def delete(self, memory_ids):
+        if getattr(self, "fail_on_delete", False):
+            raise RuntimeError("vector delete failed")
         self.events.append(("delete", list(memory_ids)))
         for memory_id in memory_ids:
             self.items.pop(memory_id, None)
@@ -684,3 +687,47 @@ def test_markdown_export_destination_must_be_a_directory(tmp_path):
 
     with pytest.raises(ValueError, match="not a directory"):
         AgentMemory().export(format="markdown", destination=destination)
+
+
+def test_retention_policy_deletes_vector_even_when_current_store_skips_vector():
+    vector_store = TrackingVectorStore()
+    memory = AgentMemory(retention_policy="1_days", vector_store=vector_store)
+
+    memory.store(
+        "Old content",
+        metadata={"type": "note"},
+        memory_id="mem_old",
+        timestamp=datetime.now(),
+    )
+    assert "mem_old" in vector_store.items
+
+    # Simulate 5 days passing since mem_old was stored
+    memory.memory_items["mem_old"].timestamp = datetime.now() - timedelta(days=5)
+
+    memory.store(
+        "New short term content",
+        metadata={"type": "note"},
+        memory_id="mem_new",
+        timestamp=datetime.now(),
+        skip_vector=True,
+    )
+
+    assert not memory.exists("mem_old")
+    assert "mem_old" not in vector_store.items
+
+
+def test_delete_memory_retains_vector_ids_when_vector_deletion_fails():
+    vector_store = TrackingVectorStore()
+    memory = AgentMemory(vector_store=vector_store)
+
+    memory.store(
+        "Content to be deleted",
+        metadata={"type": "note"},
+        memory_id="mem_fail_delete",
+    )
+    assert "mem_fail_delete" in memory._vector_ids
+
+    vector_store.fail_on_delete = True
+    memory.delete_memory("mem_fail_delete")
+
+    assert "mem_fail_delete" in memory._vector_ids

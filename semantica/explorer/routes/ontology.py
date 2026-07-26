@@ -670,6 +670,14 @@ def _extract_namespace(uri: str) -> Optional[str]:
     return None
 
 
+def _ontology_namespace(uri: str) -> str:
+    if "#" in uri:
+        return uri.rsplit("#", 1)[0] + "#"
+    if uri.endswith("/"):
+        return uri
+    return uri.rstrip("#/") + "#"
+
+
 def _alignment_id(source_uri: str, relation: str, target_uri: str) -> str:
     key = f"{source_uri}|{relation}|{target_uri}"
     return str(uuid.uuid5(uuid.NAMESPACE_OID, key))
@@ -831,14 +839,14 @@ def _ontology_dict_from_nodes(uri: str, name: str, nodes: List[Dict[str, Any]], 
 
     return {
         "name": name,
-        "namespace": _extract_namespace(uri) or uri.rstrip("#/") + "#",
+        "namespace": _ontology_namespace(uri),
         "classes": classes,
         "properties": properties,
     }
 
 
 def _basic_shacl_turtle(uri: str, name: str, nodes: List[Dict[str, Any]]) -> str:
-    namespace = _extract_namespace(uri) or uri.rstrip("#/") + "#"
+    namespace = _ontology_namespace(uri)
     lines = [
         "@prefix sh: <http://www.w3.org/ns/shacl#> .",
         "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
@@ -2243,7 +2251,7 @@ async def _data_graph_turtle_for_uri(
     entities = _data_graph_entities(nodes, uri)
 
     g = rdflib.Graph()
-    base_namespace = _extract_namespace(uri) or (uri.rstrip("#/") + "#")
+    base_namespace = _ontology_namespace(uri)
 
     OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#")
     RDF = rdflib.RDF
@@ -2280,11 +2288,13 @@ async def _data_graph_turtle_for_uri(
             "dc": "http://purl.org/dc/elements/1.1/",
             "sh": "http://www.w3.org/ns/shacl#",
             "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "onto": base_ns,
         }
         if ":" in val_str and not val_str.startswith("/"):
             prefix, _, rest = val_str.partition(":")
             if prefix in prefix_map:
                 return rdflib.URIRef(prefix_map[prefix] + rest)
+            return rdflib.URIRef(val_str)
         if val_str.startswith("#"):
             return rdflib.URIRef(base_ns.rstrip("#/") + val_str)
         return rdflib.URIRef(base_ns.rstrip("#/") + "#" + val_str.lstrip("#/"))

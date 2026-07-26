@@ -404,7 +404,10 @@ class AgentMemory:
             self.logger.debug(f"Stored memory item: {memory_id}")
 
             # Apply retention policy
-            self._apply_retention_policy(skip_vector=skip_vector)
+            suppress_vector_mutations = options.get("_suppress_vector_mutations", False)
+            self._apply_retention_policy(
+                suppress_vector_mutations=suppress_vector_mutations
+            )
 
             self.progress_tracker.stop_tracking(
                 tracking_id, status="completed", message=f"Stored memory: {memory_id}"
@@ -587,14 +590,18 @@ class AgentMemory:
         # Remove from vector store unless a caller is staging an atomic local update.
         if not skip_vector:
             if self.vector_store:
+                vector_ids = list(self._vector_ids.get(memory_id, [])) or [
+                    memory_id
+                ]
                 try:
-                    vector_ids = list(self._vector_ids.get(memory_id, [])) or [
-                        memory_id
-                    ]
                     self._delete_vector_ids(vector_ids)
+                    self._vector_ids.pop(memory_id, None)
                 except Exception as e:
-                    self.logger.warning(f"Failed to delete from vector store: {e}")
-            self._vector_ids.pop(memory_id, None)
+                    self.logger.warning(
+                        f"Failed to delete from vector store for memory {memory_id} (IDs: {vector_ids}): {e}"
+                    )
+            else:
+                self._vector_ids.pop(memory_id, None)
 
         memory_item = self.memory_items[memory_id]
 
@@ -861,11 +868,11 @@ class AgentMemory:
             vector_ids = list(previous_vector_ids.get(memory_id, [])) or [memory_id]
             try:
                 self._delete_vector_ids(vector_ids)
+                self._vector_ids.pop(memory_id, None)
             except Exception as exc:
                 self.logger.warning(
-                    f"Failed to delete vector for memory {memory_id}: {exc}"
+                    f"Failed to delete vector for memory {memory_id} (IDs: {vector_ids}): {exc}"
                 )
-            self._vector_ids.pop(memory_id, None)
 
     def _update_knowledge_graph(
         self,
@@ -1012,7 +1019,9 @@ class AgentMemory:
 
         return results
 
-    def _apply_retention_policy(self, *, skip_vector: bool = False) -> None:
+    def _apply_retention_policy(
+        self, *, suppress_vector_mutations: bool = False
+    ) -> None:
         """Apply memory retention policy."""
         if self.retention_policy == "unlimited":
             return
@@ -1037,7 +1046,7 @@ class AgentMemory:
                 memory_ids_to_delete.append(memory_id)
 
         for memory_id in memory_ids_to_delete:
-            self.delete_memory(memory_id, skip_vector=skip_vector)
+            self.delete_memory(memory_id, skip_vector=suppress_vector_mutations)
 
         if memory_ids_to_delete:
             self.logger.info(
@@ -1186,6 +1195,7 @@ class AgentMemory:
                 memory_id=memory_id,
                 timestamp=timestamp,
                 skip_vector=True,
+                _suppress_vector_mutations=True,
                 **replacement_options,
             )
         except Exception:
@@ -2099,6 +2109,7 @@ class AgentMemory:
                         memory_id=current_memory_id,
                         timestamp=memory["timestamp"],
                         skip_vector=True,
+                        _suppress_vector_mutations=True,
                         skip_graph=True,
                     )
                     success = stored_id == current_memory_id and self.exists(
