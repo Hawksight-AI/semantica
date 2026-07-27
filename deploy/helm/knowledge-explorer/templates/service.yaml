@@ -1,5 +1,4 @@
 # checkov:skip=CKV_K8S_21:Namespace is bound via .Release.Namespace at helm install/template time; this chart is namespace-portable by design.
-# ts:skip=AC_K8S_0086 Namespace is bound via .Release.Namespace at helm install/template time; this chart is namespace-portable by design.
 apiVersion: v1
 kind: Service
 metadata:
@@ -8,7 +7,8 @@ metadata:
   labels:
     {{- include "knowledge-explorer.labels" . | nindent 4 }}
   annotations:
-    checkov.io/skip1: CKV_K8S_21=namespace is set via .Release.Namespace, bound only at helm install/template time
+    runterrascan.io/skip: '[{"rule": "AC_K8S_0086", "comment": "Namespace is bound via .Release.Namespace at helm install time"}]'
+    checkov.io/skip1: CKV_K8S_21=Namespace bound via .Release.Namespace at helm install/template time
 spec:
   type: {{ .Values.service.type }}
   ports:

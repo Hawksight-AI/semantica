@@ -132,14 +132,15 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !Sub "${FlowLogGroup.Arn}:log-stream:*"
-              - Effect: Allow
-                Action:
+                  - logs:CreateLogGroup
                   - logs:DescribeLogGroups
                   - logs:DescribeLogStreams
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt FlowLogGroup.Arn
 
   VPCFlowLog:
     Type: AWS::EC2::FlowLog

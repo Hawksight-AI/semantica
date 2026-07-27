@@ -1,6 +1,3 @@
-# checkov:skip=CKV_K8S_21:Namespace is bound via .Release.Namespace at helm install/template time; this chart is namespace-portable by design.
-# ts:skip=AC_K8S_0086 Namespace is bound via .Release.Namespace at helm install/template time; this chart is namespace-portable by design.
-# ts:skip=AC_K8S_0080 seccompProfile RuntimeDefault is set in values.yaml (podSecurityContext/securityContext) via toYaml; only resolves in fully rendered helm output, not static template scanning.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,7 +6,9 @@ metadata:
   labels:
     {{- include "knowledge-explorer.labels" . | nindent 4 }}
   annotations:
-    checkov.io/skip1: CKV_K8S_21=namespace is set via .Release.Namespace, bound only at helm install/template time
+    runterrascan.io/skip: '[{"rule": "AC_K8S_0086", "comment": "Namespace is bound via .Release.Namespace at helm install time"}, {"rule": "AC_K8S_0080", "comment": "seccompProfile RuntimeDefault is set in values.yaml (podSecurityContext)"}]'
+    checkov.io/skip1: CKV_K8S_21=Namespace bound via .Release.Namespace at helm install/template time
+    checkov.io/skip2: CKV_K8S_31=seccompProfile RuntimeDefault set in values.yaml
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
@@ -24,8 +23,10 @@ spec:
       {{- include "knowledge-explorer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        runterrascan.io/skip: '[{"rule": "AC_K8S_0080", "comment": "seccompProfile RuntimeDefault is set in values.yaml (podSecurityContext)"}]'
+        checkov.io/skip1: CKV_K8S_31=seccompProfile RuntimeDefault set in values.yaml
+      {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
