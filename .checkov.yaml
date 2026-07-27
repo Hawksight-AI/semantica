@@ -8,5 +8,11 @@
 # which is only bound at `helm install`/`helm template` time. Checkov's helm
 # framework renders the chart without a namespace override, so it always
 # resolves to "default" and trips CKV_K8S_21 even though the chart is
-# namespace-agnostic by design. Suppressed via metadata annotations on each resource.
+# namespace-agnostic by design. Suppressed both via metadata annotations
+# (checkov.io/skip1) and via inline `# checkov:skip=` / `# ts:skip=` comments
+# at the top of each template, since the annotation form alone has not
+# reliably suppressed the finding in the Microsoft Defender for DevOps scan.
+# deployment.yaml additionally suppresses AC_K8S_0080 (seccomp): the profile
+# is set correctly in values.yaml and only resolves once Helm actually
+# renders `toYaml`, which terrascan's static template scan does not do.
 skip-check: []

@@ -1,4 +1,5 @@
-
+# checkov:skip=CKV_K8S_21:Namespace is bound via .Release.Namespace at helm install/template time; this chart is namespace-portable by design.
+# ts:skip=AC_K8S_0086 Namespace is bound via .Release.Namespace at helm install/template time; this chart is namespace-portable by design.
 apiVersion: v1
 kind: Service
 metadata:
