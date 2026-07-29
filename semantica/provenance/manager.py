@@ -145,9 +145,9 @@ class ProvenanceManager:
     ) -> ProvenanceEntry:
         """Compute checksum, store entry persistently, and gracefully ignore storage errors."""
         entry.checksum = compute_checksum(entry)
-        
+
         try:
-            if _conn is not None and hasattr(self.storage, "_store_with_conn"):
+            if _conn is not None:
                 self.storage._store_with_conn(_conn, entry)
             else:
                 self.storage.store(entry)
@@ -158,7 +158,7 @@ class ProvenanceManager:
             if _raise_on_error:
                 raise
             pass  # Graceful failure - don't break main functionality
-        
+
         return entry
     
     @contextmanager
@@ -288,7 +288,7 @@ class ProvenanceManager:
                     parent_entity_id=kwargs.get("parent_entity_id"),
                     used_entities=list(kwargs.get("used_entities", [])),
                 )
-                self._save_entry(entry, _conn=None, _raise_on_error=False)
+                entry.checksum = compute_checksum(entry)
 
         return entry
     

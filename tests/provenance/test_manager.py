@@ -647,4 +647,19 @@ class TestProvenanceManager:
             assert entry.entity_id == "e_test_prop_test"
             assert entry.checksum is not None
 
+    def test_track_entity_pre_build_failure_fallback_skips_store(self):
+        """Test that when track_entity fails before the entry is built (e.g. a
+        retrieve error inside the atomic transaction), the fallback entry only
+        gets a checksum and is not persisted via a second, out-of-transaction
+        storage.store() call (#784)."""
+        prov_mgr = ProvenanceManager()
+        with patch.object(
+            prov_mgr.storage, "_retrieve_with_conn", side_effect=RuntimeError("retrieve error")
+        ), patch.object(prov_mgr.storage, "store") as mock_store:
+            entry = prov_mgr.track_entity("e_test", source="doc_1")
+            assert entry is not None
+            assert entry.entity_id == "e_test"
+            assert entry.checksum is not None
+            mock_store.assert_not_called()
+
 
