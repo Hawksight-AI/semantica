@@ -155,13 +155,15 @@ prop_entry = manager.track_property_source(
 
 ### Batch Tracking
 
+Batch tracking methods process items in blocks (default `batch_size=1000`) inside a shared transaction per block. Only entities or chunks that successfully commit to storage are added to the returned count, preventing rolled-back entries from inflating success counts.
+
 ```python
 entities = [
     {"id": "entity_1", "confidence": 0.9},
     {"id": "entity_2", "confidence": 0.85},
 ]
 count = manager.track_entities_batch(entities, source="doc_1")
-# Returns the number of entities successfully tracked
+# Returns the number of entities successfully tracked and committed
 
 chunks = [
     {"id": "chunk_0", "start_index": 0, "end_index": 500},
@@ -321,6 +323,9 @@ manager = ProvenanceManager(storage_path="provenance.db")
 ```
 
 `SQLiteStorage` creates the database and indexes automatically on first use.
+
+- **Atomicity & Concurrency**: Configures Write-Ahead Logging (`PRAGMA journal_mode=WAL`), `PRAGMA busy_timeout=5000`, and `PRAGMA synchronous=NORMAL`. Read-modify-write methods (`track_entity()`, `store()`) open a single connection and execute inside an immediate write transaction (`BEGIN IMMEDIATE`), ensuring these sequences are serialized across concurrent connections without leaving open file handles across calls. Plain reads (`retrieve()`, `trace_lineage()`) use a separate connection with no explicit write lock, so concurrent reads don't serialize behind writers or each other.
+- **Backward Compatibility**: Custom storage subclasses overriding `trace_lineage(self, entity_id)` remain backward compatible; `ProvenanceManager` inspects the override signature and automatically calls it with one argument if `max_depth` is unsupported.
 
 ## Tamper-Evident Checksums
 

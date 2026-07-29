@@ -29,6 +29,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from contextlib import contextmanager
 import copy
+import inspect
 import json
 import threading
 
@@ -136,17 +137,39 @@ class ProvenanceManager:
         else:
             self.storage = InMemoryStorage()
 
-    def _save_entry(self, entry: ProvenanceEntry) -> ProvenanceEntry:
+    def _save_entry(
+        self,
+        entry: ProvenanceEntry,
+        _conn: Optional[Any] = None,
+        _raise_on_error: bool = False,
+    ) -> ProvenanceEntry:
         """Compute checksum, store entry persistently, and gracefully ignore storage errors."""
         entry.checksum = compute_checksum(entry)
         
         try:
-            self.storage.store(entry)
+            if _conn is not None and hasattr(self.storage, "_store_with_conn"):
+                self.storage._store_with_conn(_conn, entry)
+            else:
+                self.storage.store(entry)
         except Exception:
+            # Propagate when called from a batch's shared transaction so the
+            # caller's per-item try/except can skip counting this item instead
+            # of reporting an unpersisted entry as tracked (#807).
+            if _raise_on_error:
+                raise
             pass  # Graceful failure - don't break main functionality
         
         return entry
     
+    @contextmanager
+    def _get_or_create_transaction(self, _conn=None):
+        """Helper to use an existing transaction connection or open a new one."""
+        if _conn is not None:
+            yield _conn
+        else:
+            with self.storage.transaction() as conn:
+                yield conn
+
     # === Entity Tracking (from kg.ProvenanceTracker) ===
     
     def track_entity(
@@ -154,6 +177,7 @@ class ProvenanceManager:
         entity_id: str,
         source: str,
         metadata: Optional[Dict[str, Any]] = None,
+        _conn: Optional[Any] = None,
         **kwargs
     ) -> ProvenanceEntry:
         """
@@ -181,90 +205,92 @@ class ProvenanceManager:
         if not isinstance(entity_id, str):
             raise TypeError(f"entity_id must be a string, got {type(entity_id).__name__}")
         
-        # Check if entity already exists
-        existing = self.storage.retrieve(entity_id)
-        parent_id = kwargs.get("parent_entity_id")
+        # Atomic tracking transaction (#807):
+        # We scope one connection to the full duration of track_entity so all
+        # retrieve and store operations share a single transaction. With BEGIN IMMEDIATE,
+        # concurrent calls serialize during retrieval so no intervening versions are lost.
+        # If any step raises, the whole operation rolls back.
+        entry = None
+        try:
+            with self._get_or_create_transaction(_conn) as conn:
+                existing = self.storage._retrieve_with_conn(conn, entity_id)
+                parent_id = kwargs.get("parent_entity_id")
 
-        # If caller declared an explicit parent via metadata, honor it
-        # (unless parent_entity_id was already passed directly)
-        if not parent_id and metadata and isinstance(metadata, Mapping):
-            derived_from = metadata.get("derived_from")
-            if derived_from and isinstance(derived_from, str):
-                parent_id = derived_from
+                if not parent_id and metadata and isinstance(metadata, Mapping):
+                    derived_from = metadata.get("derived_from")
+                    if derived_from and isinstance(derived_from, str):
+                        parent_id = derived_from
 
-        # If source is a known entity, link it as parent (unless parent already set)
-        if not parent_id and source and isinstance(source, str):
-            try:
-                # Check if source exists in storage
-                # trace_lineage is cheaper than retrieve for just checking existence? Or retrieve?
-                # retrieve returns the *latest* entry for that ID
-                source_entity = self.storage.retrieve(source)
-                if source_entity:
-                    parent_id = source
-            except Exception:
-                pass
+                if not parent_id and source and isinstance(source, str):
+                    try:
+                        source_entity = self.storage._retrieve_with_conn(conn, source)
+                        if source_entity:
+                            parent_id = source
+                    except Exception:
+                        pass
 
-        # Track whether the caller explicitly supplied a parent link (via
-        # parent_entity_id kwarg, metadata["derived_from"], or source-as-
-        # known-entity-id resolution) BEFORE the history-preservation block
-        # below. If they did, that explicit value should not be silently
-        # overwritten by the auto-generated history pointer (#742).
-        explicit_parent_supplied = parent_id is not None
+                explicit_parent_supplied = parent_id is not None
 
-        # If entity exists, preserve history by archiving the old state
-        archived_history_id = None
-        if existing:
-            # Create a history entry for the previous state
-            # Use timestamp or counter for uniqueness
-            history_entry = copy.deepcopy(existing)
-            history_id = f"{entity_id}:v:{existing.last_updated}"
-            
-            # Ensure unique ID if update happens same second
-            if self.storage.retrieve(history_id):
-                 history_id = f"{history_id}:{datetime.utcnow().microsecond}"
-            
-            history_entry.entity_id = history_id
-            
-            # Store the history entry
-            try:
-                self.storage.store(history_entry)
-                archived_history_id = history_id
-                # Link new entry to this history entry — but only when the
-                # caller didn't explicitly supply a new parent on this call.
-                # An explicit parent_entity_id (or derived_from on branches
-                # that support it) is an intentional override signal and must
-                # not be silently replaced by internal bookkeeping (#742).
-                if not explicit_parent_supplied:
-                    parent_id = history_id
-            except Exception:
-                pass # If history archiving fails, proceed with update but lose history (graceful degradation)
+                archived_history_id = None
+                if existing:
+                    history_entry = copy.deepcopy(existing)
+                    base_history_id = f"{entity_id}:v:{existing.last_updated}"
+                    history_id = base_history_id
+                    counter = 1
+                    while self.storage._retrieve_with_conn(conn, history_id):
+                        history_id = f"{base_history_id}:{counter}"
+                        counter += 1
 
-        entry = ProvenanceEntry(
-            entity_id=entity_id,
-            entity_type=kwargs.get("entity_type", "entity"),
-            activity_id=kwargs.get("activity_id", "entity_tracking"),
-            source_document=source,
-            source_location=kwargs.get("source_location"),
-            source_quote=kwargs.get("source_quote"),
-            confidence=kwargs.get("confidence", 1.0),
-            metadata=metadata or {},
-            first_seen=existing.first_seen if existing else datetime.utcnow().isoformat(),
-            last_updated=datetime.utcnow().isoformat(),
-            parent_entity_id=parent_id,  # Link to history or explicit parent
-            used_entities=list(kwargs.get("used_entities", [])),
-        )
+                    history_entry.entity_id = history_id
 
-        # Make the archived history entry discoverable via trace_lineage()'s
-        # BFS over used_entities — this ensures the previous version remains
-        # reachable in the lineage chain when explicit_parent_supplied is True
-        # and parent_entity_id points to the caller's explicit parent rather
-        # than the history pointer. When no explicit parent was supplied,
-        # parent_entity_id already IS archived_history_id, so appending it
-        # here too would duplicate the same id in both fields (#742 follow-up).
-        if archived_history_id and explicit_parent_supplied:
-            entry.used_entities.append(archived_history_id)
-        
-        return self._save_entry(entry)
+                    self.storage._store_with_conn(conn, history_entry)
+                    archived_history_id = history_id
+                    if not explicit_parent_supplied:
+                        parent_id = history_id
+
+                entry = ProvenanceEntry(
+                    entity_id=entity_id,
+                    entity_type=kwargs.get("entity_type", "entity"),
+                    activity_id=kwargs.get("activity_id", "entity_tracking"),
+                    source_document=source,
+                    source_location=kwargs.get("source_location"),
+                    source_quote=kwargs.get("source_quote"),
+                    confidence=kwargs.get("confidence", 1.0),
+                    metadata=metadata or {},
+                    first_seen=existing.first_seen if existing else datetime.utcnow().isoformat(),
+                    last_updated=datetime.utcnow().isoformat(),
+                    parent_entity_id=parent_id,
+                    used_entities=list(kwargs.get("used_entities", [])),
+                )
+
+                if archived_history_id and explicit_parent_supplied:
+                    entry.used_entities.append(archived_history_id)
+                
+                self._save_entry(entry, _conn=conn, _raise_on_error=(_conn is not None))
+        except Exception:
+            # When called from a batch's shared transaction (_conn is not None),
+            # propagate so the caller's per-item try/except can skip counting
+            # this item instead of reporting an unpersisted entry as tracked (#807).
+            if _conn is not None:
+                raise
+            if entry is None:
+                entry = ProvenanceEntry(
+                    entity_id=entity_id,
+                    entity_type=kwargs.get("entity_type", "entity"),
+                    activity_id=kwargs.get("activity_id", "entity_tracking"),
+                    source_document=source,
+                    source_location=kwargs.get("source_location"),
+                    source_quote=kwargs.get("source_quote"),
+                    confidence=kwargs.get("confidence", 1.0),
+                    metadata=metadata or {},
+                    first_seen=datetime.utcnow().isoformat(),
+                    last_updated=datetime.utcnow().isoformat(),
+                    parent_entity_id=kwargs.get("parent_entity_id"),
+                    used_entities=list(kwargs.get("used_entities", [])),
+                )
+                self._save_entry(entry, _conn=None, _raise_on_error=False)
+
+        return entry
     
     def track_relationship(
         self,
@@ -316,6 +342,7 @@ class ProvenanceManager:
         start_index: int = 0,
         end_index: int = 0,
         parent_chunk_id: Optional[str] = None,
+        _conn: Optional[Any] = None,
         **metadata
     ) -> ProvenanceEntry:
         """
@@ -355,7 +382,7 @@ class ProvenanceManager:
             timestamp=datetime.utcnow().isoformat()
         )
         
-        return self._save_entry(entry)
+        return self._save_entry(entry, _conn=_conn, _raise_on_error=(_conn is not None))
     
     # === Source Tracking (from conflicts.SourceTracker) ===
     
@@ -440,19 +467,30 @@ class ProvenanceManager:
             >>> count = prov_mgr.track_entities_batch(entities, "doc_1")
         """
         tracked_count = 0
+        batch_size = 1000  # Justification (#807): 1,000 items per transaction bounds SQLite WAL frame growth and reduces lock contention during multi-thousand-row imports while achieving a 1000x reduction in connection/commit overhead.
         
-        for entity in entities:
-            entity_id = entity.get("id") or entity.get("entity_id")
-            if not entity_id:
-                continue
-            
-            entity_metadata = {**metadata, **entity.get("metadata", {})}
-            
+        for i in range(0, len(entities), batch_size):
+            batch = entities[i : i + batch_size]
+            batch_count = 0
             try:
-                self.track_entity(entity_id, source, entity_metadata)
-                tracked_count += 1
+                with self.storage.transaction() as conn:
+                    for entity in batch:
+                        entity_id = entity.get("id") or entity.get("entity_id")
+                        if not entity_id:
+                            continue
+                        
+                        entity_metadata = {**metadata, **entity.get("metadata", {})}
+                        
+                        try:
+                            self.track_entity(entity_id, source, entity_metadata, _conn=conn)
+                            batch_count += 1
+                        except Exception:
+                            pass  # Continue with other entities in this batch
+                # Add batch_count to tracked_count only after the transaction context
+                # exits successfully and commits (#807).
+                tracked_count += batch_count
             except Exception:
-                pass  # Continue with other entities
+                pass  # Partial failure: if block-level storage transaction fails, continue to next block
         
         return tracked_count
     
@@ -476,23 +514,35 @@ class ProvenanceManager:
             Number of chunks tracked
         """
         tracked_count = 0
+        batch_size = 1000  # Justification (#807): 1,000 items per transaction bounds SQLite WAL frame growth and reduces lock contention during multi-thousand-row imports while achieving a 1000x reduction in connection/commit overhead.
         
-        for chunk in chunks:
-            chunk_id = chunk.get("id") or chunk.get("chunk_id")
-            if not chunk_id:
-                continue
-            
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i : i + batch_size]
+            batch_count = 0
             try:
-                self.track_chunk(
-                    chunk_id=chunk_id,
-                    source_document=source_document,
-                    source_path=source_path,
-                    start_index=chunk.get("start_index", 0),
-                    end_index=chunk.get("end_index", 0),
-                    parent_chunk_id=chunk.get("parent_chunk_id"),
-                    **{**metadata, **chunk.get("metadata", {})}
-                )
-                tracked_count += 1
+                with self.storage.transaction() as conn:
+                    for chunk in batch:
+                        chunk_id = chunk.get("id") or chunk.get("chunk_id")
+                        if not chunk_id:
+                            continue
+                        
+                        try:
+                            self.track_chunk(
+                                chunk_id=chunk_id,
+                                source_document=source_document,
+                                source_path=source_path,
+                                start_index=chunk.get("start_index", 0),
+                                end_index=chunk.get("end_index", 0),
+                                parent_chunk_id=chunk.get("parent_chunk_id"),
+                                _conn=conn,
+                                **{**metadata, **chunk.get("metadata", {})}
+                            )
+                            batch_count += 1
+                        except Exception:
+                            pass
+                # Add batch_count to tracked_count only after the transaction context
+                # exits successfully and commits (#807).
+                tracked_count += batch_count
             except Exception:
                 pass
         
@@ -566,16 +616,28 @@ class ProvenanceManager:
             "integrity_verified": integrity_verified,
         }
     
-    def trace_lineage(self, entity_id: str) -> List[ProvenanceEntry]:
+    def trace_lineage(self, entity_id: str, max_depth: Optional[int] = None) -> List[ProvenanceEntry]:
         """
         Trace complete lineage and return raw entries.
         
         Args:
             entity_id: Entity identifier
+            max_depth: Optional maximum BFS depth
             
         Returns:
             List of ProvenanceEntry objects
         """
+        if max_depth is None:
+            return self.storage.trace_lineage(entity_id)
+        try:
+            sig = inspect.signature(self.storage.trace_lineage)
+            supports_max_depth = "max_depth" in sig.parameters or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            )
+        except (ValueError, TypeError):
+            supports_max_depth = True
+        if supports_max_depth:
+            return self.storage.trace_lineage(entity_id, max_depth=max_depth)
         return self.storage.trace_lineage(entity_id)
     
     def get_all_sources(self, entity_id: str) -> List[Dict[str, Any]]:

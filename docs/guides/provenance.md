@@ -83,6 +83,10 @@ prov = ProvenanceManager(storage=SQLiteStorage("audit.db"))
 
 For any regulated deployment — security operations, clinical data, financial risk — use `storage_path`. A SQLite file can be backed up, versioned, and queried with standard tools without requiring a server.
 
+<Note>
+  `SQLiteStorage` automatically configures Write-Ahead Logging (`WAL`), `busy_timeout=5000`, and `synchronous=NORMAL`, and executes read-modify-write operations (like `track_entity()`) in atomic immediate transactions (`BEGIN IMMEDIATE`); plain reads (`retrieve()`, `trace_lineage()`) use a separate connection without an explicit write lock so they don't serialize behind writers. Furthermore, `ProvenanceManager` automatically supports custom storage backends overriding only `trace_lineage(self, entity_id)` without requiring `max_depth` in their signature.
+</Note>
+
 ## Recording provenance when ingesting data
 
 The moment data enters your graph is the moment provenance must be recorded. `track_entity()` captures the source document, the timestamp, the operator or pipeline that ran the extraction, a verbatim quote from the source, and a confidence score. It returns a `ProvenanceEntry` with a SHA-256 checksum computed automatically.
