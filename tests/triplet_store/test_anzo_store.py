@@ -96,6 +96,26 @@ class TestAnzoStoreIsConstructQuery(unittest.TestCase):
             )
         )
 
+    def test_is_construct_query_detects_mixed_case_keyword(self):
+        store = _make_connected_store()
+        self.assertTrue(
+            store._is_construct_query("Construct { ?s ?p ?o } Where { ?s ?p ?o }")
+        )
+
+    def test_is_construct_query_detects_complex_preambles(self):
+        # Permanent regression tests covering edge cases discovered during
+        # regex stress-testing (issue #7): multiline declarations, empty
+        # prefix namespaces, and inline comments embedded in the preamble.
+        store = _make_connected_store()
+        cases = {
+            "multiline_prefix": "PREFIX foaf:\n  <http://xmlns.com/foaf/0.1/>\nCONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }",
+            "empty_prefix_namespace": "PREFIX : <http://ex.org/> CONSTRUCT { ?s ?p ?o }",
+            "inline_comment": "PREFIX ex: <http://ex.org/>\n# inline comment\nCONSTRUCT { ?s ?p ?o }",
+        }
+        for name, query in cases.items():
+            with self.subTest(case=name):
+                self.assertTrue(store._is_construct_query(query))
+
 
 class TestAnzoStoreExecuteSparql(unittest.TestCase):
     def test_not_connected_raises_processing_error(self):
@@ -216,6 +236,36 @@ class TestAnzoStoreExecuteSparql(unittest.TestCase):
         store = _make_connected_store()
         with self.assertRaises(ValidationError):
             store.execute_sparql("SELECT ?s WHERE { ?s ?p ?o }", result_format="nope")
+
+    def test_execute_sparql_construct_handles_literal_with_braces_in_valid_turtle(
+        self,
+    ):
+        # Adversarial case implied by the brace-matching bug found in the
+        # template-string layer (construct_templates._find_matching_brace):
+        # confirm rdflib itself parses a *valid* Turtle literal containing
+        # brace characters correctly, since this is a different parsing
+        # layer (real Turtle syntax, not our {{param}} template string).
+        store = _make_connected_store()
+        turtle_fixture = (
+            b"@prefix ex: <http://ex.org/> .\n"
+            b'ex:s1 ex:p1 "text with { and } braces inside" .\n'
+        )
+        mock_response = MagicMock()
+        mock_response.content = turtle_fixture
+        mock_response.raise_for_status = MagicMock()
+
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post",
+            return_value=mock_response,
+        ):
+            result = store.execute_sparql("CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }")
+
+        self.assertEqual(len(result["triples"]), 1)
+        subject, predicate, obj, metadata = result["triples"][0]
+        self.assertEqual(subject, "http://ex.org/s1")
+        self.assertEqual(predicate, "http://ex.org/p1")
+        self.assertEqual(obj, "text with { and } braces inside")
+        self.assertEqual(metadata, {})
 
 
 class TestAnzoStoreBulkLoadAndCrud(unittest.TestCase):
@@ -425,6 +475,115 @@ class TestAnzoStoreObjectFormatting(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             store._format_object_for_sparql(triplet)
+
+    def test_format_object_escapes_literal_object(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:note",
+            object='line "one"\\line2',
+        )
+        obj = store._format_object_for_sparql(triplet)
+        self.assertEqual(
+            obj,
+            "\"line \\\"one\\\"\\\\line2\"",
+        )
+
+    def test_format_object_serializes_language_literal(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:label",
+            object="Color",
+            metadata={"lang": "en"},
+        )
+        obj = store._format_object_for_sparql(triplet)
+        self.assertEqual(obj, "\"Color\"@en")
+
+    def test_format_object_does_not_treat_invalid_uri_like_text_as_uri(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:note",
+            object="http not a uri",
+        )
+        obj = store._format_object_for_sparql(triplet)
+        self.assertEqual(obj, "\"http not a uri\"")
+
+    def test_format_object_expands_rdf_prefix_to_full_iri(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:value",
+            object="hello",
+            metadata={"datatype": "rdf:langString"},
+        )
+        obj = store._format_object_for_sparql(triplet)
+        self.assertEqual(
+            obj,
+            "\"hello\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>",
+        )
+
+    def test_format_object_rejects_unknown_prefix(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:value",
+            object="hello",
+            metadata={"datatype": "myns:customType"},
+        )
+        with self.assertRaises(ValueError):
+            store._format_object_for_sparql(triplet)
+
+    def test_format_object_rejects_datatype_with_whitespace(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:age",
+            object="42",
+            metadata={"datatype": "http://example.org/type CLEAR ALL"},
+        )
+        with self.assertRaises(ValueError):
+            store._format_object_for_sparql(triplet)
+
+    def test_format_object_accepts_full_iri_datatype_no_brackets(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:age",
+            object="42",
+            metadata={"datatype": "http://www.w3.org/2001/XMLSchema#integer"},
+        )
+        obj = store._format_object_for_sparql(triplet)
+        self.assertEqual(
+            obj,
+            "\"42\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+        )
+
+    def test_format_object_accepts_bracketed_iri_datatype(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:age",
+            object="42",
+            metadata={"datatype": "<http://www.w3.org/2001/XMLSchema#integer>"},
+        )
+        obj = store._format_object_for_sparql(triplet)
+        self.assertEqual(
+            obj,
+            "\"42\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+        )
+
+    def test_format_object_accepts_hyphenated_lang_tag(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:label",
+            object="Colour",
+            metadata={"lang": "en-GB"},
+        )
+        obj = store._format_object_for_sparql(triplet)
+        self.assertEqual(obj, "\"Colour\"@en-GB")
 
 
 if __name__ == "__main__":
