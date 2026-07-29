@@ -166,6 +166,23 @@ Eclipse RDF4J support.
 store = TripletStore(backend="rdf4j", endpoint="http://localhost:8080/rdf4j-server")
 ```
 
+### Anzo
+Altair Anzo (Altair Graph Studio) support. Unlike Blazegraph's namespace or
+RDF4J's repository ID, Anzo addresses data by a dataset/graphmart **URI**
+rather than a short name, so `dataset_uri` is required and is
+percent-encoded into the endpoint path
+(`<endpoint>/sparql/<store_type>/<url-encoded_dataset_uri>`).
+```python
+store = TripletStore(
+    backend="anzo",
+    endpoint="http://localhost:8080",
+    dataset_uri="http://cambridgesemantics.com/Graphmart/abc123",
+    store_type="graphmart",  # or "dataset"
+    username="user",
+    password="pass",
+)
+```
+
 ## Configuration
 
 Configuration is managed via `config.yaml` or environment variables.
@@ -176,4 +193,5 @@ triplet_store:
   blazegraph_endpoint: http://localhost:9999/blazegraph
   jena_endpoint: http://localhost:3030/ds
   rdf4j_endpoint: http://localhost:8080/rdf4j-server
+  anzo_endpoint: http://localhost:8080
 ```

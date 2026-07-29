@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Altair Anzo triplet store backend** (#813) by @KaifAhmad1
+  - Added `AnzoStore` (`semantica/triplet_store/anzo_store.py`), a fourth peer to `BlazegraphStore`/`RDF4JStore`/`JenaStore` speaking plain SPARQL 1.1 over HTTP — no new dependency, since Anzo has no official Python SDK but needs none
+  - The one structural difference from the existing backends: Anzo addresses data by a dataset/graphmart **URI** (`dataset_uri`, required) rather than a short namespace/repository name, so the endpoint path (`<endpoint>/sparql/<store_type>/<url-encoded_dataset_uri>`) percent-encodes it; `store_type` defaults to `"graphmart"` and can be set to `"dataset"`
+  - Reuses the shared `sparql_escaping.py` literal-escaping, datatype-IRI resolution, and CONSTRUCT-detection helpers rather than reimplementing them, matching `BlazegraphStore`'s CONSTRUCT/bindings `execute_sparql` contract exactly
+  - Wired into `TripletStore` (`backend="anzo"`, added to `SUPPORTED_BACKENDS` and `NAMED_GRAPH_CAPABLE_BACKENDS`) and `config.py` (`TRIPLET_STORE_ANZO_ENDPOINT` env var / `anzo_endpoint` config key), and exported from `semantica.triplet_store`
+  - 32 new tests in `tests/triplet_store/test_anzo_store.py` (mocked HTTP, no live Anzo instance needed), including dataset-URI percent-encoding cases that don't apply to the other backends
+  - Bulk loading uses SPARQL `INSERT DATA` (the same approach `BlazegraphStore` uses) rather than Anzo's separate HTTP Client Interface, keeping the `bulk_load()` contract identical across backends
+
 - **Comprehensive unit and security test suite for the `/api/sparql` Explorer route** (#773) by @Sameer6305
   - Added `tests/explorer/test_sparql_route.py` (34 tests) covering the SPARQL Explorer route (`semantica/explorer/routes/sparql.py`), which executes arbitrary SPARQL queries against an in-memory rdflib projection of the live graph and previously had zero test coverage
   - Verified read-only allowlist enforcement against write and mutation queries (`INSERT DATA`, `DELETE DATA`, `DELETE WHERE`, `DROP ALL`, `CLEAR ALL`, `LOAD`, `CREATE GRAPH`, `MODIFY`, comments, and multi-statement injections like `SELECT ... ; DROP ALL`), confirming rejected queries short-circuit before any graph is built or queried

@@ -45,8 +45,8 @@ class TripletStore:
     supporting Blazegraph, Jena, and RDF4J backends.
     """
 
-    SUPPORTED_BACKENDS = {"blazegraph", "jena", "rdf4j"}
-    NAMED_GRAPH_CAPABLE_BACKENDS = {"blazegraph", "rdf4j"}
+    SUPPORTED_BACKENDS = {"blazegraph", "jena", "rdf4j", "anzo"}
+    NAMED_GRAPH_CAPABLE_BACKENDS = {"blazegraph", "rdf4j", "anzo"}
 
     def __init__(
         self,
@@ -129,6 +129,19 @@ class TripletStore:
                     )
 
                 self._store_backend = RDF4JStore(**backend_config)
+
+            elif self.backend_type == "anzo":
+                from .anzo_store import AnzoStore
+
+                backend_config = self.config.copy()
+                if self.endpoint:
+                    backend_config["endpoint"] = self.endpoint
+                else:
+                    backend_config["endpoint"] = triplet_store_config.get(
+                        "anzo_endpoint", "http://localhost:8080"
+                    )
+
+                self._store_backend = AnzoStore(**backend_config)
 
             self.logger.info(f"Initialized {self.backend_type} backend")
 

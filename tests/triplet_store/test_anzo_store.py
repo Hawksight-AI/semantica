@@ -1,0 +1,365 @@
+import os
+import sys
+import unittest
+from unittest.mock import MagicMock, patch
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from semantica.semantic_extract.triplet_extractor import Triplet
+from semantica.triplet_store.anzo_store import AnzoStore
+from semantica.utils.exceptions import ProcessingError, ValidationError
+
+DATASET_URI = "http://cambridgesemantics.com/Graphmart/abc123"
+
+
+def _make_connected_store(**overrides) -> AnzoStore:
+    """Create an AnzoStore instance bypassing the real _connect() call,
+    with .connected forced True (mirrors the state execute_sparql requires)."""
+    kwargs = {"endpoint": "http://localhost:8080", "dataset_uri": DATASET_URI}
+    kwargs.update(overrides)
+    with patch.object(AnzoStore, "_connect", autospec=True):
+        store = AnzoStore(**kwargs)
+    store.connected = True
+    return store
+
+
+CONSTRUCT_QUERY = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
+
+
+class TestAnzoStoreConstruction(unittest.TestCase):
+    def test_requires_dataset_uri(self):
+        with self.assertRaises(ValidationError):
+            AnzoStore(endpoint="http://localhost:8080")
+
+    def test_default_store_type_is_graphmart(self):
+        store = _make_connected_store()
+        self.assertEqual(store.store_type, "graphmart")
+
+    def test_store_type_override(self):
+        store = _make_connected_store(store_type="dataset")
+        self.assertEqual(store.store_type, "dataset")
+
+
+class TestAnzoStoreEndpointEncoding(unittest.TestCase):
+    def test_sparql_endpoint_url_encodes_dataset_uri(self):
+        store = _make_connected_store()
+        endpoint = store._get_sparql_endpoint()
+        self.assertEqual(
+            endpoint,
+            "http://localhost:8080/sparql/graphmart/"
+            "http%3A%2F%2Fcambridgesemantics.com%2FGraphmart%2Fabc123",
+        )
+
+    def test_sparql_endpoint_uses_store_type_in_path(self):
+        store = _make_connected_store(store_type="dataset")
+        endpoint = store._get_sparql_endpoint()
+        self.assertIn("/sparql/dataset/", endpoint)
+
+    def test_update_endpoint_matches_query_endpoint(self):
+        store = _make_connected_store()
+        self.assertEqual(store._get_update_endpoint(), store._get_sparql_endpoint())
+
+    def test_dataset_uri_with_special_characters_is_fully_encoded(self):
+        store = _make_connected_store(dataset_uri="http://ex.org/g?x=1&y=2#frag")
+        endpoint = store._get_sparql_endpoint()
+        # No raw reserved characters from the dataset URI should leak into the path.
+        path_segment = endpoint.split("/sparql/graphmart/", 1)[1]
+        for char in ("/", "?", "&", "#", ":"):
+            self.assertNotIn(char, path_segment)
+
+
+class TestAnzoStoreIsConstructQuery(unittest.TestCase):
+    def test_detects_uppercase(self):
+        self.assertTrue(_make_connected_store()._is_construct_query(CONSTRUCT_QUERY))
+
+    def test_detects_lowercase(self):
+        self.assertTrue(
+            _make_connected_store()._is_construct_query(
+                "construct { ?s ?p ?o } where { ?s ?p ?o }"
+            )
+        )
+
+    def test_false_for_select(self):
+        self.assertFalse(
+            _make_connected_store()._is_construct_query("SELECT ?s WHERE { ?s ?p ?o }")
+        )
+
+    def test_false_for_ask(self):
+        self.assertFalse(_make_connected_store()._is_construct_query("ASK { ?s ?p ?o }"))
+
+    def test_no_false_positive_on_constructor_substring(self):
+        self.assertFalse(
+            _make_connected_store()._is_construct_query(
+                'SELECT ?s WHERE { ?s <urn:p> "CONSTRUCTOR" }'
+            )
+        )
+
+
+class TestAnzoStoreExecuteSparql(unittest.TestCase):
+    def test_not_connected_raises_processing_error(self):
+        with patch.object(AnzoStore, "_connect", autospec=True):
+            store = AnzoStore(endpoint="http://localhost:8080", dataset_uri=DATASET_URI)
+        store.connected = False
+        with self.assertRaises(ProcessingError):
+            store.execute_sparql("SELECT ?s WHERE { ?s ?p ?o }")
+
+    def test_select_sends_basic_auth_when_credentials_given(self):
+        store = _make_connected_store(username="user", password="pass")
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            store.execute_sparql("SELECT ?s WHERE { ?s ?p ?o }")
+        _, kw = mp.call_args
+        self.assertEqual(kw["auth"], ("user", "pass"))
+
+    def test_select_response_shape(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "head": {"vars": ["s", "p", "o"]},
+            "results": {
+                "bindings": [
+                    {
+                        "s": {"type": "uri", "value": "http://ex.org/s1"},
+                        "p": {"type": "uri", "value": "http://ex.org/p1"},
+                        "o": {"type": "literal", "value": "v1"},
+                    }
+                ]
+            },
+        }
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            result = store.execute_sparql("SELECT ?s ?p ?o WHERE { ?s ?p ?o }")
+        _, kw = mp.call_args
+        self.assertNotEqual(kw["headers"].get("Accept"), "text/turtle")
+        self.assertEqual(
+            result,
+            {
+                "success": True,
+                "bindings": mock_resp.json.return_value["results"]["bindings"],
+                "variables": ["s", "p", "o"],
+                "metadata": {
+                    "query": "SELECT ?s ?p ?o WHERE { ?s ?p ?o }",
+                    "endpoint": store._get_sparql_endpoint(),
+                },
+            },
+        )
+        self.assertNotIn("triples", result)
+
+    def test_construct_sends_turtle_accept_header(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.content = b'@prefix ex: <http://ex.org/> .\nex:s1 ex:p1 "v" .\n'
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            store.execute_sparql(CONSTRUCT_QUERY)
+        _, kw = mp.call_args
+        self.assertEqual(kw["headers"]["Accept"], "text/turtle")
+
+    def test_construct_parses_triples_from_turtle_fixture(self):
+        store = _make_connected_store()
+        fixture = (
+            b"@prefix ex: <http://ex.org/> .\n"
+            b'ex:s1 ex:p1 "value1" .\n'
+            b"ex:s1 ex:p2 ex:o2 .\n"
+        )
+        mock_resp = MagicMock()
+        mock_resp.content = fixture
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ):
+            result = store.execute_sparql(CONSTRUCT_QUERY)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["metadata"]["result_format"], "construct")
+        triples = {(s, p, o) for s, p, o, _m in result["triples"]}
+        self.assertIn(("http://ex.org/s1", "http://ex.org/p1", "value1"), triples)
+        self.assertIn(("http://ex.org/s1", "http://ex.org/p2", "http://ex.org/o2"), triples)
+
+    def test_result_format_construct_forces_construct_path(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.content = b'@prefix ex: <http://ex.org/> .\nex:s1 ex:p1 "v" .\n'
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            result = store.execute_sparql(
+                "SELECT ?s WHERE { ?s ?p ?o }", result_format="construct"
+            )
+        _, kw = mp.call_args
+        self.assertEqual(kw["headers"]["Accept"], "text/turtle")
+        self.assertIn("triples", result)
+
+    def test_malformed_turtle_raises_processing_error(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.content = b"this is { not [ valid turtle at all !!!"
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ):
+            with self.assertRaises(ProcessingError) as ctx:
+                store.execute_sparql(CONSTRUCT_QUERY)
+        self.assertIsInstance(ctx.exception, ProcessingError)
+
+    def test_invalid_result_format_raises_validation_error(self):
+        store = _make_connected_store()
+        with self.assertRaises(ValidationError):
+            store.execute_sparql("SELECT ?s WHERE { ?s ?p ?o }", result_format="nope")
+
+
+class TestAnzoStoreBulkLoadAndCrud(unittest.TestCase):
+    def _t(self):
+        return Triplet(
+            subject="http://ex.org/s1",
+            predicate="http://ex.org/p",
+            object="http://ex.org/o1",
+        )
+
+    def test_bulk_load_posts_insert_data_to_update_endpoint(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            result = store.bulk_load([self._t()])
+        self.assertTrue(result["success"])
+        self.assertEqual(result["triplets_loaded"], 1)
+        self.assertEqual(result["dataset_uri"], DATASET_URI)
+        call_url = mp.call_args[0][0]
+        self.assertEqual(call_url, store._get_update_endpoint())
+        self.assertIn("INSERT DATA", mp.call_args[1]["data"]["update"])
+
+    def test_bulk_load_with_graph_wraps_graph_clause(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            store.bulk_load([self._t()], graph="http://ex.org/g")
+        update_query = mp.call_args[1]["data"]["update"]
+        self.assertIn("GRAPH <http://ex.org/g>", update_query)
+
+    def test_bulk_load_not_connected_raises(self):
+        with patch.object(AnzoStore, "_connect", autospec=True):
+            store = AnzoStore(endpoint="http://localhost:8080", dataset_uri=DATASET_URI)
+        store.connected = False
+        with self.assertRaises(ProcessingError):
+            store.bulk_load([self._t()])
+
+    def test_add_triplet_delegates_to_bulk_load(self):
+        store = _make_connected_store()
+        with patch.object(store, "bulk_load", return_value={"success": True}) as mb:
+            store.add_triplet(self._t())
+        mb.assert_called_once_with([self._t()])
+
+    def test_add_triplets_delegates_to_bulk_load(self):
+        store = _make_connected_store()
+        triplets = [self._t(), self._t()]
+        with patch.object(store, "bulk_load", return_value={"success": True}) as mb:
+            store.add_triplets(triplets)
+        mb.assert_called_once_with(triplets)
+
+    def test_delete_triplet_posts_delete_data(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            result = store.delete_triplet(self._t())
+        self.assertTrue(result["success"])
+        self.assertIn("DELETE DATA", mp.call_args[1]["data"]["update"])
+
+    def test_delete_triplet_not_connected_raises(self):
+        with patch.object(AnzoStore, "_connect", autospec=True):
+            store = AnzoStore(endpoint="http://localhost:8080", dataset_uri=DATASET_URI)
+        store.connected = False
+        with self.assertRaises(ProcessingError):
+            store.delete_triplet(self._t())
+
+    def test_get_triplets_builds_select_and_parses_bindings(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "head": {"vars": ["s", "p", "o"]},
+            "results": {
+                "bindings": [
+                    {
+                        "s": {"type": "uri", "value": "http://ex.org/s1"},
+                        "p": {"type": "uri", "value": "http://ex.org/p1"},
+                        "o": {"type": "literal", "value": "v1"},
+                    }
+                ]
+            },
+        }
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ):
+            triplets = store.get_triplets(subject="http://ex.org/s1")
+        self.assertEqual(len(triplets), 1)
+        self.assertEqual(triplets[0].subject, "http://ex.org/s1")
+        self.assertEqual(triplets[0].metadata.get("source"), "anzo")
+
+
+class TestAnzoStoreObjectFormatting(unittest.TestCase):
+    def test_format_object_serializes_uri_object(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:knows",
+            object="urn:entity:person:2",
+        )
+        self.assertEqual(
+            store._format_object_for_sparql(triplet), "<urn:entity:person:2>"
+        )
+
+    def test_format_object_serializes_literal_object(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:name",
+            object="Jane Doe",
+        )
+        self.assertEqual(store._format_object_for_sparql(triplet), "\"Jane Doe\"")
+
+    def test_format_object_serializes_typed_literal(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:age",
+            object="42",
+            metadata={"datatype": "xsd:integer"},
+        )
+        self.assertEqual(
+            store._format_object_for_sparql(triplet),
+            "\"42\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+        )
+
+    def test_format_object_rejects_injected_lang_tag(self):
+        store = _make_connected_store()
+        triplet = Triplet(
+            subject="urn:entity:person:1",
+            predicate="urn:property:label",
+            object="Color",
+            metadata={"lang": "en . CLEAR ALL #"},
+        )
+        with self.assertRaises(ValueError):
+            store._format_object_for_sparql(triplet)
+
+
+if __name__ == "__main__":
+    unittest.main()

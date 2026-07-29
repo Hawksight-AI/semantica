@@ -123,6 +123,7 @@ class TripletStoreConfig:
             "TRIPLET_STORE_BLAZEGRAPH_ENDPOINT": "blazegraph_endpoint",
             "TRIPLET_STORE_JENA_ENDPOINT": "jena_endpoint",
             "TRIPLET_STORE_RDF4J_ENDPOINT": "rdf4j_endpoint",
+            "TRIPLET_STORE_ANZO_ENDPOINT": "anzo_endpoint",
         }
 
         for env_var, config_key in env_mappings.items():
