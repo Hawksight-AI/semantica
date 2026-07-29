@@ -6,6 +6,7 @@ chunk tracking, source tracking, and lineage tracing.
 """
 
 import pytest
+from unittest.mock import patch
 from semantica.provenance import ProvenanceManager, SourceReference
 
 
@@ -597,4 +598,53 @@ class TestProvenanceManager:
         assert check_broken["valid"] is False
         assert check_broken["errors"] >= 1
         assert "e_broken_child -> non_existent_parent" in check_broken["missing_references"]
+
+    def test_track_entity_storage_error_swallowed(self):
+        """Test that track_entity swallows storage.store() exceptions and still returns a ProvenanceEntry."""
+        prov_mgr = ProvenanceManager()
+        with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")):
+            entry = prov_mgr.track_entity("e_test", source="doc_1")
+            assert entry is not None
+            assert entry.entity_id == "e_test"
+            assert entry.checksum is not None
+
+    def test_track_relationship_storage_error_swallowed(self):
+        """Test that track_relationship swallows storage.store() exceptions and still returns a ProvenanceEntry."""
+        prov_mgr = ProvenanceManager()
+        with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")):
+            entry = prov_mgr.track_relationship("r_test", source="doc_1")
+            assert entry is not None
+            assert entry.entity_id == "r_test"
+            assert entry.checksum is not None
+
+    def test_track_chunk_storage_error_swallowed(self):
+        """Test that track_chunk swallows storage.store() exceptions and still returns a ProvenanceEntry."""
+        prov_mgr = ProvenanceManager()
+        with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")):
+            entry = prov_mgr.track_chunk(
+                chunk_id="c_test",
+                source_document="doc_1",
+                source_path="/path/to/doc.pdf",
+                start_index=0,
+                end_index=100,
+            )
+            assert entry is not None
+            assert entry.entity_id == "c_test"
+            assert entry.checksum is not None
+
+    def test_track_property_source_storage_error_swallowed(self):
+        """Test that track_property_source swallows storage.store() exceptions and still returns a ProvenanceEntry."""
+        prov_mgr = ProvenanceManager()
+        source = SourceReference(document="doc_1", page=1, confidence=0.9)
+        with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")):
+            entry = prov_mgr.track_property_source(
+                entity_id="e_test",
+                property_name="prop_test",
+                value="val",
+                source=source,
+            )
+            assert entry is not None
+            assert entry.entity_id == "e_test_prop_test"
+            assert entry.checksum is not None
+
 

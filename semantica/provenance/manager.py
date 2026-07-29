@@ -135,6 +135,17 @@ class ProvenanceManager:
             self.storage = SQLiteStorage(storage_path)
         else:
             self.storage = InMemoryStorage()
+
+    def _save_entry(self, entry: ProvenanceEntry) -> ProvenanceEntry:
+        """Compute checksum, store entry persistently, and gracefully ignore storage errors."""
+        entry.checksum = compute_checksum(entry)
+        
+        try:
+            self.storage.store(entry)
+        except Exception:
+            pass  # Graceful failure - don't break main functionality
+        
+        return entry
     
     # === Entity Tracking (from kg.ProvenanceTracker) ===
     
@@ -253,15 +264,7 @@ class ProvenanceManager:
         if archived_history_id and explicit_parent_supplied:
             entry.used_entities.append(archived_history_id)
         
-        # Compute checksum for integrity
-        entry.checksum = compute_checksum(entry)
-        
-        try:
-            self.storage.store(entry)
-        except Exception:
-            pass  # Graceful failure - don't break main functionality
-        
-        return entry
+        return self._save_entry(entry)
     
     def track_relationship(
         self,
@@ -301,14 +304,7 @@ class ProvenanceManager:
             last_updated=datetime.utcnow().isoformat()
         )
         
-        entry.checksum = compute_checksum(entry)
-        
-        try:
-            self.storage.store(entry)
-        except Exception:
-            pass
-        
-        return entry
+        return self._save_entry(entry)
     
     # === Chunk Tracking (from split.ProvenanceTracker) ===
     
@@ -359,14 +355,7 @@ class ProvenanceManager:
             timestamp=datetime.utcnow().isoformat()
         )
         
-        entry.checksum = compute_checksum(entry)
-        
-        try:
-            self.storage.store(entry)
-        except Exception:
-            pass
-        
-        return entry
+        return self._save_entry(entry)
     
     # === Source Tracking (from conflicts.SourceTracker) ===
     
@@ -422,14 +411,7 @@ class ProvenanceManager:
             timestamp=datetime.utcnow().isoformat()
         )
         
-        entry.checksum = compute_checksum(entry)
-        
-        try:
-            self.storage.store(entry)
-        except Exception:
-            pass
-        
-        return entry
+        return self._save_entry(entry)
     
     # === Batch Operations ===
     
