@@ -177,7 +177,7 @@ store = TripletStore(
     backend="anzo",
     endpoint="http://localhost:8080",
     dataset_uri="http://cambridgesemantics.com/Graphmart/abc123",
-    store_type="graphmart",  # or "dataset"
+    store_type="graphmart",  # or "lds" (Anzo's Linked Data Set store type)
     username="user",
     password="pass",
 )

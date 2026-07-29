@@ -69,7 +69,8 @@ class AnzoStore:
                   graphmart (required). Unlike Blazegraph's namespace or
                   RDF4J's repository ID, this is a full URI, not a short
                   name, and is percent-encoded into the endpoint path.
-                - store_type: "graphmart" or "dataset" (default: "graphmart").
+                - store_type: "graphmart" or "lds" (Anzo's Linked Data Set
+                  store type; default: "graphmart").
                 - username: Username for HTTP Basic authentication.
                 - password: Password for HTTP Basic authentication.
                 - timeout: Request timeout in seconds (default: 30).
@@ -322,10 +323,17 @@ class AnzoStore:
 
         try:
             graph = options.get("graph", "")
-            graph_clause = f"GRAPH <{graph}>" if graph else ""
+            if graph:
+                sparql_escaping.validate_uri(graph)
 
             insert_data = self._build_insert_data(triplets)
-            query = f"INSERT DATA {graph_clause} {{ {insert_data} }}"
+            # The GRAPH block must be nested *inside* the INSERT DATA braces
+            # per the SPARQL 1.1 Update grammar (INSERT DATA { GRAPH <g> { ... } }),
+            # not appended before them.
+            if graph:
+                query = f"INSERT DATA {{ GRAPH <{graph}> {{ {insert_data} }} }}"
+            else:
+                query = f"INSERT DATA {{ {insert_data} }}"
 
             response = requests.post(
                 update_endpoint,
@@ -344,14 +352,24 @@ class AnzoStore:
                 "triplets_loaded": len(triplets),
                 "dataset_uri": self.dataset_uri,
             }
+        except ValidationError:
+            raise
         except Exception as e:
             self.logger.error(f"Bulk load failed: {e}")
             raise ProcessingError(f"Bulk load failed: {e}")
 
     def _build_insert_data(self, triplets: List[Triplet]) -> str:
-        """Build SPARQL INSERT DATA clause."""
+        """Build SPARQL INSERT DATA clause.
+
+        Validates subject/predicate as safe IRIs via sparql_escaping.validate_uri
+        before interpolating them into the query string, so a value containing
+        e.g. ``>`` cannot terminate the intended ``<...>`` token and inject
+        additional SPARQL Update tokens.
+        """
         lines = []
         for triplet in triplets:
+            sparql_escaping.validate_uri(triplet.subject)
+            sparql_escaping.validate_uri(triplet.predicate)
             lines.append(
                 f"<{triplet.subject}> <{triplet.predicate}> {self._format_object_for_sparql(triplet)} ."
             )
@@ -416,18 +434,23 @@ class AnzoStore:
         **options,
     ) -> List[Triplet]:
         """Get triplets matching criteria."""
-        where_clauses = []
+        # Constraints are expressed via FILTER(...) rather than appended as bare
+        # equality expressions inside the group graph pattern — the latter
+        # (e.g. "?s ?p ?o ?s = <...>") is not a valid SPARQL graph pattern and
+        # is rejected by standards-compliant SPARQL engines. subject/predicate
+        # are also validated as safe IRIs before interpolation.
+        filters = []
         if subject:
-            where_clauses.append(f"?s = <{subject}>")
+            filters.append(f"?s = <{sparql_escaping.validate_uri(subject)}>")
         if predicate:
-            where_clauses.append(f"?p = <{predicate}>")
+            filters.append(f"?p = <{sparql_escaping.validate_uri(predicate)}>")
         if object:
-            where_clauses.append(
+            filters.append(
                 f"?o = {self._format_object_for_sparql(Triplet(subject='', predicate='', object=object))}"
             )
 
-        where_clause = " ".join(where_clauses) if where_clauses else ""
-        query = f"SELECT ?s ?p ?o WHERE {{ ?s ?p ?o {where_clause} }}"
+        filter_clause = f" FILTER({' && '.join(filters)})" if filters else ""
+        query = f"SELECT ?s ?p ?o WHERE {{ ?s ?p ?o .{filter_clause} }}"
 
         result = self.execute_sparql(query, **options)
 
@@ -451,12 +474,15 @@ class AnzoStore:
 
         update_endpoint = self._get_update_endpoint()
 
-        query = (
-            f"DELETE DATA {{ <{triplet.subject}> <{triplet.predicate}> "
-            f"{self._format_object_for_sparql(triplet)} }}"
-        )
-
         try:
+            sparql_escaping.validate_uri(triplet.subject)
+            sparql_escaping.validate_uri(triplet.predicate)
+
+            query = (
+                f"DELETE DATA {{ <{triplet.subject}> <{triplet.predicate}> "
+                f"{self._format_object_for_sparql(triplet)} }}"
+            )
+
             response = requests.post(
                 update_endpoint,
                 data={"update": query},
@@ -470,6 +496,8 @@ class AnzoStore:
             response.raise_for_status()
 
             return {"success": True}
+        except ValidationError:
+            raise
         except Exception as e:
             self.logger.error(f"Delete triplet failed: {e}")
             raise ProcessingError(f"Delete triplet failed: {e}")

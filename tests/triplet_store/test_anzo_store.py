@@ -38,8 +38,8 @@ class TestAnzoStoreConstruction(unittest.TestCase):
         self.assertEqual(store.store_type, "graphmart")
 
     def test_store_type_override(self):
-        store = _make_connected_store(store_type="dataset")
-        self.assertEqual(store.store_type, "dataset")
+        store = _make_connected_store(store_type="lds")
+        self.assertEqual(store.store_type, "lds")
 
 
 class TestAnzoStoreEndpointEncoding(unittest.TestCase):
@@ -53,9 +53,9 @@ class TestAnzoStoreEndpointEncoding(unittest.TestCase):
         )
 
     def test_sparql_endpoint_uses_store_type_in_path(self):
-        store = _make_connected_store(store_type="dataset")
+        store = _make_connected_store(store_type="lds")
         endpoint = store._get_sparql_endpoint()
-        self.assertIn("/sparql/dataset/", endpoint)
+        self.assertIn("/sparql/lds/", endpoint)
 
     def test_update_endpoint_matches_query_endpoint(self):
         store = _make_connected_store()
@@ -241,7 +241,10 @@ class TestAnzoStoreBulkLoadAndCrud(unittest.TestCase):
         self.assertEqual(call_url, store._get_update_endpoint())
         self.assertIn("INSERT DATA", mp.call_args[1]["data"]["update"])
 
-    def test_bulk_load_with_graph_wraps_graph_clause(self):
+    def test_bulk_load_with_graph_nests_graph_block_inside_insert_data(self):
+        # SPARQL 1.1 Update requires the GRAPH block *inside* the INSERT DATA
+        # braces: INSERT DATA { GRAPH <g> { ... } }, not
+        # "INSERT DATA GRAPH <g> { ... }".
         store = _make_connected_store()
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
@@ -250,7 +253,23 @@ class TestAnzoStoreBulkLoadAndCrud(unittest.TestCase):
         ) as mp:
             store.bulk_load([self._t()], graph="http://ex.org/g")
         update_query = mp.call_args[1]["data"]["update"]
-        self.assertIn("GRAPH <http://ex.org/g>", update_query)
+        self.assertIn("INSERT DATA { GRAPH <http://ex.org/g> {", update_query)
+        self.assertNotIn("INSERT DATA GRAPH", update_query)
+
+    def test_bulk_load_rejects_invalid_graph_uri(self):
+        store = _make_connected_store()
+        with self.assertRaises(ValidationError):
+            store.bulk_load([self._t()], graph="http://ex.org/g with space")
+
+    def test_bulk_load_rejects_injected_subject(self):
+        store = _make_connected_store()
+        bad_triplet = Triplet(
+            subject="http://ex.org/s1> } ; DROP ALL #",
+            predicate="http://ex.org/p",
+            object="http://ex.org/o1",
+        )
+        with self.assertRaises(ValidationError):
+            store.bulk_load([bad_triplet])
 
     def test_bulk_load_not_connected_raises(self):
         with patch.object(AnzoStore, "_connect", autospec=True):
@@ -290,6 +309,16 @@ class TestAnzoStoreBulkLoadAndCrud(unittest.TestCase):
         with self.assertRaises(ProcessingError):
             store.delete_triplet(self._t())
 
+    def test_delete_triplet_rejects_injected_subject(self):
+        store = _make_connected_store()
+        bad_triplet = Triplet(
+            subject="http://ex.org/s1> } ; DROP ALL #",
+            predicate="http://ex.org/p",
+            object="http://ex.org/o1",
+        )
+        with self.assertRaises(ValidationError):
+            store.delete_triplet(bad_triplet)
+
     def test_get_triplets_builds_select_and_parses_bindings(self):
         store = _make_connected_store()
         mock_resp = MagicMock()
@@ -313,6 +342,43 @@ class TestAnzoStoreBulkLoadAndCrud(unittest.TestCase):
         self.assertEqual(len(triplets), 1)
         self.assertEqual(triplets[0].subject, "http://ex.org/s1")
         self.assertEqual(triplets[0].metadata.get("source"), "anzo")
+
+    def test_get_triplets_emits_valid_filter_based_query(self):
+        # The WHERE clause must remain a syntactically valid graph pattern
+        # (?s ?p ?o .) with constraints expressed via FILTER(...), not bare
+        # equality expressions appended inside the group graph pattern.
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            store.get_triplets(subject="http://ex.org/s1", predicate="http://ex.org/p1")
+        query = mp.call_args[1]["data"]["query"]
+        self.assertIn("?s ?p ?o .", query)
+        self.assertIn("FILTER(", query)
+        self.assertIn("?s = <http://ex.org/s1>", query)
+        self.assertIn("?p = <http://ex.org/p1>", query)
+        self.assertNotIn("?o } WHERE", query)
+
+    def test_get_triplets_no_filters_omits_filter_clause(self):
+        store = _make_connected_store()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
+        mock_resp.raise_for_status = MagicMock()
+        with patch(
+            "semantica.triplet_store.anzo_store.requests.post", return_value=mock_resp
+        ) as mp:
+            store.get_triplets()
+        query = mp.call_args[1]["data"]["query"]
+        self.assertNotIn("FILTER(", query)
+        self.assertEqual(query, "SELECT ?s ?p ?o WHERE { ?s ?p ?o . }")
+
+    def test_get_triplets_rejects_invalid_subject_uri(self):
+        store = _make_connected_store()
+        with self.assertRaises(ValidationError):
+            store.get_triplets(subject="not a valid uri")
 
 
 class TestAnzoStoreObjectFormatting(unittest.TestCase):
