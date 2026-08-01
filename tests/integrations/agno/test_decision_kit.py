@@ -257,6 +257,56 @@ class TestCheckPolicy(unittest.TestCase):
         violations = result.get("violations", [])
         self.assertGreater(len(violations), 0)
 
+    def test_decision_data_list_rejected_with_clear_violation(self):
+        # decision_data decoding to a list previously passed the isinstance
+        # check silently, then `field not in data` did list-membership
+        # (not key) testing and `data[field]` raised a raw, confusing
+        # TypeError deep inside _eval_rule. Must now be rejected upfront.
+        result = json.loads(self.kit.check_policy(
+            json.dumps(["confidence", 0.95]),
+            json.dumps(["confidence >= 0.9"]),
+        ))
+        self.assertFalse(result["compliant"])
+        self.assertEqual(len(result["violations"]), 1)
+        self.assertIn("JSON object", result["violations"][0])
+        self.assertEqual(result["warnings"], [])
+
+    def test_decision_data_number_rejected_with_clear_violation(self):
+        result = json.loads(self.kit.check_policy(
+            json.dumps(42),
+            json.dumps(["confidence >= 0.9"]),
+        ))
+        self.assertFalse(result["compliant"])
+        self.assertEqual(len(result["violations"]), 1)
+        self.assertIn("JSON object", result["violations"][0])
+
+    def test_decision_data_string_rejected_with_clear_violation(self):
+        result = json.loads(self.kit.check_policy(
+            json.dumps("confidence"),
+            json.dumps(["confidence >= 0.9"]),
+        ))
+        self.assertFalse(result["compliant"])
+        self.assertEqual(len(result["violations"]), 1)
+        self.assertIn("JSON object", result["violations"][0])
+
+    def test_decision_data_bool_rejected_with_clear_violation(self):
+        result = json.loads(self.kit.check_policy(
+            json.dumps(True),
+            json.dumps(["confidence >= 0.9"]),
+        ))
+        self.assertFalse(result["compliant"])
+        self.assertEqual(len(result["violations"]), 1)
+        self.assertIn("JSON object", result["violations"][0])
+
+    def test_decision_data_null_rejected_with_clear_violation(self):
+        result = json.loads(self.kit.check_policy(
+            json.dumps(None),
+            json.dumps(["confidence >= 0.9"]),
+        ))
+        self.assertFalse(result["compliant"])
+        self.assertEqual(len(result["violations"]), 1)
+        self.assertIn("JSON object", result["violations"][0])
+
     def test_rule_referencing_missing_field_warns_not_silently_compliant(self):
         # Issue #778 traced example: rule references a field absent from the
         # decision payload. This must NOT be silently treated as compliant

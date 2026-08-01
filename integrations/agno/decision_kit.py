@@ -322,7 +322,11 @@ class AgnoDecisionKit(_ToolkitBase):  # type: ignore[misc]
         ----------
         decision_data:
             JSON string describing the decision (must include ``category``,
-            ``outcome``, ``confidence`` keys at minimum).
+            ``outcome``, ``confidence`` keys at minimum).  Must decode to a
+            JSON object — any other shape (list, number, string, bool) is
+            rejected with a single ``violations`` entry, the same as
+            malformed JSON, rather than being passed through to per-rule
+            evaluation where it would produce confusing internal errors.
         policy_rules:
             JSON list of rule strings, e.g.
             ``'["confidence >= 0.7", "category != \\"test\\""]'``.
@@ -346,6 +350,18 @@ class AgnoDecisionKit(_ToolkitBase):  # type: ignore[misc]
                 {
                     "compliant": False,
                     "violations": [f"Invalid decision_data JSON: {exc}"],
+                    "warnings": [],
+                }
+            )
+
+        if not isinstance(data, dict):
+            return json.dumps(
+                {
+                    "compliant": False,
+                    "violations": [
+                        f"decision_data must decode to a JSON object, "
+                        f"got {type(data).__name__}: {data!r}"
+                    ],
                     "warnings": [],
                 }
             )
