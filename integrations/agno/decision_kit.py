@@ -310,7 +310,11 @@ class AgnoDecisionKit(_ToolkitBase):  # type: ignore[misc]
         Rules are evaluated inline using simple comparison expressions.  This
         avoids misuse of ``PolicyEngine.check_compliance`` (which requires a
         stored ``Decision`` + ``policy_id``) and ensures exceptions never
-        silently return ``compliant=True``.
+        silently return ``compliant=True``.  A rule that references a field
+        missing from ``decision_data``, or that doesn't match the expected
+        ``<field> <op> <value>`` format, cannot be evaluated — it is recorded
+        in ``warnings`` (not ``violations``) since we don't know whether it
+        would have passed or failed.
 
         Parameters
         ----------
@@ -367,14 +371,21 @@ class AgnoDecisionKit(_ToolkitBase):  # type: ignore[misc]
         )
 
     def _eval_rule(self, rule: str, data: Dict[str, Any]) -> bool:
-        """Evaluate a simple comparison rule (``field op value``) against data."""
+        """
+        Evaluate a simple comparison rule (``field op value``) against data.
+
+        Raises ``ValueError`` when the rule cannot be evaluated (unrecognised
+        format or the referenced field is absent from ``data``) so that
+        ``check_policy`` records it as a ``warnings`` entry instead of
+        silently treating it as passed.
+        """
         m = re.match(r"(\w+)\s*(>=|<=|!=|==|>|<)\s*(.+)", rule.strip())
         if not m:
-            return True  # unrecognised format — pass through
+            raise ValueError(f"unrecognised rule format: {rule!r}")
         field, op, val_str = m.group(1), m.group(2), m.group(3).strip().strip("\"'")
         actual = data.get(field)
         if actual is None:
-            return True  # field absent — cannot evaluate
+            raise ValueError(f"rule references undefined field {field!r}")
         try:
             val: Any = type(actual)(val_str)
         except (ValueError, TypeError):

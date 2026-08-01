@@ -257,6 +257,52 @@ class TestCheckPolicy(unittest.TestCase):
         violations = result.get("violations", [])
         self.assertGreater(len(violations), 0)
 
+    def test_rule_referencing_missing_field_warns_not_silently_compliant(self):
+        # Issue #778 traced example: rule references a field absent from the
+        # decision payload. This must NOT be silently treated as compliant
+        # with no signal — it should surface in `warnings`.
+        decision = json.dumps({"confidence": 0.95})
+        rules = json.dumps(["minimum_score >= 0.9"])
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("minimum_score", result["warnings"][0])
+        self.assertIn("minimum_score >= 0.9", result["warnings"][0])
+
+    def test_malformed_rule_string_warns_not_silently_compliant(self):
+        # A rule that doesn't match `<field> <op> <value>` must also warn
+        # instead of silently passing through as compliant.
+        decision = json.dumps({"confidence": 0.95})
+        rules = json.dumps(["not a valid rule!!!"])
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("not a valid rule!!!", result["warnings"][0])
+
+    def test_valid_rule_against_present_field_still_evaluates_normally(self):
+        # Sanity check: a rule referencing a field that IS present is
+        # unaffected by the missing-field fix and evaluates as before.
+        decision = json.dumps({"confidence": 0.95})
+        rules = json.dumps(["confidence >= 0.9"])
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(result["warnings"], [])
+
+    def test_valid_rule_violation_against_present_field(self):
+        decision = json.dumps({"confidence": 0.5})
+        rules = json.dumps(["confidence >= 0.9"])
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertFalse(result["compliant"])
+        self.assertEqual(len(result["violations"]), 1)
+        self.assertEqual(result["warnings"], [])
+
 
 class TestGetDecisionSummary(unittest.TestCase):
 
