@@ -311,10 +311,12 @@ class AgnoDecisionKit(_ToolkitBase):  # type: ignore[misc]
         avoids misuse of ``PolicyEngine.check_compliance`` (which requires a
         stored ``Decision`` + ``policy_id``) and ensures exceptions never
         silently return ``compliant=True``.  A rule that references a field
-        missing from ``decision_data``, or that doesn't match the expected
-        ``<field> <op> <value>`` format, cannot be evaluated — it is recorded
-        in ``warnings`` (not ``violations``) since we don't know whether it
-        would have passed or failed.
+        missing from ``decision_data``, a field whose value is JSON ``null``,
+        or a rule that doesn't match the expected ``<field> <op> <value>``
+        format, cannot be evaluated — it is recorded in ``warnings`` (not
+        ``violations``) since we don't know whether it would have passed or
+        failed.  These are reported as distinct messages (missing key vs.
+        null value) so the warning is actionable.
 
         Parameters
         ----------
@@ -326,6 +328,11 @@ class AgnoDecisionKit(_ToolkitBase):  # type: ignore[misc]
             ``'["confidence >= 0.7", "category != \\"test\\""]'``.
             Each rule is a simple comparison: ``<field> <op> <value>``
             where op is one of ``>=``, ``<=``, ``!=``, ``==``, ``>``, ``<``.
+            A JSON-encoded bare string (e.g. ``'"confidence >= 0.7"'``) is
+            treated as a single rule.  Any other decoded JSON shape (e.g. a
+            number or object), or a non-string list element, is recorded as
+            one ``warnings`` entry and otherwise ignored rather than being
+            iterated character-by-character.
 
         Returns
         -------
@@ -343,15 +350,34 @@ class AgnoDecisionKit(_ToolkitBase):  # type: ignore[misc]
                 }
             )
 
+        violations: List[str] = []
+        warnings: List[str] = []
+
         rules: List[str] = []
         if policy_rules:
             try:
-                rules = json.loads(policy_rules)
+                parsed_rules = json.loads(policy_rules)
             except json.JSONDecodeError:
                 rules = [r.strip() for r in policy_rules.split(",") if r.strip()]
-
-        violations: List[str] = []
-        warnings: List[str] = []
+            else:
+                if isinstance(parsed_rules, str):
+                    # A single rule encoded as a bare JSON string, e.g.
+                    # policy_rules='"confidence >= 0.7"'. Treat it as one
+                    # rule rather than iterating it character-by-character.
+                    rules = [parsed_rules]
+                elif isinstance(parsed_rules, list):
+                    for item in parsed_rules:
+                        if isinstance(item, str):
+                            rules.append(item)
+                        else:
+                            warnings.append(
+                                f"Ignoring non-string policy rule entry: {item!r}"
+                            )
+                else:
+                    warnings.append(
+                        f"policy_rules must decode to a JSON list of rule strings, "
+                        f"got {type(parsed_rules).__name__}: {parsed_rules!r}"
+                    )
 
         for rule in rules:
             try:
@@ -375,17 +401,19 @@ class AgnoDecisionKit(_ToolkitBase):  # type: ignore[misc]
         Evaluate a simple comparison rule (``field op value``) against data.
 
         Raises ``ValueError`` when the rule cannot be evaluated (unrecognised
-        format or the referenced field is absent from ``data``) so that
-        ``check_policy`` records it as a ``warnings`` entry instead of
-        silently treating it as passed.
+        format, the referenced field is absent from ``data``, or the field's
+        value is JSON ``null``) so that ``check_policy`` records it as a
+        ``warnings`` entry instead of silently treating it as passed.
         """
         m = re.match(r"(\w+)\s*(>=|<=|!=|==|>|<)\s*(.+)", rule.strip())
         if not m:
             raise ValueError(f"unrecognised rule format: {rule!r}")
         field, op, val_str = m.group(1), m.group(2), m.group(3).strip().strip("\"'")
-        actual = data.get(field)
-        if actual is None:
+        if field not in data:
             raise ValueError(f"rule references undefined field {field!r}")
+        actual = data[field]
+        if actual is None:
+            raise ValueError(f"field {field!r} is null — cannot evaluate rule")
         try:
             val: Any = type(actual)(val_str)
         except (ValueError, TypeError):

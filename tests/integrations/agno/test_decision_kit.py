@@ -303,6 +303,84 @@ class TestCheckPolicy(unittest.TestCase):
         self.assertEqual(len(result["violations"]), 1)
         self.assertEqual(result["warnings"], [])
 
+    def test_bare_json_string_policy_rules_treated_as_single_rule(self):
+        # policy_rules='"confidence >= 0.9"' decodes to a plain str via
+        # json.loads. Must be treated as ONE rule, not iterated character
+        # by character (which previously produced one warning per char).
+        decision = json.dumps({"confidence": 0.95})
+        rules = json.dumps("confidence >= 0.9")  # -> '"confidence >= 0.9"'
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(result["warnings"], [])
+
+    def test_bare_json_string_policy_rules_missing_field_warns_once(self):
+        decision = json.dumps({"confidence": 0.95})
+        rules = json.dumps("minimum_score >= 0.9")
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("minimum_score", result["warnings"][0])
+
+    def test_non_list_non_string_policy_rules_produces_single_warning(self):
+        # policy_rules is valid JSON but decodes to a number/object, not a
+        # list of rule strings. Must produce exactly one warning, not crash
+        # or silently no-op.
+        decision = json.dumps({"confidence": 0.95})
+        rules = json.dumps(42)
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("policy_rules", result["warnings"][0])
+
+    def test_non_string_list_elements_warn_and_are_skipped(self):
+        # A list containing a non-string entry should warn about that entry
+        # specifically and continue evaluating the valid string entries.
+        decision = json.dumps({"confidence": 0.5})
+        rules = json.dumps(["confidence >= 0.9", 123, None])
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertFalse(result["compliant"])
+        self.assertEqual(len(result["violations"]), 1)
+        self.assertEqual(len(result["warnings"]), 2)
+
+    def test_missing_key_and_null_value_produce_distinct_warnings(self):
+        # dict.get(field) can't distinguish an absent key from a key present
+        # with JSON null. `minimum_score` is truly absent; `flagged_reason`
+        # is present but explicitly null. Both are unevaluable, but the
+        # warning text must say something different for each so the
+        # diagnosis is accurate rather than always claiming "undefined".
+        decision = json.dumps({"confidence": 0.95, "flagged_reason": None})
+        rules = json.dumps(["minimum_score >= 0.9", "flagged_reason != none"])
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(len(result["warnings"]), 2)
+
+        missing_warning = next(w for w in result["warnings"] if "minimum_score" in w)
+        null_warning = next(w for w in result["warnings"] if "flagged_reason" in w)
+
+        self.assertIn("undefined field", missing_warning)
+        self.assertNotIn("undefined field", null_warning)
+        self.assertIn("null", null_warning)
+
+    def test_field_present_with_null_value_alone(self):
+        decision = json.dumps({"score": None})
+        rules = json.dumps(["score >= 0.9"])
+        result = json.loads(self.kit.check_policy(decision, policy_rules=rules))
+
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("null", result["warnings"][0])
+        self.assertNotIn("undefined field", result["warnings"][0])
+
 
 class TestGetDecisionSummary(unittest.TestCase):
 
