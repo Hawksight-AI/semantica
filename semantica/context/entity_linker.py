@@ -170,7 +170,7 @@ class EntityLinker:
             uri = f"{self.base_uri}{uri_safe}"
         else:
             # Use hash of entity_id
-            entity_hash = hashlib.md5(entity_id.encode()).hexdigest()[:8]
+            entity_hash = hashlib.md5(entity_id.encode()).hexdigest()[:8]  # nosec B324 - deterministic URI suffix, not security-sensitive
             uri = f"{self.base_uri}{entity_hash}"
 
         # Add type if available
@@ -500,7 +500,7 @@ class EntityLinker:
 
     def _generate_entity_id(self, text: str, entity_type: str) -> str:
         """Generate entity ID from text and type."""
-        entity_hash = hashlib.md5(f"{text}_{entity_type}".encode()).hexdigest()[:12]
+        entity_hash = hashlib.md5(f"{text}_{entity_type}".encode()).hexdigest()[:12]  # nosec B324 - deterministic entity ID, not security-sensitive
         return f"{entity_type.lower()}_{entity_hash}"
 
     def build_entity_web(self) -> Dict[str, Any]:

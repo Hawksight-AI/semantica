@@ -1691,7 +1691,7 @@ class ContextGraph:
                         # Fallback ID generation
                         import hashlib
 
-                        entity_hash = hashlib.md5(
+                        entity_hash = hashlib.md5(  # nosec B324 - deterministic entity ID, not security-sensitive
                             f"{entity_text}_{entity_type}".encode()
                         ).hexdigest()[:12]
                         entity_id = f"{entity_type.lower()}_{entity_hash}"

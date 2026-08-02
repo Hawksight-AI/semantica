@@ -727,7 +727,7 @@ class AgentMemory:
 
         timestamp = str(time.time())
         random_str = str(hash(str(self.memory_items)) % 10000)
-        memory_hash = hashlib.md5(f"{timestamp}_{random_str}".encode()).hexdigest()[:12]
+        memory_hash = hashlib.md5(f"{timestamp}_{random_str}".encode()).hexdigest()[:12]  # nosec B324 - short unique ID, not security-sensitive
 
         return f"mem_{memory_hash}"
 

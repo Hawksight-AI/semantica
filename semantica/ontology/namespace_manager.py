@@ -120,7 +120,7 @@ class NamespaceManager:
             # Use hash-based IRI
             import hashlib
 
-            hash_id = hashlib.md5(class_name.encode()).hexdigest()[:8]
+            hash_id = hashlib.md5(class_name.encode()).hexdigest()[:8]  # nosec B324 - deterministic IRI suffix, not security-sensitive
             iri = urljoin(self.get_base_uri(), f"class/{hash_id}")
 
         return iri
@@ -146,7 +146,7 @@ class NamespaceManager:
             # Use hash-based IRI
             import hashlib
 
-            hash_id = hashlib.md5(property_name.encode()).hexdigest()[:8]
+            hash_id = hashlib.md5(property_name.encode()).hexdigest()[:8]  # nosec B324 - deterministic IRI suffix, not security-sensitive
             iri = urljoin(self.get_base_uri(), f"property/{hash_id}")
 
         return iri
@@ -170,7 +170,7 @@ class NamespaceManager:
         else:
             import hashlib
 
-            hash_id = hashlib.md5(individual_name.encode()).hexdigest()[:8]
+            hash_id = hashlib.md5(individual_name.encode()).hexdigest()[:8]  # nosec B324 - deterministic IRI suffix, not security-sensitive
             iri = urljoin(self.get_base_uri(), f"individual/{hash_id}")
 
         return iri

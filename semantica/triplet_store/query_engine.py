@@ -527,7 +527,7 @@ class QueryEngine:
         import hashlib
 
         normalized = " ".join(query.split())
-        return hashlib.md5(normalized.encode()).hexdigest()
+        return hashlib.md5(normalized.encode()).hexdigest()  # nosec B324 - cache key, not security-sensitive
 
     def _cache_result(self, query: str, result: QueryResult) -> None:
         """Cache query result."""

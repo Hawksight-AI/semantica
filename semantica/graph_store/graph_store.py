@@ -294,7 +294,7 @@ class QueryEngine:
         import hashlib
 
         key_str = f"{query}:{str(parameters)}"
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return hashlib.md5(key_str.encode()).hexdigest()  # nosec B324 - cache key, not security-sensitive
 
     def clear_cache(self) -> None:
         """Clear query cache."""
@@ -1056,7 +1056,7 @@ class GraphStore:
             if not entity_id and entity_text:
                 import hashlib
 
-                entity_hash = hashlib.md5(
+                entity_hash = hashlib.md5(  # nosec B324 - deterministic entity ID, not security-sensitive
                     f"{entity_text}_{entity_type}".encode()
                 ).hexdigest()[:12]
                 entity_id = f"{entity_type.lower()}_{entity_hash}"
