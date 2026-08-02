@@ -168,6 +168,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `GET /api/analytics` sets `response.status_code = 207` (Multi-Status) when some, but not all, of the requested metrics fail, and raises `HTTPException(500)` when every requested metric fails — a plain 2xx (including 207) reads as success to callers that only check `response.ok`, so an all-failed request now surfaces as a hard error rather than a body full of `{"error": ...}`
   - Added regression tests covering all three failure paths (`test_patterns_failure_returns_500`, `test_analytics_partial_failure_returns_207`, `test_analytics_total_failure_returns_500`, and two `TestOntologyCreateFailures` cases)
 
+### Security
+
+- **CI/CD supply-chain hardening against mutable-tag Action compromise (LiteLLM/Trivy-class attack)** (#824) by @KaifAhmad1
+  - Every third-party GitHub Action across all 8 workflows is now pinned to a full commit SHA instead of a mutable tag (`@v7` → `@3d3c42e... # v7`), closing the exact vector used against LiteLLM in March 2026 (a compromised Trivy Action tag stole a long-lived publishing token)
+  - Added `verify-action-pins.yml` + `.github/scripts/verify-action-pins.sh`: a CI check that fails closed on any `uses:` reference that isn't a full SHA (catching a newly introduced mutable tag, not just auditing existing pins) and re-verifies every pin against the GitHub API on each workflow change, on push to `main`, and weekly; an unresolvable API lookup is treated as a failure rather than a silent skip
+  - `release.yml`: scoped `permissions` to the job level (workflow default is now `contents: read`), added a `concurrency` group so simultaneous tag pushes can't race the publish job, and added SLSA build provenance attestation (`actions/attest-build-provenance`) for every released wheel
+  - Created a protected `pypi` GitHub Environment (required reviewer, restricted to `v*` tag deployments) and enabled branch protection on `main` (required PR review with stale-approval dismissal, required status checks, no force-push/deletion, required conversation resolution) — PyPI publishing already used Trusted Publishing (OIDC) with no long-lived token
+  - Grouped Dependabot's `github-actions` updates into a single PR
+
+- **`security-scan.yml`'s Safety dependency-vulnerability check was silently non-functional** (#824) by @KaifAhmad1
+  - `safety check --json --output safety-report.json` is invalid in Safety 3.x (`--output` now selects a console format, not a file path); the command errored on every run, swallowed by `|| true`, so no report was ever produced and the job always fell back to a generic "scan completed" message with the vulnerability count hardcoded to 0
+  - Switched to `--save-json`, the correct flag for writing a JSON report to disk; also fixed `vuln.package` → `vuln.package_name` and Semgrep's `issue.rule_id` → `issue.check_id` (both produced `undefined` in the PR comment)
+  - The job never installed Semantica's own dependencies before scanning, so Safety was auditing the scanner tools' own transitive deps, not the project's; added `pip install -e ".[llm-litellm]"` so the actual dependency tree — including the LiteLLM extra — is what gets scanned
+  - Rewrote the PR-comment builder: every line previously used `\\n` inside JS template literals, which renders as the literal text `\n` rather than a newline, producing an unreadable wall of text; now builds real line arrays and collapses long finding lists into a `<details>` block
+  - Added the `pull-requests: write` permission the comment-posting step was missing (silently failing via its own try/catch on every prior run)
+
+- **`pypdf2==3.0.1` removed (CVE-2023-36464)** (#824) by @KaifAhmad1
+  - Surfaced by the Safety fix above: PyPDF2 is a discontinued project (merged into `pypdf`) permanently frozen at the vulnerable 3.0.1 with no patched release possible. `grep -rn "import PyPDF2"` found zero real usages anywhere in the codebase — it was only referenced in docstrings describing a `PyPDF2.PdfReader()` fallback for PDF parsing that was never actually implemented (`pdfplumber` does the real work). Removed the dependency and corrected the stale docstrings in `parse/__init__.py`, `parse/methods.py`, `parse/pdf_parser.py`, and `ingest/email_ingestor.py`
+
+- **10 Bandit B324 false positives suppressed (non-cryptographic MD5 use)** (#824) by @KaifAhmad1
+  - Surfaced by the same Safety fix restoring a working CI gate: Bandit's HIGH-severity check was blocking on 10 pre-existing `hashlib.md5()` calls, all generating short deterministic cache keys, entity IDs, or IRI suffixes from non-secret input — none used for passwords, tokens, or verifying untrusted data
+  - Bandit's own message suggests `usedforsecurity=False`, but that keyword argument needs Python 3.9+ and `pyproject.toml` declares `requires-python = ">=3.8"`; used a targeted `# nosec B324` with a one-line justification instead, which suppresses only this check with no runtime behavior change on any supported Python version
+
 ## [0.6.0] - 2026-07-21
 
 ### Added
