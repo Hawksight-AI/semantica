@@ -8,7 +8,7 @@ emails, code files, and media files.
 Algorithms Used:
 
 Document Parsing:
-    - PDF Parsing: pdfplumber integration (pdfplumber.PDF()) for text extraction, PyPDF2.PdfReader() fallback, table extraction (pdfplumber.extract_tables()), image extraction, metadata extraction (title, author, dates via pdf.metadata), page-level processing (page iteration)
+    - PDF Parsing: pdfplumber integration (pdfplumber.PDF()) for text extraction, table extraction (pdfplumber.extract_tables()), image extraction, metadata extraction (title, author, dates via pdf.metadata), page-level processing (page iteration)
     - DOCX Parsing: python-docx integration (docx.Document()), paragraph extraction (document.paragraphs), table extraction (docx.table.Table), section/heading detection (paragraph.style), metadata extraction (core_properties), formatting extraction
     - Docling Parsing: Docling integration (DocumentConverter.convert()) for enhanced table extraction and document structure understanding, supports PDF, DOCX, PPTX, XLSX, HTML, images, markdown/HTML/JSON export formats, OCR support (optional dependency)
     - PPTX Parsing: python-pptx integration (pptx.Presentation()), slide extraction (presentation.slides), shape extraction, notes extraction, metadata extraction
@@ -45,7 +45,7 @@ Media Parsing:
     - Audio/Video Parsing: Metadata extraction (format, duration, codec), file information extraction (future support)
 
 Format-Specific Parsers:
-    - PDFParser: pdfplumber.PDF() for text/tables, PyPDF2.PdfReader() fallback, page iteration (pdf.pages), metadata extraction
+    - PDFParser: pdfplumber.PDF() for text/tables, page iteration (pdf.pages), metadata extraction
     - DOCXParser: docx.Document() for document loading, paragraph iteration, table extraction, core_properties access
     - DoclingParser: DocumentConverter.convert() for multi-format parsing with enhanced table extraction, supports PDF/DOCX/PPTX/XLSX/HTML/images, markdown/HTML/JSON export (optional dependency)
     - PPTXParser: pptx.Presentation() for presentation loading, slide iteration, shape extraction

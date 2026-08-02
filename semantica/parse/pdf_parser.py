@@ -1,7 +1,7 @@
 """
 PDF Document Parser Module
 
-This module handles PDF document parsing using PyPDF2 and pdfplumber for text,
+This module handles PDF document parsing using pdfplumber for text,
 table, and image extraction, including metadata and page-level processing.
 
 Key Features:

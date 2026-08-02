@@ -49,7 +49,7 @@ Media Parsing:
 Algorithms Used:
 
 Document Parsing:
-    - PDF Parsing: pdfplumber integration (pdfplumber.PDF()) for text extraction, PyPDF2.PdfReader() fallback, table extraction (pdfplumber.extract_tables()), image extraction, metadata extraction (title, author, dates via pdf.metadata), page-level processing (page iteration)
+    - PDF Parsing: pdfplumber integration (pdfplumber.PDF()) for text extraction, table extraction (pdfplumber.extract_tables()), image extraction, metadata extraction (title, author, dates via pdf.metadata), page-level processing (page iteration)
     - DOCX Parsing: python-docx integration (docx.Document()), paragraph extraction (document.paragraphs), table extraction (docx.table.Table), section/heading detection (paragraph.style), metadata extraction (core_properties), formatting extraction
     - HTML Parsing: BeautifulSoup integration (BeautifulSoup(html, 'html.parser')), text extraction (soup.get_text()), link extraction (find_all('a')), metadata extraction (meta tags), structure analysis
     - Text Parsing: Plain text file reading (open().read()), encoding detection, line-by-line processing
@@ -83,7 +83,7 @@ Media Parsing:
     - Audio/Video Parsing: Metadata extraction (format, duration, codec), file information extraction (future support)
 
 Format-Specific Parsers:
-    - PDFParser: pdfplumber.PDF() for text/tables, PyPDF2.PdfReader() fallback, page iteration (pdf.pages), metadata extraction
+    - PDFParser: pdfplumber.PDF() for text/tables, page iteration (pdf.pages), metadata extraction
     - DOCXParser: docx.Document() for document loading, paragraph iteration, table extraction, core_properties access
     - JSONParser: json.load()/json.loads(), recursive structure traversal, path extraction
     - CSVParser: csv.DictReader() for row-by-row processing, delimiter detection, header handling
