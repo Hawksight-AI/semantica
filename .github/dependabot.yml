@@ -70,6 +70,13 @@ updates:
       - "dependencies"
       - "github-actions"
       - "ci"
+    # All our actions are SHA-pinned with a "# vX" comment; Dependabot
+    # resolves the new tag's SHA and updates both the pin and the comment
+    # together, so this stays the source of truth (no separate script needed).
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   # Optional dependencies (separate schedule for stability)
   - package-ecosystem: "pip"

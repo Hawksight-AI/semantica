@@ -28,13 +28,17 @@ jobs:
       contents: read
       security-events: write
       actions: read
-    
+      # Needed for the "Comment PR with Security Results" step below. Safe on
+      # pull_request (not pull_request_target): GitHub always forces a
+      # read-only token for PRs from forks regardless of this permission.
+      pull-requests: write
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
-      
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.11'
         
@@ -99,9 +103,10 @@ jobs:
           fi
         
       - name: Upload Security Reports
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: security-reports
+          retention-days: 14
           path: |
             safety-report.json
             bandit-report.json
@@ -109,7 +114,7 @@ jobs:
         
       - name: Comment PR with Security Results
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const fs = require('fs');

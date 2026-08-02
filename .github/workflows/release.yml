@@ -5,19 +5,28 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
     environment: pypi
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write      # for the GitHub Release
+      id-token: write      # for PyPI Trusted Publishing (OIDC) and attestation signing
+      attestations: write  # for SLSA build provenance
+    # If you add another job to this workflow, give it its own explicit
+    # `permissions:` block rather than relying on the workflow-level default
+    # above (contents: read) - do not widen the workflow-level default.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.11'
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -46,7 +55,11 @@ jobs:
 
           print("Explorer frontend is packaged")
           PY
-      - uses: softprops/action-gh-release@v3
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-path: 'dist/*'
+      - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           files: dist/*
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1

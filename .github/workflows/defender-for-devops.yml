@@ -36,14 +36,14 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v7
-    - uses: actions/setup-dotnet@v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
       with:
         dotnet-version: |
           5.0.x
           6.0.x
     - name: Run Microsoft Security DevOps
-      uses: microsoft/security-devops-action@v1.12.0
+      uses: microsoft/security-devops-action@08976cb623803b1b36d7112d4ff9f59eae704de0 # v1.12.0
       id: msdo
       with:
         # checkov is intentionally excluded from this MSDO step.
@@ -57,11 +57,11 @@ jobs:
         # avoiding the guardian.cmd/checkov exit-code bug in the MSDO wrapper.
         tools: eslint,templateanalyzer,terrascan
     - name: Upload results to Security tab
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
       with:
         sarif_file: ${{ steps.msdo.outputs.sarifFile }}
 
-    - uses: actions/setup-python@v7
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
       with:
         python-version: "3.12"
 
@@ -82,7 +82,7 @@ jobs:
         }
 
     - name: Upload Checkov results to Security tab
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
       if: always()
       with:
         sarif_file: reports/checkov.sarif

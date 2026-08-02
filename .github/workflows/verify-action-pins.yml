@@ -1,0 +1,26 @@
+name: Verify Action Pins
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+  schedule:
+    - cron: '0 3 * * 1'  # weekly, in case an upstream tag is deliberately moved
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Verify pinned action SHAs match their tag comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/verify-action-pins.sh

@@ -112,6 +112,90 @@ We regularly update dependencies to address security vulnerabilities. However, y
 - Be cautious with external API calls
 - Implement proper authentication and authorization
 
+## CI/CD Supply-Chain Security
+
+Semantica's build and release pipeline is explicitly hardened against
+CI/CD supply-chain attacks — the class of attack behind the March 2026
+LiteLLM/Trivy incident, where a compromised third-party Action with a
+**mutable tag** was used to steal a long-lived publishing token, after which
+malicious packages were pushed straight to PyPI without ever touching the
+source repository. Every control below maps directly to closing one step of
+that attack chain.
+
+### Immutable build inputs
+
+- **Risk**: a tag (`@v4`, `@release/v1`) is re-pointed by a compromised upstream maintainer or account, silently changing what every consumer's CI runs.
+  **Control**: every third-party GitHub Action in every workflow is pinned to a full 40-character commit SHA, with the human-readable tag kept only as a trailing comment (e.g. `actions/checkout@3d3c42e... # v7`).
+- **Risk**: a SHA pin drifts out of sync with its own comment over time, or is mistyped.
+  **Control**: `verify-action-pins.yml` resolves every pinned tag via the GitHub API on each workflow change, on every push to `main`, and weekly, and fails the check if the SHA no longer matches the tag it claims to be.
+- **Risk**: manually re-pinning ~15 actions across 8 workflow files on every upstream release is error-prone.
+  **Control**: Dependabot (`github-actions` ecosystem) opens a grouped PR that bumps the SHA *and* the tag comment together whenever an action releases — pins never require hand-editing.
+
+### Publishing pipeline (highest-privilege path)
+
+- **Risk**: a long-lived `PYPI_TOKEN` sitting in repo/org secrets is exfiltrated by any compromised step.
+  **Control**: PyPI publishing uses Trusted Publishing (OIDC) (`id-token: write`) — there is no long-lived PyPI credential anywhere in this repository to steal.
+- **Risk**: a compromised CI run publishes to PyPI with no human in the loop.
+  **Control**: the publish job runs only inside a protected `pypi` GitHub Environment with a required human reviewer — every release needs manual approval in the Actions UI before it runs.
+- **Risk**: the release job could be triggered from an arbitrary branch/ref.
+  **Control**: the `pypi` environment's deployment-branch policy is restricted to `v*` tags only.
+- **Risk**: a scanner or unrelated job inherits publish-level credentials.
+  **Control**: `release.yml` sets `permissions: contents: read` at the workflow level; `contents: write` / `id-token: write` / `attestations: write` are granted only to the release job, never workflow-wide.
+- **Risk**: two tag pushes race through the publish pipeline simultaneously.
+  **Control**: `concurrency: group: release-${{ github.ref }}` serializes releases per tag.
+- **Risk**: a consumer can't verify a wheel on PyPI actually came from this repo's CI.
+  **Control**: SLSA build provenance is attested for every release via `actions/attest-build-provenance`, producing a signed, verifiable record of the exact commit and workflow run that produced the artifact (checkable with `gh attestation verify`).
+
+### Repository controls
+
+- **Risk**: unreviewed or force-pushed changes land on `main`.
+  **Control**: `main` requires 1 approving PR review (stale approvals dismissed on new pushes), resolved conversations, and blocks force-pushes and branch deletion.
+- **Risk**: a PR merges without its security/CI checks passing.
+  **Control**: merges require the `build`, `Analyze Python` (CodeQL), and `security-scan` checks to pass, in strict mode (checks must be re-run against the latest `main`).
+- **Risk**: a compromised scanner job reaches secrets or write access.
+  **Control**: scanning jobs (`CodeQL`, `security-scan.yml`, `security.yml`, `defender-for-devops.yml`) run with read-only, least-privilege permissions (typically `contents: read` + `security-events: write` only) and never share a job, environment, or secret scope with the publish job.
+- **Risk**: secrets are committed accidentally.
+  **Control**: GitHub secret scanning and push protection are both enabled at the repository level, rejecting pushes that contain recognizable credential patterns before they land in history.
+
+## Automated Security Scanning
+
+Every scan below runs continuously in CI, not just at release time:
+
+- **CodeQL** (`security-and-quality` query pack) — Python source: injection, unsafe deserialization, and other code-level vulnerability classes. Runs in `codeql.yml` on every push/PR to `main` and weekly.
+- **Bandit** — Python-specific security anti-patterns (hardcoded secrets, unsafe `eval`/`pickle`, weak crypto, etc.); CI fails on any HIGH-severity finding. Runs in `security-scan.yml` on every push/PR to `main` and twice weekly.
+- **Semgrep** (`p/security` ruleset) — cross-language static-analysis security patterns. Runs in `security-scan.yml` on every push/PR to `main` and twice weekly.
+- **Safety** — known CVEs in installed Python dependencies; CI fails on any match. Runs in `security-scan.yml` on every push/PR to `main` and twice weekly.
+- **pip-audit** — independent, PyPA-maintained vulnerability database cross-check against installed dependencies (Safety and pip-audit use different advisory sources, so both run). Runs in `security.yml` weekly.
+- **Microsoft Defender for DevOps** (`eslint`, `templateanalyzer`, `terrascan`) — JavaScript/TypeScript lint-security rules and infrastructure-as-code misconfigurations. Runs in `defender-for-devops.yml` on every push/PR to `main` and weekly.
+- **Checkov** — Kubernetes, Helm, Dockerfile, GitHub Actions, and secrets-pattern IaC scanning; results upload to the same Security tab as CodeQL. Runs in `defender-for-devops.yml` on every push/PR to `main` and weekly.
+- **GitGuardian** — secret-detection check on every pull request, installed as a GitHub App integration (not a repo-local workflow). Runs on every PR.
+- **GitHub secret scanning + push protection** — blocks known credential patterns before they're pushed, and continuously scans existing history. Platform-level, continuous.
+- **Dependabot** — version/security PRs for Python, Docker, and GitHub Actions dependencies, grouped where relevant to reduce review noise. Configured in `.github/dependabot.yml`, runs weekly for security-relevant packages and monthly for docs dependencies.
+- **`verify-action-pins.yml`** — confirms every SHA-pinned Action still matches the tag it claims to be. Runs on every workflow change, every push to `main`, and weekly.
+
+All SARIF-producing scanners (CodeQL, Checkov, Microsoft Defender) publish
+findings to the repository's **Security → Code scanning alerts** tab, giving
+a single audit trail across tools rather than scattered per-tool reports.
+
+### Adopting this posture in a fork or downstream deployment
+
+Teams standing up their own instance of Semantica, or forking it for an
+internal/regulated deployment, can reuse this posture directly:
+
+1. Keep Dependabot's `github-actions` ecosystem entry — it is what keeps
+   SHA pins current without manual maintenance.
+2. Re-run `verify-action-pins.yml` after re-pointing the repository's Actions
+   at your own mirrors, if you do so.
+3. If you publish your own PyPI package from a fork, configure your own
+   Trusted Publishing trust relationship on PyPI (Trusted Publishing is
+   scoped to a specific `owner/repo` + workflow filename) and your own
+   protected environment with your own required reviewers — these are not
+   transferable from this repository.
+4. Branch protection, environment protection, and repository secret
+   scanning are repository *settings*, not workflow files — cloning or
+   forking the repo does **not** copy them. They must be re-applied via
+   the GitHub UI or API on the new repository.
+
 ## Dependency Security Policy
 
 ### Regular Updates
