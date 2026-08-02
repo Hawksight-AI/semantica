@@ -127,7 +127,7 @@ that attack chain.
 - **Risk**: a tag (`@v4`, `@release/v1`) is re-pointed by a compromised upstream maintainer or account, silently changing what every consumer's CI runs.
   **Control**: every third-party GitHub Action in every workflow is pinned to a full 40-character commit SHA, with the human-readable tag kept only as a trailing comment (e.g. `actions/checkout@3d3c42e... # v7`).
 - **Risk**: a SHA pin drifts out of sync with its own comment over time, or is mistyped.
-  **Control**: `verify-action-pins.yml` resolves every pinned tag via the GitHub API on each workflow change, on every push to `main`, and weekly, and fails the check if the SHA no longer matches the tag it claims to be.
+  **Control**: `verify-action-pins.yml` fails closed on any `uses:` reference that isn't a full commit SHA (catching a newly added mutable tag, not just auditing existing pins), resolves every pinned tag via the GitHub API on each workflow change, on every push to `main`, and weekly, and fails if the SHA no longer matches the tag it claims to be — an API lookup that can't be resolved is treated as a failure, not a silent skip.
 - **Risk**: manually re-pinning ~15 actions across 8 workflow files on every upstream release is error-prone.
   **Control**: Dependabot (`github-actions` ecosystem) opens a grouped PR that bumps the SHA *and* the tag comment together whenever an action releases — pins never require hand-editing.
 
@@ -171,7 +171,7 @@ Every scan below runs continuously in CI, not just at release time:
 - **GitGuardian** — secret-detection check on every pull request, installed as a GitHub App integration (not a repo-local workflow). Runs on every PR.
 - **GitHub secret scanning + push protection** — blocks known credential patterns before they're pushed, and continuously scans existing history. Platform-level, continuous.
 - **Dependabot** — version/security PRs for Python, Docker, and GitHub Actions dependencies, grouped where relevant to reduce review noise. Configured in `.github/dependabot.yml`, runs weekly for security-relevant packages and monthly for docs dependencies.
-- **`verify-action-pins.yml`** — confirms every SHA-pinned Action still matches the tag it claims to be. Runs on every workflow change, every push to `main`, and weekly.
+- **`verify-action-pins.yml`** — enforces that every Action reference is a full commit SHA (failing on a newly introduced mutable tag) and confirms each SHA still matches the tag it claims to be. Runs on every workflow change, every push to `main`, and weekly.
 
 All SARIF-producing scanners (CodeQL, Checkov, Microsoft Defender) publish
 findings to the repository's **Security → Code scanning alerts** tab, giving

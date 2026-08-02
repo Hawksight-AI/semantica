@@ -4,10 +4,12 @@ on:
   pull_request:
     paths:
       - '.github/workflows/**'
+      - '.github/scripts/verify-action-pins.sh'
   push:
     branches: [main]
     paths:
       - '.github/workflows/**'
+      - '.github/scripts/verify-action-pins.sh'
   schedule:
     - cron: '0 3 * * 1'  # weekly, in case an upstream tag is deliberately moved
   workflow_dispatch:
