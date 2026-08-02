@@ -46,21 +46,28 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install safety bandit semgrep jq
-        
+          # Install the project itself (core deps + the LiteLLM provider extra)
+          # so Safety scans Semantica's actual dependency tree, not just the
+          # scanner tools' own dependencies.
+          pip install -e ".[llm-litellm]"
+
       - name: Run Safety Check (Package Vulnerabilities)
         run: |
-          safety check --json --output safety-report.json || true
+          # NOTE: Safety 3.x repurposed --output to select a console format
+          # (json/text/screen/...), not a file path. Writing JSON to a file
+          # now requires --save-json; the previous `--output safety-report.json`
+          # usage was silently invalid and never produced a report.
+          safety check --save-json safety-report.json || true
           echo "Checking for package vulnerabilities..."
-          
-          # Count vulnerabilities safely
-          VULNS=$(safety check --json --output /dev/stdout 2>/dev/null | jq '.vulnerabilities | length' 2>/dev/null || echo "0")
-          
+
+          VULNS=$(jq '.vulnerabilities | length' safety-report.json 2>/dev/null || echo "0")
+
           if [ "$VULNS" -gt 0 ]; then
             echo "❌ Security vulnerabilities found: $VULNS"
             echo "CI will fail to prevent merging of vulnerable dependencies"
             echo ""
             echo "Vulnerability details:"
-            safety check || true
+            jq -r '.vulnerabilities[] | "- \(.package_name)==\(.analyzed_version): \(.vulnerability_id) (\(.CVE // "no CVE assigned"))"' safety-report.json || true
             exit 1
           else
             echo "✅ No security vulnerabilities found"
@@ -118,73 +125,87 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            
-            // Read safety report
-            let safetyResults = '';
-            try {
-              const safetyData = JSON.parse(fs.readFileSync('safety-report.json', 'utf8'));
-              if (safetyData.vulnerabilities && safetyData.vulnerabilities.length > 0) {
-                safetyResults = `## Safety Vulnerabilities Found\\n`;
-                safetyData.vulnerabilities.forEach(vuln => {
-                  safetyResults += `- **${vuln.package}**: ${vuln.advisory}\\n`;
-                });
-              } else {
-                safetyResults = '## No Safety Vulnerabilities Found\\n';
+
+            // Renders one tool's findings as a section. `items` is already
+            // the list of pre-formatted "- `thing` in `where`" strings; this
+            // just handles the found/not-found/report-missing framing and
+            // collapses long lists into a <details> block so the comment
+            // doesn't turn into a wall of text.
+            function renderSection(title, reportPath, parse) {
+              let data;
+              try {
+                data = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+              } catch (e) {
+                return [
+                  `### ${title}`,
+                  `⚠️ No report found at \`${reportPath}\` — the scan may have failed before producing output. Check the job logs.`,
+                ].join('\n');
               }
-            } catch (e) {
-              safetyResults = '## Safety scan completed\\n';
-            }
-            
-            // Read bandit report
-            let banditResults = '';
-            try {
-              const banditData = JSON.parse(fs.readFileSync('bandit-report.json', 'utf8'));
-              if (banditData.results && banditData.results.length > 0) {
-                const highIssues = banditData.results.filter(issue => issue.issue_severity === 'HIGH');
-                if (highIssues.length > 0) {
-                  banditResults = `## High Severity Security Issues Found\\n`;
-                  highIssues.forEach(issue => {
-                    banditResults += `- **${issue.test_name}**: ${issue.filename}:${issue.line_number}\\n`;
-                  });
-                } else {
-                  banditResults = '## No High Severity Security Issues Found\\n';
-                }
-              } else {
-                banditResults = '## No Bandit Issues Found\\n';
+
+              const items = parse(data);
+              if (items.length === 0) {
+                return [`### ${title}`, `✅ No findings.`].join('\n');
               }
-            } catch (e) {
-              banditResults = '## Bandit scan completed\\n';
-            }
-            
-            // Read semgrep report
-            let semgrepResults = '';
-            try {
-              const semgrepData = JSON.parse(fs.readFileSync('semgrep-report.json', 'utf8'));
-              if (semgrepData.results && semgrepData.results.length > 0) {
-                semgrepResults = `## Security Patterns Found\\n`;
-                semgrepData.results.slice(0, 10).forEach(issue => {
-                  semgrepResults += `- **${issue.rule_id}**: ${issue.path}\\n`;
-                });
-                if (semgrepData.results.length > 10) {
-                  semgrepResults += `- ... and ${semgrepData.results.length - 10} more\\n`;
-                }
+
+              const lines = [`### ${title}`, `Found **${items.length}**.`, ''];
+              const shown = items.slice(0, 15);
+              if (items.length > 15) {
+                lines.push('<details>', '<summary>Show all findings</summary>', '');
+                lines.push(...items);
+                lines.push('', '</details>');
               } else {
-                semgrepResults = '## No Security Patterns Found\\n';
+                lines.push(...shown);
               }
-            } catch (e) {
-              semgrepResults = '## Semgrep scan completed\\n';
+              return lines.join('\n');
             }
-            
-            // Create summary comment
-            const comment = `# 🔒 Security Scan Results\\n\\n${safetyResults}\\n\\n${banditResults}\\n\\n${semgrepResults}\\n\\n---\\n\\n*This security scan runs automatically on source-code PRs and bi-weekly (skipped for doc/markdown-only changes).*\\n\\n📊 **Security Policy**: CI fails on vulnerabilities and HIGH severity issues.`;
-            
-            // Post comment with error handling
+
+            const safetySection = renderSection(
+              'Safety — dependency vulnerabilities',
+              'safety-report.json',
+              (data) => (data.vulnerabilities || []).map(
+                (v) => `- \`${v.package_name}==${v.analyzed_version}\`: ${v.vulnerability_id}` +
+                  (v.CVE ? ` (${v.CVE})` : '') + ` — ${v.advisory || 'no advisory text'}`
+              )
+            );
+
+            const banditSection = renderSection(
+              'Bandit — HIGH-severity code issues',
+              'bandit-report.json',
+              (data) => (data.results || [])
+                .filter((issue) => issue.issue_severity === 'HIGH')
+                .map((issue) => `- \`${issue.test_name}\` in \`${issue.filename}:${issue.line_number}\``)
+            );
+
+            const semgrepSection = renderSection(
+              'Semgrep — static analysis patterns',
+              'semgrep-report.json',
+              (data) => (data.results || []).map(
+                (issue) => `- \`${issue.check_id}\` in \`${issue.path}:${issue.start?.line ?? '?'}\``
+              )
+            );
+
+            const comment = [
+              '# 🔒 Security Scan Results',
+              '',
+              safetySection,
+              '',
+              banditSection,
+              '',
+              semgrepSection,
+              '',
+              '---',
+              '',
+              '*This security scan runs automatically on source-code PRs and bi-weekly (skipped for doc/markdown-only changes).*',
+              '',
+              '📊 **Security Policy**: CI fails on Safety vulnerabilities and Bandit HIGH-severity findings. Semgrep findings above are informational and do not block merge.',
+            ].join('\n');
+
             try {
               await github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: comment
+                body: comment,
               });
               console.log('✅ Security comment posted successfully');
             } catch (error) {

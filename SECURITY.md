@@ -164,7 +164,7 @@ Every scan below runs continuously in CI, not just at release time:
 - **CodeQL** (`security-and-quality` query pack) — Python source: injection, unsafe deserialization, and other code-level vulnerability classes. Runs in `codeql.yml` on every push/PR to `main` and weekly.
 - **Bandit** — Python-specific security anti-patterns (hardcoded secrets, unsafe `eval`/`pickle`, weak crypto, etc.); CI fails on any HIGH-severity finding. Runs in `security-scan.yml` on every push/PR to `main` and twice weekly.
 - **Semgrep** (`p/security` ruleset) — cross-language static-analysis security patterns. Runs in `security-scan.yml` on every push/PR to `main` and twice weekly.
-- **Safety** — known CVEs in installed Python dependencies; CI fails on any match. Runs in `security-scan.yml` on every push/PR to `main` and twice weekly.
+- **Safety** — known CVEs in Semantica's own installed dependencies, including optional LLM-provider extras such as LiteLLM; CI fails on any match. Runs in `security-scan.yml` on every push/PR to `main` and twice weekly.
 - **pip-audit** — independent, PyPA-maintained vulnerability database cross-check against installed dependencies (Safety and pip-audit use different advisory sources, so both run). Runs in `security.yml` weekly.
 - **Microsoft Defender for DevOps** (`eslint`, `templateanalyzer`, `terrascan`) — JavaScript/TypeScript lint-security rules and infrastructure-as-code misconfigurations. Runs in `defender-for-devops.yml` on every push/PR to `main` and weekly.
 - **Checkov** — Kubernetes, Helm, Dockerfile, GitHub Actions, and secrets-pattern IaC scanning; results upload to the same Security tab as CodeQL. Runs in `defender-for-devops.yml` on every push/PR to `main` and weekly.
