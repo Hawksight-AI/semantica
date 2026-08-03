@@ -7,7 +7,8 @@ chunk tracking, source tracking, and lineage tracing.
 
 import pytest
 from unittest.mock import patch
-from semantica.provenance import ProvenanceManager, SourceReference
+from datetime import datetime
+from semantica.provenance import ProvenanceManager, SourceReference, ProvenanceEntry
 from semantica.provenance.storage import InMemoryStorage, SQLiteStorage
 
 
@@ -611,16 +612,18 @@ class TestProvenanceManager:
             assert entry is None
 
     def test_track_relationship_storage_error_swallowed(self):
-        """Test that track_relationship swallows storage.store() exceptions and still returns a ProvenanceEntry."""
+        """Test that track_relationship returns None when storage.store() fails,
+        since nothing was persisted (#783)."""
         prov_mgr = ProvenanceManager()
         with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")):
             entry = prov_mgr.track_relationship("r_test", source="doc_1")
-            assert entry is not None
-            assert entry.entity_id == "r_test"
-            assert entry.checksum is not None
+            # Returning None is correct because nothing was actually persisted,
+            # and the old assertion was encoding the bug this issue was filed to fix.
+            assert entry is None
 
     def test_track_chunk_storage_error_swallowed(self):
-        """Test that track_chunk swallows storage.store() exceptions and still returns a ProvenanceEntry."""
+        """Test that track_chunk returns None when storage.store() fails,
+        since nothing was persisted (#783)."""
         prov_mgr = ProvenanceManager()
         with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")):
             entry = prov_mgr.track_chunk(
@@ -630,12 +633,13 @@ class TestProvenanceManager:
                 start_index=0,
                 end_index=100,
             )
-            assert entry is not None
-            assert entry.entity_id == "c_test"
-            assert entry.checksum is not None
+            # Returning None is correct because nothing was actually persisted,
+            # and the old assertion was encoding the bug this issue was filed to fix.
+            assert entry is None
 
     def test_track_property_source_storage_error_swallowed(self):
-        """Test that track_property_source swallows storage.store() exceptions and still returns a ProvenanceEntry."""
+        """Test that track_property_source returns None when storage.store() fails,
+        since nothing was persisted (#783)."""
         prov_mgr = ProvenanceManager()
         source = SourceReference(document="doc_1", page=1, confidence=0.9)
         with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")):
@@ -645,9 +649,46 @@ class TestProvenanceManager:
                 value="val",
                 source=source,
             )
-            assert entry is not None
-            assert entry.entity_id == "e_test_prop_test"
-            assert entry.checksum is not None
+            # Returning None is correct because nothing was actually persisted,
+            # and the old assertion was encoding the bug this issue was filed to fix.
+            assert entry is None
+
+    def test_save_entry_logs_on_every_failure_path(self):
+        """Test that _save_entry logs on storage failures for both raising and swallowing paths (#783)."""
+        prov_mgr = ProvenanceManager()
+        entry = ProvenanceEntry(
+            entity_id="log_test_id",
+            entity_type="entity",
+            activity_id="test",
+            source_document="doc_1",
+            first_seen=datetime.utcnow().isoformat(),
+            last_updated=datetime.utcnow().isoformat(),
+        )
+        with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")), \
+             patch.object(prov_mgr.logger, "error") as mock_log_error:
+            # Swallowing branch (_raise_on_error=False)
+            res = prov_mgr._save_entry(entry, _raise_on_error=False)
+            assert res is None
+            mock_log_error.assert_called_once()
+            assert "log_test_id" in mock_log_error.call_args[0][1]
+
+            mock_log_error.reset_mock()
+
+            # Raising branch (_raise_on_error=True)
+            with pytest.raises(RuntimeError, match="storage error"):
+                prov_mgr._save_entry(entry, _raise_on_error=True)
+            mock_log_error.assert_called_once()
+            assert "log_test_id" in mock_log_error.call_args[0][1]
+
+    def test_track_entities_batch_logs_per_item_failure(self):
+        """Test that track_entities_batch emits item-level logs via _save_entry when items fail (#783)."""
+        prov_mgr = ProvenanceManager()
+        entities = [{"id": "e_fail_1"}, {"id": "e_fail_2"}]
+        with patch.object(prov_mgr.storage, "_store_with_conn", side_effect=RuntimeError("batch store error")), \
+             patch.object(prov_mgr.logger, "error") as mock_log_error:
+            count = prov_mgr.track_entities_batch(entities, "doc_1")
+            assert count == 0
+            assert mock_log_error.call_count == 2
 
     def test_track_entity_pre_build_failure_fallback_skips_store(self):
         """Test that when track_entity fails before the entry is built (e.g. a

@@ -144,8 +144,8 @@ class ProvenanceManager:
         entry: ProvenanceEntry,
         _conn: Optional[Any] = None,
         _raise_on_error: bool = False,
-    ) -> ProvenanceEntry:
-        """Compute checksum, store entry persistently, and gracefully ignore storage errors."""
+    ) -> Optional[ProvenanceEntry]:
+        """Compute checksum, store entry persistently, and log/handle storage errors (#783)."""
         entry.checksum = compute_checksum(entry)
 
         try:
@@ -153,13 +153,19 @@ class ProvenanceManager:
                 self.storage._store_with_conn(_conn, entry)
             else:
                 self.storage.store(entry)
-        except Exception:
+        except Exception as e:
+            self.logger.error(
+                "Failed to save provenance entry for entity '%s': %s",
+                entry.entity_id,
+                e,
+                exc_info=True,
+            )
             # Propagate when called from a batch's shared transaction so the
             # caller's per-item try/except can skip counting this item instead
             # of reporting an unpersisted entry as tracked (#807).
             if _raise_on_error:
                 raise
-            pass  # Graceful failure - don't break main functionality
+            return None  # Graceful failure - don't return unpersisted entry (#783)
 
         return entry
     
@@ -297,7 +303,7 @@ class ProvenanceManager:
         source: str,
         metadata: Optional[Dict[str, Any]] = None,
         **kwargs
-    ) -> ProvenanceEntry:
+    ) -> Optional[ProvenanceEntry]:
         """
         Track relationship provenance (kg.ProvenanceTracker compatible).
         
@@ -308,7 +314,7 @@ class ProvenanceManager:
             **kwargs: Additional fields
             
         Returns:
-            ProvenanceEntry object
+            Optional[ProvenanceEntry]: ProvenanceEntry on success, or None if storage fails
             
         Example:
             >>> prov_mgr.track_relationship(
@@ -343,7 +349,7 @@ class ProvenanceManager:
         parent_chunk_id: Optional[str] = None,
         _conn: Optional[Any] = None,
         **metadata
-    ) -> ProvenanceEntry:
+    ) -> Optional[ProvenanceEntry]:
         """
         Track chunk provenance (split.ProvenanceTracker compatible).
         
@@ -357,7 +363,7 @@ class ProvenanceManager:
             **metadata: Additional metadata
             
         Returns:
-            ProvenanceEntry object
+            Optional[ProvenanceEntry]: ProvenanceEntry on success, or None if storage fails
             
         Example:
             >>> prov_mgr.track_chunk(
@@ -392,7 +398,7 @@ class ProvenanceManager:
         value: Any,
         source: SourceReference,
         **metadata
-    ) -> ProvenanceEntry:
+    ) -> Optional[ProvenanceEntry]:
         """
         Track property source (conflicts.SourceTracker compatible).
         
@@ -404,7 +410,7 @@ class ProvenanceManager:
             **metadata: Additional metadata
             
         Returns:
-            ProvenanceEntry object
+            Optional[ProvenanceEntry]: ProvenanceEntry on success, or None if storage fails
             
         Example:
             >>> source = SourceReference(
@@ -489,8 +495,12 @@ class ProvenanceManager:
                 # Add batch_count to tracked_count only after the transaction context
                 # exits successfully and commits (#807).
                 tracked_count += batch_count
-            except Exception:
-                pass  # Partial failure: if block-level storage transaction fails, continue to next block
+            except Exception as e:
+                self.logger.error(
+                    "Block-level storage transaction failed in track_entities_batch: %s",
+                    e,
+                    exc_info=True,
+                )
         
         return tracked_count
     
@@ -544,8 +554,12 @@ class ProvenanceManager:
                 # Add batch_count to tracked_count only after the transaction context
                 # exits successfully and commits (#807).
                 tracked_count += batch_count
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.error(
+                    "Block-level storage transaction failed in track_chunks_batch: %s",
+                    e,
+                    exc_info=True,
+                )
         
         return tracked_count
     

@@ -84,6 +84,30 @@ class TestConflictsModule(unittest.TestCase):
         sources = tracker.get_entity_sources("e1")
         self.assertTrue(len(sources) >= 1)
 
+    def test_track_sources_batch_failure_not_counted(self):
+        """Test that track_sources_batch does not increment stats when tracking fails (#783)."""
+        tracker = SourceTracker()
+        source_data = [
+            {
+                "type": "property",
+                "entity_id": "e1",
+                "property_name": "age",
+                "value": 30,
+                "source": self.source1,
+            },
+            {
+                "type": "property",
+                "entity_id": "e2",
+                "property_name": "age",
+                "value": 25,
+                "source": self.source2,
+            },
+        ]
+        with patch.object(tracker, "track_property_source", return_value=False):
+            stats = tracker.track_sources_batch(source_data)
+            self.assertEqual(stats["properties_tracked"], 0)
+            self.assertEqual(stats["total_tracked"], 0)
+
     def test_conflict_detector(self):
         detector = ConflictDetector()
 

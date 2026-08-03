@@ -614,29 +614,44 @@ class SourceTracker:
                 if item_type == "entity":
                     entity_id = item.get("entity_id")
                     if entity_id:
-                        self.track_entity_source(entity_id, source_ref, **metadata)
-                        stats["entities_tracked"] += 1
-                        stats["total_tracked"] += 1
+                        ok = self.track_entity_source(entity_id, source_ref, **metadata)
+                        if ok:
+                            stats["entities_tracked"] += 1
+                            stats["total_tracked"] += 1
+                        else:
+                            self.logger.warning(
+                                f"Failed to track entity source for '{entity_id}' in item {i}"
+                            )
 
                 elif item_type == "property":
                     entity_id = item.get("entity_id")
                     property_name = item.get("property_name")
                     value = item.get("value")
                     if entity_id and property_name is not None:
-                        self.track_property_source(
+                        ok = self.track_property_source(
                             entity_id, property_name, value, source_ref, **metadata
                         )
-                        stats["properties_tracked"] += 1
-                        stats["total_tracked"] += 1
+                        if ok:
+                            stats["properties_tracked"] += 1
+                            stats["total_tracked"] += 1
+                        else:
+                            self.logger.warning(
+                                f"Failed to track property source for '{entity_id}.{property_name}' in item {i}"
+                            )
 
                 elif item_type == "relationship":
                     relationship_id = item.get("relationship_id")
                     if relationship_id:
-                        self.track_relationship_source(
+                        ok = self.track_relationship_source(
                             relationship_id, source_ref, **metadata
                         )
-                        stats["relationships_tracked"] += 1
-                        stats["total_tracked"] += 1
+                        if ok:
+                            stats["relationships_tracked"] += 1
+                            stats["total_tracked"] += 1
+                        else:
+                            self.logger.warning(
+                                f"Failed to track relationship source for '{relationship_id}' in item {i}"
+                            )
 
                 else:
                     self.logger.warning(

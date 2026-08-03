@@ -222,9 +222,9 @@ cleared = manager.clear()
 | Method | Returns | Description |
 | :------ | :------- | :----------- |
 | `track_entity(entity_id, source, metadata, **kwargs)` | `Optional[ProvenanceEntry]` | Record entity provenance atomically; returns `ProvenanceEntry` on success, or `None`/existing entry on storage failure |
-| `track_relationship(relationship_id, source, metadata, **kwargs)` | `ProvenanceEntry` | Record relationship provenance |
-| `track_chunk(chunk_id, source_document, ...)` | `ProvenanceEntry` | Record chunk provenance with char offsets |
-| `track_property_source(entity_id, property_name, value, source)` | `ProvenanceEntry` | Record property-level source attribution |
+| `track_relationship(relationship_id, source, metadata, **kwargs)` | `Optional[ProvenanceEntry]` | Record relationship provenance; returns `ProvenanceEntry` on success, or `None` on storage failure |
+| `track_chunk(chunk_id, source_document, ...)` | `Optional[ProvenanceEntry]` | Record chunk provenance with char offsets; returns `ProvenanceEntry` on success, or `None` on storage failure |
+| `track_property_source(entity_id, property_name, value, source)` | `Optional[ProvenanceEntry]` | Record property-level source attribution; returns `ProvenanceEntry` on success, or `None` on storage failure |
 | `track_entities_batch(entities, source)` | `int` | Batch-track entities; returns success count |
 | `track_chunks_batch(chunks, source_document)` | `int` | Batch-track chunks; returns success count |
 | `get_lineage(entity_id)` | `Dict[str, Any]` | Full lineage as aggregated dict |
@@ -236,7 +236,7 @@ cleared = manager.clear()
 
 ## ProvenanceEntry Fields
 
-`ProvenanceEntry` is the core dataclass. Every tracking method returns one:
+`ProvenanceEntry` is the core dataclass. Every tracking method returns one on success (or `None` on storage failure):
 
 ```python
 from semantica.provenance import ProvenanceEntry

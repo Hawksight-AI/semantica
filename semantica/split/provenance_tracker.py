@@ -97,6 +97,9 @@ class ProvenanceTracker:
         self.store_metadata = config.get("store_metadata", True)
         self.track_versions = config.get("track_versions", False)
 
+        self._provenance_store: Dict[str, ProvenanceInfo] = {}
+        self._chunk_registry: Dict[str, str] = {}  # chunk_id -> provenance_id
+
         # Determine whether to use unified backend
         use_unified = config.get("use_unified", True) and UNIFIED_AVAILABLE
         
@@ -110,8 +113,6 @@ class ProvenanceTracker:
             # Fallback to legacy in-memory storage
             self._unified_manager = None
             self._use_unified = False
-            self._provenance_store: Dict[str, ProvenanceInfo] = {}
-            self._chunk_registry: Dict[str, str] = {}  # chunk_id -> provenance_id
             self.logger.debug("Chunk provenance tracker initialized with legacy backend")
 
     def track_chunk(
@@ -147,7 +148,7 @@ class ProvenanceTracker:
             # Delegate to unified manager
             try:
                 chunk_metadata = {**chunk.metadata, **metadata, "chunk_size": len(chunk.text)} if self.store_metadata else metadata
-                self._unified_manager.track_chunk(
+                entry = self._unified_manager.track_chunk(
                     chunk_id=chunk_id,
                     source_document=source_document,
                     source_path=source_path,
@@ -156,6 +157,9 @@ class ProvenanceTracker:
                     parent_chunk_id=parent_chunk_id,
                     **chunk_metadata
                 )
+                if entry is None:
+                    self.logger.warning("Unified tracking failed (returned None), using fallback")
+                    return self._track_chunk_legacy(chunk, source_document, source_path, parent_chunk_id, **metadata)
                 return chunk_id  # Return chunk_id for compatibility
             except Exception as e:
                 self.logger.warning(f"Unified tracking failed, using fallback: {e}")
@@ -303,7 +307,7 @@ class ProvenanceTracker:
                         version=prov.get("version", "1.0"),
                         timestamp=prov.get("timestamp")
                     )
-                return None
+                return self._get_provenance_legacy(chunk_id)
             except Exception as e:
                 self.logger.warning(f"Unified retrieval failed, using fallback: {e}")
                 return self._get_provenance_legacy(chunk_id)

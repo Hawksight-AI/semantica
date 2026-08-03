@@ -141,6 +141,22 @@ class TestSplitProvenanceBackwardCompat:
         
         assert len(prov_ids) == 3
 
+    def test_unified_tracking_returns_none_triggers_fallback(self):
+        """Test that when _unified_manager.track_chunk returns None, fallback provenance is stored (#783)."""
+        from unittest.mock import patch
+        tracker = SplitProvenanceTracker()
+        chunk = Chunk(text="Test chunk for none fallback", start_index=0, end_index=10, metadata={})
+        
+        with patch.object(tracker._unified_manager, "track_chunk", return_value=None):
+            prov_id = tracker.track_chunk(chunk, source_document="doc_1")
+            assert prov_id is not None
+            # Confirm it fell back to legacy store and is retrievable
+            assert chunk.id in tracker._chunk_registry
+            assert prov_id in tracker._provenance_store
+            prov_info = tracker.get_provenance(chunk.id)
+            assert prov_info is not None
+            assert prov_info.source_document == "doc_1"
+
 
 class TestNoProvenanceOverhead:
     """Test that provenance has zero overhead when not used."""

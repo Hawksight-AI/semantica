@@ -83,7 +83,7 @@ class _AgentScopedStore(AgnoContextStore):
         try:
             self._context.store(mem_text, conversation_id=self.session_id)
         except Exception as exc:
-            logger.warning("[%s] store failed: %s", self._role, exc)
+            logger.warning("[%s] store failed: %s", self._role, exc, exc_info=True)
 
         if self.decision_tracking:
             try:
@@ -94,8 +94,8 @@ class _AgentScopedStore(AgnoContextStore):
                     outcome="stored",
                     confidence=1.0,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("[%s] record_decision failed: %s", self._role, exc, exc_info=True)
 
         if hasattr(memory, "id"):
             memory.id = mem_id

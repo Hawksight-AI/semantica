@@ -60,12 +60,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Follow-up fix by @KaifAhmad1: `validate_skos_hierarchy()` previously re-walked *every* SKOS hierarchy edge already in the graph on each write, so one pre-existing cycle anywhere (e.g. legacy data) blocked all unrelated future writes; it now only traverses concepts touched by the edges being written, while still checking against existing edges for cycles that span old and new data
   - Follow-up fix by @KaifAhmad1: in `/api/ontology/load`, `except HTTPException: raise` was unreachable because a broader `except Exception` clause above it already matched `HTTPException`, so a 422 raised after a successful `OntologyIngestor` parse was silently swallowed and reprocessed via the fallback RDF parser; reordered the clauses so the deliberate 422 always propagates
 
+- **Agno `_AgentScopedStore.upsert_memory` silently swallowed decision recording failures** (#779)
+  - `upsert_memory()` now logs `logger.warning("[%s] record_decision failed: %s", self._role, exc, exc_info=True)` when `record_decision()` fails, matching the error-logging convention used for `store()` in the same method with traceback context preserved
+  - Preserves graceful fallback behavior: `record_decision()` remains optional and `upsert_memory()` continues without propagating the exception
+  - Added regression coverage in `tests/integrations/agno/test_shared_context.py` for both `store()` and `record_decision()` warning paths
+
 - **`AgnoDecisionKit`/`AgnoKGToolkit` silently swallowed Agno tool registration failures** (#780, #818) by @Sameer6305 and @KaifAhmad1
   - Removed the `try/except: pass` wrapped around `self.register(fn)` in both toolkits' `__init__`; when Agno is installed, a registration failure now propagates immediately instead of leaving the toolkit half-registered with no signal to the caller
   - Graceful degradation when Agno isn't installed (`AGNO_AVAILABLE=False`) is unchanged — `_tools` is still populated so callers can introspect available tools without the package
   - Fixed a related duplicate-entry bug: `self._tools` was appended to unconditionally *before* `register()` ran, which could double-count a tool when Agno's own `Toolkit.register()` also tracks it in `self._tools`
   - This is a behavior change for callers that construct these toolkits expecting instantiation to always succeed — audited: no in-repo call site relies on the old silent-failure behavior
   - Expanded `tests/integrations/agno/test_decision_kit.py` and `test_kg_toolkit.py` with coverage for registration invocation counts, failure propagation, graceful degradation, and no-duplicate-`_tools` assertions
+
+- **`ProvenanceManager` tracking methods silently swallowed failures without logging and returned fabricated entries** (#783)
+  - `track_relationship()`, `track_chunk()`, and `track_property_source()` now return `Optional[ProvenanceEntry]` (`None` on storage failure, consistent with #782's `track_entity` fix) instead of a fabricated populated object
+  - `_save_entry()` now always logs on any storage failure, including previously-silent per-item batch failures
+  - `track_entities_batch()` and `track_chunks_batch()`'s rare block-level transaction failures are now logged too
+  - `source_tracker.py`'s `track_sources_batch()` no longer counts failed tracking calls in its stats
 
 - **MCP `handle_get_causal_chain` returned an empty-but-valid-looking response when both `CausalChainAnalyzer` and the graph fallback were unavailable** (#781, #817) by @Sameer6305 and @KaifAhmad1
   - Returns an explicit `{"error": "Causal chain analysis is not supported on this graph backend", "chain": []}` instead of `{"chain": [], "count": 0, "direction": ...}`, letting clients distinguish "unsupported" from a legitimately empty chain
