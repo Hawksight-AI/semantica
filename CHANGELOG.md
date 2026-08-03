@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`AgnoDecisionKit.check_policy` silently treated unevaluable policy rules as compliant** (#778) by @Sameer6305
+- **`AgnoDecisionKit.check_policy` silently treated unevaluable policy rules as compliant** (#778, #822) by @Sameer6305
   - `_eval_rule()` previously `return`ed `True` when a rule referenced a field missing from the decision payload, or when the rule string didn't match the expected `<field> <op> <value>` format — the docstring's claim that exceptions never silently return `compliant=True` didn't cover this, since neither path raised
   - Both cases now raise `ValueError` instead, which routes through `check_policy`'s existing exception handler and records a `warnings` entry (e.g. `"Could not evaluate rule 'minimum_score >= 0.9': rule references undefined field 'minimum_score'"`) instead of disappearing with no signal
   - `violations`/`compliant` are unaffected — an unevaluable rule is not counted as a violation, since it's genuinely unknown whether it would have passed; this matches the existing `compliant`/`violations`/`warnings` shape already used by `ContextGraph.enforce_decision_policy`
