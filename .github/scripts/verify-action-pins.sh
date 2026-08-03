@@ -18,13 +18,20 @@ set -uo pipefail
 fail=0
 checked=0
 
+# Pattern for a third-party uses: line — stored in a variable so bash's
+# [[ =~ ]] parser never sees literal \" or \' escapes, which cause a
+# "syntax error in conditional expression: unexpected token )" at runtime.
+# Semantics: optional leading quote, owner/repo, optional subpath, @ref,
+# optional trailing quote; quote chars excluded from the ref capture group.
+USES_PATTERN='uses:[[:space:]]+["'"'"']?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(/[^[:space:]@"'"'"']+)?@([^[:space:]"'"'"']+)["'"'"']?'
+
 while IFS=: read -r file lineno content; do
   # Local composite actions (./x) and Docker image refs (docker://...) use a
   # different pinning mechanism and aren't in scope here.
   [[ "$content" =~ uses:\ +\./ ]] && continue
   [[ "$content" =~ uses:\ +docker:// ]] && continue
 
-  if [[ "$content" =~ uses:[[:space:]]+[\"\'']?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(/[^[:space:]@\"\']+)?@([^[:space:]\"\']+)[\"\'']? ]]; then
+  if [[ "$content" =~ $USES_PATTERN ]]; then
     repo="${BASH_REMATCH[1]}"
     ref="${BASH_REMATCH[3]}"
     checked=$((checked + 1))
