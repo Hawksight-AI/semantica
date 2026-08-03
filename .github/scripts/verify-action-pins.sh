@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Verifies that every third-party GitHub Action referenced in
-# .github/workflows/*.yml is pinned to a full commit SHA (not a mutable tag
+# .github/workflows/*.yml and .github/workflows/*.yaml is pinned to a full
+# commit SHA (not a mutable tag
 # or branch), and that any pin's trailing "# vX" comment still matches what
 # that tag resolves to today.
 #
@@ -23,7 +24,7 @@ while IFS=: read -r file lineno content; do
   [[ "$content" =~ uses:\ +\./ ]] && continue
   [[ "$content" =~ uses:\ +docker:// ]] && continue
 
-  if [[ "$content" =~ uses:\ +([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(/[^[:space:]@]+)?@([^[:space:]]+) ]]; then
+  if [[ "$content" =~ uses:[[:space:]]+[\"\'']?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(/[^[:space:]@\"\']+)?@([^[:space:]\"\']+)[\"\'']? ]]; then
     repo="${BASH_REMATCH[1]}"
     ref="${BASH_REMATCH[3]}"
     checked=$((checked + 1))
@@ -56,7 +57,7 @@ while IFS=: read -r file lineno content; do
       echo "OK  $repo@$tag -> $sha  ($file:$lineno)"
     fi
   fi
-done < <(grep -rHn "uses:" .github/workflows/*.yml)
+done < <(grep -rHn "uses:" .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null)
 
 echo "Checked $checked action reference(s)."
 exit $fail

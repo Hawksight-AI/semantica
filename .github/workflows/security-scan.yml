@@ -58,9 +58,31 @@ jobs:
           # now requires --save-json; the previous `--output safety-report.json`
           # usage was silently invalid and never produced a report.
           safety check --save-json safety-report.json || true
+
+          # Guard 1: fail loudly if Safety exited before writing a report at all
+          # (network error, API auth failure, tool crash). Without this check a
+          # missing or empty file causes jq to fall back to "0", making a broken
+          # scanner indistinguishable from a clean scan.
+          if [ ! -s safety-report.json ]; then
+            echo "::error::Safety scan produced no report (safety-report.json is missing or empty). Treating as failure — check for network errors, API auth failures, or Safety crashes in the logs above."
+            exit 1
+          fi
+
           echo "Checking for package vulnerabilities..."
 
-          VULNS=$(jq '.vulnerabilities | length' safety-report.json 2>/dev/null || echo "0")
+          # No || echo "0" fallback: if jq fails (malformed JSON, missing key,
+          # vulnerabilities:null) VULNS will be empty or "null" so guard 2 below
+          # catches it rather than silently treating the broken report as zero.
+          VULNS=$(jq '.vulnerabilities | length' safety-report.json 2>/dev/null)
+
+          # Guard 2: ensure VULNS is a non-negative integer before the -gt
+          # comparison. "null" (missing/null key) or "" (jq parse failure) would
+          # cause bash's -gt to throw an arithmetic error and fall through to the
+          # success branch — the same silent-pass bug as a missing file.
+          if ! [[ "$VULNS" =~ ^[0-9]+$ ]]; then
+            echo "::error::Safety report exists but 'vulnerabilities' is missing or non-numeric (got: '${VULNS}'). The report may be malformed or Safety may have written an error-only JSON. Treating as failure."
+            exit 1
+          fi
 
           if [ "$VULNS" -gt 0 ]; then
             echo "❌ Security vulnerabilities found: $VULNS"
