@@ -195,6 +195,17 @@ internal/regulated deployment, can reuse this posture directly:
    scanning are repository *settings*, not workflow files — cloning or
    forking the repo does **not** copy them. They must be re-applied via
    the GitHub UI or API on the new repository.
+5. GitHub secret scanning and push protection are repository settings that
+   don't carry over to a fork either — re-enable both under the new
+   repository's Security settings, not just Dependabot.
+6. GitGuardian runs as a GitHub App installation scoped to this specific
+   repository, not a workflow file — a fork gets no secret-detection
+   coverage from it until the app is installed separately on the new repo.
+7. CodeQL's `upload-sarif` step in `codeql.yml` only runs meaningfully if
+   Default Setup is *not* already enabled for the repository (it's designed
+   to skip gracefully otherwise) — check whether Default Setup or Advanced
+   Setup is active on the new repository and adjust expectations for where
+   CodeQL findings show up accordingly.
 
 ## Dependency Security Policy
 
