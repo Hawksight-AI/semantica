@@ -3,6 +3,10 @@ title: "Semantica"
 description: "The Accountability and Context Layer for AI: Context Graphs · Decision Intelligence · Full Provenance"
 ---
 
+```bash
+pip install semantica
+```
+
 Your AI agent just made a decision. Now someone needs to explain it.
 
 *What did it know at the time? Which facts shaped the outcome? Where did those facts come from? Has it made the same call before: and did that go well?*
