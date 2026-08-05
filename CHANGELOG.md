@@ -60,6 +60,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`VectorStore.store_vectors()` silently dropped metadata for FAISS (and any `add_vectors`-only) backend** (#832, #835) by @KaifAhmad1
+  - `store_vectors()` fell into a branch that called `self._backend_store.add_vectors(vectors, **options)` without `metadata` whenever the backend exposed `add_vectors()` but neither `add()` nor `store_vectors()` — true for `FAISSStore`, the backend most real usage configures for genuine ANN search. Every caller that stores vectors with metadata (e.g. `AgentMemory._store_memory_vector()`, used internally by `AgentContext.store()`) lost that metadata once it reached FAISS, with no error or warning
+  - Downstream, `ContextRetriever._retrieve_from_vector()` recovers a result's text via `metadata.get("content", "")`, which was always `""` for any vector stored this way; `_rank_and_merge()` then embedded that empty string, tripping `TextEmbedder.embed_text()`'s empty-text rejection and masking the real bug as a spurious `TextEmbedder` failure recorded by the progress tracker
+  - `store_vectors()` now forwards `metadata` to `add_vectors()`, but only when the backend's `add_vectors()` signature actually accepts it (checked via `inspect.signature`, accepting either an explicit `metadata` parameter or a `**kwargs` catch-all), so a future/custom backend with a stricter signature raises no `TypeError`
+  - **Follow-up review fix**: the `inspect.signature()` probe is wrapped in `try/except (ValueError, TypeError)`, consistent with the identical pattern already used in `ProvenanceManager.trace_lineage()`, so signature introspection failing on an unusual callable can no longer abort `store_vectors()` before it even attempts to call the backend
+
 - **`AgnoDecisionKit.check_policy` silently treated unevaluable policy rules as compliant** (#778, #822) by @Sameer6305
   - `_eval_rule()` previously `return`ed `True` when a rule referenced a field missing from the decision payload, or when the rule string didn't match the expected `<field> <op> <value>` format — the docstring's claim that exceptions never silently return `compliant=True` didn't cover this, since neither path raised
   - Both cases now raise `ValueError` instead, which routes through `check_policy`'s existing exception handler and records a `warnings` entry (e.g. `"Could not evaluate rule 'minimum_score >= 0.9': rule references undefined field 'minimum_score'"`) instead of disappearing with no signal
