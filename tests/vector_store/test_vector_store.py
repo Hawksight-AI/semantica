@@ -89,5 +89,50 @@ class TestVectorStore(unittest.TestCase):
         self.assertEqual(store.get_metadata("v1"), meta)
         self.assertIsNone(store.get_vector("nonexistent"))
 
+    def test_store_vectors_metadata_forwarding(self):
+        """Test that metadata is correctly forwarded to backends that support it."""
+        store = VectorStore(backend="inmemory")
+        
+        class MockBackendWithMetadata:
+            def __init__(self):
+                self.received_metadata = None
+                
+            def add_vectors(self, vectors, ids=None, metadata=None, **options):
+                self.received_metadata = metadata
+                return ["vec1"]
+                
+        mock_backend = MockBackendWithMetadata()
+        store._backend_store = mock_backend
+        
+        vectors = [np.array([0.1, 0.2])]
+        metadata = [{"id": "1"}]
+        
+        store.store_vectors(vectors, metadata=metadata)
+        
+        self.assertEqual(mock_backend.received_metadata, metadata)
+
+    def test_store_vectors_strict_backend(self):
+        """Test that metadata is dropped for strict backends without TypeError."""
+        store = VectorStore(backend="inmemory")
+        
+        class MockBackendStrict:
+            def __init__(self):
+                self.called = False
+                
+            def add_vectors(self, vectors):
+                self.called = True
+                return ["vec1"]
+                
+        mock_backend = MockBackendStrict()
+        store._backend_store = mock_backend
+        
+        vectors = [np.array([0.1, 0.2])]
+        metadata = [{"id": "1"}]
+        
+        # This should not raise TypeError since metadata is dropped
+        store.store_vectors(vectors, metadata=metadata)
+        
+        self.assertTrue(mock_backend.called)
+
 if __name__ == '__main__':
     unittest.main()
