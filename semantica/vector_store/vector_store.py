@@ -497,10 +497,14 @@ class VectorStore:
                     # Some stores have store_vectors method
                     return self._backend_store.store_vectors(vectors, metadata=metadata, **options)
                 else:
-                    add_vectors_params = inspect.signature(self._backend_store.add_vectors).parameters
-                    if 'metadata' in add_vectors_params or any(
-                        p.kind == inspect.Parameter.VAR_KEYWORD for p in add_vectors_params.values()
-                    ):
+                    try:
+                        add_vectors_params = inspect.signature(self._backend_store.add_vectors).parameters
+                        supports_metadata = 'metadata' in add_vectors_params or any(
+                            p.kind == inspect.Parameter.VAR_KEYWORD for p in add_vectors_params.values()
+                        )
+                    except (ValueError, TypeError):
+                        supports_metadata = True
+                    if supports_metadata:
                         return self._backend_store.add_vectors(vectors, metadata=metadata, **options)
                     return self._backend_store.add_vectors(vectors, **options)
             else:
