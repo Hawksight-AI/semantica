@@ -312,9 +312,12 @@ class DecisionEmbeddingPipeline:
         query_result = self.process_decision(query_decision, store_embeddings=False)
         
         # Get candidate embeddings from vector store
-        candidate_embeddings = self._get_candidate_embeddings(filters)
+        fetch_limit = limit * 5 if limit else 100
+        candidate_embeddings = self._get_candidate_embeddings(
+            query_result["semantic_embedding"], limit=fetch_limit, filters=filters
+        )
         
-        if not candidate_embeddings:
+        if not candidate_embeddings["embeddings"]:
             return []
         
         # Calculate similarities
@@ -329,10 +332,27 @@ class DecisionEmbeddingPipeline:
                 query_result["structural_embedding"],
                 candidate_embeddings["embeddings"],
                 candidate_embeddings["metadata"],
-                top_k=limit,
+                top_k=len(candidate_embeddings["embeddings"]),
                 weights=weights,
                 filters=filters
             )
+            
+            # Patch semantic similarity for backends that don't return vectors
+            # using the search scores
+            actual_weights = weights or (self.semantic_weight, self.structural_weight)
+            for sim in similarities:
+                idx = sim["index"]
+                original_vec = candidate_embeddings["embeddings"][idx][0]
+                # If vector is all zeros (placeholder), we use the score from search_vectors
+                if not np.any(original_vec):
+                    score = candidate_embeddings["scores"][idx]
+                    sim["semantic_similarity"] = score
+                    # Recompute overall similarity
+                    sim["similarity"] = (actual_weights[0] * score) + (actual_weights[1] * sim["structural_similarity"])
+                    
+            # Re-sort after patching
+            similarities.sort(key=lambda x: x["similarity"], reverse=True)
+            similarities = similarities[:limit]
         else:
             # Use semantic similarity only
             similarities = self._find_semantic_similar(
@@ -340,7 +360,8 @@ class DecisionEmbeddingPipeline:
                 candidate_embeddings["embeddings"],
                 candidate_embeddings["metadata"],
                 limit,
-                filters
+                filters,
+                candidate_scores=candidate_embeddings.get("scores")
             )
         
         return similarities
@@ -759,39 +780,91 @@ class DecisionEmbeddingPipeline:
         except Exception as e:
             self.logger.warning(f"Failed to pre-generate structural embeddings: {e}")
     
-    def _get_candidate_embeddings(self, filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get_candidate_embeddings(
+        self, query_vector: Optional[np.ndarray] = None, limit: int = 10000, filters: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Get candidate embeddings from vector store."""
         if not self.vector_store:
-            return {"embeddings": [], "metadata": []}
-        
-        # Get all vectors from store
-        embeddings = []
-        metadata = []
-        
-        for vector_id, vector in self.vector_store.vectors.items():
-            vector_metadata = self.vector_store.metadata.get(vector_id, {})
+            return {"embeddings": [], "metadata": [], "scores": []}
             
-            # Apply filters
-            if filters:
-                match = True
-                for key, value in filters.items():
-                    if key not in vector_metadata or vector_metadata[key] != value:
-                        match = False
-                        break
-                if not match:
-                    continue
+        if query_vector is None:
+            query_vector = np.zeros(self.embedding_dimension)
             
-            # Extract structural embedding if available
-            struct_emb = vector_metadata.get("structural_embedding")
-            if struct_emb:
-                struct_emb = np.array(struct_emb)
-            else:
-                struct_emb = np.zeros(self.node_embedding_dimension)
+        embeddings = None
+        metadata = None
+        scores = None
+        collected_embeddings, collected_metadata, collected_scores = [], [], []
+
+        # If we have filters, we might need to fetch more candidates iteratively
+        # if the backend doesn't support native filtering and we rely on post-filtering.
+        current_k = limit
+        max_k = limit * 10 if limit else 100000
+
+        while current_k <= max_k:
+            results = self.vector_store.search_vectors(query_vector, k=current_k, filter=filters)
             
-            embeddings.append((vector, struct_emb))
-            metadata.append(vector_metadata)
-        
-        return {"embeddings": embeddings, "metadata": metadata}
+            # Post-filter and collect
+            collected_embeddings = []
+            collected_metadata = []
+            collected_scores = []
+            
+            for res in results:
+                # Handle unstandardized backends (e.g. Qdrant uses payload, Pinecone uses metadata)
+                vector_metadata = res.get("metadata") or res.get("payload") or {}
+                
+                # Apply post-filtering for backends that ignored the `filter` param
+                if filters:
+                    match = True
+                    for key, value in filters.items():
+                        if key not in vector_metadata or vector_metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+                
+                # Extract structural embedding if available
+                struct_emb = vector_metadata.get("structural_embedding")
+                if struct_emb:
+                    struct_emb = np.array(struct_emb)
+                else:
+                    struct_emb = np.zeros(self.node_embedding_dimension)
+                
+                # Handle unstandardized backends (e.g. Pinecone might use values)
+                vector = res.get("vector")
+                if vector is None:
+                    vector = res.get("values")
+                if vector is None:
+                    vector = np.zeros(self.embedding_dimension)
+                    
+                collected_embeddings.append((vector, struct_emb))
+                collected_metadata.append(vector_metadata)
+                
+                if "distance" in res and res["distance"] is not None:
+                    collected_scores.append(1.0 / (1.0 + float(res["distance"])))
+                else:
+                    collected_scores.append(float(res.get("score", 0.0)))
+            
+            # If we fetched enough matching results, or if the backend returned fewer results
+            # than we asked for (meaning we hit the end of the db), we can stop fetching.
+            if len(collected_embeddings) >= limit or len(results) < current_k:
+                embeddings = collected_embeddings[:limit]
+                metadata = collected_metadata[:limit]
+                scores = collected_scores[:limit]
+                break
+                
+            # Otherwise, double the search pool and try again
+            current_k *= 2
+
+        if embeddings is None:
+            # max_k was exhausted without either stop condition firing (e.g. the
+            # backend always returns a full page and filtered matches never reach
+            # `limit`). Fall back to whatever the final, largest iteration found
+            # rather than discarding it and returning nothing.
+            embeddings = collected_embeddings[:limit]
+            metadata = collected_metadata[:limit]
+            scores = collected_scores[:limit]
+
+        return {"embeddings": embeddings, "metadata": metadata, "scores": scores}
     
     def _find_semantic_similar(
         self,
@@ -799,16 +872,20 @@ class DecisionEmbeddingPipeline:
         candidate_embeddings: List[Tuple[np.ndarray, np.ndarray]],
         candidate_metadata: List[Dict[str, Any]],
         limit: int,
-        filters: Optional[Dict[str, Any]] = None
+        filters: Optional[Dict[str, Any]] = None,
+        candidate_scores: Optional[List[float]] = None
     ) -> List[Dict[str, Any]]:
         """Find similar decisions using semantic similarity only."""
         similarities = []
         
         for i, (sem_emb, struct_emb) in enumerate(candidate_embeddings):
             # Calculate semantic similarity
-            similarity = self.hybrid_calculator._calculate_similarity(
-                query_embedding, sem_emb, "cosine"
-            )
+            if not np.any(sem_emb) and candidate_scores:
+                similarity = candidate_scores[i]
+            else:
+                similarity = self.hybrid_calculator._calculate_similarity(
+                    query_embedding, sem_emb, "cosine"
+                )
             
             similarities.append({
                 "similarity": similarity,

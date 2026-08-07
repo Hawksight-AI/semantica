@@ -69,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`DecisionEmbeddingPipeline.find_similar_decisions()` crashed with `AttributeError` for any `VectorStore` backend other than `inmemory`** (#842, closes #839) by @Sameer6305
+  - `_get_candidate_embeddings()` iterated `VectorStore.vectors`/`VectorStore.metadata` directly, internal dicts only populated for `backend="inmemory"`; every persistent backend (FAISS, Pinecone, Qdrant, Milvus, ...) raised `AttributeError`. It now fetches candidates via the backend-agnostic `VectorStore.search_vectors()`, reading metadata via a `res.get("metadata") or res.get("payload")` fallback for backends that key it differently
+  - Backends such as FAISS don't return the raw vector for each hit; `find_similar_decisions()` and `_find_semantic_similar()` now fall back to the search-provided score (normalized from `distance` when present) as the semantic similarity for those candidates instead of computing cosine similarity against a zero placeholder vector
+  - `get_decision_statistics()` had the identical bug iterating `store.metadata.values()`; it now returns a limited stats payload with an explanatory `warning` field for backends that don't expose a full in-memory metadata dict, instead of crashing
+  - **Fixed along the way**: `_get_candidate_embeddings()`'s expand-and-retry loop (which widens the search pool when post-filtering leaves too few matches) discarded every candidate it had found once the pool hit its cap (`limit * 10`) without ever collecting `limit` matches or getting a short page back from the backend — the loop fell through without executing the branch that assigns results, silently returning `[]` even when matching candidates existed. It now falls back to the last batch collected instead of dropping it
+  - Added end-to-end regression tests against real `inmemory` and `faiss` backends (no mocks) plus a targeted unit test for the expand-and-retry loop's fallback behavior
+
 - **`QdrantStore.search_vectors()` returned results keyed by `"payload"` instead of `"metadata"`** (#841, closes #840) by @divyankshah
   - `QdrantCollection.search_points()` built its result dicts as `{"id", "score", "payload"}`, while `PineconeStore.search_vectors()` and every other backend consumed by `HybridSearch` use `"metadata"`. This silently dropped Qdrant metadata from results and made `HybridSearch.filter_by_metadata()` reject every candidate whenever a filter was applied, since it looks up `result["metadata"]` and got nothing back
   - Normalized `search_points()` to return `"metadata"` instead of `"payload"`, matching the existing convention; no other module reads the old key, so the rename is a straight fix rather than a partial one

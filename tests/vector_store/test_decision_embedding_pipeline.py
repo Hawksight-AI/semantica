@@ -393,6 +393,95 @@ class TestDecisionEmbeddingPipelineEdgeCases:
         assert all("decision_data" in result for result in results)
         assert all("vector_id" in result for result in results)
 
+    def test_find_similar_decisions_real_faiss_backend(self):
+        """Regression test for FAISS backend crashing due to .vectors access (issue #839)"""
+        # Skip if faiss is not installed
+        pytest.importorskip("faiss")
+        
+        try:
+            from semantica.vector_store import VectorStore
+        except ImportError:
+            pytest.skip("VectorStore not available")
+            
+        # Create a real VectorStore with FAISS backend
+        vs = VectorStore(backend="faiss", config={"dimension": 384})
+        # Force fallback random embeddings of the exact dimension (384) to avoid sentence-transformers 
+        # dependency or default 128-d mismatches.
+        vs.embedder = None
+        vs.initialize_decision_pipeline()
+        
+        # Store a couple of dummy decisions to ensure index has data
+        vs.store_decision(scenario="A test decision 1", category="test")
+        vs.store_decision(scenario="A test decision 2", category="test")
+        
+        # This will call _get_candidate_embeddings without a mock
+        # Before the fix, this crashed with AttributeError: 'VectorStore' object has no attribute 'vectors'
+        results = vs.search_decisions("test query", limit=2)
+        
+        # Assert it returns results and doesn't crash
+        assert isinstance(results, list)
+        assert len(results) <= 2
+
+
+    def test_find_similar_decisions_real_inmemory_backend(self):
+        """Regression test for inmemory backend preserving behavior after issue #839 fix"""
+        try:
+            from semantica.vector_store import VectorStore
+        except ImportError:
+            pytest.skip("VectorStore not available")
+            
+        vs = VectorStore(backend="inmemory", config={"dimension": 384})
+        vs.embedder = None
+        vs.initialize_decision_pipeline()
+        
+        vs.store_decision(scenario="Apple product launch", category="tech")
+        vs.store_decision(scenario="Microsoft earnings report", category="tech")
+        vs.store_decision(scenario="Local bakery opens", category="food")
+        
+        results = vs.search_decisions("software company", limit=2)
+        
+        assert isinstance(results, list)
+        assert len(results) <= 2
+        
+        if len(results) > 0:
+            assert "similarity" in results[0]
+            assert "semantic_similarity" in results[0]
+            assert "structural_similarity" in results[0]
+
+    def test_get_candidate_embeddings_returns_partial_matches_when_pool_exhausted(self):
+        """Regression test: _get_candidate_embeddings must not discard matches found
+        in its final retry iteration when the expand-and-retry loop exhausts max_k
+        without ever crossing `limit` matches or getting a short page back."""
+        pipeline = DecisionEmbeddingPipeline.__new__(DecisionEmbeddingPipeline)
+        pipeline.vector_store = Mock()
+        pipeline.embedding_dimension = 384
+        pipeline.node_embedding_dimension = 128
+
+        rare_indices = {10, 30, 50, 70}
+
+        def fake_search_vectors(query_vector, k=10, filter=None):
+            # Always returns a full page, so the backend never hits the
+            # "len(results) < current_k" stop condition.
+            return [
+                {
+                    "id": f"v{i}",
+                    "vector": np.random.rand(384),
+                    "metadata": {"category": "rare" if i in rare_indices else "common"},
+                    "score": 1.0 - i / 1000.0,
+                }
+                for i in range(k)
+            ]
+
+        pipeline.vector_store.search_vectors.side_effect = fake_search_vectors
+
+        result = pipeline._get_candidate_embeddings(
+            np.random.rand(384), limit=10, filters={"category": "rare"}
+        )
+
+        assert len(result["embeddings"]) == len(rare_indices)
+        assert len(result["metadata"]) == len(rare_indices)
+        assert len(result["scores"]) == len(rare_indices)
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

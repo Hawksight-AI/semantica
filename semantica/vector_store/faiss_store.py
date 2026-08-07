@@ -151,11 +151,17 @@ class FAISSSearch:
         for i, (dist, idx) in enumerate(zip(distances[0], indices[0])):
             if idx < len(self.index.vector_ids):
                 vector_id = self.index.vector_ids[idx]
+                dist_val = float(dist)
+                
+                # Standardize score as similarity (0.0 to 1.0)
+                # while preserving original distance
+                similarity_score = 1.0 / (1.0 + dist_val)
+                
                 results.append(
                     {
                         "id": vector_id,
-                        "score": float(dist),
-                        "distance": float(dist),
+                        "score": similarity_score,
+                        "distance": dist_val,
                         "metadata": self.index.metadata.get(vector_id, {}),
                     }
                 )

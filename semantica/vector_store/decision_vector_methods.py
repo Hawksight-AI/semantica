@@ -365,6 +365,19 @@ def get_decision_statistics(
     outcome_counts = {}
     confidence_values = []
     
+    # Not all backends expose internal metadata dictionaries (e.g. FAISS).
+    if not hasattr(store, "metadata"):
+        return {
+            "total_decisions": 0,
+            "categories": {},
+            "outcomes": {},
+            "average_confidence": 0.0,
+            "min_confidence": 0.0,
+            "max_confidence": 0.0,
+            "has_structural_embeddings": False,
+            "warning": "Statistics not supported for persistent backends without full metadata access."
+        }
+    
     for metadata in store.metadata.values():
         # Count by category
         category = metadata.get("category", "unknown")
