@@ -1,3 +1,4 @@
+import errno
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -656,6 +657,45 @@ def test_empty_markdown_export_and_import_are_no_ops():
 
     assert memory.export(format="markdown") == ""
     assert memory.import_data("", format="markdown") == 0
+
+
+def test_markdown_string_path_read_errors_are_not_treated_as_content(tmp_path):
+    source = tmp_path / "memory.md"
+    source.write_text(
+        markdown_document(required_frontmatter(), "Content"), encoding="utf-8"
+    )
+    memory = AgentMemory()
+
+    with patch.object(
+        memory,
+        "_read_markdown_path",
+        side_effect=PermissionError("read denied"),
+    ):
+        with pytest.raises(PermissionError, match="read denied"):
+            memory.import_data(str(source), format="markdown")
+
+
+def test_markdown_string_path_inspection_errors_are_actionable():
+    memory = AgentMemory()
+    original_error = PermissionError(
+        errno.EACCES,
+        "inspection denied",
+        "blocked-memory.md",
+    )
+
+    with patch(
+        "semantica.context.agent_memory.Path.exists",
+        side_effect=original_error,
+    ):
+        with pytest.raises(
+            OSError, match="Failed to inspect possible Markdown import path"
+        ) as exc_info:
+            memory.import_data("memory.md", format="markdown")
+
+    assert exc_info.value.errno == errno.EACCES
+    assert exc_info.value.filename == "blocked-memory.md"
+    assert "inspection denied" in str(exc_info.value)
+    assert exc_info.value.__cause__ is original_error
 
 
 def test_legacy_dict_import_behavior_is_unchanged():
