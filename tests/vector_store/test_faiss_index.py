@@ -48,7 +48,14 @@ def test_get_vector_returns_none_when_index_has_no_reconstruct_method():
     assert index.get_vector("vec_known") is None
 
 
-@pytest.mark.parametrize("error", [NotImplementedError(), RuntimeError()])
+@pytest.mark.parametrize(
+    "error",
+    [
+        NotImplementedError(),
+        RuntimeError("reconstruct not implemented for this type of index"),
+        RuntimeError("reconstruct_from_offset not implemented"),
+    ],
+)
 def test_get_vector_returns_none_when_reconstruction_is_unsupported(error):
     backend_index = MagicMock()
     backend_index.reconstruct.side_effect = error
@@ -56,3 +63,16 @@ def test_get_vector_returns_none_when_reconstruction_is_unsupported(error):
     index.vector_ids = ["vec_known"]
 
     assert index.get_vector("vec_known") is None
+
+
+def test_get_vector_propagates_unexpected_runtime_errors():
+    backend_index = MagicMock()
+    runtime_error = RuntimeError("direct map not initialized")
+    backend_index.reconstruct.side_effect = runtime_error
+    index = FAISSIndex(backend_index, dimension=3)
+    index.vector_ids = ["vec_known"]
+
+    with pytest.raises(RuntimeError) as exc_info:
+        index.get_vector("vec_known")
+
+    assert exc_info.value is runtime_error

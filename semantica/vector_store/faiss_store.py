@@ -91,8 +91,17 @@ class FAISSIndex:
 
         try:
             return np.asarray(reconstruct(idx), dtype=np.float32)
-        except (NotImplementedError, RuntimeError):
+        except NotImplementedError:
             return None
+        except RuntimeError as exc:
+            message = str(exc).casefold()
+            unsupported_errors = (
+                "reconstruct not implemented",
+                "reconstruct_from_offset not implemented",
+            )
+            if any(error in message for error in unsupported_errors):
+                return None
+            raise
 
     def save(self, path: Union[str, Path]):
         """Save index to disk."""
