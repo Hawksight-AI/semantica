@@ -85,9 +85,14 @@ class FAISSIndex:
             return None
 
         idx = self.vector_ids.index(vector_id)
-        # Note: FAISS doesn't directly support retrieval by index in all cases
-        # This is a simplified approach
-        return None
+        reconstruct = getattr(self.index, "reconstruct", None)
+        if not callable(reconstruct):
+            return None
+
+        try:
+            return np.asarray(reconstruct(idx), dtype=np.float32)
+        except (NotImplementedError, RuntimeError):
+            return None
 
     def save(self, path: Union[str, Path]):
         """Save index to disk."""
