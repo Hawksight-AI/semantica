@@ -6,6 +6,9 @@ Verifies that:
 3. Provenance tracking gracefully degrades when the provenance package is absent.
 """
 
+import sys
+from unittest.mock import patch
+
 import pytest
 
 from semantica.pipeline import PipelineBuilder
@@ -23,10 +26,6 @@ class TestPipelineWithProvenance:
         builder.add_step("ingest", "file_ingest")
         builder.add_step("parse", "document_parse")
         return builder.build("test_provenance_pipeline")
-
-    def test_import_succeeds(self):
-        """PipelineWithProvenance should be importable without errors."""
-        from semantica.pipeline.pipeline_provenance import PipelineWithProvenance  # noqa: F401
 
     def test_instantiation_with_pipeline(self, simple_pipeline):
         """Should accept a built Pipeline instance."""
@@ -48,12 +47,15 @@ class TestPipelineWithProvenance:
 
     def test_provenance_disabled_when_import_fails(self, simple_pipeline):
         """When semantica.provenance is unavailable, provenance should be disabled."""
-        runner = PipelineWithProvenance(simple_pipeline, provenance=True)
-        # ProvenanceManager likely isn't installed in test env
-        # Either it loaded (provenance=True) or gracefully disabled (provenance=False)
-        # Both are valid — the key is no exception was raised
-        result = runner.run()
-        assert isinstance(result, ExecutionResult)
+        # Force the provenance import to raise ImportError
+        with patch.dict(sys.modules, {"semantica.provenance": None}):
+            runner = PipelineWithProvenance(simple_pipeline, provenance=True)
+            assert runner.provenance is False
+            assert runner._prov_manager is None
+            # Should still execute successfully without provenance
+            result = runner.run()
+            assert isinstance(result, ExecutionResult)
+            assert result.success is True
 
     def test_run_with_data(self, simple_pipeline):
         """run() should accept data and kwargs without error."""
