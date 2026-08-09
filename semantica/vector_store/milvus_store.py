@@ -342,9 +342,10 @@ class MilvusStore:
             # Define schema
             fields = [
                 FieldSchema(
-                    name="id", dtype=DataType.INT64, is_primary=True, auto_id=True
+                    name="id", dtype=DataType.VARCHAR, is_primary=True, auto_id=False, max_length=65535
                 ),
                 FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dimension),
+                FieldSchema(name="metadata", dtype=DataType.JSON),
             ]
 
             schema = CollectionSchema(
@@ -398,18 +399,28 @@ class MilvusStore:
         except Exception as e:
             raise ProcessingError(f"Failed to get collection: {str(e)}")
 
-    def insert_vectors(
-        self, vectors: List[Union[np.ndarray, List[float]]], **options
-    ) -> Any:
+    def insert_vectors(self, vectors: List[Union[np.ndarray, List[float]]], **options) -> Any:
+        """Backward compatibility alias for add_vectors."""
+        return self.add_vectors(vectors, **options)
+
+    def add_vectors(
+        self, 
+        vectors: List[Union[np.ndarray, List[float]]], 
+        ids: Optional[List[str]] = None,
+        metadata: Optional[List[Dict[str, Any]]] = None,
+        **options
+    ) -> List[str]:
         """
-        Insert vectors into collection.
+        Add vectors to collection.
 
         Args:
             vectors: List of vectors
+            ids: Optional list of vector IDs
+            metadata: Optional list of metadata dictionaries
             **options: Additional options
 
         Returns:
-            Insert result
+            List of vector IDs
         """
         tracking_id = self.progress_tracker.start_tracking(
             module="vector_store",
@@ -442,7 +453,15 @@ class MilvusStore:
                     vector = vector.tolist()
                 vector_data.append(vector)
 
-            data = [vector_data]
+            import uuid
+            if ids is None:
+                ids = [str(uuid.uuid4()) for _ in range(len(vectors))]
+                
+            if metadata is None:
+                metadata = [{} for _ in range(len(vectors))]
+
+            data = [ids, vector_data, metadata]
+            
             self.progress_tracker.update_tracking(
                 tracking_id, message="Inserting vectors into collection..."
             )
@@ -453,7 +472,7 @@ class MilvusStore:
                 status="completed",
                 message=f"Inserted {len(vectors)} vectors",
             )
-            return result
+            return ids
 
         except Exception as e:
             self.progress_tracker.stop_tracking(
@@ -522,6 +541,40 @@ class MilvusStore:
                 tracking_id, status="failed", message=str(e)
             )
             raise
+
+    def get_vector(self, vector_id: str) -> Optional[np.ndarray]:
+        """Get vector by ID."""
+        if not MILVUS_AVAILABLE or not self.collection:
+            return None
+            
+        try:
+            safe_id = vector_id.replace('"', '\\"')
+            res = self.collection.collection.query(
+                expr=f'id == "{safe_id}"', 
+                output_fields=["vector"]
+            )
+            if res and len(res) > 0:
+                return np.array(res[0]["vector"])
+            return None
+        except Exception:
+            return None
+
+    def get_metadata(self, vector_id: str) -> Optional[Dict[str, Any]]:
+        """Get metadata by ID."""
+        if not MILVUS_AVAILABLE or not self.collection:
+            return None
+            
+        try:
+            safe_id = vector_id.replace('"', '\\"')
+            res = self.collection.collection.query(
+                expr=f'id == "{safe_id}"', 
+                output_fields=["metadata"]
+            )
+            if res and len(res) > 0:
+                return res[0].get("metadata", {})
+            return None
+        except Exception:
+            return None
 
     def get_stats(self, collection_name: Optional[str] = None) -> Dict[str, Any]:
         """Get collection statistics."""

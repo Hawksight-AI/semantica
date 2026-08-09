@@ -559,16 +559,19 @@ class VectorStore:
         import pickle
         
         os.makedirs(path, exist_ok=True)
-        
+
         # Save metadata and vectors (generic fallback)
         # Ideally, backends like FAISS have their own save methods
-        if hasattr(self.indexer, "save_index"):
-             self.indexer.save_index(os.path.join(path, "index.bin"))
-        
+        indexer = getattr(self, "indexer", None)
+        if indexer is not None and hasattr(indexer, "save_index"):
+            indexer.save_index(os.path.join(path, "index.bin"))
+        elif self._backend_store is not None and hasattr(self._backend_store, "save_index"):
+            self._backend_store.save_index(os.path.join(path, "index.bin"))
+
         # Save Python-level data
         data = {
-            "vectors": self.vectors,
-            "metadata": self.metadata,
+            "vectors": getattr(self, "vectors", {}),
+            "metadata": getattr(self, "metadata", {}),
             "config": self.config,
             "backend": self.backend,
             "dimension": self.dimension
@@ -604,14 +607,21 @@ class VectorStore:
         self.dimension = data.get("dimension", 768)
         
         # Restore backend-specific index
-        if hasattr(self.indexer, "load_index"):
-            index_path = os.path.join(path, "index.bin")
+        indexer = getattr(self, "indexer", None)
+        index_path = os.path.join(path, "index.bin")
+        if indexer is not None and hasattr(indexer, "load_index"):
             if os.path.exists(index_path):
-                self.indexer.load_index(index_path)
+                indexer.load_index(index_path)
             else:
                 # Rebuild if index file missing but vectors present
-                self.indexer.create_index(list(self.vectors.values()), list(self.vectors.keys()))
-        
+                indexer.create_index(list(self.vectors.values()), list(self.vectors.keys()))
+        elif (
+            self._backend_store is not None
+            and hasattr(self._backend_store, "load_index")
+            and os.path.exists(index_path)
+        ):
+            self._backend_store.load_index(index_path)
+
         self.logger.info(f"Loaded vector store from {path}")
 
     def search(self, query: str, limit: int = 10, **options) -> List[Dict[str, Any]]:
@@ -759,11 +769,21 @@ class VectorStore:
 
     def get_vector(self, vector_id: str) -> Optional[np.ndarray]:
         """Get vector by ID."""
-        return self.vectors.get(vector_id)
+        if self.backend == "inmemory":
+            return self.vectors.get(vector_id)
+        elif self._backend_store and hasattr(self._backend_store, "get_vector"):
+            return self._backend_store.get_vector(vector_id)
+        else:
+            raise NotImplementedError(f"Backend store {type(self._backend_store).__name__} does not implement get_vector")
 
     def get_metadata(self, vector_id: str) -> Optional[Dict[str, Any]]:
         """Get metadata for vector."""
-        return self.metadata.get(vector_id)
+        if self.backend == "inmemory":
+            return self.metadata.get(vector_id)
+        elif self._backend_store and hasattr(self._backend_store, "get_metadata"):
+            return self._backend_store.get_metadata(vector_id)
+        else:
+            raise NotImplementedError(f"Backend store {type(self._backend_store).__name__} does not implement get_metadata")
 
     def initialize_decision_pipeline(
         self,

@@ -491,6 +491,44 @@ class QdrantStore:
             )
             raise
 
+    def get_vector(self, vector_id: str) -> Optional[np.ndarray]:
+        """Get vector by ID."""
+        if self.collection is None or not QDRANT_AVAILABLE:
+            return None
+        
+        try:
+            results = self.client.retrieve(
+                collection_name=self.collection.collection_name,
+                ids=[vector_id],
+                with_vectors=True,
+                with_payload=False
+            )
+            if results and results[0].vector:
+                return np.array(results[0].vector)
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to get vector {vector_id}: {e}")
+            return None
+
+    def get_metadata(self, vector_id: str) -> Optional[Dict[str, Any]]:
+        """Get metadata by ID."""
+        if self.collection is None or not QDRANT_AVAILABLE:
+            return None
+            
+        try:
+            results = self.client.retrieve(
+                collection_name=self.collection.collection_name,
+                ids=[vector_id],
+                with_vectors=False,
+                with_payload=True
+            )
+            if results and results[0].payload is not None:
+                return results[0].payload
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to get metadata for {vector_id}: {e}")
+            return None
+
     def delete_vectors(
         self, point_ids: List[Union[str, int]], **options
     ) -> Dict[str, Any]:

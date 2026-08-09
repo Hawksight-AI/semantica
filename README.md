@@ -2,6 +2,8 @@
 
 <img src="Semantica Logo.png" alt="Semantica" width="420"/>
 
+<a href="https://trendshift.io/repositories/18986?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-18986" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/18986" alt="semantica-agi%2Fsemantica | Trendshift" width="250" height="55"/></a>
+
 ### Graph-Native Infrastructure for Context and Accountable AI Systems
 
 #### *The Open Source Palantir for AI Agents*

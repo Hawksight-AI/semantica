@@ -631,6 +631,28 @@ class PgVectorStore:
             except Exception as e:
                 raise ProcessingError("Failed to get vectors") from e
 
+    def get_vector(self, vector_id: str) -> Optional[np.ndarray]:
+        """Get vector by ID."""
+        try:
+            results = self.get([vector_id])
+            if results and len(results) > 0:
+                return results[0].get("vector")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to get vector {vector_id}: {e}")
+            return None
+
+    def get_metadata(self, vector_id: str) -> Optional[Dict[str, Any]]:
+        """Get metadata by ID."""
+        try:
+            results = self.get([vector_id])
+            if results and len(results) > 0:
+                return results[0].get("metadata")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to get metadata for {vector_id}: {e}")
+            return None
+
     def create_index(
         self,
         index_type: str = "hnsw",

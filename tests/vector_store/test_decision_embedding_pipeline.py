@@ -11,6 +11,7 @@ import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 
 from semantica.vector_store.decision_embedding_pipeline import DecisionEmbeddingPipeline
+from semantica.vector_store import VectorStore
 
 
 class TestDecisionEmbeddingPipeline:
@@ -482,6 +483,53 @@ class TestDecisionEmbeddingPipelineEdgeCases:
         assert len(result["metadata"]) == len(rare_indices)
         assert len(result["scores"]) == len(rare_indices)
 
+
+class TestVectorStoreRetrieval:
+    """Test get_vector and get_metadata on real backends."""
+    
+    def test_inmemory_retrieval(self):
+        """Test exact dict behavior for inmemory backend."""
+        vs = VectorStore(backend="inmemory")
+        vs.store_vectors([np.array([0.1, 0.2, 0.3], dtype=np.float32)], ids=["test1"], metadata=[{"foo": "bar"}])
+        
+        vec = vs.get_vector("vec_0")
+        meta = vs.get_metadata("vec_0")
+        
+        assert vec is not None
+        np.testing.assert_array_almost_equal(vec, np.array([0.1, 0.2, 0.3], dtype=np.float32))
+        assert meta == {"foo": "bar"}
+        
+    def test_faiss_retrieval(self):
+        """Test reconstruction from FAISS."""
+        try:
+            import faiss
+        except ImportError:
+            pytest.skip("FAISS not installed")
+            
+        vs = VectorStore(backend="faiss", config={"dimension": 3})
+        vs.store_vectors([np.array([0.1, 0.2, 0.3], dtype=np.float32)], ids=["test1"], metadata=[{"foo": "faiss_bar"}])
+        
+        vec = vs.get_vector("test1")
+        assert vec is not None
+        np.testing.assert_array_almost_equal(vec, np.array([0.1, 0.2, 0.3], dtype=np.float32))
+        
+        meta = vs.get_metadata("test1")
+        assert meta == {"foo": "faiss_bar"}
+            
+    def test_cloud_backends_untested(self):
+        """
+        Note: The following backends are not tested locally as they require 
+        live external services (Docker containers or API keys):
+        - QdrantStore
+        - PineconeStore
+        - MilvusStore
+        - WeaviateStore
+        - PgVectorStore
+        
+        Their implementations rely directly on official client SDKs (e.g. client.retrieve, 
+        index.fetch) to ensure correctness in production.
+        """
+        pass
 
 if __name__ == "__main__":
     pytest.main([__file__])
