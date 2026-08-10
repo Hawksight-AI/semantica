@@ -38,6 +38,7 @@ except (ImportError, OSError):
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .ssrf import validate_url_for_request
 
 
 @dataclass
@@ -78,11 +79,14 @@ class RESTIngestor:
 
         Args:
             config: Optional REST API ingestion configuration dictionary
-            **kwargs: Additional configuration parameters (merged into config)
+            **kwargs: Additional configuration parameters (merged into config).
+                Recognized keys include ``allow_private_ips`` (default False) to
+                opt into fetching private/loopback/link-local endpoints.
         """
         self.logger = get_logger("api_ingestor")
         self.config = config or {}
         self.config.update(kwargs)
+        self.allow_private_ips = bool(self.config.get("allow_private_ips", False))
 
         # Initialize session with retry strategy
         self.session = requests.Session()
@@ -103,7 +107,10 @@ class RESTIngestor:
         # Initialize progress tracker
         self.progress_tracker = get_progress_tracker()
 
-        self.logger.debug("REST API ingestor initialized")
+        self.logger.debug(
+            "REST API ingestor initialized (allow_private_ips=%s)",
+            self.allow_private_ips,
+        )
 
     def ingest_endpoint(
         self,
@@ -137,7 +144,7 @@ class RESTIngestor:
                 - metadata: Additional metadata
 
         Raises:
-            ValidationError: If endpoint is invalid
+            ValidationError: If endpoint is invalid or fails SSRF checks
             ProcessingError: If request fails
         """
         tracking_id = self.progress_tracker.start_tracking(
@@ -148,6 +155,10 @@ class RESTIngestor:
         )
 
         try:
+            validate_url_for_request(
+                endpoint, allow_private_ips=self.allow_private_ips
+            )
+
             # Prepare request
             request_headers = self.session.headers.copy()
             if headers:
@@ -196,6 +207,11 @@ class RESTIngestor:
                 },
             )
 
+        except ValidationError:
+            self.progress_tracker.stop_tracking(
+                tracking_id, status="failed", message=f"Invalid endpoint URL: {endpoint}"
+            )
+            raise
         except requests.exceptions.RequestException as e:
             self.progress_tracker.stop_tracking(
                 tracking_id, status="failed", message=str(e)

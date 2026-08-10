@@ -48,6 +48,7 @@ from urllib3.util.retry import Retry
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .ssrf import validate_url_for_request
 
 
 @dataclass
@@ -338,10 +339,12 @@ class SitemapCrawler:
         Sets up the crawler with configuration options.
 
         Args:
-            **config: Crawler configuration options (currently unused)
+            **config: Crawler configuration options. Recognized keys:
+                - allow_private_ips: Allow private/loopback sitemap hosts
         """
         self.logger = get_logger("sitemap_crawler")
         self.config = config
+        self.allow_private_ips = bool(config.get("allow_private_ips", False))
 
     def parse_sitemap(self, sitemap_url: str) -> List[str]:
         """
@@ -359,7 +362,11 @@ class SitemapCrawler:
 
         Raises:
             ProcessingError: If sitemap cannot be fetched or parsed
+            ValidationError: If sitemap_url fails SSRF checks
         """
+        validate_url_for_request(
+            sitemap_url, allow_private_ips=self.allow_private_ips
+        )
         try:
             # Fetch sitemap
             response = requests.get(sitemap_url, timeout=30)
@@ -411,7 +418,9 @@ class SitemapCrawler:
 
         Raises:
             ProcessingError: If sitemap index cannot be fetched or parsed
+            ValidationError: If index_url fails SSRF checks
         """
+        validate_url_for_request(index_url, allow_private_ips=self.allow_private_ips)
         try:
             # Fetch sitemap index
             response = requests.get(index_url, timeout=30)
@@ -487,6 +496,7 @@ class WebIngestor:
         max_retries: int = 3,
         backoff_factor: float = 1.0,
         timeout: int = 30,
+        allow_private_ips: bool = False,
         config: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
@@ -503,12 +513,18 @@ class WebIngestor:
             max_retries: Maximum number of retry attempts (default: 3)
             backoff_factor: Backoff factor for retries (default: 1.0)
             timeout: Request timeout in seconds (default: 30)
+            allow_private_ips: Allow fetching private/loopback/link-local hosts
+                (default: False). Opt in only for trusted internal deployments.
             config: Optional configuration dictionary (merged with kwargs)
             **kwargs: Additional configuration parameters
         """
         self.logger = get_logger("web_ingestor")
         self.config = config or {}
         self.config.update(kwargs)
+        self.allow_private_ips = bool(
+            self.config.get("allow_private_ips", allow_private_ips)
+        )
+        self.config["allow_private_ips"] = self.allow_private_ips
 
         # Initialize HTTP session with retry strategy
         self.session = requests.Session()
@@ -544,7 +560,8 @@ class WebIngestor:
 
         self.logger.debug(
             f"Web ingestor initialized: user_agent={user_agent}, "
-            f"delay={delay}, respect_robots={respect_robots}"
+            f"delay={delay}, respect_robots={respect_robots}, "
+            f"allow_private_ips={self.allow_private_ips}"
         )
 
     def ingest_url(
@@ -574,16 +591,8 @@ class WebIngestor:
         )
 
         try:
-            # Validate URL format
-            try:
-                parsed = urlparse(url)
-                if not parsed.scheme or not parsed.netloc:
-                    raise ValidationError(
-                        f"Invalid URL format: {url}. "
-                        "URL must include scheme (http/https) and netloc (domain)."
-                    )
-            except Exception as e:
-                raise ValidationError(f"Invalid URL: {url}") from e
+            # SSRF guard: scheme allowlist + private/loopback/link-local checks
+            validate_url_for_request(url, allow_private_ips=self.allow_private_ips)
 
             # Check robots.txt compliance
             if self.robots_checker and not self.robots_checker.can_fetch(url):
