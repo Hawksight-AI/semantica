@@ -2694,3 +2694,53 @@ def get_triplet_method(method_name: str):
         )
 
     return method_func
+
+
+def extract_entities(text: str, confidence_threshold: float = 0.7, **kwargs) -> List[Entity]:
+    """Extract named entities from text using the default extraction pipeline.
+
+    Convenience facade over :class:`NamedEntityRecognizer` that serves as a
+    single entry point for entity extraction. Used by the explorer
+    ``/api/enrich/extract`` route and external callers.
+
+    Args:
+        text: Input text to extract entities from.
+        confidence_threshold: Minimum confidence score (0.0-1.0).
+        **kwargs: Additional options forwarded to the recognizer.
+
+    Returns:
+        List of extracted entities.
+    """
+    from .named_entity_recognizer import NamedEntityRecognizer
+
+    return NamedEntityRecognizer(confidence_threshold=confidence_threshold).extract_entities(text, **kwargs)
+
+
+def extract_relations(
+    text: str,
+    entities: Optional[List[Entity]] = None,
+    confidence_threshold: float = 0.6,
+    **kwargs,
+) -> List[Relation]:
+    """Extract relations between entities in text.
+
+    Convenience facade over :class:`RelationExtractor` used by the explorer
+    ``/api/enrich/extract`` route. When ``entities`` is omitted they are
+    extracted first via :func:`extract_entities`.
+
+    Args:
+        text: Input text to extract relations from.
+        entities: Pre-extracted entities; extracted automatically when omitted.
+        confidence_threshold: Minimum confidence score (0.0-1.0).
+        **kwargs: Additional options forwarded to the extractor.
+
+    Returns:
+        List of extracted relations.
+    """
+    from .relation_extractor import RelationExtractor
+
+    if entities is None:
+        entities = extract_entities(text)
+    return RelationExtractor(confidence_threshold=confidence_threshold).extract_relations(
+        text, entities=entities, **kwargs
+    )
