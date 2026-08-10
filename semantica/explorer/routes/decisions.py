@@ -34,9 +34,21 @@ def _normalize_timestamp(value: Any) -> Optional[str]:
     if value is None or isinstance(value, str):
         return value
     if isinstance(value, datetime):
+        # Normalize to UTC (assume UTC for naive datetimes) so every
+        # response carries a consistent ISO 8601 offset — the helper's
+        # documented contract.
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
         return value.isoformat()
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+        # Malformed imported timestamps (NaN/inf/out-of-range) must degrade
+        # to None instead of raising and 500-ing the whole endpoint.
+        try:
+            return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+        except (ValueError, OverflowError, OSError):
+            return None
     return None
 
 
