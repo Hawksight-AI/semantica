@@ -19,6 +19,30 @@ Thank you for your interest in contributing! Every contribution, no matter how s
 
 ---
 
+## 🗂️ Working on an Existing Issue
+
+If you want to work on an open GitHub issue, please follow these steps to keep things coordinated and avoid duplicate effort:
+
+1. **Check the issue.** Look at the issue's assignees and recent comments. If someone is already actively working on it, consider a different issue or ask in the comments whether help is welcome.
+
+2. **Comment before you start.** Leave a comment on the issue saying you'd like to work on it — something like *"I'd like to take this on"* is enough. This gives maintainers the context they need to assign the issue appropriately.
+
+3. **Wait for assignment.** A maintainer will review the request and assign the issue when appropriate. Please wait for this before investing significant time in implementation, as priorities and approaches can shift.
+
+4. **Create a branch and implement.** Once assigned, fork the repository (if you haven't already), create a dedicated branch, and begin your work.
+
+   ```bash
+   git checkout -b fix/short-description   # or feature/short-description
+   ```
+
+5. **Open a focused PR and link the issue.** When you're ready, open a pull request and reference the issue in the description (e.g., `Closes #123`). Keep the PR scoped to the work described in the issue.
+
+> **Why this matters:** Commenting before opening a PR helps maintainers track who is working on what, assign issues correctly, and prevent two contributors from solving the same problem independently. It also gives you a chance to align on the expected approach before writing code.
+
+Not sure where to start? Try a [`good first issue`](https://github.com/Hawksight-AI/semantica/labels/good%20first%20issue) or ask in [Discord](https://discord.gg/sV34vps5hH).
+
+---
+
 ## 🎯 Ways to Contribute
 
 ### 💻 Code
