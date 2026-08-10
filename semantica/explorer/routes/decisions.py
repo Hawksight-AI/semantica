@@ -3,6 +3,7 @@ Decision routes using ContextGraph-native fallbacks.
 """
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,6 +15,15 @@ from ..session import GraphSession
 router = APIRouter(prefix="/api/decisions", tags=["Decisions"])
 
 
+def _coerce_timestamp(value) -> Optional[str]:
+    """Coerce a stored decision timestamp (float epoch or ISO string) to ISO-8601."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+    return str(value)
+
+
 def _node_to_decision(node: dict) -> DecisionResponse:
     properties = node.get("properties", {})
     return DecisionResponse(
@@ -23,7 +33,7 @@ def _node_to_decision(node: dict) -> DecisionResponse:
         reasoning=properties.get("reasoning", ""),
         outcome=properties.get("outcome", ""),
         confidence=float(properties.get("confidence", 0.0) or 0.0),
-        timestamp=properties.get("timestamp"),
+        timestamp=_coerce_timestamp(properties.get("timestamp")),
         metadata=properties,
     )
 
