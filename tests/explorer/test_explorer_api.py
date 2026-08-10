@@ -413,6 +413,41 @@ class TestSearchAndStats:
 
 
 class TestDecisions:
+    def test_decision_with_float_timestamp_returns_iso_string(self):
+        """record_decision() stores an epoch float timestamp, but
+        DecisionResponse.timestamp is Optional[str] — the API must
+        surface it as an ISO 8601 string instead of returning 500
+        on every /api/decisions* route (issue #884)."""
+        from datetime import datetime
+
+        graph = ContextGraph(advanced_analytics=False)
+        decision_id = graph.record_decision(
+            category="loan_underwriting",
+            scenario="Underwriting review for A-7291",
+            reasoning="DTI within policy; clean credit history",
+            outcome="approved",
+            confidence=0.94,
+            entities=["applicant_A7291"],
+        )
+        session = GraphSession(graph)
+        app = create_app(session=session)
+
+        with TestClient(app) as client:
+            response = client.get("/api/decisions")
+            assert response.status_code == 200
+            payload = response.json()
+            decision = next(item for item in payload if item["decision_id"] == decision_id)
+            assert isinstance(decision["timestamp"], str)
+            # ISO 8601 parseable, UTC (epoch float converted at the API boundary)
+            assert datetime.fromisoformat(decision["timestamp"]).tzinfo is not None
+
+            single = client.get(f"/api/decisions/{decision_id}")
+            assert single.status_code == 200
+            assert isinstance(single.json()["timestamp"], str)
+
+            precedents = client.get(f"/api/decisions/{decision_id}/precedents")
+            assert precedents.status_code == 200
+
     def test_list_decisions(self, client):
         response = client.get("/api/decisions")
         assert response.status_code == 200

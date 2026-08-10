@@ -3,7 +3,8 @@ Decision routes using ContextGraph-native fallbacks.
 """
 
 import asyncio
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -12,6 +13,31 @@ from ..schemas import CausalChainResponse, CausalDistanceReport, ComplianceRespo
 from ..session import GraphSession
 
 router = APIRouter(prefix="/api/decisions", tags=["Decisions"])
+
+
+def _normalize_timestamp(value: Any) -> Optional[str]:
+    """Normalize a decision timestamp to an ISO 8601 string (UTC).
+
+    Decisions recorded via :meth:`ContextGraph.record_decision` store an
+    epoch float (``datetime.now().timestamp()``), while the API contract
+    (``DecisionResponse.timestamp``) requires a string. Imported graphs may
+    contain either form, so numeric epochs are converted here — this is the
+    single funnel for every ``/api/decisions*`` route.
+
+    Args:
+        value: The raw ``timestamp`` property of a decision node.
+
+    Returns:
+        An ISO 8601 string (UTC) for numeric/datetime input, the original
+        string for string input, ``None`` for missing or unrecognized values.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+    return None
 
 
 def _node_to_decision(node: dict) -> DecisionResponse:
@@ -23,7 +49,7 @@ def _node_to_decision(node: dict) -> DecisionResponse:
         reasoning=properties.get("reasoning", ""),
         outcome=properties.get("outcome", ""),
         confidence=float(properties.get("confidence", 0.0) or 0.0),
-        timestamp=properties.get("timestamp"),
+        timestamp=_normalize_timestamp(properties.get("timestamp")),
         metadata=properties,
     )
 
