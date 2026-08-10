@@ -163,7 +163,9 @@ async def extract_entities(
         from ...semantic_extract.methods import extract_relations as _extract_relations
 
         entities = await asyncio.to_thread(_extract_entities, body.text)
-        relations = await asyncio.to_thread(_extract_relations, body.text)
+        # Reuse the entities above; otherwise the facade re-runs NER on the
+        # same text, doubling extraction cost per request (incl. spaCy model loads).
+        relations = await asyncio.to_thread(_extract_relations, body.text, entities)
 
         ent_list = entities if isinstance(entities, list) else getattr(entities, "entities", [])
         rel_list = relations if isinstance(relations, list) else getattr(relations, "relations", [])
