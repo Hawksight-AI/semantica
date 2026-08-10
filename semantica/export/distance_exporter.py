@@ -72,6 +72,7 @@ class DistanceExporter:
             result = self._centrality.calculate_betweenness_centrality(graph_dict)
             return result.get("betweenness", {}) if isinstance(result, dict) else {}
         except Exception:
+            logger.warning("Betweenness centrality computation failed; omitting from export", exc_info=True)
             return {}
 
     def _hop_distance(self, graph_dict: Dict[str, Any], src: str, tgt: str) -> Optional[int]:
@@ -82,6 +83,7 @@ class DistanceExporter:
             path = result.get("path", []) if isinstance(result, dict) else (result or [])
             return len(path) - 1 if path else None
         except Exception:
+            logger.warning("Hop distance computation failed for %s -> %s; recording as no path", src, tgt, exc_info=True)
             return None
 
     def _weighted_distance(self, graph_dict: Dict[str, Any], src: str, tgt: str) -> Optional[float]:
@@ -93,6 +95,7 @@ class DistanceExporter:
                 return float(result.get("total_weight", len(result.get("path", [])) - 1))
             return None
         except Exception:
+            logger.warning("Weighted distance computation failed for %s -> %s; recording as no path", src, tgt, exc_info=True)
             return None
 
     def _semantic_similarity(self, graph_dict: Dict[str, Any], src: str, tgt: str) -> Optional[float]:
@@ -102,6 +105,7 @@ class DistanceExporter:
             sim = self._similarity.cosine_similarity(graph_dict, src, tgt)
             return float(sim) if isinstance(sim, (int, float)) else None
         except Exception:
+            logger.warning("Semantic similarity computation failed for %s -> %s; recording as no path", src, tgt, exc_info=True)
             return None
 
     def compute_pairs(
