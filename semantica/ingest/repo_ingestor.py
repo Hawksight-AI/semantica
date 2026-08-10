@@ -29,6 +29,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import ipaddress
 import os
 import re
 import shutil
@@ -36,13 +37,20 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+from urllib.parse import urlparse
 
 import git
 
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
+# Safe subset of GitPython clone_from kwargs. Broader kwargs (multi_options,
+# upload_pack, template, config, env, …) have been used in denylist-bypass
+# attacks against older GitPython releases — keep them out of the call surface.
+ALLOWED_CLONE_OPTIONS: Set[str] = {"depth", "branch", "single_branch", "no_tags"}
+ALLOWED_REPO_URL_SCHEMES = frozenset({"https", "http", "git", "ssh"})
 
 
 @dataclass
@@ -509,6 +517,88 @@ class RepoIngestor:
 
         self.logger.debug("Repo ingestor initialized")
 
+    @staticmethod
+    def _validate_repo_url(repo_url: str) -> None:
+        """Validate a repository URL before cloning.
+
+        Rejects empty values, unsupported schemes, missing hosts, environment
+        variable expansion tokens (``$VAR`` / ``${VAR}``), and literal private /
+        loopback / link-local IP addresses.
+        """
+        if not isinstance(repo_url, str) or not repo_url.strip():
+            raise ValidationError("Repository URL must be a non-empty string")
+
+        # Defense-in-depth against GitPython env-var expansion in clone URLs
+        # (GHSA-2f96-g7mh-g2hx / related). Prefer rejecting before clone_from.
+        if "$" in repo_url:
+            raise ValidationError(
+                "Repository URL must not contain environment variable "
+                "references ($VAR / ${VAR})"
+            )
+
+        parsed = urlparse(repo_url.strip())
+        scheme = (parsed.scheme or "").lower()
+        if scheme not in ALLOWED_REPO_URL_SCHEMES:
+            raise ValidationError(
+                f"Unsupported repository URL scheme {scheme!r}. "
+                f"Allowed schemes: {sorted(ALLOWED_REPO_URL_SCHEMES)}"
+            )
+        if not parsed.netloc:
+            raise ValidationError(
+                f"Repository URL must include a host: {repo_url}"
+            )
+
+        host = parsed.hostname
+        if not host:
+            raise ValidationError(
+                f"Repository URL must include a host: {repo_url}"
+            )
+
+        lowered = host.lower().rstrip(".")
+        if lowered == "localhost" or lowered.endswith(".localhost"):
+            raise ValidationError(
+                f"Repository host is not allowed: {host}"
+            )
+
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return  # hostname, not a literal IP
+
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ValidationError(
+                f"Repository host resolves to a blocked address: {host}"
+            )
+
+    @staticmethod
+    def _filter_clone_options(options: Dict[str, Any]) -> Dict[str, Any]:
+        """Return only allowlisted git clone kwargs; reject anything else."""
+        # Semantica processing options — never forwarded to clone_from
+        non_git_options = {
+            "include_history",
+            "file_filters",
+            "commit_filters",
+            "include_extensions",
+            "max_depth",
+        }
+        candidate = {
+            k: v for k, v in options.items() if k not in non_git_options
+        }
+        unsafe = set(candidate) - ALLOWED_CLONE_OPTIONS
+        if unsafe:
+            raise ValidationError(
+                f"Clone option(s) not permitted: {sorted(unsafe)}. "
+                f"Allowed options: {sorted(ALLOWED_CLONE_OPTIONS)}"
+            )
+        return candidate
+
     def ingest_repository(self, repo_url: str, **options) -> Dict[str, Any]:
         """
         Ingest and process a Git repository.
@@ -518,6 +608,8 @@ class RepoIngestor:
             **options: Processing options:
                 - branch: Specific branch to checkout
                 - depth: Clone depth (for shallow clones)
+                - single_branch: Clone only a single branch
+                - no_tags: Skip cloning tags
                 - include_history: Whether to include commit history
                 - include_extensions: List of file extensions to include (e.g., ["py", "md"])
 
@@ -533,24 +625,15 @@ class RepoIngestor:
         )
 
         try:
+            # Validate repository URL before any clone attempt
+            self._validate_repo_url(repo_url)
+
             # Handle option aliases and filters
             if "max_depth" in options and "depth" not in options:
                 options["depth"] = options["max_depth"]
 
-            # Separate git clone options from processing options
-            # We filter out known non-git options to avoid passing invalid flags to git clone
-            non_git_options = {
-                "include_history",
-                "file_filters",
-                "commit_filters",
-                "include_extensions",
-                "max_depth",
-            }
-            clone_options = {
-                k: v for k, v in options.items() if k not in non_git_options
-            }
+            clone_options = self._filter_clone_options(options)
 
-            # Validate repository URL
             try:
                 parsed = git.Repo.clone_from(
                     repo_url, self._get_temp_dir(), **clone_options
