@@ -9,24 +9,10 @@ and must raise a clear ProcessingError for anything else.
 """
 
 import contextlib
-import sys
 import unittest
 from dataclasses import dataclass, field
 from typing import List
 from unittest.mock import MagicMock, patch
-
-# ---------------------------------------------------------------------------
-# Stub out heavy optional deps before importing the module under test
-# ---------------------------------------------------------------------------
-sys.modules.setdefault("matplotlib", MagicMock())
-sys.modules.setdefault("matplotlib.pyplot", MagicMock())
-sys.modules.setdefault("matplotlib.patches", MagicMock())
-sys.modules.setdefault("plotly", MagicMock())
-sys.modules.setdefault("plotly.express", MagicMock())
-sys.modules.setdefault("plotly.graph_objects", MagicMock())
-sys.modules.setdefault("plotly.subplots", MagicMock())
-sys.modules.setdefault("graphviz", MagicMock())
-sys.modules.setdefault("seaborn", MagicMock())
 
 from semantica.utils.exceptions import ProcessingError  # noqa: E402
 from semantica.visualization.kg_visualizer import KGVisualizer  # noqa: E402
@@ -191,10 +177,6 @@ class TestVisualizeNetworkAcceptsKGObject(unittest.TestCase):
     def _run_visualize_network(self, graph_arg):
         """Run visualize_network with all Plotly internals mocked."""
         mock_fig = MagicMock()
-        mock_go = sys.modules["plotly.graph_objects"]
-        mock_go.Figure.return_value = mock_fig
-        mock_go.Scatter.return_value = MagicMock()
-        mock_go.Layout.return_value = MagicMock()
 
         viz = _make_viz()
 
@@ -207,6 +189,9 @@ class TestVisualizeNetworkAcceptsKGObject(unittest.TestCase):
 
         # ColorPalette helpers
         with (
+            patch("semantica.visualization.kg_visualizer.go.Figure", return_value=mock_fig),
+            patch("semantica.visualization.kg_visualizer.go.Scatter"),
+            patch("semantica.visualization.kg_visualizer.go.Layout"),
             patch(
                 "semantica.visualization.kg_visualizer.ColorPalette.get_entity_type_colors",
                 return_value={"Person": "#ff0000"},
@@ -269,17 +254,17 @@ class TestAllVisualizeMethodsAcceptKGObject(unittest.TestCase):
 
     def test_visualize_entity_types_accepts_kg_object(self):
         self.viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
-        mock_px = sys.modules["plotly.express"]
-        mock_px.bar.return_value = MagicMock()
-        self.viz.visualize_entity_types(self.kg)
+        with patch("semantica.visualization.kg_visualizer.px.bar"):
+            self.viz.visualize_entity_types(self.kg)
         self.viz._normalize_graph.assert_called_once_with(self.kg)
 
     def test_visualize_relationship_matrix_accepts_kg_object(self):
         self.viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
-        mock_go = sys.modules["plotly.graph_objects"]
-        mock_go.Figure.return_value = MagicMock()
-        mock_go.Heatmap.return_value = MagicMock()
-        self.viz.visualize_relationship_matrix(self.kg)
+        with (
+            patch("semantica.visualization.kg_visualizer.go.Figure"),
+            patch("semantica.visualization.kg_visualizer.go.Heatmap"),
+        ):
+            self.viz.visualize_relationship_matrix(self.kg)
         self.viz._normalize_graph.assert_called_once_with(self.kg)
 
 
@@ -361,10 +346,6 @@ class TestFormalKnowledgeGraphType(unittest.TestCase):
 
     def _run_visualize_network(self, graph_arg):
         mock_fig = MagicMock()
-        mock_go = sys.modules["plotly.graph_objects"]
-        mock_go.Figure.return_value = mock_fig
-        mock_go.Scatter.return_value = MagicMock()
-        mock_go.Layout.return_value = MagicMock()
         viz = _make_viz()
         fake_pos = {"e1": (0.0, 0.0), "e2": (1.0, 1.0)}
         viz.force_layout = MagicMock()
@@ -372,6 +353,9 @@ class TestFormalKnowledgeGraphType(unittest.TestCase):
         viz.hierarchical_layout = MagicMock()
         viz.circular_layout = MagicMock()
         with (
+            patch("semantica.visualization.kg_visualizer.go.Figure", return_value=mock_fig),
+            patch("semantica.visualization.kg_visualizer.go.Scatter"),
+            patch("semantica.visualization.kg_visualizer.go.Layout"),
             patch(
                 "semantica.visualization.kg_visualizer.ColorPalette.get_entity_type_colors",
                 return_value={"Person": "#ff0000"},
@@ -411,17 +395,19 @@ class TestFormalKnowledgeGraphType(unittest.TestCase):
         kg = self._make_kg()
         viz = _make_viz()
         viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
-        sys.modules["plotly.express"].bar.return_value = MagicMock()
-        viz.visualize_entity_types(kg)
+        with patch("semantica.visualization.kg_visualizer.px.bar"):
+            viz.visualize_entity_types(kg)
         viz._normalize_graph.assert_called_once_with(kg)
 
     def test_visualize_relationship_matrix_accepts_knowledge_graph(self):
         kg = self._make_kg()
         viz = _make_viz()
         viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
-        sys.modules["plotly.graph_objects"].Figure.return_value = MagicMock()
-        sys.modules["plotly.graph_objects"].Heatmap.return_value = MagicMock()
-        viz.visualize_relationship_matrix(kg)
+        with (
+            patch("semantica.visualization.kg_visualizer.go.Figure"),
+            patch("semantica.visualization.kg_visualizer.go.Heatmap"),
+        ):
+            viz.visualize_relationship_matrix(kg)
         viz._normalize_graph.assert_called_once_with(kg)
 
     def test_knowledge_graph_importable_from_kg_module(self):

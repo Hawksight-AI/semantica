@@ -1,23 +1,7 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
-import sys
 import numpy as np
-
-# Mock heavy libraries before importing visualization modules
-sys.modules['matplotlib'] = MagicMock()
-sys.modules['matplotlib.pyplot'] = MagicMock()
-sys.modules['matplotlib.colors'] = MagicMock()
-sys.modules['matplotlib.patches'] = MagicMock()
-sys.modules['plotly'] = MagicMock()
-sys.modules['plotly.express'] = MagicMock()
-sys.modules['plotly.graph_objects'] = MagicMock()
-sys.modules['plotly.subplots'] = MagicMock()
-sys.modules['seaborn'] = MagicMock()
-sys.modules['umap'] = MagicMock()
-sys.modules['sklearn'] = MagicMock()
-sys.modules['sklearn.decomposition'] = MagicMock()
-sys.modules['sklearn.manifold'] = MagicMock()
 
 from semantica.visualization.analytics_visualizer import AnalyticsVisualizer
 from semantica.visualization.embedding_visualizer import EmbeddingVisualizer
@@ -53,22 +37,17 @@ class TestVisualizationAdvanced(unittest.TestCase):
         viz = AnalyticsVisualizer()
         centrality = {"n1": 0.5, "n2": 0.3}
         
-        # Access the mock that was injected
-        import plotly.graph_objects as go
-        # Reset mock to ensure clean state
-        go.Bar.reset_mock()
-        
-        viz.visualize_centrality_rankings(centrality, output="interactive")
-        go.Bar.assert_called()
+        with (
+            patch('semantica.visualization.analytics_visualizer.go.Bar') as mock_bar,
+            patch('semantica.visualization.analytics_visualizer.go.Figure'),
+        ):
+            viz.visualize_centrality_rankings(centrality, output="interactive")
+        mock_bar.assert_called()
 
     def test_visualize_community_structure(self):
         viz = AnalyticsVisualizer()
         
         if hasattr(viz, 'visualize_community_structure'):
-            import plotly.graph_objects as go
-            # Reset mocks
-            go.Figure.reset_mock()
-            
             graph = MagicMock()
             communities = {"c1": ["n1", "n2"]}
             
@@ -88,8 +67,6 @@ class TestVisualizationAdvanced(unittest.TestCase):
     def test_visualize_2d_projection(self):
         viz = EmbeddingVisualizer()
         embeddings = np.random.rand(10, 128)
-        
-        import plotly.graph_objects as go
         
         # Mock UMAP/TSNE/PCA
         with patch('semantica.visualization.embedding_visualizer.umap') as mock_umap, \
@@ -116,12 +93,13 @@ class TestVisualizationAdvanced(unittest.TestCase):
         viz = EmbeddingVisualizer()
         embeddings = np.random.rand(5, 5)
         
-        import plotly.graph_objects as go
-        go.Heatmap.reset_mock()
-        
         if hasattr(viz, 'visualize_similarity_heatmap'):
-            viz.visualize_similarity_heatmap(embeddings)
-            go.Heatmap.assert_called()
+            with (
+                patch('semantica.visualization.embedding_visualizer.go.Heatmap') as mock_heatmap,
+                patch('semantica.visualization.embedding_visualizer.go.Figure'),
+            ):
+                viz.visualize_similarity_heatmap(embeddings)
+            mock_heatmap.assert_called()
 
 if __name__ == '__main__':
     unittest.main()
