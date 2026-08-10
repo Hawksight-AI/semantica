@@ -1,18 +1,25 @@
 
 import unittest
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 import numpy as np
 
+from semantica.visualization import analytics_visualizer, embedding_visualizer
 from semantica.visualization.analytics_visualizer import AnalyticsVisualizer
 from semantica.visualization.embedding_visualizer import EmbeddingVisualizer
 from semantica.visualization.utils.color_schemes import ColorScheme
+from tests.visualization._plotly_doubles import plotly_doubles
 
 class TestVisualizationAdvanced(unittest.TestCase):
 
     def setUp(self):
         self.mock_logger = MagicMock()
         self.mock_tracker = MagicMock()
-        
+
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(plotly_doubles(analytics_visualizer, embedding_visualizer))
+
         self.patchers = [
             patch('semantica.visualization.analytics_visualizer.get_logger', return_value=self.mock_logger),
             patch('semantica.visualization.analytics_visualizer.get_progress_tracker', return_value=self.mock_tracker),

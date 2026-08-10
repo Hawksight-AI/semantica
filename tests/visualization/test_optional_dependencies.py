@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 import numpy as np
 
+from tests.visualization._plotly_doubles import plotly_doubles
+
 
 @contextmanager
 def import_without(module_name, *dependencies):
@@ -36,7 +38,7 @@ class TestOptionalDependencies(unittest.TestCase):
         with import_without(
             "semantica.visualization.embedding_visualizer", "umap"
         ) as module:
-            with patch.object(module, "PCA") as mock_pca_class:
+            with plotly_doubles(module), patch.object(module, "PCA") as mock_pca_class:
                 mock_pca_class.return_value.fit_transform.return_value = np.zeros((4, 2))
 
                 viz = module.EmbeddingVisualizer()

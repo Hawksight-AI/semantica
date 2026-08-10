@@ -15,7 +15,10 @@ from typing import List
 from unittest.mock import MagicMock, patch
 
 from semantica.utils.exceptions import ProcessingError  # noqa: E402
+from semantica.visualization import kg_visualizer  # noqa: E402
 from semantica.visualization.kg_visualizer import KGVisualizer  # noqa: E402
+from tests.visualization._plotly_doubles import plotly_doubles  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Minimal fixtures
@@ -189,6 +192,7 @@ class TestVisualizeNetworkAcceptsKGObject(unittest.TestCase):
 
         # ColorPalette helpers
         with (
+            plotly_doubles(kg_visualizer),
             patch("semantica.visualization.kg_visualizer.go.Figure", return_value=mock_fig),
             patch("semantica.visualization.kg_visualizer.go.Scatter"),
             patch("semantica.visualization.kg_visualizer.go.Layout"),
@@ -239,9 +243,12 @@ class TestAllVisualizeMethodsAcceptKGObject(unittest.TestCase):
         self.viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
         self.viz._visualize_network_plotly = MagicMock(return_value=MagicMock())
         communities = {"node_assignments": {"e1": 0, "e2": 1}, "num_communities": 2}
-        with patch(
-            "semantica.visualization.kg_visualizer.ColorPalette.get_community_colors",
-            return_value=["#ff0000", "#00ff00"],
+        with (
+            plotly_doubles(kg_visualizer),
+            patch(
+                "semantica.visualization.kg_visualizer.ColorPalette.get_community_colors",
+                return_value=["#ff0000", "#00ff00"],
+            ),
         ):
             self.viz.visualize_communities(self.kg, communities=communities)
         self.viz._normalize_graph.assert_called_once_with(self.kg)
@@ -249,18 +256,20 @@ class TestAllVisualizeMethodsAcceptKGObject(unittest.TestCase):
     def test_visualize_centrality_accepts_kg_object(self):
         self.viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
         self.viz._visualize_network_plotly = MagicMock(return_value=MagicMock())
-        self.viz.visualize_centrality(self.kg, centrality={"centrality": {}})
+        with plotly_doubles(kg_visualizer):
+            self.viz.visualize_centrality(self.kg, centrality={"centrality": {}})
         self.viz._normalize_graph.assert_called_once_with(self.kg)
 
     def test_visualize_entity_types_accepts_kg_object(self):
         self.viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
-        with patch("semantica.visualization.kg_visualizer.px.bar"):
+        with plotly_doubles(kg_visualizer), patch("semantica.visualization.kg_visualizer.px.bar"):
             self.viz.visualize_entity_types(self.kg)
         self.viz._normalize_graph.assert_called_once_with(self.kg)
 
     def test_visualize_relationship_matrix_accepts_kg_object(self):
         self.viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
         with (
+            plotly_doubles(kg_visualizer),
             patch("semantica.visualization.kg_visualizer.go.Figure"),
             patch("semantica.visualization.kg_visualizer.go.Heatmap"),
         ):
@@ -353,6 +362,7 @@ class TestFormalKnowledgeGraphType(unittest.TestCase):
         viz.hierarchical_layout = MagicMock()
         viz.circular_layout = MagicMock()
         with (
+            plotly_doubles(kg_visualizer),
             patch("semantica.visualization.kg_visualizer.go.Figure", return_value=mock_fig),
             patch("semantica.visualization.kg_visualizer.go.Scatter"),
             patch("semantica.visualization.kg_visualizer.go.Layout"),
@@ -376,9 +386,12 @@ class TestFormalKnowledgeGraphType(unittest.TestCase):
         viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
         viz._visualize_network_plotly = MagicMock(return_value=MagicMock())
         communities = {"node_assignments": {"e1": 0, "e2": 1}, "num_communities": 2}
-        with patch(
-            "semantica.visualization.kg_visualizer.ColorPalette.get_community_colors",
-            return_value=["#ff0000", "#00ff00"],
+        with (
+            plotly_doubles(kg_visualizer),
+            patch(
+                "semantica.visualization.kg_visualizer.ColorPalette.get_community_colors",
+                return_value=["#ff0000", "#00ff00"],
+            ),
         ):
             viz.visualize_communities(kg, communities=communities)
         viz._normalize_graph.assert_called_once_with(kg)
@@ -388,14 +401,15 @@ class TestFormalKnowledgeGraphType(unittest.TestCase):
         viz = _make_viz()
         viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
         viz._visualize_network_plotly = MagicMock(return_value=MagicMock())
-        viz.visualize_centrality(kg, centrality={"centrality": {}})
+        with plotly_doubles(kg_visualizer):
+            viz.visualize_centrality(kg, centrality={"centrality": {}})
         viz._normalize_graph.assert_called_once_with(kg)
 
     def test_visualize_entity_types_accepts_knowledge_graph(self):
         kg = self._make_kg()
         viz = _make_viz()
         viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
-        with patch("semantica.visualization.kg_visualizer.px.bar"):
+        with plotly_doubles(kg_visualizer), patch("semantica.visualization.kg_visualizer.px.bar"):
             viz.visualize_entity_types(kg)
         viz._normalize_graph.assert_called_once_with(kg)
 
@@ -404,6 +418,7 @@ class TestFormalKnowledgeGraphType(unittest.TestCase):
         viz = _make_viz()
         viz._normalize_graph = MagicMock(return_value=GRAPH_DICT)
         with (
+            plotly_doubles(kg_visualizer),
             patch("semantica.visualization.kg_visualizer.go.Figure"),
             patch("semantica.visualization.kg_visualizer.go.Heatmap"),
         ):
