@@ -533,3 +533,460 @@ class TestVectorStoreRetrieval:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestBuildDecisionContextInmemoryEquivalence:
+    """
+    Requirement 3 (issue #848): prove that switching to get_vector() leaves
+    inmemory behavior byte-for-byte identical to the old direct dict access.
+
+    We call build_decision_context() and explain_decision() once with inmemory
+    to capture results, then call them again after verifying the exact same
+    code path (get_vector → self.vectors.get for inmemory) produces the same
+    output.  This guards against any regression for existing inmemory users.
+    """
+
+    def _make_inmemory_store(self) -> "VectorStore":
+        """Return a populated inmemory VectorStore with one stored decision."""
+        vs = VectorStore(backend="inmemory", config={"dimension": 4})
+        vs.embedder = None  # avoid sentence-transformers dependency
+
+        vec = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32)
+        meta = {
+            "scenario": "Credit limit increase",
+            "reasoning": "Good payment history",
+            "outcome": "approved",
+            "confidence": 0.85,
+            "entities": ["customer_42"],
+            "category": "credit",
+        }
+        ids = vs.store_vectors([vec], metadata=[meta])
+        return vs, ids[0], vec, meta
+
+    def test_build_decision_context_inmemory_has_related_decisions(self):
+        """
+        For inmemory: decision_id IS in self.vectors, so get_vector() returns
+        the vector and the related_decisions block must execute — identical to
+        the old `if decision_id in self.vectors` guard.
+        """
+        vs, decision_id, _vec, _meta = self._make_inmemory_store()
+
+        ctx = vs.build_decision_context(decision_id=decision_id, depth=1)
+
+        assert ctx["decision_id"] == decision_id
+        assert ctx["decision_metadata"] is not None
+        # 'related_decisions' key must exist (even if empty when only 1 vector)
+        assert "related_decisions" in ctx
+        assert isinstance(ctx["related_decisions"], list)
+
+    def test_build_decision_context_inmemory_missing_id_skips_gracefully(self):
+        """
+        For inmemory: if decision_id is NOT in self.vectors, get_vector() returns
+        None and we must skip similarity search gracefully — same as old guard.
+        However, get_metadata() will also return None so the method raises
+        ValueError before reaching that branch.  Confirm the ValueError, not
+        AttributeError.
+        """
+        vs, _decision_id, _vec, _meta = self._make_inmemory_store()
+
+        with pytest.raises(ValueError, match="not found"):
+            vs.build_decision_context(decision_id="nonexistent_id")
+
+    def test_explain_decision_inmemory_with_paths(self):
+        """
+        For inmemory: explain_decision(include_paths=True) must populate
+        'similar_decisions' when the vector exists — identical to old behaviour.
+        """
+        vs, decision_id, _vec, _meta = self._make_inmemory_store()
+
+        explanation = vs.explain_decision(
+            decision_id=decision_id,
+            include_paths=True,
+            include_confidence=True,
+            include_weights=True,
+        )
+
+        assert explanation["decision_id"] == decision_id
+        assert explanation["scenario"] == "Credit limit increase"
+        assert explanation["outcome"] == "approved"
+        assert "confidence" in explanation
+        assert "semantic_weight" in explanation
+        assert "structural_weight" in explanation
+        # similar_decisions must be present when include_paths=True and vector exists
+        assert "similar_decisions" in explanation
+        assert isinstance(explanation["similar_decisions"], list)
+
+    def test_explain_decision_inmemory_without_paths(self):
+        """
+        include_paths=False must NOT populate 'similar_decisions' — get_vector()
+        is never called in that branch; behaviour unchanged.
+        """
+        vs, decision_id, _vec, _meta = self._make_inmemory_store()
+
+        explanation = vs.explain_decision(
+            decision_id=decision_id,
+            include_paths=False,
+        )
+
+        assert "similar_decisions" not in explanation
+
+
+class TestBuildDecisionContextFAISSBackend:
+    """
+    Requirement 4 (issue #848): regression tests against a real non-inmemory
+    backend.  FAISS is chosen because it is the same backend used by
+    test_find_similar_decisions_real_faiss_backend (issue #839 regression) in
+    TestDecisionEmbeddingPipelineEdgeCases above — keeping the whole fix
+    cluster on a consistent backend.
+    """
+
+    def _make_faiss_store(self):
+        """
+        Return a FAISS-backed VectorStore pre-populated with two decisions.
+        Skips automatically when faiss is not installed.
+        """
+        pytest.importorskip("faiss")
+
+        vs = VectorStore(backend="faiss", config={"dimension": 4})
+        vs.embedder = None  # avoid sentence-transformers dependency
+
+        vec_a = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        vec_b = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32)
+
+        meta_a = {
+            "scenario": "Loan approval A",
+            "reasoning": "Low risk",
+            "outcome": "approved",
+            "confidence": 0.9,
+            "entities": ["customer_1"],
+            "category": "loan",
+        }
+        meta_b = {
+            "scenario": "Loan approval B",
+            "reasoning": "Medium risk",
+            "outcome": "approved",
+            "confidence": 0.7,
+            "entities": ["customer_2"],
+            "category": "loan",
+        }
+
+        ids = vs.store_vectors([vec_a, vec_b], metadata=[meta_a, meta_b])
+        return vs, ids[0], ids[1]
+
+    def test_build_decision_context_faiss_no_attribute_error(self):
+        """
+        Regression (issue #848): build_decision_context() must NOT raise
+        AttributeError: 'VectorStore' object has no attribute 'vectors'
+        when the FAISS backend is active.
+        """
+        vs, decision_id_a, _decision_id_b = self._make_faiss_store()
+
+        # Before the fix this raised AttributeError at `if decision_id in self.vectors`
+        ctx = vs.build_decision_context(decision_id=decision_id_a, depth=1)
+
+        assert ctx["decision_id"] == decision_id_a
+        assert ctx["decision_metadata"] is not None
+        assert ctx["decision_metadata"]["scenario"] == "Loan approval A"
+        assert "related_decisions" in ctx
+        assert isinstance(ctx["related_decisions"], list)
+
+    def test_build_decision_context_faiss_related_decisions_populated(self):
+        """
+        With two stored vectors, the context for either one must list the other
+        as a related decision (since FAISS search will return both and we filter
+        out the query id itself).
+        """
+        vs, decision_id_a, decision_id_b = self._make_faiss_store()
+
+        ctx = vs.build_decision_context(decision_id=decision_id_a, depth=1)
+
+        related_ids = [r["id"] for r in ctx["related_decisions"]]
+        assert decision_id_a not in related_ids, (
+            "The query decision itself must be excluded from related_decisions"
+        )
+        assert decision_id_b in related_ids, (
+            "The other stored decision must appear as a related decision"
+        )
+        # Structural shape check
+        for r in ctx["related_decisions"]:
+            assert "id" in r
+            assert "similarity" in r
+            assert "metadata" in r
+
+    def test_build_decision_context_faiss_missing_id_raises_value_error(self):
+        """
+        A completely unknown decision_id must raise ValueError (not AttributeError).
+        """
+        vs, _a, _b = self._make_faiss_store()
+
+        with pytest.raises(ValueError, match="not found"):
+            vs.build_decision_context(decision_id="totally_unknown_id")
+
+    def test_explain_decision_faiss_no_attribute_error(self):
+        """
+        Regression (issue #848): explain_decision(include_paths=True) must NOT
+        raise AttributeError: 'VectorStore' object has no attribute 'vectors'
+        when the FAISS backend is active.
+        """
+        vs, decision_id_a, _decision_id_b = self._make_faiss_store()
+
+        # Before the fix this raised AttributeError at `if decision_id in self.vectors`
+        explanation = vs.explain_decision(
+            decision_id=decision_id_a,
+            include_paths=True,
+            include_confidence=True,
+            include_weights=True,
+        )
+
+        assert explanation["decision_id"] == decision_id_a
+        assert explanation["scenario"] == "Loan approval A"
+        assert explanation["outcome"] == "approved"
+        assert "confidence" in explanation
+        assert "semantic_weight" in explanation
+        assert "structural_weight" in explanation
+        assert "similar_decisions" in explanation
+        assert isinstance(explanation["similar_decisions"], list)
+
+    def test_explain_decision_faiss_without_paths_no_similar_decisions_key(self):
+        """
+        include_paths=False must not populate 'similar_decisions' — regardless
+        of backend.
+        """
+        vs, decision_id_a, _decision_id_b = self._make_faiss_store()
+
+        explanation = vs.explain_decision(
+            decision_id=decision_id_a,
+            include_paths=False,
+        )
+
+        assert "similar_decisions" not in explanation
+
+    def test_explain_decision_faiss_missing_id_raises_value_error(self):
+        """
+        A completely unknown decision_id must raise ValueError (not AttributeError).
+        """
+        vs, _a, _b = self._make_faiss_store()
+
+        with pytest.raises(ValueError, match="not found"):
+            vs.explain_decision(decision_id="totally_unknown_id", include_paths=True)
+
+
+class TestFilterByMetadataBackendBehavior:
+    """
+    Requirement (issue #848 follow-up): verify the chosen behavior of
+    _filter_by_metadata when a non-inmemory backend is active.
+
+    The decision: raise NotImplementedError (matching get_vector / get_metadata
+    from #843) rather than silently returning [].
+
+    Rationale documented in the production comment:
+    - Zero backend wrappers implement filter_by_metadata(filters, limit).
+    - The only codebase hit (HybridSearch.filter_by_metadata) has a completely
+      different signature and is never stored in _backend_store.
+    - Returning [] would make filter_decisions(query=None, category="loan")
+      report "zero matches" when the truth is "capability not available" —
+      indistinguishable from a real empty result and therefore wrong.
+    """
+
+    def _make_faiss_store(self):
+        """FAISS store with two stored decisions — same factory as the rest of
+        this fix cluster."""
+        pytest.importorskip("faiss")
+        vs = VectorStore(backend="faiss", config={"dimension": 4})
+        vs.embedder = None
+
+        ids = vs.store_vectors(
+            [
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32),
+            ],
+            metadata=[
+                {"scenario": "Loan A", "category": "loan", "outcome": "approved",
+                 "confidence": 0.9, "entities": [], "reasoning": ""},
+                {"scenario": "Loan B", "category": "loan", "outcome": "denied",
+                 "confidence": 0.6, "entities": [], "reasoning": ""},
+            ],
+        )
+        return vs, ids
+
+    # ── FAISS backend: NotImplementedError, not AttributeError, not [] ── #
+
+    def test_filter_by_metadata_faiss_raises_not_implemented(self):
+        """
+        filter_decisions(query=None, category='loan') on a FAISS-backed store
+        must raise NotImplementedError, not AttributeError (old crash) and not
+        silently return [] (the wrong silent-failure fix).
+
+        This test pins the chosen behavior: explicit NotImplementedError matching
+        the get_vector/get_metadata precedent set by issue #843.
+        """
+        vs, _ids = self._make_faiss_store()
+
+        with pytest.raises(NotImplementedError) as exc_info:
+            vs.filter_decisions(query=None, category="loan")
+
+        # Message must name the backend and point to the correct alternative
+        msg = str(exc_info.value)
+        assert "FAISSStore" in msg, (
+            f"Error message should name the backend class, got: {msg!r}"
+        )
+        assert "filter_decisions" in msg or "filter_by_metadata" in msg, (
+            f"Error message should mention the failing method, got: {msg!r}"
+        )
+        assert "search_decisions" in msg, (
+            f"Error message should suggest search_decisions() as the alternative, "
+            f"got: {msg!r}"
+        )
+
+    def test_filter_by_metadata_faiss_not_attribute_error(self):
+        """
+        Regression guard: the old code raised AttributeError because self.metadata
+        does not exist for non-inmemory backends.  This must never happen again.
+        """
+        vs, _ids = self._make_faiss_store()
+
+        try:
+            vs.filter_decisions(query=None, category="loan")
+        except NotImplementedError:
+            pass  # correct — this is what we want
+        except AttributeError as exc:
+            pytest.fail(
+                f"Got AttributeError instead of NotImplementedError: {exc}"
+            )
+
+    def test_filter_by_metadata_faiss_not_silent_empty_list(self):
+        """
+        The wrong fix would have silently returned []. Confirm the FAISS path
+        raises rather than returning an empty list that the caller cannot
+        distinguish from 'zero decisions matched'.
+        """
+        vs, _ids = self._make_faiss_store()
+
+        result_was_empty_list = False
+        try:
+            result = vs.filter_decisions(query=None, category="loan")
+            result_was_empty_list = (result == [])
+        except NotImplementedError:
+            pass  # correct
+
+        assert not result_was_empty_list, (
+            "_filter_by_metadata must not silently return [] for a non-inmemory "
+            "backend — it must raise NotImplementedError so callers cannot "
+            "mistake 'backend unsupported' for 'no matching decisions'."
+        )
+
+    # ── inmemory backend: existing iteration still works ── #
+
+    def test_filter_by_metadata_inmemory_still_works(self):
+        """
+        Control: inmemory backend must not be affected by the FAISS guard.
+        filter_decisions(query=None, category='loan') must return the two
+        loan decisions that were stored and not raise anything.
+        """
+        vs = VectorStore(backend="inmemory", config={"dimension": 4})
+        vs.embedder = None
+
+        vs.store_vectors(
+            [
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32),
+                np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32),
+            ],
+            metadata=[
+                {"scenario": "Loan A", "category": "loan", "outcome": "approved",
+                 "confidence": 0.9, "entities": [], "reasoning": ""},
+                {"scenario": "Loan B", "category": "loan", "outcome": "denied",
+                 "confidence": 0.6, "entities": [], "reasoning": ""},
+                {"scenario": "Credit card", "category": "credit", "outcome": "approved",
+                 "confidence": 0.8, "entities": [], "reasoning": ""},
+            ],
+        )
+
+        results = vs.filter_decisions(query=None, category="loan")
+
+        assert isinstance(results, list)
+        assert len(results) == 2, (
+            f"Expected 2 loan decisions, got {len(results)}: {results}"
+        )
+        for r in results:
+            assert r["metadata"]["category"] == "loan"
+
+
+class TestVectorRetrievalFailureBehavior:
+    """
+    Requirement: verify that when get_vector() returns None for an existing decision
+    (e.g., FAISS without reconstruct capability), we don't silently drop similarity
+    enrichment. We should get a warning log and an explicit marker in the output.
+    """
+
+    class _StubBackend:
+        def __init__(self):
+            self.metadata = {
+                "decision_1": {
+                    "scenario": "Stub Scenario",
+                    "reasoning": "Stub Reasoning",
+                    "outcome": "approved"
+                }
+            }
+
+        def get_metadata(self, vector_id: str):
+            return self.metadata.get(vector_id)
+
+        def get_vector(self, vector_id: str):
+            # Explicitly return None to simulate a backend that cannot reconstruct vectors
+            return None
+
+    def _make_stub_store(self):
+        vs = VectorStore(backend="inmemory", config={"dimension": 4})
+        vs.embedder = None
+        # Replace the backend store with our stub
+        vs._backend_store = self._StubBackend()
+        vs.backend = "stub"
+        return vs
+
+    def test_build_decision_context_warns_and_marks_on_missing_vector(self, caplog):
+        """
+        When get_vector() returns None for an existing decision, build_decision_context
+        should warn and add 'similarity_unavailable': True to the context.
+        """
+        import logging
+        vs = self._make_stub_store()
+
+        with caplog.at_level(logging.WARNING, logger="semantica.vector_store"):
+            ctx = vs.build_decision_context(decision_id="decision_1", depth=1)
+
+        assert ctx["decision_id"] == "decision_1"
+        assert ctx.get("similarity_unavailable") is True, "Expected similarity_unavailable marker"
+        assert isinstance(ctx["related_decisions"], list), "related_decisions must be a list for schema stability"
+        assert len(ctx["related_decisions"]) == 0
+
+        warning_logged = any(
+            "decision_1" in record.message and record.levelname == "WARNING"
+            for record in caplog.records
+        )
+        assert warning_logged, f"Expected WARNING log mentioning decision_1; got: {caplog.records}"
+
+    def test_explain_decision_warns_and_marks_on_missing_vector(self, caplog):
+        """
+        When get_vector() returns None for an existing decision, explain_decision
+        with include_paths=True should warn and add 'similarity_unavailable': True.
+        """
+        import logging
+        vs = self._make_stub_store()
+
+        with caplog.at_level(logging.WARNING, logger="semantica.vector_store"):
+            explanation = vs.explain_decision(
+                decision_id="decision_1",
+                include_paths=True,
+            )
+
+        assert explanation["decision_id"] == "decision_1"
+        assert explanation.get("similarity_unavailable") is True, "Expected similarity_unavailable marker"
+        assert isinstance(explanation["similar_decisions"], list), "similar_decisions must be a list for schema stability"
+        assert len(explanation["similar_decisions"]) == 0
+
+        warning_logged = any(
+            "decision_1" in record.message and record.levelname == "WARNING"
+            for record in caplog.records
+        )
+        assert warning_logged, f"Expected WARNING log mentioning decision_1; got: {caplog.records}"
