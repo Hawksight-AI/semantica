@@ -252,5 +252,75 @@ class TestContextModule(unittest.TestCase):
         self.assertIsNotNone(ctx._memory)
         self.assertEqual(len(ctx._memory.short_term_memory), 1)
 
+class TestContextGraphNodePropertyContract(unittest.TestCase):
+
+    _MISSING = object()
+
+    def _graph_with_node(self):
+        graph = ContextGraph()
+        graph.add_node("n1", "person", "Alice", role="engineer", score=0)
+        return graph
+
+    def test_get_node_property_existing_node_existing_prop(self):
+        graph = self._graph_with_node()
+        self.assertEqual(graph.get_node_property("n1", "role"), "engineer")
+
+    def test_get_node_property_existing_node_missing_prop(self):
+        graph = self._graph_with_node()
+        self.assertIsNone(graph.get_node_property("n1", "nonexistent"))
+
+    def test_get_node_property_missing_node_returns_default_none(self):
+        graph = self._graph_with_node()
+        self.assertIsNone(graph.get_node_property("ghost", "role"))
+
+    def test_get_node_property_sentinel_distinguishes_missing_node(self):
+        graph = self._graph_with_node()
+        result = graph.get_node_property("ghost", "role", default=self._MISSING)
+        self.assertIs(result, self._MISSING)
+
+    def test_get_node_property_sentinel_distinguishes_missing_prop(self):
+        graph = self._graph_with_node()
+        result = graph.get_node_property("n1", "nonexistent", default=self._MISSING)
+        self.assertIs(result, self._MISSING)
+
+    def test_get_node_property_explicit_default_returned_for_absent_node(self):
+        graph = self._graph_with_node()
+        self.assertEqual(graph.get_node_property("ghost", "role", default="fallback"), "fallback")
+
+    def test_get_node_property_prop_value_of_zero_not_swallowed(self):
+        graph = self._graph_with_node()
+        self.assertEqual(graph.get_node_property("n1", "score"), 0)
+
+    def test_get_node_attributes_existing_node_returns_copy(self):
+        graph = self._graph_with_node()
+        attrs = graph.get_node_attributes("n1")
+        self.assertIsInstance(attrs, dict)
+        self.assertEqual(attrs.get("role"), "engineer")
+
+    def test_get_node_attributes_missing_node_returns_none_by_default(self):
+        graph = self._graph_with_node()
+        self.assertIsNone(graph.get_node_attributes("ghost"))
+
+    def test_get_node_attributes_missing_node_explicit_default(self):
+        graph = self._graph_with_node()
+        result = graph.get_node_attributes("ghost", default={})
+        self.assertEqual(result, {})
+
+    def test_add_node_attribute_mutation_callback_fires_on_update(self):
+        graph = self._graph_with_node()
+        fired = []
+        graph.mutation_callback = lambda op, nid, data: fired.append((op, nid))
+        graph.add_node_attribute("n1", {"extra": "value"})
+        self.assertEqual(len(fired), 1)
+        self.assertEqual(fired[0], ("UPDATE_NODE", "n1"))
+
+    def test_add_node_attribute_missing_node_no_callback(self):
+        graph = self._graph_with_node()
+        fired = []
+        graph.mutation_callback = lambda op, nid, data: fired.append((op, nid))
+        graph.add_node_attribute("ghost", {"extra": "value"})
+        self.assertEqual(len(fired), 0)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -708,18 +708,60 @@ class ContextGraph:
                     })
         return result
 
-    def get_node_property(self, node_id: str, property_name: str) -> Any:
-        with self._lock:
-            node = self.nodes.get(node_id)
-            if not node:
-                return None
-            return node.properties.get(property_name)
+    def get_node_property(
+        self,
+        node_id: str,
+        property_name: str,
+        default: Any = None,
+    ) -> Any:
+        """Return the value of *property_name* on *node_id*.
 
-    def get_node_attributes(self, node_id: str) -> Dict[str, Any]:
+        Returns *default* when the node does not exist or when the property is
+        not set on the node.  To distinguish the two cases pass a private
+        sentinel as *default*::
+
+            _MISSING = object()
+            val = graph.get_node_property(node_id, "score", default=_MISSING)
+            if val is _MISSING:
+                ...
+
+        Args:
+            node_id: ID of the node to look up.
+            property_name: Name of the property to retrieve.
+            default: Value returned when the node or property is absent.
+                Defaults to ``None`` (backward-compatible).
+
+        Returns:
+            The property value, or *default* if not found.
+        """
         with self._lock:
             node = self.nodes.get(node_id)
-            if not node:
-                return {}
+            if node is None:
+                return default
+            return node.properties.get(property_name, default)
+
+    def get_node_attributes(
+        self,
+        node_id: str,
+        default: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a copy of all properties on *node_id*.
+
+        Returns *default* when the node does not exist.  Pass ``default={}``
+        to restore the previous always-dict behaviour.
+
+        Args:
+            node_id: ID of the node to look up.
+            default: Value returned when the node is absent.
+                Defaults to ``None``.
+
+        Returns:
+            A shallow copy of the node's properties dict, or *default*.
+        """
+        with self._lock:
+            node = self.nodes.get(node_id)
+            if node is None:
+                return default
             return node.properties.copy()
 
     def add_node_attribute(self, node_id: str, attributes: Dict[str, Any]) -> None:
@@ -729,7 +771,6 @@ class ContextGraph:
                 return
             node.properties.update(attributes)
             node.metadata.update(attributes)
-
 
         if getattr(self, "mutation_callback", None) and not getattr(
             self, "_suspend_mutation_callback", False
