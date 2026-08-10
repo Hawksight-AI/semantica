@@ -195,6 +195,9 @@ class TestVectorStoreDeepDive(unittest.TestCase):
         mock_collection_instance.search.assert_called()
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["id"], 1)
+        self.assertIn("metadata", results[0])
+        self.assertIsInstance(results[0]["metadata"], dict)
+        self.assertIn("vector", results[0])
 
     @patch('semantica.vector_store.qdrant_store.QdrantClientLib')
     @patch('semantica.vector_store.qdrant_store.VectorParams')

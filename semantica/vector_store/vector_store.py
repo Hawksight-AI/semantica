@@ -65,7 +65,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
 import concurrent.futures
 import inspect
 
@@ -77,6 +77,24 @@ from ..utils.progress_tracker import get_progress_tracker
 from ..embeddings import EmbeddingGenerator
 from .hybrid_similarity import HybridSimilarityCalculator
 from .decision_embedding_pipeline import DecisionEmbeddingPipeline
+
+class SearchResult(TypedDict):
+    """Canonical schema returned by VectorStore.search_vectors().
+
+    Required fields (always present):
+        id       – string or integer identifier of the stored vector.
+        score    – float similarity score, higher is better (normalised to 0.0–1.0 across all backends).
+        metadata – dict of associated metadata; empty dict when none is stored.
+        vector   – np.ndarray when the backend returns the raw vector, otherwise None.
+        distance – raw native distance value preserved for backends that expose it
+                   (FAISS L2, Weaviate cosine), otherwise None.
+    """
+
+    id: Union[str, int]
+    score: float
+    metadata: Dict[str, Any]
+    vector: Optional[Any]          # np.ndarray | None
+    distance: Optional[float]
 
 
 class VectorStore:
@@ -644,7 +662,7 @@ class VectorStore:
 
     def search_vectors(
         self, query_vector: np.ndarray, k: int = 10, **options
-    ) -> List[Dict[str, Any]]:
+    ) -> List[SearchResult]:
         """
         Search for similar vectors.
 
@@ -697,11 +715,13 @@ class VectorStore:
                 **options,
             )
 
-            # Add metadata to results if available
+            # Add metadata to results; guarantee the key always exists.
             for result in results:
                 vector_id = result.get("id")
                 if vector_id and vector_id in self.metadata:
                     result["metadata"] = self.metadata[vector_id]
+                elif "metadata" not in result:
+                    result["metadata"] = {}
 
             self.progress_tracker.stop_tracking(
                 tracking_id,
@@ -1009,16 +1029,23 @@ class VectorStore:
     ) -> Dict[str, Any]:
         """
         Build decision context graph.
-        
+
         Args:
             decision_id: Decision vector ID
             depth: Context depth
             include_entities: Whether to include entities
             include_policies: Whether to include policies
             max_hops: Maximum hops for context expansion
-            
+
         Returns:
-            Decision context graph
+            Decision context graph dict with keys:
+              - decision_id, decision_metadata, entities, policies,
+                related_decisions, context_graph.
+            If the backend cannot retrieve the raw vector for *decision_id*
+            (e.g. a FAISS index built without ``make_direct_map``), similarity
+            enrichment is skipped, a WARNING is emitted, and the key
+            ``similarity_unavailable=True`` is added.  ``related_decisions``
+            remains an empty list for schema stability.
         """
         # Get decision metadata
         decision_metadata = self.get_metadata(decision_id)
@@ -1042,8 +1069,8 @@ class VectorStore:
             context["entities"] = decision_metadata["entities"]
         
         # Add related decisions based on similarity
-        if decision_id in self.vectors:
-            query_vector = self.vectors[decision_id]
+        query_vector = self.get_vector(decision_id)
+        if query_vector is not None:
             similar_decisions = self.search_vectors(query_vector, k=depth * 5)
             
             for result in similar_decisions:
@@ -1053,6 +1080,13 @@ class VectorStore:
                         "similarity": result["score"],
                         "metadata": result.get("metadata", {})
                     })
+        else:
+            self.logger.warning(
+                "Backend cannot retrieve vector for decision '%s' — "
+                "similarity enrichment skipped.",
+                decision_id,
+            )
+            context["similarity_unavailable"] = True
         
         return context
 
@@ -1065,15 +1099,20 @@ class VectorStore:
     ) -> Dict[str, Any]:
         """
         Generate explanation for a decision.
-        
+
         Args:
             decision_id: Decision vector ID
             include_paths: Whether to include reasoning paths
             include_confidence: Whether to include confidence scores
             include_weights: Whether to include similarity weights
-            
+
         Returns:
-            Decision explanation
+            Decision explanation dict.  When *include_paths* is True and the
+            backend can retrieve the raw vector, ``similar_decisions`` is
+            populated.  If the backend cannot retrieve the vector (e.g. a FAISS
+            index without ``make_direct_map``), a WARNING is emitted, the key
+            ``similarity_unavailable=True`` is added, and ``similar_decisions``
+            is set to ``[]`` for schema stability.
         """
         decision_metadata = self.get_metadata(decision_id)
         if not decision_metadata:
@@ -1096,10 +1135,18 @@ class VectorStore:
         
         if include_paths:
             # Find similar decisions for reasoning paths
-            if decision_id in self.vectors:
-                query_vector = self.vectors[decision_id]
+            query_vector = self.get_vector(decision_id)
+            if query_vector is not None:
                 similar_decisions = self.search_vectors(query_vector, k=3)
                 explanation["similar_decisions"] = similar_decisions
+            else:
+                self.logger.warning(
+                    "Backend cannot retrieve vector for decision '%s' — "
+                    "similarity enrichment skipped.",
+                    decision_id,
+                )
+                explanation["similarity_unavailable"] = True
+                explanation["similar_decisions"] = []
         
         return explanation
 
@@ -1124,6 +1171,27 @@ class VectorStore:
 
     def _filter_by_metadata(self, filters: Dict[str, Any], limit: int) -> List[Dict[str, Any]]:
         """Filter decisions by metadata only."""
+        if self._backend_store is not None:
+            # No real backend wrapper implements filter_by_metadata; the only
+            # codebase hit is HybridSearch.filter_by_metadata which has a
+            # completely different signature (results, MetadataFilter) and is
+            # never stored in _backend_store.  Silently returning [] here would
+            # be wrong — the caller (filter_decisions) would report zero matches
+            # for a query that simply isn't supported, indistinguishable from a
+            # genuine empty result.  This is the same situation as get_vector()
+            # and get_metadata() (#843 fix): when a backend exists but cannot
+            # fulfil the request, raise NotImplementedError so the caller knows
+            # the backend lacks this capability rather than assuming no data.
+            if hasattr(self._backend_store, "filter_by_metadata"):
+                return self._backend_store.filter_by_metadata(filters, limit)
+            raise NotImplementedError(
+                f"Backend store {type(self._backend_store).__name__} does not "
+                "implement filter_by_metadata. Metadata-only filtering via "
+                "filter_decisions(query=None, ...) is only supported for the "
+                "inmemory backend. Pass a query string to use search_decisions() "
+                "instead, which is supported by all backends."
+            )
+
         results = []
         
         for vector_id, metadata in self.metadata.items():
@@ -1166,7 +1234,7 @@ class VectorStore:
                 results.append({
                     "id": vector_id,
                     "metadata": metadata,
-                    "vector": self.vectors.get(vector_id)
+                    "vector": self.get_vector(vector_id)
                 })
                 
                 if len(results) >= limit:
@@ -1296,6 +1364,8 @@ class VectorRetriever:
                     "id": ids[idx],
                     "vector": vectors[idx],
                     "score": float(similarities[idx]),
+                    "metadata": {},
+                    "distance": None,
                 }
             )
 

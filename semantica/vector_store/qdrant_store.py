@@ -164,8 +164,17 @@ class QdrantCollection:
                 results.append(
                     {
                         "id": result.id,
-                        "score": result.score,
+                        # See pinecone_store.py PineconeIndex.search_vectors for why
+                        # this uses x/(1+|x|) rather than clamping distance-to-zero:
+                        # Qdrant's Dot distance metric is unbounded, and the old
+                        # clamped formula collapsed every score >= 1.0 to 1.0.
+                        "score": (
+                            float(result.score) / (1.0 + abs(float(result.score))) + 1.0
+                        )
+                        / 2.0,
                         "metadata": result.payload or {},
+                        "vector": None,
+                        "distance": None,
                     }
                 )
 

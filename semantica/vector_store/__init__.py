@@ -182,7 +182,7 @@ from .pinecone_store import PineconeStore, PineconeClient, PineconeIndex, Pineco
 from .qdrant_store import QdrantStore, QdrantClient, QdrantCollection, QdrantSearch
 from .registry import MethodRegistry, method_registry
 from .sqlite_vec_store import SQLiteVecStore
-from .vector_store import VectorIndexer, VectorManager, VectorRetriever, VectorStore
+from .vector_store import VectorIndexer, VectorManager, VectorRetriever, VectorStore, SearchResult
 from .weaviate_store import (
     WeaviateStore,
     WeaviateClient,
@@ -196,6 +196,7 @@ __all__ = [
     "VectorIndexer",
     "VectorRetriever",
     "VectorManager",
+    "SearchResult",
     # FAISS
     "FAISSStore",
     "FAISSIndex",

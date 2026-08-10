@@ -194,8 +194,19 @@ class PineconeIndex:
                 results.append(
                     {
                         "id": match.id,
-                        "score": match.score,
+                        # Pinecone's native score is already "higher is better" but its
+                        # range depends on the configured metric (bounded for cosine,
+                        # unbounded for dotproduct). Squash with x/(1+|x|) instead of
+                        # clamping distance-to-zero, since the latter collapses every
+                        # score >= 1.0 to an identical 1.0 and destroys ranking order
+                        # for dotproduct/unnormalized-vector indexes.
+                        "score": (
+                            float(match.score) / (1.0 + abs(float(match.score))) + 1.0
+                        )
+                        / 2.0,
                         "metadata": match.metadata or {},
+                        "vector": None,
+                        "distance": None,
                     }
                 )
 

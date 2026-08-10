@@ -162,9 +162,13 @@ class MilvusCollection:
                         {
                             "id": hit.id,
                             "distance": hit.distance,
-                            "score": 1.0 - hit.distance
-                            if hit.distance <= 1.0
-                            else 1.0 / (1.0 + hit.distance),
+                            "score": 1.0 / (1.0 + max(0.0, hit.distance)),
+                            # Milvus collection schema stores only id+vector; no
+                            # metadata field is defined in create_collection().
+                            # Return empty dict — a future schema migration that
+                            # adds a metadata JSON field is tracked separately.
+                            "metadata": {},
+                            "vector": None,
                         }
                     )
                 results.append(batch_results)

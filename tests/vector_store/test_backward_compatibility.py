@@ -76,6 +76,8 @@ class TestVectorStoreBackwardCompatibility:
         assert all("id" in result for result in results)
         assert all("score" in result for result in results)
         assert all("vector" in result for result in results)
+        assert all("metadata" in result for result in results)
+        assert all(isinstance(result["metadata"], dict) for result in results)
     
     def test_search_method_unchanged(self):
         """Test search method unchanged."""

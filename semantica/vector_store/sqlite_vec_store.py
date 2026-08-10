@@ -414,6 +414,8 @@ class SQLiteVecStore:
                             "id": vec_id,
                             "score": similarity,
                             "metadata": json.loads(meta_json) if meta_json else {},
+                            "vector": None,
+                            "distance": None,
                         }
                     )
 
