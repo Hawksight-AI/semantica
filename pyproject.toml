@@ -230,7 +230,7 @@ dev = [
 
 # Explorer Dashboard
 explorer = [
-  "fastapi>=0.100.0",
+  "fastapi>=0.109.1",
   "uvicorn[standard]>=0.22.0",
   "websockets>=15.0.1",
   "python-multipart>=0.0.6"
