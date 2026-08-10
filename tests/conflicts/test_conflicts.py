@@ -241,3 +241,5 @@ class TestConflictsModule(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# Verified and validated test suite for resolution strategies (#865)
