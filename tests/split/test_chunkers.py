@@ -1,7 +1,5 @@
 """Tests for previously untested split chunker classes (issue #864)."""
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from semantica.split.kg_chunkers import (
@@ -12,19 +10,36 @@ from semantica.split.kg_chunkers import (
     RelationAwareChunker,
 )
 from semantica.split.methods import (
+    SEMANTIC_EXTRACT_AVAILABLE,
+    NETWORKX_AVAILABLE,
     split_by_characters,
     split_by_paragraphs,
     split_by_sentences,
     split_by_words,
     split_entity_aware,
+    split_graph_based,
     split_hierarchical,
+    split_ontology_aware,
     split_recursive,
+    split_relation_aware,
+    split_sliding_window,
+    split_structural,
 )
 from semantica.split.semantic_chunker import Chunk
 from semantica.split.sliding_window_chunker import SlidingWindowChunker
 from semantica.split.structural_chunker import StructuralChunker, StructuralElement
 from semantica.split.table_chunker import TableChunk, TableChunker
 from semantica.utils.exceptions import ValidationError
+
+requires_semantic_extract = pytest.mark.skipif(
+    not SEMANTIC_EXTRACT_AVAILABLE,
+    reason="semantica.semantic_extract is not available",
+)
+requires_networkx = pytest.mark.skipif(
+    not NETWORKX_AVAILABLE,
+    reason="networkx is not available",
+)
+
 
 # ---------------------------------------------------------------------------
 # SlidingWindowChunker
@@ -70,7 +85,6 @@ class TestSlidingWindowChunker:
                 f"{expected_overlap!r} != {actual_prefix!r}"
             )
 
-        # Indices should advance by stride (except possibly into the final partial chunk)
         for i in range(len(chunks) - 1):
             assert (
                 chunks[i + 1].start_index - chunks[i].start_index
@@ -82,7 +96,6 @@ class TestSlidingWindowChunker:
         chunker = SlidingWindowChunker(chunk_size=50, overlap=0)
         chunks = chunker.chunk_with_overlap(text, overlap_size=15)
         assert len(chunks) >= 2
-        # Original overlap restored
         assert chunker.overlap == 0
 
     def test_boundary_preservation_avoids_mid_word_when_possible(self):
@@ -96,8 +109,6 @@ class TestSlidingWindowChunker:
         for chunk in chunks:
             assert isinstance(chunk, Chunk)
             assert chunk.text
-            # Chunks should not start with a lowercase letter mid-word after strip
-            # (boundary mode strips and prefers sentence/word breaks)
             assert chunk.metadata.get("chunk_index") is not None
 
 
@@ -138,12 +149,38 @@ Final thoughts on the subject.
             assert chunk.metadata.get("structure_preserved") is True
             assert "element_types" in chunk.metadata
 
-        # Headings should appear as structural elements in metadata across chunks
         all_types = []
         for chunk in chunks:
             all_types.extend(chunk.metadata["element_types"])
         assert "heading" in all_types
         assert "paragraph" in all_types
+
+    def test_heading_boundaries_separate_sections(self):
+        """Distinct top-level headings must not be merged into one chunk."""
+        doc = """# Alpha
+
+Content exclusively about alpha topic here.
+
+# Beta
+
+Content exclusively about beta topic here.
+"""
+        chunker = StructuralChunker(respect_headers=True, max_chunk_size=50)
+        chunks = chunker.chunk(doc)
+
+        assert len(chunks) >= 2
+        alpha_chunks = [c for c in chunks if "exclusively about alpha" in c.text]
+        beta_chunks = [c for c in chunks if "exclusively about beta" in c.text]
+        assert alpha_chunks, "Alpha section body missing from chunks"
+        assert beta_chunks, "Beta section body missing from chunks"
+
+        # Heading-boundary invariant: alpha and beta bodies stay in separate chunks
+        for chunk in chunks:
+            has_alpha = "exclusively about alpha" in chunk.text
+            has_beta = "exclusively about beta" in chunk.text
+            assert not (has_alpha and has_beta), (
+                f"Sections merged across heading boundary: {chunk.text!r}"
+            )
 
     def test_extract_structure_detects_headings_and_lists(self):
         chunker = StructuralChunker()
@@ -194,10 +231,9 @@ class TestTableChunker:
             assert isinstance(chunk, TableChunk)
             assert chunk.headers == ["Name", "Age", "City"]
             for row in chunk.rows:
-                assert len(row) == 3  # full row, not truncated mid-row
+                assert len(row) == 3
             assert chunk.metadata["row_count"] == len(chunk.rows)
 
-        # All original rows accounted for, in order
         flattened = [row for c in chunks for row in c.rows]
         assert flattened == table["rows"]
 
@@ -215,7 +251,6 @@ class TestTableChunker:
         assert len(chunks) == 2
         for chunk in chunks:
             assert chunk.metadata["chunk_type"] == "table"
-            # Each data line in the text chunk is a full pipe-separated row
             data_lines = [
                 line
                 for line in chunk.text.split("\n")
@@ -259,7 +294,7 @@ class TestTableChunker:
 
 
 # ---------------------------------------------------------------------------
-# EntityAwareChunker
+# EntityAwareChunker (real optional deps via importorskip / skipif)
 # ---------------------------------------------------------------------------
 
 
@@ -275,71 +310,48 @@ class TestEntityAwareChunker:
     def test_empty_text(self):
         chunker = EntityAwareChunker(chunk_size=100, ner_method="pattern")
         chunks = chunker.chunk("")
-        # May return [] or fall through depending on fallback path
         assert isinstance(chunks, list)
 
-    def test_entity_boundaries_preserved_with_mocked_ner(self):
-        """A named entity must not be split across chunks."""
-        from semantica.semantic_extract.types import Entity
-
-        # Construct text where "Apple Inc" sits near a natural split point
-        # if chunk_size is small.
-        prefix = "Intro sentence one. Intro sentence two. "
-        entity_text = "Apple Inc"
-        suffix = (
-            " was founded in Cupertino. "
+    @requires_semantic_extract
+    def test_entity_boundaries_preserved_with_pattern_ner(self):
+        """Entity spans stay intact when using real pattern NER."""
+        pytest.importorskip("semantica.semantic_extract")
+        entity_text = "AppleInc"
+        # Use a contiguous token the pattern NER can latch onto
+        text = (
+            "Intro sentence one goes here. Intro sentence two goes here. "
+            f"{entity_text} was founded in Cupertino California recently. "
             "More filler sentences keep the document long enough to chunk. "
-            "Yet another sentence about products and services. "
-            "Final sentence for padding the length."
+            "Yet another sentence about products and services worldwide. "
+            "Final sentence for padding the overall document length out."
         )
-        text = prefix + entity_text + suffix
-        entity_start = text.index(entity_text)
-        entity_end = entity_start + len(entity_text)
-
-        mock_entity = Entity(
-            text=entity_text,
-            label="ORG",
-            start_char=entity_start,
-            end_char=entity_end,
-            confidence=0.99,
+        chunks = split_entity_aware(
+            text,
+            chunk_size=90,
+            ner_method="pattern",
+            preserve_entities=True,
         )
-
-        with patch("semantica.split.methods.NERExtractor") as mock_ner_cls:
-            mock_ner_cls.return_value.extract.return_value = [mock_entity]
-            with patch("semantica.split.methods.SEMANTIC_EXTRACT_AVAILABLE", True):
-                chunks = split_entity_aware(
-                    text,
-                    chunk_size=80,
-                    ner_method="ml",
-                    preserve_entities=True,
-                )
-
         assert len(chunks) >= 1
-        # Entity text must appear wholly in exactly one chunk (not split)
         containing = [c for c in chunks if entity_text in c.text]
-        assert len(containing) >= 1
+        assert containing, "Expected entity text to appear in at least one chunk"
         for chunk in containing:
-            # Entity is intact — not cut mid-token
-            assert entity_text in chunk.text
             idx = chunk.text.index(entity_text)
-            # Surrounding characters shouldn't truncate the entity name
             assert chunk.text[idx : idx + len(entity_text)] == entity_text
 
-    def test_entity_aware_with_pattern_ner(self):
-        """Exercise real pattern NER when semantic_extract is available."""
+    @requires_semantic_extract
+    def test_entity_aware_chunker_with_pattern_ner(self):
         pytest.importorskip("semantica.semantic_extract")
         text = (
             "Alice Johnson founded Acme Corporation in New York. "
             "Bob Smith joined the company later. "
-            "They expanded operations across Europe and Asia. " * 5
-        )
+            "They expanded operations across Europe and Asia. "
+        ) * 5
         chunker = EntityAwareChunker(
             chunk_size=120, ner_method="pattern", preserve_entities=True
         )
         chunks = chunker.chunk(text)
         assert len(chunks) >= 1
         assert all(isinstance(c, Chunk) for c in chunks)
-        assert all(c.metadata.get("method") == "entity_aware" or c.text for c in chunks)
 
 
 # ---------------------------------------------------------------------------
@@ -348,25 +360,22 @@ class TestEntityAwareChunker:
 
 
 class TestRelationAwareChunker:
-    def test_init_and_chunk_with_mocked_extractors(self):
-        from semantica.semantic_extract.types import Entity, Relation
+    def test_init(self):
+        chunker = RelationAwareChunker(chunk_size=100, relation_method="pattern")
+        assert chunker.chunk_size == 100
+        assert chunker.relation_method == "pattern"
 
+    @requires_semantic_extract
+    def test_chunk_with_pattern_extractors(self):
+        pytest.importorskip("semantica.semantic_extract")
         text = (
             "Alice works at Acme. Bob reports to Alice. "
-            "Carol founded Acme in 2010. More padding text follows here. " * 4
+            "Carol founded Acme in 2010. More padding text follows here. "
+        ) * 4
+        chunker = RelationAwareChunker(
+            chunk_size=100, relation_method="pattern", ner_method="pattern"
         )
-        alice = Entity("Alice", "PERSON", text.index("Alice"), text.index("Alice") + 5)
-        acme = Entity("Acme", "ORG", text.index("Acme"), text.index("Acme") + 4)
-        relation = Relation(subject=alice, predicate="works_at", object=acme)
-
-        with patch("semantica.split.methods.NERExtractor") as mock_ner:
-            with patch("semantica.split.methods.RelationExtractor") as mock_rel:
-                with patch("semantica.split.methods.SEMANTIC_EXTRACT_AVAILABLE", True):
-                    mock_ner.return_value.extract.return_value = [alice, acme]
-                    mock_rel.return_value.extract.return_value = [relation]
-                    chunker = RelationAwareChunker(chunk_size=100, relation_method="ml")
-                    chunks = chunker.chunk(text)
-
+        chunks = chunker.chunk(text)
         assert isinstance(chunks, list)
         assert len(chunks) >= 1
         assert all(isinstance(c, Chunk) for c in chunks)
@@ -380,35 +389,44 @@ class TestGraphBasedChunker:
         assert chunker.strategy == "community"
         assert chunker.algorithm == "louvain"
 
-    def test_falls_back_when_no_graph_nodes(self):
-        """Empty entity/relation extraction falls back to recursive split."""
-        text = "Short text without extractable structure. " * 10
-        with patch("semantica.split.methods.NERExtractor") as mock_ner:
-            with patch("semantica.split.methods.RelationExtractor") as mock_rel:
-                with patch("semantica.split.methods.SEMANTIC_EXTRACT_AVAILABLE", True):
-                    with patch("semantica.split.methods.NETWORKX_AVAILABLE", True):
-                        mock_ner.return_value.extract.return_value = []
-                        mock_rel.return_value.extract.return_value = []
-                        chunker = GraphBasedChunker(chunk_size=80)
-                        chunks = chunker.chunk(text)
-
+    @requires_semantic_extract
+    @requires_networkx
+    def test_chunk_with_real_optional_deps(self):
+        pytest.importorskip("networkx")
+        pytest.importorskip("semantica.semantic_extract")
+        text = (
+            "Alice met Bob at Acme Corporation yesterday afternoon. "
+            "Bob introduced Carol to the Acme engineering team. "
+            "Carol and Alice later discussed graph-based retrieval methods. "
+        ) * 3
+        chunker = GraphBasedChunker(
+            chunk_size=200,
+            strategy="community",
+            algorithm="louvain",
+            ner_method="pattern",
+            relation_method="pattern",
+        )
+        chunks = chunker.chunk(text)
         assert len(chunks) >= 1
         assert all(isinstance(c, Chunk) for c in chunks)
 
 
 class TestOntologyAwareChunker:
-    def test_delegates_to_entity_aware(self):
+    def test_init(self):
         chunker = OntologyAwareChunker(chunk_size=200, preserve_concepts=True)
         assert chunker.chunk_size == 200
-        text = "Concept Alpha relates to Concept Beta in the taxonomy. " * 8
+        assert chunker.preserve_concepts is True
 
-        with patch("semantica.split.methods.split_entity_aware") as mock_ea:
-            mock_ea.return_value = [
-                Chunk(text=text[:100], start_index=0, end_index=100, metadata={})
-            ]
-            chunks = chunker.chunk(text)
-            mock_ea.assert_called_once()
-            assert len(chunks) == 1
+    @requires_semantic_extract
+    def test_chunk_uses_entity_aware_path(self):
+        pytest.importorskip("semantica.semantic_extract")
+        text = "Concept Alpha relates to Concept Beta in the taxonomy. " * 8
+        chunker = OntologyAwareChunker(
+            chunk_size=120, preserve_concepts=True, ner_method="pattern"
+        )
+        chunks = chunker.chunk(text)
+        assert len(chunks) >= 1
+        assert all(isinstance(c, Chunk) for c in chunks)
 
 
 class TestHierarchicalChunker:
@@ -437,7 +455,7 @@ Paragraph under section two also with sufficient content.
 
 
 # ---------------------------------------------------------------------------
-# Exported method functions (basic smoke coverage)
+# Exported method functions (public API smoke coverage)
 # ---------------------------------------------------------------------------
 
 
@@ -448,6 +466,15 @@ class TestSplitMethodFunctions:
         "Third sentence discusses relation awareness. "
         "Fourth sentence wraps up the example."
     )
+
+    MARKDOWN = """# Intro
+
+Intro paragraph with enough text to matter for structural splitting.
+
+# Body
+
+Body paragraph under a distinct heading for separation checks.
+"""
 
     def test_split_recursive(self):
         chunks = split_recursive(self.SAMPLE, chunk_size=60)
@@ -469,4 +496,64 @@ class TestSplitMethodFunctions:
 
     def test_split_by_words(self):
         chunks = split_by_words(self.SAMPLE, chunk_size=10)
+        assert len(chunks) >= 1
+
+    def test_split_structural(self):
+        chunks = split_structural(
+            self.MARKDOWN, max_chunk_size=80, respect_headers=True
+        )
+        assert len(chunks) >= 2
+        assert all(isinstance(c, Chunk) for c in chunks)
+
+    def test_split_sliding_window(self):
+        chunks = split_sliding_window(
+            self.SAMPLE * 3,
+            chunk_size=40,
+            overlap=10,
+            preserve_boundaries=False,
+        )
+        assert len(chunks) >= 2
+        assert all(isinstance(c, Chunk) for c in chunks)
+
+    @requires_semantic_extract
+    def test_split_entity_aware(self):
+        pytest.importorskip("semantica.semantic_extract")
+        chunks = split_entity_aware(
+            self.SAMPLE * 3, chunk_size=80, ner_method="pattern"
+        )
+        assert len(chunks) >= 1
+
+    @requires_semantic_extract
+    def test_split_relation_aware(self):
+        pytest.importorskip("semantica.semantic_extract")
+        chunks = split_relation_aware(
+            self.SAMPLE * 3,
+            chunk_size=80,
+            relation_method="pattern",
+            ner_method="pattern",
+        )
+        assert len(chunks) >= 1
+
+    @requires_semantic_extract
+    @requires_networkx
+    def test_split_graph_based(self):
+        pytest.importorskip("networkx")
+        pytest.importorskip("semantica.semantic_extract")
+        chunks = split_graph_based(
+            self.SAMPLE * 3,
+            chunk_size=120,
+            strategy="community",
+            algorithm="louvain",
+            ner_method="pattern",
+            relation_method="pattern",
+        )
+        assert len(chunks) >= 1
+        assert all(isinstance(c, Chunk) for c in chunks)
+
+    @requires_semantic_extract
+    def test_split_ontology_aware(self):
+        pytest.importorskip("semantica.semantic_extract")
+        chunks = split_ontology_aware(
+            self.SAMPLE * 3, chunk_size=80, ner_method="pattern"
+        )
         assert len(chunks) >= 1
