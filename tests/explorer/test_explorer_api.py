@@ -1,5 +1,6 @@
 """Integration tests for the explorer API."""
 
+from datetime import datetime
 import json
 from pathlib import Path
 import uuid
@@ -444,6 +445,63 @@ class TestDecisions:
         assert violation_response.json()["compliant"] is False
 
 
+@pytest.fixture(scope="module")
+def recorded_client():
+    """Client over a graph whose decisions were written by record_decision()."""
+    graph = ContextGraph(advanced_analytics=False)
+    entities = ["applicant_A7291"]
+    graph.record_decision(
+        category="credit_application",
+        scenario="Personal loan, $85k income, 31% DTI",
+        reasoning="Income meets threshold; employment stable",
+        outcome="proceed_to_underwriting",
+        confidence=0.88,
+        entities=entities,
+    )
+    graph.record_decision(
+        category="loan_underwriting",
+        scenario="Underwriting review for A-7291",
+        reasoning="DTI within policy; clean 36-month credit history",
+        outcome="approved",
+        confidence=0.94,
+        entities=entities,
+    )
+    with TestClient(create_app(session=GraphSession(graph))) as test_client:
+        yield test_client
+
+
+class TestRecordedDecisions:
+    """Decisions written by record_decision(), not hand-built decision nodes.
+
+    record_decision() stores ``timestamp`` as a float epoch. The fixtures above
+    set no timestamp at all, so these routes were only ever exercised against
+    decision nodes that could not trigger the float/str mismatch.
+    """
+
+    def test_list_decisions_serializes_float_timestamp(self, recorded_client):
+        response = recorded_client.get("/api/decisions")
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 2
+        for item in payload:
+            assert isinstance(item["timestamp"], str)
+            datetime.fromisoformat(item["timestamp"])
+
+    def test_get_decision(self, recorded_client):
+        listed = recorded_client.get("/api/decisions").json()
+        decision_id = listed[0]["decision_id"]
+        response = recorded_client.get(f"/api/decisions/{decision_id}")
+        assert response.status_code == 200
+        assert response.json()["decision_id"] == decision_id
+
+    def test_filter_by_category(self, recorded_client):
+        response = recorded_client.get("/api/decisions?category=loan_underwriting")
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 1
+        assert payload[0]["outcome"] == "approved"
+
+
 class TestTemporal:
     def test_snapshot_now(self, client):
         response = client.get("/api/temporal/snapshot")
@@ -602,7 +660,19 @@ class TestEnrichment:
 
     def test_extract(self, client):
         response = client.post("/api/enrich/extract", json={"text": "Alice works at Acme Corp."})
-        assert response.status_code in (200, 422, 503)
+        # 503 is reserved for a genuinely absent semantic_extract module; it must
+        # not be reachable on an install where the module imports cleanly.
+        assert response.status_code in (200, 422)
+
+    def test_extract_returns_entities(self, client):
+        response = client.post(
+            "/api/enrich/extract",
+            json={"text": "Apple CEO Tim Cook announced record earnings in Cupertino."},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["entities"], "extraction returned no entities"
+        assert any("Tim Cook" in str(entity) for entity in payload["entities"])
 
     def test_link_prediction(self, client):
         response = client.post("/api/enrich/links", json={"node_id": "python", "top_n": 5})

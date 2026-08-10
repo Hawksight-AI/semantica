@@ -2,10 +2,10 @@
 Shared Pydantic schemas for the Semantica Knowledge Explorer API.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ErrorResponse(BaseModel):
@@ -143,6 +143,24 @@ class DecisionResponse(BaseModel):
     confidence: float = 0.0
     timestamp: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def _normalize_timestamp(cls, value: Any) -> Optional[str]:
+        """Accept the epoch floats ContextGraph.record_decision() writes.
+
+        Decision nodes store ``timestamp`` as ``datetime.now().timestamp()``, a
+        float, so passing the stored value through unconverted fails validation
+        and turns every decision route into a 500. Normalize to ISO-8601 here so
+        the wire format stays a single string type whatever the producer wrote.
+        """
+        if value is None or isinstance(value, str):
+            return value
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+        return str(value)
 
 
 class CausalChainResponse(BaseModel):
