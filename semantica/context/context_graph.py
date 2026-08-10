@@ -410,6 +410,9 @@ class ContextEdge:
         return d
 
 
+_ATTRS_MISSING = object()
+
+
 class ContextGraph:
     """
     Easy-to-Use Context Graph with All Advanced Features.
@@ -717,13 +720,17 @@ class ContextGraph:
         """Return the value of *property_name* on *node_id*.
 
         Returns *default* when the node does not exist or when the property is
-        not set on the node.  To distinguish the two cases pass a private
-        sentinel as *default*::
+        not set on the node.  Both failure modes return the same *default*, so
+        a sentinel can identify *any not-found result* as distinct from a
+        property whose value is legitimately ``None``::
 
             _MISSING = object()
             val = graph.get_node_property(node_id, "score", default=_MISSING)
             if val is _MISSING:
-                ...
+                ...  # node absent or property not set
+
+        To distinguish a missing node from a missing property specifically,
+        call ``find_node()`` first to check node existence.
 
         Args:
             node_id: ID of the node to look up.
@@ -743,17 +750,24 @@ class ContextGraph:
     def get_node_attributes(
         self,
         node_id: str,
-        default: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        default: Any = _ATTRS_MISSING,
+    ) -> Any:
         """Return a copy of all properties on *node_id*.
 
-        Returns *default* when the node does not exist.  Pass ``default={}``
-        to restore the previous always-dict behaviour.
+        Returns *default* when the node does not exist.  The historical
+        default is ``{}`` (an empty dict), preserved for backward
+        compatibility.  Pass a private sentinel as *default* to detect a
+        missing node unambiguously::
+
+            _MISSING = object()
+            attrs = graph.get_node_attributes(node_id, default=_MISSING)
+            if attrs is _MISSING:
+                ...  # node does not exist
 
         Args:
             node_id: ID of the node to look up.
             default: Value returned when the node is absent.
-                Defaults to ``None``.
+                Defaults to ``{}`` (backward-compatible).
 
         Returns:
             A shallow copy of the node's properties dict, or *default*.
@@ -761,7 +775,7 @@ class ContextGraph:
         with self._lock:
             node = self.nodes.get(node_id)
             if node is None:
-                return default
+                return {} if default is _ATTRS_MISSING else default
             return node.properties.copy()
 
     def add_node_attribute(self, node_id: str, attributes: Dict[str, Any]) -> None:
@@ -778,6 +792,19 @@ class ContextGraph:
             self.mutation_callback("UPDATE_NODE", node_id, node.to_dict())
 
     def get_edge_data(self, source_id: str, target_id: str) -> Dict[str, Any]:
+        """Return metadata for the edge between *source_id* and *target_id*.
+
+        Returns an empty dict ``{}`` when no edge exists between the two nodes
+        or when either node is absent.
+
+        Args:
+            source_id: ID of the source node.
+            target_id: ID of the target node.
+
+        Returns:
+            A dict containing edge metadata (``id``, ``familyId``, ``type``,
+            ``weight``, plus any custom metadata), or ``{}`` if not found.
+        """
         with self._lock:
             for edge in self._adjacency.get(source_id, []):
                 if edge.target_id == target_id:
@@ -1121,7 +1148,17 @@ class ContextGraph:
         self.logger.info(f"Loaded context graph from {path}")
 
     def find_node(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """Find a node by ID."""
+        """Return a dict representation of the node identified by *node_id*.
+
+        Returns ``None`` when the node does not exist.
+
+        Args:
+            node_id: ID of the node to look up.
+
+        Returns:
+            A dict with keys ``id``, ``type``, ``content``, and ``metadata``,
+            or ``None`` if the node is not found.
+        """
         with self._lock:
             node = self.nodes.get(node_id)
             if node:

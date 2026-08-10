@@ -273,12 +273,12 @@ class TestContextGraphNodePropertyContract(unittest.TestCase):
         graph = self._graph_with_node()
         self.assertIsNone(graph.get_node_property("ghost", "role"))
 
-    def test_get_node_property_sentinel_distinguishes_missing_node(self):
+    def test_get_node_property_returns_default_on_missing_node(self):
         graph = self._graph_with_node()
         result = graph.get_node_property("ghost", "role", default=self._MISSING)
         self.assertIs(result, self._MISSING)
 
-    def test_get_node_property_sentinel_distinguishes_missing_prop(self):
+    def test_get_node_property_returns_default_on_missing_prop(self):
         graph = self._graph_with_node()
         result = graph.get_node_property("n1", "nonexistent", default=self._MISSING)
         self.assertIs(result, self._MISSING)
@@ -297,9 +297,9 @@ class TestContextGraphNodePropertyContract(unittest.TestCase):
         self.assertIsInstance(attrs, dict)
         self.assertEqual(attrs.get("role"), "engineer")
 
-    def test_get_node_attributes_missing_node_returns_none_by_default(self):
+    def test_get_node_attributes_missing_node_returns_empty_dict_by_default(self):
         graph = self._graph_with_node()
-        self.assertIsNone(graph.get_node_attributes("ghost"))
+        self.assertEqual(graph.get_node_attributes("ghost"), {})
 
     def test_get_node_attributes_missing_node_explicit_default(self):
         graph = self._graph_with_node()
