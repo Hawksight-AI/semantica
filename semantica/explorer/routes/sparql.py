@@ -51,8 +51,26 @@ _FORBIDDEN_KEYWORDS = re.compile(
 # the query. BASE declarations have no prefix name between the keyword and
 # the IRI (`BASE <...>`, vs. `PREFIX ex: <...>`), so the prefix-name token
 # is optional.
+#
+# ReDoS fix (CodeQL py/polynomial-redos, issue #1897):
+#
+# The original pattern `<[^>]*>\s*` was vulnerable because `\s*` (which
+# matches newlines) could overlap with `[^>]*` on inputs that contain no
+# closing `>` (e.g. `base<!!<!<...`), forcing the engine to explore every
+# possible split between the two quantifiers — O(n²) backtracking.
+#
+# The fix uses `<[^>\r\n]*>` for the IRI body: excluding CR and LF from
+# the character class means the IRI match can never span a line boundary,
+# and the disjoint trailing `[ \t]*` (horizontal whitespace only) has zero
+# character-class overlap with `[^>\r\n]*`, so the engine has exactly one
+# way to match.  No end-of-line anchor is needed or used, which correctly
+# handles both inline prologues (`PREFIX ex: <...> SELECT ...` on one line)
+# and CRLF line endings (`\r\n`) without any special casing.
 _COMMENT_LINE = re.compile(r"(?:^|(?<=\s))#[^\n]*", re.MULTILINE)
-_PREFIX_DECL = re.compile(r"^\s*(?:PREFIX\s+\S+|BASE)\s*<[^>]*>\s*", re.IGNORECASE | re.MULTILINE)
+_PREFIX_DECL = re.compile(
+    r"^[ \t]*(?:PREFIX[ \t]+\S+|BASE)[ \t]*<[^>\r\n]*>[ \t]*",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def _is_read_only_query(query: str) -> bool:
@@ -62,6 +80,10 @@ def _is_read_only_query(query: str) -> bool:
     checking the first keyword. Also rejects queries containing SPARQL Update
     keywords anywhere in the body, preventing injection via embedded strings
     or multi-statement tricks.
+
+    Note: callers are responsible for enforcing any input-length limit *before*
+    calling this function so that an oversized-query rejection can be surfaced
+    as a distinct, actionable error rather than the generic read-only message.
     """
     # 1. Remove single-line comments that could hide the real query type
     cleaned = _COMMENT_LINE.sub("", query)
@@ -156,6 +178,11 @@ _SPARQL_MAX_ROWS = 5_000     # hard cap on returned rows
 _SPARQL_TIMEOUT_S = 30       # seconds before abandoning the await
 _SPARQL_MAX_CONCURRENT = 4   # semaphore: max simultaneous executions
 _SPARQL_MAX_GRAPH_NODES = 50_000  # cap on graph nodes/edges to prevent OOM
+# Defense-in-depth against ReDoS: reject inputs longer than this before any
+# regex work so that even a future regex regression is bounded.  Checked in
+# execute_sparql() (not inside _is_read_only_query) so the route can return
+# a distinct, actionable error message rather than the generic read-only one.
+_SPARQL_MAX_QUERY_LEN = 10_000  # chars
 
 # Semaphore caps how many graph.query calls run concurrently so that
 # timed-out threads (which keep running in the pool) cannot crowd out
@@ -184,6 +211,24 @@ async def execute_sparql(
     req: SparqlRequest,
     session: GraphSession = Depends(get_session),
 ):
+    # Resource-limit check: reject oversized queries before any regex work.
+    # This is intentionally a separate, earlier check from _is_read_only_query
+    # so clients receive a specific, actionable message rather than the generic
+    # read-only rejection, and operators can tune _SPARQL_MAX_QUERY_LEN without
+    # touching query-semantics code.
+    if len(req.query) > _SPARQL_MAX_QUERY_LEN:
+        return SparqlResponse(
+            columns=[],
+            rows=[],
+            total=0,
+            error=(
+                f"Query exceeds the maximum allowed length of "
+                f"{_SPARQL_MAX_QUERY_LEN:,} characters "
+                f"({len(req.query):,} received). "
+                f"Please shorten your query."
+            ),
+        )
+
     if not _is_read_only_query(req.query):
         return SparqlResponse(
             columns=[],

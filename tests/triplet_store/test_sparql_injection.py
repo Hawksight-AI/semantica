@@ -82,6 +82,22 @@ class TestBlazegraphSparqlInjection(unittest.TestCase):
         self.assertIn("<http://s> <http://p>", insert_data)
         self.assertNotIn("CLEAR ALL", insert_data)
 
+    def test_format_object_rejects_malicious_pre_wrapped_iri(self):
+        """A caller-supplied object already wrapped in '<...>' must still be
+        fully validated, not just checked for a literal space/'>' — a
+        narrower ad-hoc check here previously let this branch bypass
+        validate_uri() entirely (Codex-flagged follow-up to GHSA-8vgg)."""
+        store = self._make_store()
+        evil_object = f"<{EVIL_SUBJECT}>"
+        triplet = Triplet(subject="http://s", predicate="http://p", object=evil_object)
+        with self.assertRaises(ValidationError):
+            store._format_object_for_sparql(triplet)
+
+    def test_format_object_accepts_legitimate_pre_wrapped_iri(self):
+        store = self._make_store()
+        triplet = Triplet(subject="http://s", predicate="http://p", object="<http://o>")
+        self.assertEqual(store._format_object_for_sparql(triplet), "<http://o>")
+
 
 class TestRDF4JSparqlInjection(unittest.TestCase):
     @patch.object(RDF4JStore, "_connect", autospec=True)
@@ -206,6 +222,20 @@ class TestRDF4JSparqlInjection(unittest.TestCase):
         ntriples = store._triplets_to_ntriples([triplet])
         self.assertIn("<http://s> <http://p>", ntriples)
         self.assertNotIn("CLEAR ALL", ntriples)
+
+    def test_format_object_rejects_malicious_pre_wrapped_iri(self):
+        """Same pre-wrapped-object bypass as Blazegraph, fixed in
+        _format_object_for_ntriples."""
+        store = self._make_store()
+        evil_object = f"<{EVIL_SUBJECT}>"
+        triplet = Triplet(subject="http://s", predicate="http://p", object=evil_object)
+        with self.assertRaises(ValidationError):
+            store._format_object_for_ntriples(triplet)
+
+    def test_format_object_accepts_legitimate_pre_wrapped_iri(self):
+        store = self._make_store()
+        triplet = Triplet(subject="http://s", predicate="http://p", object="<http://o>")
+        self.assertEqual(store._format_object_for_ntriples(triplet), "<http://o>")
 
 
 class TestJenaSparqlInjection(unittest.TestCase):

@@ -391,10 +391,12 @@ class BlazegraphStore:
 
         if self._is_uri_value(obj):
             if obj.startswith("<") and obj.endswith(">"):
-                inner = obj[1:-1]
-                if " " in inner or ">" in inner:
-                    raise ValueError(f"IRI contains invalid characters: {obj!r}")
-                return obj
+                # Validate the inner IRI with the same disallowed-character
+                # set as the unwrapped branch below — a narrower ad-hoc
+                # check here previously let a pre-wrapped object bypass
+                # validate_uri() entirely (GHSA-8vgg-8mr4-r236 follow-up).
+                inner = sparql_escaping.validate_uri(obj[1:-1])
+                return f"<{inner}>"
             validated_obj = sparql_escaping.validate_uri(obj)
             return f"<{validated_obj}>"
 

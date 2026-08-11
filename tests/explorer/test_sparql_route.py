@@ -317,6 +317,47 @@ def test_oversized_graph_returns_clean_error_not_a_crash(client):
     assert payload["rows"] == []
 
 
+def test_oversized_query_returns_distinct_length_error(client):
+    """A query exceeding _SPARQL_MAX_QUERY_LEN must be rejected with a
+    specific, actionable error message — not the generic read-only message.
+    Clients need to distinguish a size-limit rejection from an actual
+    non-read-only query rejection to react correctly (e.g. split the query
+    vs. rewrite it)."""
+    with patch.object(sparql_mod, "_SPARQL_MAX_QUERY_LEN", 10):
+        resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o }")  # 30 chars > 10
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["error"] is not None
+    # Must mention the limit, not the generic read-only message
+    assert "length" in payload["error"].lower() or "characters" in payload["error"].lower()
+    assert "Only SELECT" not in payload["error"]
+    assert payload["rows"] == []
+    assert payload["columns"] == []
+    assert payload["total"] == 0
+
+
+def test_oversized_query_never_touches_the_graph(client):
+    """An oversized query must be rejected before _build_rdflib_graph is
+    called — the length guard must short-circuit the entire pipeline."""
+    with patch.object(sparql_mod, "_SPARQL_MAX_QUERY_LEN", 10):
+        with patch.object(sparql_mod, "_build_rdflib_graph") as mock_build:
+            resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o }")
+    assert resp.status_code == 200
+    assert resp.json()["error"] is not None
+    mock_build.assert_not_called()
+
+
+def test_query_exactly_at_length_limit_is_accepted(client):
+    """A query whose length equals the limit exactly must not be rejected —
+    the guard is strictly greater-than, not greater-than-or-equal."""
+    short_query = "ASK {}"
+    with patch.object(sparql_mod, "_SPARQL_MAX_QUERY_LEN", len(short_query)):
+        resp = _post(client, short_query)
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["error"] is None
+
+
 # ---------------------------------------------------------------------------
 # Data-mapping fidelity: does the graph->RDF projection reflect session state?
 # ---------------------------------------------------------------------------

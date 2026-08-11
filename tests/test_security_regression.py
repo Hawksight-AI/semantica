@@ -123,6 +123,43 @@ class TestSparqlReadOnlyValidation:
         )
         assert _is_read_only_query(query)
 
+    def test_inline_prefix_before_select_allowed(self):
+        """PREFIX declaration on the same line as the query keyword (inline
+        prologue) must be stripped correctly so SELECT is seen first.
+        Regression for the [ \\t]*(?:\\n|$) anchor that rejected this form."""
+        query = "PREFIX ex: <http://example.org/> SELECT ?s WHERE { ?s ex:p ?o }"
+        assert _is_read_only_query(query)
+
+    def test_crlf_line_endings_with_prefix(self):
+        """Windows CRLF line endings (\\r\\n) between PREFIX and SELECT must
+        be handled correctly.  The previous (?:\\n|$) anchor did not allow
+        the \\r before \\n, causing stripping to fail."""
+        query = "PREFIX ex: <http://example.org/>\r\nSELECT ?s WHERE { ?s ?p ?o }"
+        assert _is_read_only_query(query)
+
+    def test_crlf_multiple_prefixes_then_select(self):
+        """Multiple PREFIX lines with CRLF endings should all be stripped."""
+        query = (
+            "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\r\n"
+            "PREFIX ex: <http://example.org/>\r\n"
+            "SELECT ?s WHERE { ?s rdf:type ex:Thing }"
+        )
+        assert _is_read_only_query(query)
+
+    def test_inline_prefix_before_insert_still_blocked(self):
+        """An inline PREFIX followed by INSERT must not be allowed — the
+        inline stripping fix must not open a bypass for write operations."""
+        query = "PREFIX ex: <http://example.org/> INSERT DATA { ex:s ex:p ex:o }"
+        assert not _is_read_only_query(query)
+
+    def test_long_valid_query_not_rejected_by_is_read_only(self):
+        """_is_read_only_query must not enforce the length limit itself —
+        that responsibility belongs to execute_sparql() so the route can
+        return a distinct, actionable error.  A syntactically valid but long
+        SELECT query must still return True from this function."""
+        long_query = "SELECT ?s WHERE { ?s ?p ?o } # " + ("x" * 20_000)
+        assert _is_read_only_query(long_query)
+
 
 # ===================================================================
 # 2. Cypher injection prevention
