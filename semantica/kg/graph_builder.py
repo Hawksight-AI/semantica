@@ -291,21 +291,31 @@ class GraphBuilder:
         pipeline_id: Optional[str] = None,
         **options,
     ) -> Dict[str, Any]:
-        """
-        Build knowledge graph from sources.
+        """Build a knowledge graph from one or more sources.
 
         Args:
-            sources: Entities or sources list
-            second_arg: Optional relationships list or entity_resolver (for backward compatibility)
-            pipeline_id: Optional pipeline ID for progress tracking
-            **options: Additional build options
-                - extract: Whether to extract entities from text (default: True)
-                - extract_relations: Whether to extract relations from text (default: False)
-                - ner_method: NER method to use (default: "ml")
-                - triplet_method: Triplet extraction method (default: "pattern")
+            sources: A source or list of sources. Sources may be text,
+                pre-extracted objects, or dictionaries containing ``entities``
+                and ``relationships``.
+            second_arg: An optional relationship list or entity resolver kept
+                for backward compatibility.
+            pipeline_id: Optional pipeline identifier used for progress
+                tracking.
+            **options: Graph-building options, including extraction toggles,
+                extraction methods, and an ``entity_resolver`` or explicit
+                ``relationships`` list.
 
         Returns:
-            Dictionary containing entities and relationships
+            A dictionary containing the graph's ``entities``,
+            ``relationships``, and build ``metadata``.
+
+        Example:
+            >>> builder = GraphBuilder(resolve_conflicts=False)
+            >>> graph = builder.build(  # doctest: +SKIP
+            ...     {"entities": [{"id": "ada"}], "relationships": []}
+            ... )
+            >>> graph["metadata"]["num_entities"]  # doctest: +SKIP
+            1
         """
         # Handle arguments
         entity_resolver = None
@@ -730,6 +740,26 @@ class GraphBuilder:
         pipeline_id: Optional[str] = None,
         **options,
     ) -> Dict[str, Any]:
+        """Build a knowledge graph from a single source dictionary.
+
+        Args:
+            kg_data: Source data containing entities, relationships, or both.
+            pipeline_id: Optional pipeline identifier used for progress
+                tracking.
+            **options: Additional options forwarded to :meth:`build`.
+
+        Returns:
+            A dictionary containing the graph's ``entities``,
+            ``relationships``, and build ``metadata``.
+
+        Example:
+            >>> builder = GraphBuilder(resolve_conflicts=False)
+            >>> graph = builder.build_single_source(  # doctest: +SKIP
+            ...     {"entities": [{"id": "ada"}], "relationships": []}
+            ... )
+            >>> len(graph["entities"])  # doctest: +SKIP
+            1
+        """
         return self.build(kg_data, pipeline_id=pipeline_id, **options)
 
     def add_temporal_edge(
@@ -743,21 +773,33 @@ class GraphBuilder:
         temporal_metadata=None,
         **kwargs,
     ):
-        """
-        Add edge with temporal validity information.
+        """Add an edge with temporal validity information to a graph.
 
         Args:
-            graph: Knowledge graph to add edge to
-            source: Source entity/node
-            target: Target entity/node
-            relationship: Relationship type
-            valid_from: Start time for relationship validity (datetime, timestamp, or ISO string)
-            valid_until: End time for relationship validity (None for ongoing)
-            temporal_metadata: Additional temporal metadata (timezone, precision, etc.)
-            **kwargs: Additional edge properties
+            graph: Mutable knowledge-graph dictionary to update.
+            source: Identifier of the source entity or node.
+            target: Identifier of the target entity or node.
+            relationship: Relationship type for the edge.
+            valid_from: Start of the validity period. Accepts a datetime or
+                ISO-formatted string; defaults to the current time.
+            valid_until: End of the validity period, or ``None`` for an
+                ongoing relationship.
+            temporal_metadata: Optional metadata such as timezone or
+                precision information.
+            **kwargs: Additional properties to include on the edge.
 
         Returns:
-            Edge object with temporal annotations
+            The temporal edge dictionary appended to the graph's
+            ``relationships`` list.
+
+        Example:
+            >>> builder = GraphBuilder(resolve_conflicts=False)
+            >>> graph = {"entities": [], "relationships": []}
+            >>> edge = builder.add_temporal_edge(  # doctest: +SKIP
+            ...     graph, "ada", "analytical-engine", "DESIGNED"
+            ... )
+            >>> edge["type"]  # doctest: +SKIP
+            'DESIGNED'
         """
         tracking_id = self.progress_tracker.start_tracking(
             module="kg",
@@ -806,17 +848,29 @@ class GraphBuilder:
     def create_temporal_snapshot(
         self, graph, timestamp=None, snapshot_name=None, **options
     ):
-        """
-        Create temporal snapshot of graph at specific time point.
+        """Create a snapshot of a graph at a specific point in time.
 
         Args:
-            graph: Knowledge graph to snapshot
-            timestamp: Time point for snapshot (None for current time)
-            snapshot_name: Optional name for snapshot
-            **options: Additional snapshot options
+            graph: Knowledge graph whose entities and relationships will be
+                copied into the snapshot.
+            timestamp: Snapshot time, or ``None`` to use the current time.
+            snapshot_name: Optional human-readable snapshot name.
+            **options: Additional snapshot options reserved for extensions.
 
         Returns:
-            Temporal snapshot object
+            A snapshot dictionary containing the name, timestamp, all copied
+            entities, relationships valid at the timestamp, and summary
+            metadata.
+
+        Example:
+            >>> builder = GraphBuilder(resolve_conflicts=False)
+            >>> snapshot = builder.create_temporal_snapshot(  # doctest: +SKIP
+            ...     {"entities": [{"id": "ada"}], "relationships": []},
+            ...     timestamp="2026-01-01T00:00:00",
+            ...     snapshot_name="new-year",
+            ... )
+            >>> snapshot["name"]  # doctest: +SKIP
+            'new-year'
         """
         tracking_id = self.progress_tracker.start_tracking(
             module="kg",
@@ -897,19 +951,32 @@ class GraphBuilder:
         temporal_window=None,
         **options,
     ):
-        """
-        Query graph at specific time point or time range.
+        """Query a graph at a specific time or over a time range.
 
         Args:
-            graph: Knowledge graph to query
-            query: Query (Cypher, SPARQL, or natural language)
-            at_time: Query at specific time point
-            time_range: Query within time range (start, end)
-            temporal_window: Temporal window size
-            **options: Additional query options
+            graph: Knowledge graph to query.
+            query: Query text to record in the result. The current
+                implementation does not interpret it or filter the graph.
+            at_time: Optional point in time at which to query the graph.
+            time_range: Optional ``(start, end)`` time range. The graph is
+                evaluated at the end of the range.
+            temporal_window: Optional temporal-window value reserved for
+                query-engine integrations.
+            **options: Additional query options reserved for extensions.
 
         Returns:
-            Query results with temporal context
+            A dictionary containing the query, temporal context, entities and
+            relationships from the selected graph or snapshot, and graph
+            metadata.
+
+        Example:
+            >>> builder = GraphBuilder(resolve_conflicts=False)
+            >>> result = builder.query_temporal(  # doctest: +SKIP
+            ...     {"entities": [{"id": "ada"}], "relationships": []},
+            ...     "MATCH (n) RETURN n",
+            ... )
+            >>> result["entities"][0]["id"]  # doctest: +SKIP
+            'ada'
         """
         tracking_id = self.progress_tracker.start_tracking(
             module="kg",
@@ -972,20 +1039,34 @@ class GraphBuilder:
         temporal_property="valid_time",
         **kwargs,
     ):
-        """
-        Load graph from Neo4j database.
+        """Load a knowledge graph from a Neo4j database.
 
         Args:
-            uri: Neo4j connection URI
-            username: Neo4j username
-            password: Neo4j password
-            database: Neo4j database name
-            enable_temporal: Enable temporal features for loaded graph
-            temporal_property: Property name for temporal data
-            **kwargs: Additional connection options
+            uri: Neo4j connection URI.
+            username: Neo4j username.
+            password:
+                Authentication credential supplied for the Neo4j user.
+            database: Neo4j database name.
+            enable_temporal: Whether to read temporal relationship data.
+            temporal_property: Relationship property containing temporal
+                data.
+            **kwargs: Additional connection options reserved for extensions.
 
         Returns:
-            Knowledge graph loaded from Neo4j
+            A dictionary containing loaded entities, relationships, and
+            source metadata.
+
+        Raises:
+            ImportError: If the Neo4j driver is unavailable.
+
+        Example:
+            >>> import os
+            >>> builder = GraphBuilder(resolve_conflicts=False)
+            >>> graph = builder.load_from_neo4j(  # doctest: +SKIP
+            ...     "bolt://localhost:7687",
+            ...     "neo4j",
+            ...     os.environ["NEO4J_PASSWORD"],
+            ... )
         """
         tracking_id = self.progress_tracker.start_tracking(
             module="kg",
