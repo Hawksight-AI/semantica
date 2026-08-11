@@ -36,6 +36,7 @@ import shutil
 import socket
 import tempfile
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -58,8 +59,11 @@ _SCP_LIKE_REPO_URL_RE = re.compile(r"^[^@\s]+@[^:\s]+:.+$")
 # Short-lived DNS cache for host validation. This reduces repeated lookups but
 # does not eliminate DNS-rebinding / TOCTOU races between validate and clone —
 # network egress controls remain recommended.
-_REPO_HOST_RESOLVE_CACHE: Dict[str, Tuple[float, Tuple[str, ...]]] = {}
+_REPO_HOST_RESOLVE_CACHE: "OrderedDict[str, Tuple[float, Tuple[str, ...]]]" = (
+    OrderedDict()
+)
 _REPO_HOST_RESOLVE_CACHE_TTL_SECONDS = 60.0
+_REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES = 1024
 
 
 @dataclass
@@ -580,11 +584,14 @@ class RepoIngestor:
         """
         cache_key = host.lower().rstrip(".")
         now = time.monotonic()
+        RepoIngestor._prune_repo_host_resolve_cache(now)
         cached = _REPO_HOST_RESOLVE_CACHE.get(cache_key)
         if cached is not None:
             expires_at, ips = cached
             if now < expires_at:
+                _REPO_HOST_RESOLVE_CACHE.move_to_end(cache_key)
                 return ips
+            _REPO_HOST_RESOLVE_CACHE.pop(cache_key, None)
 
         try:
             addrinfos = socket.getaddrinfo(
@@ -613,7 +620,26 @@ class RepoIngestor:
             now + _REPO_HOST_RESOLVE_CACHE_TTL_SECONDS,
             result,
         )
+        _REPO_HOST_RESOLVE_CACHE.move_to_end(cache_key)
+        RepoIngestor._prune_repo_host_resolve_cache(now)
         return result
+
+    @staticmethod
+    def _prune_repo_host_resolve_cache(now: Optional[float] = None) -> None:
+        """Remove expired host entries and enforce a hard cache size cap."""
+        if now is None:
+            now = time.monotonic()
+
+        expired_keys = [
+            cache_key
+            for cache_key, (expires_at, _ips) in _REPO_HOST_RESOLVE_CACHE.items()
+            if expires_at <= now
+        ]
+        for cache_key in expired_keys:
+            _REPO_HOST_RESOLVE_CACHE.pop(cache_key, None)
+
+        while len(_REPO_HOST_RESOLVE_CACHE) > _REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES:
+            _REPO_HOST_RESOLVE_CACHE.popitem(last=False)
 
     @staticmethod
     def _validate_repo_host(host: str) -> None:
