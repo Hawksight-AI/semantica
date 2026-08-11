@@ -40,6 +40,8 @@ def _sanitize_import_node_id(raw: object) -> str:
     result. These are the characters that enable CRLF header injection when
     the ID is later used in a Content-Disposition filename= parameter.
     """
+    if raw is None:
+        return ""
     cleaned = _UNSAFE_ID_CHARS.sub("_", str(raw).strip())
     if len(cleaned) > _MAX_IMPORT_NODE_ID_LEN:
         raise HTTPException(
