@@ -421,8 +421,29 @@ class TestEntityMergerMergeDuplicates(unittest.TestCase):
         self.assertGreaterEqual(len(op.source_entities), 2)
         self.assertIn("id", op.merged_entity)
         self.assertIn("group_confidence", op.metadata)
-        # Provenance preserved
-        self.assertIn("merged_from", op.merged_entity)
+        # Provenance preserved (written by EntityMerger._add_provenance()).
+        provenance = op.merged_entity.get("metadata", {}).get("provenance", {})
+        self.assertIn("merged_from", provenance)
+        self.assertIn("merge_count", provenance)
+        self.assertEqual(provenance["merge_count"], len(op.source_entities))
+
+    def test_merge_duplicates_provenance_absent_when_disabled(self):
+        merger = EntityMerger(
+            preserve_provenance=False,
+            detector={
+                "similarity_threshold": 0.4,
+                "confidence_threshold": 0.4,
+            },
+        )
+        operations = merger.merge_duplicates(self.entities, strategy="keep_first")
+        self.assertGreater(len(operations), 0)
+        op = operations[0]
+
+        provenance = op.merged_entity.get("metadata", {}).get("provenance")
+        self.assertTrue(
+            provenance is None or provenance == {},
+            "metadata.provenance should be absent when preserve_provenance=False",
+        )
 
     def test_merge_duplicates_with_explicit_duplicate_group(self):
         """merge_entity_group path used when a DuplicateGroup is already known."""
