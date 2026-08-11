@@ -13,6 +13,7 @@ any query is built, matching the existing age_store.py `_sanitize_label`
 behavior used as the reference implementation.
 """
 
+import pytest
 import unittest
 from unittest.mock import MagicMock
 
@@ -235,10 +236,8 @@ class TestNeo4jDepthInjection(unittest.TestCase):
         """Double-check: if somehow a query were built, it must not contain the payload."""
         store = self._make_store()
         store.get_session = lambda: store._iter_session()
-        try:
+        with pytest.raises(ProcessingError):
             store.get_neighbors(node_id=1, depth=EVIL_DEPTH)
-        except Exception:
-            pass
         query = store._captured.get("query", "")
         self.assertNotIn("DETACH DELETE", query,
                          f"Injection payload found in query: {query!r}")
@@ -275,10 +274,8 @@ class TestNeo4jDepthInjection(unittest.TestCase):
     def test_shortest_path_malicious_max_depth_does_not_contain_payload(self):
         store = self._make_store()
         store.get_session = lambda: store._single_session()
-        try:
+        with pytest.raises(ProcessingError):
             store.shortest_path(start_node_id=1, end_node_id=2, max_depth=EVIL_DEPTH)
-        except Exception:
-            pass
         query = store._captured.get("query", "")
         self.assertNotIn("DETACH DELETE", query,
                          f"Injection payload found in query: {query!r}")
@@ -365,10 +362,8 @@ class TestGraphStoreHopsForwarding(unittest.TestCase):
     def test_hops_malicious_string_payload_not_in_any_query(self):
         """Belt-and-suspenders: payload text must not appear in any built query."""
         gs, captured = self._make_graph_store_with_neo4j()
-        try:
+        with pytest.raises(ValueError):
             gs.get_neighbors(node_id=1, hops=EVIL_DEPTH)
-        except Exception:
-            pass
         query = captured.get("query", "")
         self.assertNotIn("DETACH DELETE", query,
                          f"Injection payload found in forwarded query: {query!r}")
