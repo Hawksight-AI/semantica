@@ -8,13 +8,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
 from ..context.context_graph import ContextGraph
+from .dependencies import anonymous_access_allowed, get_expected_api_key, is_valid_api_key, require_auth
 from .session import GraphSession
 from .ws import ConnectionManager
 
@@ -97,6 +98,22 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        import logging as _lifespan_logging
+        _lifespan_logger = _lifespan_logging.getLogger(__name__)
+        if anonymous_access_allowed():
+            _lifespan_logger.warning(
+                "Explorer is running with SEMANTICA_ALLOW_ANONYMOUS=true — "
+                "all API routes are unauthenticated. Do not expose this "
+                "process beyond localhost."
+            )
+        elif get_expected_api_key():
+            _lifespan_logger.info("Explorer API authentication: enabled (SEMANTICA_API_KEY set).")
+        else:
+            _lifespan_logger.warning(
+                "Explorer API authentication: NOT CONFIGURED. All protected "
+                "routes will return 503 until SEMANTICA_API_KEY is set."
+            )
+
         app.state.event_loop = asyncio.get_running_loop()
         app.state.ws_manager = ConnectionManager()
         app.state.session = active_session
@@ -113,17 +130,17 @@ def create_app(
     app.state.explorer_settings = settings
 
     # allow_credentials lets browsers send cookies/auth headers cross-origin.
-    # The Explorer has no authentication, so credentials serve no purpose and
-    # enabling them when origins are broadened creates cross-site request risk.
-    # Set EXPLORER_CORS_CREDENTIALS=true explicitly to opt in (e.g. for a
-    # reverse-proxy setup that injects its own auth layer).
+    # Credentials aren't needed for the X-API-Key auth scheme below, and
+    # enabling them when origins are broadened creates cross-site request
+    # risk. Set EXPLORER_CORS_CREDENTIALS=true explicitly to opt in (e.g.
+    # for a reverse-proxy setup that injects its own cookie-based auth).
     _allow_credentials = os.environ.get("EXPLORER_CORS_CREDENTIALS", "false").lower() == "true"
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings["allowed_origins"],
         allow_credentials=_allow_credentials,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
         max_age=600,
     )
 
@@ -159,22 +176,48 @@ def create_app(
     from .routes.temporal import router as temporal_router
     from .routes.vocabulary import router as vocabulary_router
 
-    app.include_router(graph_router)
-    app.include_router(analytics_router)
-    app.include_router(decisions_router)
-    app.include_router(temporal_router)
-    app.include_router(enrich_router)
-    app.include_router(export_import_router)
-    app.include_router(annotations_router)
-    app.include_router(sparql_router)
-    app.include_router(provenance_router)
-    app.include_router(vocabulary_router)
-    app.include_router(ontology_router)
+    _auth = [Depends(require_auth)]
+    app.include_router(graph_router, dependencies=_auth)
+    app.include_router(analytics_router, dependencies=_auth)
+    app.include_router(decisions_router, dependencies=_auth)
+    app.include_router(temporal_router, dependencies=_auth)
+    app.include_router(enrich_router, dependencies=_auth)
+    app.include_router(export_import_router, dependencies=_auth)
+    app.include_router(annotations_router, dependencies=_auth)
+    app.include_router(sparql_router, dependencies=_auth)
+    app.include_router(provenance_router, dependencies=_auth)
+    app.include_router(vocabulary_router, dependencies=_auth)
+    app.include_router(ontology_router, dependencies=_auth)
 
     _WS_MAX_MESSAGE_BYTES = 64 * 1024  # 64 KB — control messages only
 
     @app.websocket("/ws/graph-updates")
     async def websocket_endpoint(websocket: WebSocket):
+        # CORSMiddleware doesn't cover WebSocket handshakes (Starlette's
+        # CORS support only wraps HTTP), so under SEMANTICA_ALLOW_ANONYMOUS
+        # the key check below accepts any origin — loopback binding isn't a
+        # boundary against a browser, since any page the operator has open
+        # can still reach ws://localhost:.../ws/graph-updates directly.
+        # Reject a foreign Origin explicitly here, against the same
+        # allowlist CORSMiddleware already enforces for HTTP
+        # (GHSA-4643-wpgq-w329). Browsers always send Origin on a
+        # cross-origin WebSocket handshake; native/CLI clients omit it
+        # entirely, so a missing Origin is allowed through — the browser is
+        # the only threat this check is closing.
+        origin = websocket.headers.get("origin")
+        allowed_origins = app.state.explorer_settings["allowed_origins"]
+        if origin is not None and origin not in allowed_origins:
+            await websocket.close(code=4403)  # forbidden
+            return
+
+        # Browsers can't set custom headers on a WebSocket handshake, so
+        # accept the key via header (non-browser clients) or query param
+        # (browser clients), same SEMANTICA_API_KEY the REST routes check.
+        candidate = websocket.headers.get("x-api-key") or websocket.query_params.get("api_key")
+        if not is_valid_api_key(candidate):
+            await websocket.close(code=4401)  # unauthorized
+            return
+
         manager: ConnectionManager = app.state.ws_manager
         await manager.connect(websocket)
         await manager.send_personal(websocket, "connection_ack", {"connected": True})

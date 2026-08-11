@@ -199,14 +199,27 @@ def test_allowlist_rejected_query_never_touches_the_graph(client, query):
     mock_build.assert_not_called()
 
 
-def test_multi_statement_injection_reaches_graph_but_fails_in_parser(client):
-    """Confirms the distinction between allowlist rejection and parser rejection:
-    a string starting with SELECT passes _is_read_only_query and builds a graph,
-    but rdflib.Graph.query() rejects the trailing '; DROP ALL' syntax."""
+def test_multi_statement_injection_is_rejected_by_forbidden_keyword_check(client):
+    """A string starting with an allowed keyword (SELECT) but containing a
+    forbidden Update keyword later in the body (';  DROP ALL') is now
+    rejected by _is_read_only_query's keyword scan itself, before a graph
+    is ever built — a stronger, earlier rejection than relying solely on
+    rdflib's parser to reject the syntax."""
+    with patch.object(sparql_mod, "_build_rdflib_graph") as mock_build:
+        resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o } ; DROP ALL")
+    assert resp.status_code == 200
+    assert resp.json()["error"] is not None
+    mock_build.assert_not_called()
+
+
+def test_malformed_syntax_without_forbidden_keywords_still_fails_in_parser(client):
+    """The parser remains a real second line of defense for malformed
+    queries that don't contain any forbidden keyword — these pass
+    _is_read_only_query and reach rdflib, which rejects the syntax."""
     with patch.object(
         sparql_mod, "_build_rdflib_graph", wraps=sparql_mod._build_rdflib_graph
     ) as spy_build:
-        resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o } ; DROP ALL")
+        resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o } ; ASK { ?x ?y ?z }")
     assert resp.status_code == 200
     assert resp.json()["error"] is not None
     spy_build.assert_called_once()
@@ -288,6 +301,61 @@ def test_query_timeout_returns_clean_error_not_a_crash(client):
     assert payload["error"] is not None
     assert "timed out" in payload["error"].lower()
     assert payload["rows"] == []
+
+
+def test_oversized_graph_returns_clean_error_not_a_crash(client):
+    """The DoS-prevention node cap (GHSA-8c7v-adjacent hardening) must return
+    a normal SparqlResponse error, not an unhandled 500. Regression test for
+    a bug where _build_rdflib_graph's ValueError was raised outside of
+    execute_sparql's try/except, before the semaphore block."""
+    with patch.object(sparql_mod, "_SPARQL_MAX_GRAPH_NODES", 1):
+        resp = _post(client, "SELECT ?s WHERE { ?s a <http://semantica.local/entity/language> }")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["error"] is not None
+    assert "more than" in payload["error"].lower()
+    assert payload["rows"] == []
+
+
+def test_oversized_query_returns_distinct_length_error(client):
+    """A query exceeding _SPARQL_MAX_QUERY_LEN must be rejected with a
+    specific, actionable error message — not the generic read-only message.
+    Clients need to distinguish a size-limit rejection from an actual
+    non-read-only query rejection to react correctly (e.g. split the query
+    vs. rewrite it)."""
+    with patch.object(sparql_mod, "_SPARQL_MAX_QUERY_LEN", 10):
+        resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o }")  # 30 chars > 10
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["error"] is not None
+    # Must mention the limit, not the generic read-only message
+    assert "length" in payload["error"].lower() or "characters" in payload["error"].lower()
+    assert "Only SELECT" not in payload["error"]
+    assert payload["rows"] == []
+    assert payload["columns"] == []
+    assert payload["total"] == 0
+
+
+def test_oversized_query_never_touches_the_graph(client):
+    """An oversized query must be rejected before _build_rdflib_graph is
+    called — the length guard must short-circuit the entire pipeline."""
+    with patch.object(sparql_mod, "_SPARQL_MAX_QUERY_LEN", 10):
+        with patch.object(sparql_mod, "_build_rdflib_graph") as mock_build:
+            resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o }")
+    assert resp.status_code == 200
+    assert resp.json()["error"] is not None
+    mock_build.assert_not_called()
+
+
+def test_query_exactly_at_length_limit_is_accepted(client):
+    """A query whose length equals the limit exactly must not be rejected —
+    the guard is strictly greater-than, not greater-than-or-equal."""
+    short_query = "ASK {}"
+    with patch.object(sparql_mod, "_SPARQL_MAX_QUERY_LEN", len(short_query)):
+        resp = _post(client, short_query)
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["error"] is None
 
 
 # ---------------------------------------------------------------------------
