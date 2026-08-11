@@ -238,8 +238,177 @@ class TestConflictsModule(unittest.TestCase):
         checklist = generator.export_investigation_checklist(guide, format="text")
         self.assertIn("INVESTIGATION GUIDE: c1", checklist)
 
+    def test_conflict_resolver_credibility_weighted(self):
+        # Setup SourceTracker with custom credibility
+        tracker = SourceTracker()
+        tracker.source_credibility["doc1"] = 0.9
+        tracker.source_credibility["doc2"] = 0.1
+        resolver = ConflictResolver(source_tracker=tracker)
+
+        conflict = Conflict(
+            conflict_id="c_cred",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="age",
+            conflicting_values=[30, 32],
+            sources=[
+                {"document": "doc1", "confidence": 0.8},
+                {"document": "doc2", "confidence": 0.9},
+            ]
+        )
+        res = resolver.resolve_conflict(conflict, strategy="credibility_weighted")
+        self.assertTrue(res.resolved)
+        self.assertEqual(res.resolved_value, 30)
+
+    def test_conflict_resolver_first_seen(self):
+        resolver = ConflictResolver()
+        conflict = Conflict(
+            conflict_id="c_fs",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="age",
+            conflicting_values=[30, 32],
+            sources=[
+                {"document": "doc1", "confidence": 0.8},
+                {"document": "doc2", "confidence": 0.9},
+            ]
+        )
+        res = resolver.resolve_conflict(conflict, strategy="first_seen")
+        self.assertTrue(res.resolved)
+        self.assertEqual(res.resolved_value, 30)
+
+    def test_conflict_resolver_manual_and_expert_review(self):
+        resolver = ConflictResolver()
+        conflict = Conflict(
+            conflict_id="c_review",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="age",
+            conflicting_values=[30, 32],
+            sources=[
+                {"document": "doc1", "confidence": 0.8},
+                {"document": "doc2", "confidence": 0.9},
+            ],
+            severity="high"
+        )
+        # Manual Review
+        res_manual = resolver.resolve_conflict(conflict, strategy="manual_review")
+        self.assertFalse(res_manual.resolved)
+        self.assertTrue(res_manual.metadata.get("requires_manual_review"))
+        self.assertEqual(res_manual.metadata.get("severity"), "high")
+
+        # Expert Review
+        res_expert = resolver.resolve_conflict(conflict, strategy="expert_review")
+        self.assertFalse(res_expert.resolved)
+        self.assertTrue(res_expert.metadata.get("requires_expert_review"))
+        self.assertEqual(res_expert.metadata.get("severity"), "high")
+
+    def test_detect_relationship_conflicts(self):
+        detector = ConflictDetector()
+        relationships = [
+            {
+                "id": "rel1",
+                "source_id": "e1",
+                "target_id": "e2",
+                "type": "works_at",
+                "confidence": 0.9,
+            },
+            {
+                "id": "rel1",
+                "source_id": "e1",
+                "target_id": "e2",
+                "type": "works_at",
+                "confidence": 0.7,
+            }
+        ]
+        conflicts = detector.detect_relationship_conflicts(relationships)
+        self.assertTrue(len(conflicts) > 0)
+        self.assertEqual(conflicts[0].relationship_id, "rel1")
+        self.assertEqual(conflicts[0].property_name, "confidence")
+
+    def test_detect_temporal_conflicts(self):
+        detector = ConflictDetector(track_provenance=True)
+        entities = [
+            {
+                "id": "e1",
+                "founded": "founded in 1990",
+                "source": "doc1",
+                "confidence": 0.9,
+            },
+            {
+                "id": "e1",
+                "founded": "founded in 2000",
+                "source": "doc2",
+                "confidence": 0.8,
+            }
+        ]
+        conflicts = detector.detect_temporal_conflicts(entities)
+        self.assertTrue(len(conflicts) > 0)
+        self.assertEqual(conflicts[0].entity_id, "e1")
+        self.assertEqual(conflicts[0].property_name, "founded")
+        self.assertEqual(conflicts[0].conflict_type, ConflictType.TEMPORAL_CONFLICT)
+
+    def test_detect_logical_conflicts(self):
+        detector = ConflictDetector(track_provenance=True)
+        entities = [
+            {
+                "id": "e1",
+                "type": "Person",
+                "source": "doc1",
+                "confidence": 0.9,
+            },
+            {
+                "id": "e1",
+                "type": "Organization",
+                "source": "doc2",
+                "confidence": 0.8,
+            }
+        ]
+        conflicts = detector.detect_logical_conflicts(entities)
+        self.assertTrue(len(conflicts) > 0)
+        self.assertEqual(conflicts[0].entity_id, "e1")
+        self.assertEqual(conflicts[0].conflict_type, ConflictType.LOGICAL_CONFLICT)
+
+    def test_conflict_analyzer_by_source_and_trends(self):
+        analyzer = ConflictAnalyzer()
+        conflicts = [
+            Conflict(
+                conflict_id="c1",
+                conflict_type=ConflictType.VALUE_CONFLICT,
+                entity_id="e1",
+                property_name="age",
+                conflicting_values=[30, 32],
+                sources=[
+                    {"document": "doc1", "metadata": {"timestamp": "2023-01-01"}},
+                    {"document": "doc2", "metadata": {"timestamp": "2023-01-02"}},
+                ],
+                severity="medium",
+            ),
+            Conflict(
+                conflict_id="c2",
+                conflict_type=ConflictType.TYPE_CONFLICT,
+                entity_id="e2",
+                property_name="type",
+                conflicting_values=["Person", "Org"],
+                sources=[
+                    {"document": "doc1", "metadata": {"timestamp": "2023-02-01"}},
+                    {"document": "doc3", "metadata": {"timestamp": "2023-02-02"}},
+                ],
+                severity="critical",
+            ),
+        ]
+        # Test analyze_conflicts (which calls _analyze_by_source)
+        analysis = analyzer.analyze_conflicts(conflicts)
+        self.assertIn("by_source", analysis)
+        self.assertEqual(analysis["by_source"]["counts"]["doc1"], 2)
+        self.assertEqual(analysis["by_source"]["counts"]["doc2"], 1)
+
+        # Test analyze_trends
+        trends = analyzer.analyze_trends(conflicts)
+        self.assertTrue(len(trends) >= 1)
+        self.assertEqual(trends[0]["period"], "2023-01")
+        self.assertEqual(trends[0]["conflict_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
-
-# Verified and validated test suite for resolution strategies (#865)
