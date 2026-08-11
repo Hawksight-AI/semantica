@@ -47,6 +47,8 @@ import os
 import sys
 from typing import Any
 
+from semantica import __version__
+
 # ── logging ────────────────────────────────────────────────────────────────
 _log_level = getattr(logging, os.environ.get("SEMANTICA_LOG_LEVEL", "WARNING").upper(), logging.WARNING)
 logging.basicConfig(stream=sys.stderr, level=_log_level,
@@ -477,7 +479,7 @@ def _read_resource(uri: str) -> dict:
     if uri == "semantica://schema/info":
         return {
             "name": "Semantica",
-            "version": "0.4.0",
+            "version": __version__,
             "tools": [t["name"] for t in TOOLS],
             "resources": [r["uri"] for r in RESOURCES],
         }
@@ -490,7 +492,7 @@ def _read_resource(uri: str) -> dict:
 
 SERVER_INFO = {
     "name": "semantica",
-    "version": "0.4.0",
+    "version": __version__,
 }
 
 CAPABILITIES = {
