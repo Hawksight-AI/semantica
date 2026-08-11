@@ -20,6 +20,9 @@ from ..utils.exceptions import ValidationError
 
 ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 
+_TRUE_STRINGS = frozenset({"1", "true", "yes", "on"})
+_FALSE_STRINGS = frozenset({"0", "false", "no", "off"})
+
 # Keep DNS resolution bounded so fake/unreachable hosts in tests and offline
 # environments cannot hang request validation indefinitely.
 _DNS_RESOLVE_TIMEOUT_SECONDS = 2.0
@@ -32,6 +35,42 @@ _STRIP_BODY_ON_REDIRECT = frozenset({301, 302, 303})
 
 _dns_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
 _dns_executor_lock = threading.Lock()
+
+
+def parse_bool(value: Any, default: bool = False) -> bool:
+    """Parse a config value into a bool without truthy-string pitfalls.
+
+    ``bool('false')`` is ``True`` in Python, which would silently disable SSRF
+    protections when string-typed config reaches ingestors. This helper accepts
+    only explicit bools and a small allowlist of string/int forms.
+
+    Args:
+        value: Config value to interpret. ``None`` yields *default*.
+        default: Value returned when *value* is ``None``.
+
+    Raises:
+        ValidationError: If *value* is not a recognized boolean form.
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        raise ValidationError(f"Invalid boolean value: {value!r}")
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _TRUE_STRINGS:
+            return True
+        if normalized in _FALSE_STRINGS:
+            return False
+        raise ValidationError(f"Invalid boolean value: {value!r}")
+    raise ValidationError(
+        f"Invalid boolean type: {type(value).__name__} ({value!r})"
+    )
 
 
 def _shutdown_executor(executor: concurrent.futures.ThreadPoolExecutor) -> None:

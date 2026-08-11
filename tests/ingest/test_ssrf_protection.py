@@ -6,9 +6,39 @@ import pytest
 import urllib3.connectionpool as pool
 
 from semantica.ingest.api_ingestor import RESTIngestor
-from semantica.ingest.ssrf import request_with_ssrf_guard, validate_url_for_request
+from semantica.ingest.ssrf import (
+    parse_bool,
+    request_with_ssrf_guard,
+    validate_url_for_request,
+)
 from semantica.ingest.web_ingestor import SitemapCrawler, WebIngestor
 from semantica.utils.exceptions import ValidationError
+
+
+class TestParseBool:
+    def test_bool_passthrough(self):
+        assert parse_bool(True) is True
+        assert parse_bool(False) is False
+
+    def test_none_uses_default(self):
+        assert parse_bool(None) is False
+        assert parse_bool(None, default=True) is True
+
+    def test_string_true_values(self):
+        for value in ("true", "TRUE", "1", "yes", "on", " Yes "):
+            assert parse_bool(value) is True
+
+    def test_string_false_values(self):
+        for value in ("false", "FALSE", "0", "no", "off", " No "):
+            assert parse_bool(value) is False
+
+    def test_int_zero_one(self):
+        assert parse_bool(0) is False
+        assert parse_bool(1) is True
+
+    def test_rejects_unknown_string(self):
+        with pytest.raises(ValidationError, match="Invalid boolean"):
+            parse_bool("maybe")
 
 
 class TestValidateUrlForRequest:
@@ -230,6 +260,32 @@ class TestWebIngestorSSRF:
             assert mock_request.call_args.kwargs.get("allow_redirects") is False
             mock_extract.assert_called_once()
 
+    def test_allow_private_ips_string_false_keeps_ssrf_on(self):
+        ingestor = WebIngestor(
+            respect_robots=False, delay=0, allow_private_ips="false"
+        )
+        assert ingestor.allow_private_ips is False
+        with pytest.raises(ValidationError, match="blocked"):
+            ingestor.ingest_url("http://127.0.0.1:9/probe")
+
+    def test_allow_private_ips_string_true_opts_in(self):
+        ingestor = WebIngestor(
+            respect_robots=False, delay=0, allow_private_ips="true"
+        )
+        assert ingestor.allow_private_ips is True
+        with patch.object(ingestor.session, "request") as mock_request, patch.object(
+            ingestor, "extract_content"
+        ) as mock_extract:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.text = "ok"
+            mock_resp.raise_for_status = MagicMock()
+            mock_request.return_value = mock_resp
+            mock_extract.return_value = MagicMock(status_code=None)
+
+            ingestor.ingest_url("http://127.0.0.1:9/probe")
+            mock_request.assert_called_once()
+
     def test_redirect_to_private_ip_blocked(self):
         ingestor = WebIngestor(respect_robots=False, delay=0)
         redirect = MagicMock()
@@ -250,6 +306,16 @@ class TestSitemapCrawlerSSRF:
         crawler = SitemapCrawler()
         with pytest.raises(ValidationError):
             crawler.parse_sitemap("http://10.0.0.1/sitemap.xml")
+
+    def test_allow_private_ips_string_false_keeps_ssrf_on(self):
+        crawler = SitemapCrawler(allow_private_ips="false")
+        assert crawler.allow_private_ips is False
+        with pytest.raises(ValidationError):
+            crawler.parse_sitemap("http://10.0.0.1/sitemap.xml")
+
+    def test_allow_private_ips_string_true_opts_in(self):
+        crawler = SitemapCrawler(allow_private_ips="true")
+        assert crawler.allow_private_ips is True
 
     def test_redirect_to_private_ip_blocked(self):
         crawler = SitemapCrawler()
@@ -296,6 +362,30 @@ class TestRESTIngestorSSRF:
             assert data.data == {"ok": True}
             mock_session.request.assert_called_once()
             assert mock_session.request.call_args.kwargs.get("allow_redirects") is False
+
+    def test_allow_private_ips_string_false_keeps_ssrf_on(self):
+        with patch("requests.Session") as MockSession:
+            mock_session = MockSession.return_value
+            ingestor = RESTIngestor(allow_private_ips="false")
+            assert ingestor.allow_private_ips is False
+            with pytest.raises(ValidationError, match="blocked"):
+                ingestor.ingest_endpoint("http://127.0.0.1:8080/health")
+            mock_session.request.assert_not_called()
+
+    def test_allow_private_ips_string_true_opts_in(self):
+        with patch("requests.Session") as MockSession:
+            mock_session = MockSession.return_value
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"ok": True}
+            mock_response.headers = {"Content-Type": "application/json"}
+            mock_session.request.return_value = mock_response
+
+            ingestor = RESTIngestor(allow_private_ips="true")
+            assert ingestor.allow_private_ips is True
+            data = ingestor.ingest_endpoint("http://127.0.0.1:8080/health")
+            assert data.data == {"ok": True}
+            mock_session.request.assert_called_once()
 
     def test_redirect_to_private_ip_blocked(self):
         with patch("requests.Session") as MockSession:

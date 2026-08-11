@@ -38,7 +38,7 @@ except (ImportError, OSError):
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from .ssrf import request_with_ssrf_guard
+from .ssrf import parse_bool, request_with_ssrf_guard
 
 
 @dataclass
@@ -86,7 +86,9 @@ class RESTIngestor:
         self.logger = get_logger("api_ingestor")
         self.config = config or {}
         self.config.update(kwargs)
-        self.allow_private_ips = bool(self.config.get("allow_private_ips", False))
+        self.allow_private_ips = parse_bool(
+            self.config.get("allow_private_ips"), default=False
+        )
 
         # Initialize session with retry strategy
         self.session = requests.Session()

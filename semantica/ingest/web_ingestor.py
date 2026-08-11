@@ -48,7 +48,7 @@ from urllib3.util.retry import Retry
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from .ssrf import request_with_ssrf_guard, validate_url_for_request
+from .ssrf import parse_bool, request_with_ssrf_guard, validate_url_for_request
 
 
 @dataclass
@@ -344,7 +344,9 @@ class SitemapCrawler:
         """
         self.logger = get_logger("sitemap_crawler")
         self.config = config
-        self.allow_private_ips = bool(config.get("allow_private_ips", False))
+        self.allow_private_ips = parse_bool(
+            config.get("allow_private_ips"), default=False
+        )
 
     def parse_sitemap(self, sitemap_url: str) -> List[str]:
         """
@@ -531,8 +533,9 @@ class WebIngestor:
         self.logger = get_logger("web_ingestor")
         self.config = config or {}
         self.config.update(kwargs)
-        self.allow_private_ips = bool(
-            self.config.get("allow_private_ips", allow_private_ips)
+        self.allow_private_ips = parse_bool(
+            self.config.get("allow_private_ips", allow_private_ips),
+            default=False,
         )
         self.config["allow_private_ips"] = self.allow_private_ips
 
