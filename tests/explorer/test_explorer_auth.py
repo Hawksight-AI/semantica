@@ -150,3 +150,62 @@ def test_websocket_accepts_connection_with_header_key(client, monkeypatch):
     ) as websocket:
         ack = websocket.receive_json()
     assert ack["event"] == "connection_ack"
+
+
+# ---------------------------------------------------------------------------
+# WebSocket Origin validation (GHSA-4643-wpgq-w329): CORSMiddleware doesn't
+# cover WebSocket handshakes at all, so under SEMANTICA_ALLOW_ANONYMOUS the
+# key check alone accepted a handshake from any origin — loopback binding is
+# not a boundary against a browser, since any page the operator has open can
+# still reach ws://localhost:.../ws/graph-updates. These pin the fix: a
+# hostile Origin is refused even in anonymous mode (and even with a correct
+# key), a same-origin/allowlisted Origin still works, and a missing Origin
+# (native/CLI clients, which never set the header) is still allowed through.
+# ---------------------------------------------------------------------------
+
+def test_websocket_rejects_hostile_origin_under_anonymous_mode(client, monkeypatch):
+    monkeypatch.setenv("SEMANTICA_ALLOW_ANONYMOUS", "true")
+    monkeypatch.delenv("SEMANTICA_API_KEY", raising=False)
+
+    with pytest.raises(Exception):
+        with client.websocket_connect(
+            "/ws/graph-updates", headers={"Origin": "https://evil.example"}
+        ):
+            pass
+
+
+def test_websocket_rejects_hostile_origin_even_with_correct_key(client, monkeypatch):
+    """Defense in depth: Origin is checked before the API key, so a hostile
+    page that somehow obtained a valid key still can't hijack the socket."""
+    monkeypatch.delenv("SEMANTICA_ALLOW_ANONYMOUS", raising=False)
+    monkeypatch.setenv("SEMANTICA_API_KEY", "correct-key")
+
+    with pytest.raises(Exception):
+        with client.websocket_connect(
+            "/ws/graph-updates",
+            headers={"Origin": "https://evil.example", "X-API-Key": "correct-key"},
+        ):
+            pass
+
+
+def test_websocket_accepts_allowlisted_origin_under_anonymous_mode(client, monkeypatch):
+    monkeypatch.setenv("SEMANTICA_ALLOW_ANONYMOUS", "true")
+    monkeypatch.delenv("SEMANTICA_API_KEY", raising=False)
+
+    with client.websocket_connect(
+        "/ws/graph-updates", headers={"Origin": "http://localhost:5173"}
+    ) as websocket:
+        ack = websocket.receive_json()
+    assert ack["event"] == "connection_ack"
+
+
+def test_websocket_accepts_missing_origin_under_anonymous_mode(client, monkeypatch):
+    """Native/CLI clients never send an Origin header — only browsers do —
+    so a missing Origin must still be allowed through; the browser is the
+    only threat this check closes."""
+    monkeypatch.setenv("SEMANTICA_ALLOW_ANONYMOUS", "true")
+    monkeypatch.delenv("SEMANTICA_API_KEY", raising=False)
+
+    with client.websocket_connect("/ws/graph-updates") as websocket:
+        ack = websocket.receive_json()
+    assert ack["event"] == "connection_ack"

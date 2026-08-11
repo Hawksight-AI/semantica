@@ -193,6 +193,23 @@ def create_app(
 
     @app.websocket("/ws/graph-updates")
     async def websocket_endpoint(websocket: WebSocket):
+        # CORSMiddleware doesn't cover WebSocket handshakes (Starlette's
+        # CORS support only wraps HTTP), so under SEMANTICA_ALLOW_ANONYMOUS
+        # the key check below accepts any origin — loopback binding isn't a
+        # boundary against a browser, since any page the operator has open
+        # can still reach ws://localhost:.../ws/graph-updates directly.
+        # Reject a foreign Origin explicitly here, against the same
+        # allowlist CORSMiddleware already enforces for HTTP
+        # (GHSA-4643-wpgq-w329). Browsers always send Origin on a
+        # cross-origin WebSocket handshake; native/CLI clients omit it
+        # entirely, so a missing Origin is allowed through — the browser is
+        # the only threat this check is closing.
+        origin = websocket.headers.get("origin")
+        allowed_origins = app.state.explorer_settings["allowed_origins"]
+        if origin is not None and origin not in allowed_origins:
+            await websocket.close(code=4403)  # forbidden
+            return
+
         # Browsers can't set custom headers on a WebSocket handshake, so
         # accept the key via header (non-browser clients) or query param
         # (browser clients), same SEMANTICA_API_KEY the REST routes check.
