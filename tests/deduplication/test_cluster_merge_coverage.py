@@ -152,23 +152,34 @@ class TestClusterBuilderCoverage(unittest.TestCase):
 
     def test_update_clusters_adds_matching_entity(self):
         """Incremental update attaches a near-duplicate into an existing cluster."""
-        builder = ClusterBuilder(similarity_threshold=0.4, min_cluster_size=2)
-        existing = [
-            Cluster(
-                cluster_id="cluster_0",
-                entities=[
-                    {"id": "a1", "name": "Apple Inc.", "type": "Company",
-                     "properties": {"industry": "Technology"}},
-                ],
-            )
-        ]
-        new_entities = [
-            {"id": "a2", "name": "Apple", "type": "Company",
-             "properties": {"industry": "Tech"}},
-        ]
-        result = builder.update_clusters(existing, new_entities)
-        clustered_ids = {e["id"] for c in result.clusters for e in c.entities}
-        self.assertTrue({"a1", "a2"}.issubset(clustered_ids) or len(result.clusters) >= 1)
+        builder = ClusterBuilder(similarity_threshold=0.8, min_cluster_size=2)
+        a1 = {
+            "id": "a1",
+            "name": "Apple Inc.",
+            "type": "Company",
+            "properties": {"industry": "Technology"},
+        }
+        a2 = {
+            "id": "a2",
+            "name": "Apple",
+            "type": "Company",
+            "properties": {"industry": "Tech"},
+        }
+        existing = [Cluster(cluster_id="cluster_0", entities=[a1])]
+
+        with patch.object(
+            builder, "_entity_cluster_similarity", return_value=0.95
+        ), patch.object(
+            builder.similarity_calculator,
+            "batch_calculate_similarity",
+            return_value=[(a1, a2, 0.95)],
+        ):
+            result = builder.update_clusters(existing, [a2])
+
+        self.assertEqual(len(result.clusters), 1)
+        clustered_ids = {e["id"] for e in result.clusters[0].entities}
+        self.assertEqual(clustered_ids, {"a1", "a2"})
+        self.assertEqual(result.unclustered, [])
 
 
 class TestMergeStrategyManagerCoverage(unittest.TestCase):
