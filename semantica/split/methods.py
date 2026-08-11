@@ -1623,8 +1623,9 @@ def split_sliding_window(
         )
 
     try:
+        effective_stride = stride if stride is not None else (chunk_size - overlap)
         chunker = SlidingWindowChunker(
-            chunk_size=chunk_size, overlap=overlap, stride=stride, **kwargs
+            chunk_size=chunk_size, overlap=overlap, stride=effective_stride, **kwargs
         )
         return chunker.chunk(text, preserve_boundaries=preserve_boundaries, **kwargs)
     except Exception as e:

@@ -514,6 +514,15 @@ Body paragraph under a distinct heading for separation checks.
         )
         assert len(chunks) >= 2
         assert all(isinstance(c, Chunk) for c in chunks)
+        # Verify the sliding-window path was taken, not the recursive fallback.
+        # chunks[1].metadata["has_overlap"] is set only by SlidingWindowChunker.
+        assert chunks[1].metadata.get("has_overlap") is True, (
+            "Expected sliding-window chunks to carry has_overlap=True; "
+            "fallback to recursive may have occurred"
+        )
+        assert chunks[1].metadata.get("method") != "recursive", (
+            "Sliding-window fallback to recursive was triggered unexpectedly"
+        )
 
     @requires_semantic_extract
     def test_split_entity_aware(self):
