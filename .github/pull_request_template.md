@@ -1,3 +1,5 @@
+> **Before you submit:** make sure you followed the [issue workflow in CONTRIBUTING.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTING.md#-working-on-an-existing-issue) — comment on the issue and wait for assignment before opening a PR, to avoid duplicate work.
+
 ## Description
 
 <!-- Provide a clear description of your changes -->
