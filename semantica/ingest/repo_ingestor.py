@@ -33,11 +33,13 @@ import ipaddress
 import os
 import re
 import shutil
+import socket
 import tempfile
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 
 import git
@@ -53,6 +55,11 @@ ALLOWED_CLONE_OPTIONS: Set[str] = {"depth", "branch", "single_branch", "no_tags"
 ALLOWED_REPO_URL_SCHEMES = frozenset({"https", "http", "git", "ssh"})
 # SCP-like SSH remotes: user@host:path/to/repo.git (no scheme)
 _SCP_LIKE_REPO_URL_RE = re.compile(r"^[^@\s]+@[^:\s]+:.+$")
+# Short-lived DNS cache for host validation. This reduces repeated lookups but
+# does not eliminate DNS-rebinding / TOCTOU races between validate and clone —
+# network egress controls remain recommended.
+_REPO_HOST_RESOLVE_CACHE: Dict[str, Tuple[float, Tuple[str, ...]]] = {}
+_REPO_HOST_RESOLVE_CACHE_TTL_SECONDS = 60.0
 
 
 @dataclass
@@ -546,8 +553,71 @@ class RepoIngestor:
         return f"ssh://{user_host}{path}"
 
     @staticmethod
+    def _is_blocked_ip(
+        ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address],
+    ) -> bool:
+        """Return True if *ip* is private, loopback, link-local, or similar."""
+        return bool(
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        )
+
+    @staticmethod
+    def _resolve_repo_host_ips(host: str) -> Tuple[str, ...]:
+        """Resolve *host* to IP strings via ``socket.getaddrinfo``, with TTL cache.
+
+        Note: caching and pre-clone resolution mitigate repeated lookups but
+        cannot fully prevent DNS rebinding between validation and clone.
+        Prefer network-layer egress controls for defense in depth.
+        """
+        cache_key = host.lower().rstrip(".")
+        now = time.monotonic()
+        cached = _REPO_HOST_RESOLVE_CACHE.get(cache_key)
+        if cached is not None:
+            expires_at, ips = cached
+            if now < expires_at:
+                return ips
+
+        try:
+            addrinfos = socket.getaddrinfo(
+                host, None, type=socket.SOCK_STREAM
+            )
+        except socket.gaierror as exc:
+            raise ValidationError(
+                f"Cannot resolve repository host {host!r}: {exc}"
+            ) from exc
+
+        ips: List[str] = []
+        seen: Set[str] = set()
+        for _family, _type, _proto, _canonname, sockaddr in addrinfos:
+            addr = sockaddr[0]
+            if addr not in seen:
+                seen.add(addr)
+                ips.append(addr)
+
+        if not ips:
+            raise ValidationError(
+                f"Cannot resolve repository host {host!r}: no addresses"
+            )
+
+        result = tuple(ips)
+        _REPO_HOST_RESOLVE_CACHE[cache_key] = (
+            now + _REPO_HOST_RESOLVE_CACHE_TTL_SECONDS,
+            result,
+        )
+        return result
+
+    @staticmethod
     def _validate_repo_host(host: str) -> None:
-        """Reject localhost names and literal blocked IP addresses."""
+        """Reject localhost names and hosts resolving to blocked addresses.
+
+        Literal IPs are checked directly. Hostnames are resolved with
+        ``socket.getaddrinfo`` and **every** returned address is screened.
+        """
         if not host:
             raise ValidationError("Repository URL must include a host")
 
@@ -558,16 +628,20 @@ class RepoIngestor:
         try:
             ip = ipaddress.ip_address(host)
         except ValueError:
-            return  # hostname, not a literal IP
+            # Hostname: resolve and validate all returned addresses
+            for addr in RepoIngestor._resolve_repo_host_ips(host):
+                try:
+                    resolved = ipaddress.ip_address(addr)
+                except ValueError:
+                    continue
+                if RepoIngestor._is_blocked_ip(resolved):
+                    raise ValidationError(
+                        f"Repository host resolves to a blocked address: "
+                        f"{host} -> {addr}"
+                    )
+            return
 
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
+        if RepoIngestor._is_blocked_ip(ip):
             raise ValidationError(
                 f"Repository host resolves to a blocked address: {host}"
             )
@@ -579,8 +653,11 @@ class RepoIngestor:
         Accepts http(s)/git/ssh URLs and scp-like SSH remotes
         (``user@host:path``). Rejects empty values, unsupported schemes,
         missing hosts, environment variable expansion tokens
-        (``$VAR`` / ``${VAR}``), and literal private / loopback / link-local
-        IP addresses.
+        (``$VAR`` / ``${VAR}``), and hosts that are or resolve to private /
+        loopback / link-local / reserved addresses.
+
+        DNS resolution is TOCTOU-sensitive (rebinding); pair with egress
+        controls in production deployments.
         """
         if not isinstance(repo_url, str) or not repo_url.strip():
             raise ValidationError("Repository URL must be a non-empty string")
