@@ -60,14 +60,25 @@ class TestValidateUrlForRequest:
                 "file://localhost/x", allow_private_ips=True
             )
 
-    def test_dns_failure_does_not_raise(self):
+    def test_dns_failure_raises(self):
         import socket
 
         with patch(
             "semantica.ingest.ssrf.socket.getaddrinfo",
             side_effect=socket.gaierror("name or service not known"),
         ):
-            validate_url_for_request("http://does-not-resolve.invalid/path")
+            with pytest.raises(ValidationError, match="could not be resolved safely"):
+                validate_url_for_request("http://does-not-resolve.invalid/path")
+
+    def test_dns_timeout_raises(self):
+        import concurrent.futures
+
+        with patch(
+            "semantica.ingest.ssrf.concurrent.futures.Future.result",
+            side_effect=concurrent.futures.TimeoutError(),
+        ):
+            with pytest.raises(ValidationError, match="could not be resolved safely"):
+                validate_url_for_request("http://slow-dns.example/path")
 
 
 class TestWebIngestorSSRF:

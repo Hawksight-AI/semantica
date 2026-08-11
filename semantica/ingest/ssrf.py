@@ -49,14 +49,21 @@ def _ip_is_blocked(addr: ipaddress._BaseAddress) -> bool:
 
 
 def _hostname_resolves_to_blocked(hostname: str) -> bool:
-    """Return True if any resolved address for *hostname* is blocked."""
+    """Return True if any resolved address for *hostname* is blocked.
+
+    Raises:
+        ValidationError: If DNS resolution fails or times out. Fail closed so
+            outbound requests never proceed without confirmed safe IPs.
+    """
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(socket.getaddrinfo, hostname, None)
             resolved: Iterable = future.result(timeout=_DNS_RESOLVE_TIMEOUT_SECONDS)
-    except (socket.gaierror, concurrent.futures.TimeoutError, OSError):
-        # DNS failure / timeout — leave the error to requests on the actual fetch.
-        return False
+    except (socket.gaierror, concurrent.futures.TimeoutError, OSError) as exc:
+        raise ValidationError(
+            f"URL host '{hostname}' could not be resolved safely "
+            "(DNS error or timeout); request blocked"
+        ) from exc
 
     for info in resolved:
         sockaddr = info[4]
