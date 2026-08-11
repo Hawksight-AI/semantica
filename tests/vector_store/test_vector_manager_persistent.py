@@ -32,6 +32,12 @@ class _NonCountingBackendStore:
     """Fake persistent backend store without any count capability."""
 
 
+class _MisShapedBackendStore:
+    """Fake persistent backend store whose ``count`` attribute is not callable."""
+
+    count = 42  # not a method — a plain attribute
+
+
 class VectorStoreCountTests(unittest.TestCase):
     """VectorStore.count() backend-agnostic accessor."""
 
@@ -58,6 +64,27 @@ class VectorStoreCountTests(unittest.TestCase):
         store = VectorStore(backend="inmemory", dimension=2)
         store.backend = "faiss"
         store._backend_store = _NonCountingBackendStore()
+        with self.assertRaises(NotImplementedError):
+            store.count()
+
+    def test_count_raises_when_persistent_backend_not_initialized(self):
+        # Regression (Qodo review #914): a persistent backend with no
+        # wrapped store must not silently report 0 — that masks a missing
+        # initialization as an empty, healthy store. Follow the
+        # get_vector()/get_metadata() precedent and raise.
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.backend = "faiss"
+        store._backend_store = None
+        with self.assertRaises(NotImplementedError):
+            store.count()
+
+    def test_count_raises_when_backend_count_not_callable(self):
+        # Regression (Qodo review #914): a mis-shaped adapter exposing a
+        # non-callable ``count`` attribute must surface a clean
+        # NotImplementedError, not a TypeError.
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.backend = "faiss"
+        store._backend_store = _MisShapedBackendStore()
         with self.assertRaises(NotImplementedError):
             store.count()
 

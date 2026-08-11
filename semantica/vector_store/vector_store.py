@@ -65,7 +65,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union, cast
 import concurrent.futures
 import inspect
 
@@ -833,19 +833,25 @@ class VectorStore:
         NotImplementedError-on-unsupported-capability precedent of
         _filter_by_metadata() (#848), a persistent backend that cannot
         report a count raises NotImplementedError so callers can tell
-        "no vectors" apart from "counting not supported".
+        "no vectors" apart from "counting not supported" — including when
+        the wrapped backend store is missing entirely (never silently
+        report an uninitialized store as empty).
         """
         if self.backend == "inmemory":
             return len(self.vectors)
         elif self._backend_store is not None:
-            if hasattr(self._backend_store, "count"):
-                return self._backend_store.count()
+            count_attr = getattr(self._backend_store, "count", None)
+            if callable(count_attr):
+                return cast(int, count_attr())
             raise NotImplementedError(
                 f"Backend store {type(self._backend_store).__name__} does not "
                 "implement count. Vector counting is only supported for the "
                 "inmemory backend."
             )
-        return 0
+        raise NotImplementedError(
+            f"Backend store is not initialized; cannot count vectors for "
+            f"backend {self.backend!r}."
+        )
 
     def initialize_decision_pipeline(
         self,
