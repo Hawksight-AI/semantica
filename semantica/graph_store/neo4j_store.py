@@ -861,6 +861,7 @@ class Neo4jStore:
         """
         try:
             type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
+            depth = int(depth)
 
             if direction == "out":
                 pattern = f"-[r{type_filter}*1..{depth}]->"
@@ -914,6 +915,7 @@ class Neo4jStore:
         """
         try:
             type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
+            max_depth = int(max_depth)
 
             query = f"""
                 MATCH path = shortestPath((start)-[r{type_filter}*..{max_depth}]-(end))

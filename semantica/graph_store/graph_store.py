@@ -757,7 +757,7 @@ class GraphStore:
             **options: Additional options
         """
         # Support 'hops' as alias for 'depth' for ContextRetriever compatibility
-        actual_depth = options.get("hops", depth)
+        actual_depth = int(options.get("hops", depth))
         return self._manager.analytics.get_neighbors(
             node_id, rel_type, direction, actual_depth, **options
         )
