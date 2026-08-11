@@ -203,9 +203,11 @@ async def predict_links(
     if node is None:
         raise HTTPException(status_code=404, detail=f"Node '{body.node_id}' not found")
 
-    async with _link_prediction_semaphore:  # max 2 concurrent link-prediction requests
+    # SECURITY: Acquire semaphore BEFORE loading data so concurrent requests
+    # cannot pile up expensive threadpool work and memory pressure (Qodo #2).
+    async with _link_prediction_semaphore:
         # SECURITY: Load at most _LINK_PREDICTION_MAX_NODES candidates.
-        # The hardcoded limit=999_999 in the original code consumed ~1.6 GB RAM
+        # The hardcoded limit in the original code consumed ~1.6 GB RAM
         # per request and had no concurrency guard, making it trivially DoS-able.
         nodes, total = await asyncio.to_thread(session.get_nodes, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
         if total > _LINK_PREDICTION_MAX_NODES:
@@ -217,14 +219,21 @@ async def predict_links(
                     "Use the graph search endpoint for large graphs."
                 ),
             )
-        
-        out_edges, _ = await asyncio.to_thread(session.get_edges, source=body.node_id, skip=0, limit=999_999)
-        in_edges, _ = await asyncio.to_thread(session.get_edges, target=body.node_id, skip=0, limit=999_999)
+
+        # Load edges specific to the queried node rather than a globally
+        # truncated page — avoids missing neighbours when the node's edges
+        # fall outside the first page (Qodo #3).
+        edges_out, _ = await asyncio.to_thread(
+            session.get_edges, source=body.node_id, skip=0, limit=_LINK_PREDICTION_MAX_NODES,
+        )
+        edges_in, _ = await asyncio.to_thread(
+            session.get_edges, target=body.node_id, skip=0, limit=_LINK_PREDICTION_MAX_NODES,
+        )
 
         existing_neighbors = {
-            edge.get("target") for edge in out_edges if edge.get("target")
+            edge.get("target") for edge in edges_out
         } | {
-            edge.get("source") for edge in in_edges if edge.get("source")
+            edge.get("source") for edge in edges_in
         }
 
         def _score_all() -> list:
