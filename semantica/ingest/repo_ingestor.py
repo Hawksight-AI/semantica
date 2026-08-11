@@ -51,6 +51,8 @@ from ..utils.progress_tracker import get_progress_tracker
 # attacks against older GitPython releases — keep them out of the call surface.
 ALLOWED_CLONE_OPTIONS: Set[str] = {"depth", "branch", "single_branch", "no_tags"}
 ALLOWED_REPO_URL_SCHEMES = frozenset({"https", "http", "git", "ssh"})
+# SCP-like SSH remotes: user@host:path/to/repo.git (no scheme)
+_SCP_LIKE_REPO_URL_RE = re.compile(r"^[^@\s]+@[^:\s]+:.+$")
 
 
 @dataclass
@@ -518,47 +520,40 @@ class RepoIngestor:
         self.logger.debug("Repo ingestor initialized")
 
     @staticmethod
-    def _validate_repo_url(repo_url: str) -> None:
-        """Validate a repository URL before cloning.
+    def _is_scp_like_repo_url(repo_url: str) -> bool:
+        """Return True for scp-like SSH remotes (``user@host:path``)."""
+        return bool(_SCP_LIKE_REPO_URL_RE.match(repo_url.strip()))
 
-        Rejects empty values, unsupported schemes, missing hosts, environment
-        variable expansion tokens (``$VAR`` / ``${VAR}``), and literal private /
-        loopback / link-local IP addresses.
+    @staticmethod
+    def _scp_like_host(repo_url: str) -> str:
+        """Extract the hostname from an scp-like remote (``user@host:path``)."""
+        _, rest = repo_url.strip().split("@", 1)
+        host, _ = rest.split(":", 1)
+        return host
+
+    @staticmethod
+    def _normalize_repo_url(repo_url: str) -> str:
+        """Normalize scp-like remotes to ``ssh://`` URLs; leave others unchanged.
+
+        ``git@host:org/repo.git`` → ``ssh://git@host/org/repo.git``
         """
-        if not isinstance(repo_url, str) or not repo_url.strip():
-            raise ValidationError("Repository URL must be a non-empty string")
+        url = repo_url.strip()
+        if not RepoIngestor._is_scp_like_repo_url(url):
+            return url
+        user_host, path = url.split(":", 1)
+        if not path.startswith("/"):
+            path = f"/{path}"
+        return f"ssh://{user_host}{path}"
 
-        # Defense-in-depth against GitPython env-var expansion in clone URLs
-        # (GHSA-2f96-g7mh-g2hx / related). Prefer rejecting before clone_from.
-        if "$" in repo_url:
-            raise ValidationError(
-                "Repository URL must not contain environment variable "
-                "references ($VAR / ${VAR})"
-            )
-
-        parsed = urlparse(repo_url.strip())
-        scheme = (parsed.scheme or "").lower()
-        if scheme not in ALLOWED_REPO_URL_SCHEMES:
-            raise ValidationError(
-                f"Unsupported repository URL scheme {scheme!r}. "
-                f"Allowed schemes: {sorted(ALLOWED_REPO_URL_SCHEMES)}"
-            )
-        if not parsed.netloc:
-            raise ValidationError(
-                f"Repository URL must include a host: {repo_url}"
-            )
-
-        host = parsed.hostname
+    @staticmethod
+    def _validate_repo_host(host: str) -> None:
+        """Reject localhost names and literal blocked IP addresses."""
         if not host:
-            raise ValidationError(
-                f"Repository URL must include a host: {repo_url}"
-            )
+            raise ValidationError("Repository URL must include a host")
 
         lowered = host.lower().rstrip(".")
         if lowered == "localhost" or lowered.endswith(".localhost"):
-            raise ValidationError(
-                f"Repository host is not allowed: {host}"
-            )
+            raise ValidationError(f"Repository host is not allowed: {host}")
 
         try:
             ip = ipaddress.ip_address(host)
@@ -576,6 +571,54 @@ class RepoIngestor:
             raise ValidationError(
                 f"Repository host resolves to a blocked address: {host}"
             )
+
+    @staticmethod
+    def _validate_repo_url(repo_url: str) -> None:
+        """Validate a repository URL before cloning.
+
+        Accepts http(s)/git/ssh URLs and scp-like SSH remotes
+        (``user@host:path``). Rejects empty values, unsupported schemes,
+        missing hosts, environment variable expansion tokens
+        (``$VAR`` / ``${VAR}``), and literal private / loopback / link-local
+        IP addresses.
+        """
+        if not isinstance(repo_url, str) or not repo_url.strip():
+            raise ValidationError("Repository URL must be a non-empty string")
+
+        # Defense-in-depth against GitPython env-var expansion in clone URLs
+        # (GHSA-2f96-g7mh-g2hx / related). Prefer rejecting before clone_from.
+        if "$" in repo_url:
+            raise ValidationError(
+                "Repository URL must not contain environment variable "
+                "references ($VAR / ${VAR})"
+            )
+
+        url = repo_url.strip()
+
+        # scp-like syntax has no URL scheme; validate host then accept.
+        if RepoIngestor._is_scp_like_repo_url(url):
+            RepoIngestor._validate_repo_host(RepoIngestor._scp_like_host(url))
+            return
+
+        parsed = urlparse(url)
+        scheme = (parsed.scheme or "").lower()
+        if scheme not in ALLOWED_REPO_URL_SCHEMES:
+            raise ValidationError(
+                f"Unsupported repository URL scheme {scheme!r}. "
+                f"Allowed schemes: {sorted(ALLOWED_REPO_URL_SCHEMES)}"
+            )
+        if not parsed.netloc:
+            raise ValidationError(
+                f"Repository URL must include a host: {repo_url}"
+            )
+
+        host = parsed.hostname
+        if not host:
+            raise ValidationError(
+                f"Repository URL must include a host: {repo_url}"
+            )
+
+        RepoIngestor._validate_repo_host(host)
 
     @staticmethod
     def _filter_clone_options(options: Dict[str, Any]) -> Dict[str, Any]:
@@ -627,6 +670,7 @@ class RepoIngestor:
         try:
             # Validate repository URL before any clone attempt
             self._validate_repo_url(repo_url)
+            clone_url = self._normalize_repo_url(repo_url)
 
             # Handle option aliases and filters
             if "max_depth" in options and "depth" not in options:
@@ -636,7 +680,7 @@ class RepoIngestor:
 
             try:
                 parsed = git.Repo.clone_from(
-                    repo_url, self._get_temp_dir(), **clone_options
+                    clone_url, self._get_temp_dir(), **clone_options
                 )
             except Exception as e:
                 self.progress_tracker.update_tracking(
