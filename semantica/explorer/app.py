@@ -140,7 +140,7 @@ def create_app(
         allow_origins=settings["allowed_origins"],
         allow_credentials=_allow_credentials,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
         max_age=600,
     )
 
