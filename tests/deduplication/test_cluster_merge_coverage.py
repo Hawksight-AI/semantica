@@ -71,28 +71,30 @@ class TestClusterBuilderCoverage(unittest.TestCase):
 
     def test_unrelated_entities_get_different_cluster_ids(self):
         """Unrelated brands must not share a cluster ID when they form clusters."""
-        builder = ClusterBuilder(similarity_threshold=0.4, min_cluster_size=2)
-        # Two clear Apple duplicates + two clear Microsoft duplicates
-        entities = [
-            {"id": "a1", "name": "Apple Inc.", "type": "Company",
-             "properties": {"industry": "Technology"}},
-            {"id": "a2", "name": "Apple", "type": "Company",
-             "properties": {"industry": "Technology"}},
-            {"id": "m1", "name": "Microsoft Corporation", "type": "Company",
-             "properties": {"industry": "Software"}},
-            {"id": "m2", "name": "Microsoft Corp", "type": "Company",
-             "properties": {"industry": "Software"}},
-        ]
-        result = builder.build_clusters(entities)
+        builder = ClusterBuilder(similarity_threshold=0.8, min_cluster_size=2)
+        a1 = {"id": "a1", "name": "Apple Inc.", "type": "Company"}
+        a2 = {"id": "a2", "name": "Apple", "type": "Company"}
+        m1 = {"id": "m1", "name": "Microsoft Corporation", "type": "Company"}
+        m2 = {"id": "m2", "name": "Microsoft Corp", "type": "Company"}
+        # Deterministic pairs: intra-brand duplicates only — no Apple↔Microsoft edge
+        pairs = [(a1, a2, 0.95), (m1, m2, 0.94)]
+
+        with patch.object(
+            builder.similarity_calculator,
+            "batch_calculate_similarity",
+            return_value=pairs,
+        ):
+            clusters = builder._graph_based_clustering(
+                [a1, a2, m1, m2], threshold=0.8
+            )
 
         id_to_cluster = {
-            e["id"]: c.cluster_id
-            for c in result.clusters
-            for e in c.entities
+            e["id"]: c.cluster_id for c in clusters for e in c.entities
         }
-        # Both pairs should cluster; Apple and Microsoft must differ
-        if "a1" in id_to_cluster and "m1" in id_to_cluster:
-            self.assertNotEqual(id_to_cluster["a1"], id_to_cluster["m1"])
+        self.assertEqual(set(id_to_cluster), {"a1", "a2", "m1", "m2"})
+        self.assertEqual(id_to_cluster["a1"], id_to_cluster["a2"])
+        self.assertEqual(id_to_cluster["m1"], id_to_cluster["m2"])
+        self.assertNotEqual(id_to_cluster["a1"], id_to_cluster["m1"])
 
     def test_singleton_entities_are_unclustered(self):
         """Entities with no similar peers remain unclustered (min_cluster_size=2)."""
