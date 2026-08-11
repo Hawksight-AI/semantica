@@ -824,6 +824,29 @@ class VectorStore:
         else:
             raise NotImplementedError(f"Backend store {type(self._backend_store).__name__} does not implement get_metadata")
 
+    def count(self) -> int:
+        """Return the number of vectors in the store, backend-agnostic.
+
+        The inmemory backend counts its local dict; persistent backends
+        delegate to a ``count()`` on the wrapped store when available.
+        Following the get_vector()/get_metadata() precedent (#843) and the
+        NotImplementedError-on-unsupported-capability precedent of
+        _filter_by_metadata() (#848), a persistent backend that cannot
+        report a count raises NotImplementedError so callers can tell
+        "no vectors" apart from "counting not supported".
+        """
+        if self.backend == "inmemory":
+            return len(self.vectors)
+        elif self._backend_store is not None:
+            if hasattr(self._backend_store, "count"):
+                return self._backend_store.count()
+            raise NotImplementedError(
+                f"Backend store {type(self._backend_store).__name__} does not "
+                "implement count. Vector counting is only supported for the "
+                "inmemory backend."
+            )
+        return 0
+
     def initialize_decision_pipeline(
         self,
         graph_store: Optional[Any] = None,
@@ -1453,9 +1476,16 @@ class VectorManager:
         self, store: VectorStore, **options: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Maintain vector store health."""
-        # Check integrity
-        vector_count = len(store.vectors)
-        metadata_count = len(store.metadata)
+        # Check integrity through the public count() accessor so persistent
+        # backends don't crash on the inmemory-only .vectors/.metadata
+        # internals (#855).
+        vector_count = store.count()
+        # Inmemory keeps vectors and metadata in separate dicts; persistent
+        # backends store metadata alongside each vector (1:1), so the
+        # counts coincide there.
+        metadata_count = (
+            len(store.metadata) if store.backend == "inmemory" else vector_count
+        )
 
         return {
             "healthy": vector_count == metadata_count,
@@ -1466,7 +1496,7 @@ class VectorManager:
     def collect_statistics(self, store: VectorStore) -> Dict[str, Any]:
         """Collect vector store statistics."""
         return {
-            "total_vectors": len(store.vectors),
+            "total_vectors": store.count(),
             "dimension": store.dimension,
             "backend": store.backend,
         }
