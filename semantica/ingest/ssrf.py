@@ -10,8 +10,10 @@ from __future__ import annotations
 import concurrent.futures
 import ipaddress
 import socket
-from typing import Iterable
-from urllib.parse import urlparse
+from typing import Any, Iterable, Optional
+from urllib.parse import urljoin, urlparse
+
+import requests
 
 from ..utils.exceptions import ValidationError
 
@@ -20,6 +22,11 @@ ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 # Keep DNS resolution bounded so fake/unreachable hosts in tests and offline
 # environments cannot hang request validation indefinitely.
 _DNS_RESOLVE_TIMEOUT_SECONDS = 2.0
+
+# Bound manual redirect following so open redirect chains cannot hang fetches.
+_DEFAULT_MAX_REDIRECTS = 10
+_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+_STRIP_BODY_ON_REDIRECT = frozenset({301, 302, 303})
 
 # Explicit blocked networks from issue #867, plus common non-routable ranges.
 BLOCKED_NETWORKS = (
@@ -132,3 +139,74 @@ def validate_url_for_request(
             f"URL host '{host}' resolves to a blocked (private/loopback/"
             "link-local) address"
         )
+
+
+def request_with_ssrf_guard(
+    method: str,
+    url: str,
+    *,
+    session: Optional[requests.Session] = None,
+    allow_private_ips: bool = False,
+    max_redirects: int = _DEFAULT_MAX_REDIRECTS,
+    **kwargs: Any,
+) -> requests.Response:
+    """Perform an HTTP request with SSRF checks on *url* and every redirect.
+
+    ``requests`` follows redirects by default, which would allow a validated
+    public URL to bounce into private/loopback/link-local space. This helper
+    disables automatic redirects and re-validates each ``Location`` target
+    before issuing the next hop.
+    """
+    kwargs = dict(kwargs)
+    kwargs.pop("allow_redirects", None)
+
+    validate_url_for_request(url, allow_private_ips=allow_private_ips)
+
+    requester = session.request if session is not None else requests.request
+    current_url = url
+    current_method = method.upper()
+    redirects_followed = 0
+
+    while True:
+        response = requester(
+            current_method,
+            current_url,
+            allow_redirects=False,
+            **kwargs,
+        )
+
+        if response.status_code not in _REDIRECT_STATUS_CODES:
+            return response
+
+        if redirects_followed >= max_redirects:
+            response.close()
+            raise ValidationError(
+                f"Exceeded maximum redirects ({max_redirects}) while "
+                f"fetching '{url}'"
+            )
+
+        location = response.headers.get("Location")
+        if not location or not str(location).strip():
+            response.close()
+            raise ValidationError(
+                f"Redirect from '{current_url}' is missing a Location header"
+            )
+
+        next_url = urljoin(current_url, str(location).strip())
+        validate_url_for_request(next_url, allow_private_ips=allow_private_ips)
+
+        # Match requests' historical method rewriting for 301/302/303.
+        if (
+            response.status_code in _STRIP_BODY_ON_REDIRECT
+            and current_method not in {"GET", "HEAD"}
+        ):
+            current_method = "GET"
+            for key in ("data", "json", "files"):
+                kwargs.pop(key, None)
+
+        # Params apply to the original request URL only; Location is authoritative.
+        kwargs.pop("params", None)
+
+        response.close()
+        current_url = next_url
+        redirects_followed += 1

@@ -6,7 +6,7 @@ import pytest
 import urllib3.connectionpool as pool
 
 from semantica.ingest.api_ingestor import RESTIngestor
-from semantica.ingest.ssrf import validate_url_for_request
+from semantica.ingest.ssrf import request_with_ssrf_guard, validate_url_for_request
 from semantica.ingest.web_ingestor import SitemapCrawler, WebIngestor
 from semantica.utils.exceptions import ValidationError
 
@@ -81,6 +81,81 @@ class TestValidateUrlForRequest:
                 validate_url_for_request("http://slow-dns.example/path")
 
 
+class TestRequestWithSsrfGuardRedirects:
+    def test_blocks_redirect_to_loopback(self):
+        redirect = MagicMock()
+        redirect.status_code = 302
+        redirect.headers = {"Location": "http://127.0.0.1/secret"}
+        redirect.close = MagicMock()
+
+        session = MagicMock()
+        session.request.return_value = redirect
+
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            with pytest.raises(ValidationError, match="blocked"):
+                request_with_ssrf_guard(
+                    "GET",
+                    "https://example.com/start",
+                    session=session,
+                )
+
+        session.request.assert_called_once()
+        assert session.request.call_args.kwargs.get("allow_redirects") is False
+
+    def test_blocks_redirect_to_metadata_ip(self):
+        redirect = MagicMock()
+        redirect.status_code = 301
+        redirect.headers = {"Location": "http://169.254.169.254/latest/meta-data/"}
+        redirect.close = MagicMock()
+
+        session = MagicMock()
+        session.request.return_value = redirect
+
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            with pytest.raises(ValidationError, match="blocked"):
+                request_with_ssrf_guard(
+                    "GET",
+                    "https://example.com/start",
+                    session=session,
+                )
+
+    def test_follows_safe_redirect(self):
+        redirect = MagicMock()
+        redirect.status_code = 302
+        redirect.headers = {"Location": "https://example.com/final"}
+        redirect.close = MagicMock()
+
+        final = MagicMock()
+        final.status_code = 200
+        final.headers = {}
+
+        session = MagicMock()
+        session.request.side_effect = [redirect, final]
+
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            response = request_with_ssrf_guard(
+                "GET",
+                "https://example.com/start",
+                session=session,
+            )
+
+        assert response is final
+        assert session.request.call_count == 2
+        assert all(
+            call.kwargs.get("allow_redirects") is False
+            for call in session.request.call_args_list
+        )
+
+
 class TestWebIngestorSSRF:
     def test_private_ip_never_reaches_urllib3(self):
         ingestor = WebIngestor(respect_robots=False, delay=0)
@@ -112,20 +187,35 @@ class TestWebIngestorSSRF:
         ingestor = WebIngestor(
             respect_robots=False, delay=0, allow_private_ips=True
         )
-        with patch.object(ingestor.session, "get") as mock_get, patch.object(
+        with patch.object(ingestor.session, "request") as mock_request, patch.object(
             ingestor, "extract_content"
         ) as mock_extract:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_resp.text = "ok"
             mock_resp.raise_for_status = MagicMock()
-            mock_get.return_value = mock_resp
+            mock_request.return_value = mock_resp
             mock_extract.return_value = MagicMock(status_code=None)
 
             ingestor.ingest_url("http://127.0.0.1:9/probe")
 
-            mock_get.assert_called_once()
+            mock_request.assert_called_once()
+            assert mock_request.call_args.kwargs.get("allow_redirects") is False
             mock_extract.assert_called_once()
+
+    def test_redirect_to_private_ip_blocked(self):
+        ingestor = WebIngestor(respect_robots=False, delay=0)
+        redirect = MagicMock()
+        redirect.status_code = 302
+        redirect.headers = {"Location": "http://127.0.0.1/admin"}
+        redirect.close = MagicMock()
+
+        with patch.object(ingestor.session, "request", return_value=redirect), patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            with pytest.raises(ValidationError, match="blocked"):
+                ingestor.ingest_url("https://example.com/public")
 
 
 class TestSitemapCrawlerSSRF:
@@ -133,6 +223,22 @@ class TestSitemapCrawlerSSRF:
         crawler = SitemapCrawler()
         with pytest.raises(ValidationError):
             crawler.parse_sitemap("http://10.0.0.1/sitemap.xml")
+
+    def test_redirect_to_private_ip_blocked(self):
+        crawler = SitemapCrawler()
+        redirect = MagicMock()
+        redirect.status_code = 302
+        redirect.headers = {"Location": "http://169.254.169.254/latest/meta-data/"}
+        redirect.close = MagicMock()
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request", return_value=redirect
+        ), patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            with pytest.raises(ValidationError, match="blocked"):
+                crawler.parse_sitemap("https://example.com/sitemap.xml")
 
 
 class TestRESTIngestorSSRF:
@@ -161,4 +267,24 @@ class TestRESTIngestorSSRF:
             ingestor = RESTIngestor(allow_private_ips=True)
             data = ingestor.ingest_endpoint("http://127.0.0.1:8080/health")
             assert data.data == {"ok": True}
+            mock_session.request.assert_called_once()
+            assert mock_session.request.call_args.kwargs.get("allow_redirects") is False
+
+    def test_redirect_to_private_ip_blocked(self):
+        with patch("requests.Session") as MockSession:
+            mock_session = MockSession.return_value
+            mock_session.headers = {}
+            redirect = MagicMock()
+            redirect.status_code = 302
+            redirect.headers = {"Location": "http://127.0.0.1/secret"}
+            redirect.close = MagicMock()
+            mock_session.request.return_value = redirect
+
+            ingestor = RESTIngestor()
+            with patch(
+                "semantica.ingest.ssrf.socket.getaddrinfo",
+                return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+            ):
+                with pytest.raises(ValidationError, match="blocked"):
+                    ingestor.ingest_endpoint("https://example.com/api")
             mock_session.request.assert_called_once()

@@ -38,7 +38,7 @@ except (ImportError, OSError):
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from .ssrf import validate_url_for_request
+from .ssrf import request_with_ssrf_guard
 
 
 @dataclass
@@ -155,19 +155,17 @@ class RESTIngestor:
         )
 
         try:
-            validate_url_for_request(
-                endpoint, allow_private_ips=self.allow_private_ips
-            )
-
             # Prepare request
             request_headers = self.session.headers.copy()
             if headers:
                 request_headers.update(headers)
 
-            # Make request
-            response = self.session.request(
-                method=method,
-                url=endpoint,
+            # Make request (SSRF-safe; validates URL and each redirect hop)
+            response = request_with_ssrf_guard(
+                method,
+                endpoint,
+                session=self.session,
+                allow_private_ips=self.allow_private_ips,
                 headers=request_headers,
                 params=params,
                 data=data,

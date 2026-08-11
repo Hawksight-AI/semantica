@@ -48,7 +48,7 @@ from urllib3.util.retry import Retry
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from .ssrf import validate_url_for_request
+from .ssrf import request_with_ssrf_guard, validate_url_for_request
 
 
 @dataclass
@@ -364,12 +364,14 @@ class SitemapCrawler:
             ProcessingError: If sitemap cannot be fetched or parsed
             ValidationError: If sitemap_url fails SSRF checks
         """
-        validate_url_for_request(
-            sitemap_url, allow_private_ips=self.allow_private_ips
-        )
         try:
-            # Fetch sitemap
-            response = requests.get(sitemap_url, timeout=30)
+            # Fetch sitemap (SSRF-safe; validates URL and each redirect hop)
+            response = request_with_ssrf_guard(
+                "GET",
+                sitemap_url,
+                allow_private_ips=self.allow_private_ips,
+                timeout=30,
+            )
             response.raise_for_status()
 
             # Parse XML
@@ -398,6 +400,8 @@ class SitemapCrawler:
             )
             return urls
 
+        except ValidationError:
+            raise
         except Exception as e:
             self.logger.error(f"Failed to parse sitemap {sitemap_url}: {e}")
             raise ProcessingError(f"Failed to parse sitemap: {e}") from e
@@ -420,10 +424,14 @@ class SitemapCrawler:
             ProcessingError: If sitemap index cannot be fetched or parsed
             ValidationError: If index_url fails SSRF checks
         """
-        validate_url_for_request(index_url, allow_private_ips=self.allow_private_ips)
         try:
-            # Fetch sitemap index
-            response = requests.get(index_url, timeout=30)
+            # Fetch sitemap index (SSRF-safe; validates URL and each redirect hop)
+            response = request_with_ssrf_guard(
+                "GET",
+                index_url,
+                allow_private_ips=self.allow_private_ips,
+                timeout=30,
+            )
             response.raise_for_status()
 
             # Parse XML
@@ -457,6 +465,8 @@ class SitemapCrawler:
             )
             return all_urls
 
+        except ValidationError:
+            raise
         except Exception as e:
             self.logger.error(f"Failed to crawl sitemap index {index_url}: {e}")
             raise ProcessingError(f"Failed to crawl sitemap index: {e}") from e
@@ -592,6 +602,7 @@ class WebIngestor:
 
         try:
             # SSRF guard: scheme allowlist + private/loopback/link-local checks
+            # (request_with_ssrf_guard re-validates the URL and each redirect hop)
             validate_url_for_request(url, allow_private_ips=self.allow_private_ips)
 
             # Check robots.txt compliance
@@ -602,11 +613,19 @@ class WebIngestor:
             # Apply rate limiting (wait if necessary)
             self.rate_limiter.wait_if_needed()
 
-            # Fetch content with retry logic
+            # Fetch content with retry logic (SSRF-safe redirects)
             try:
                 request_timeout = timeout or self.config.get("timeout", 30)
-                response = self.session.get(url, timeout=request_timeout)
+                response = request_with_ssrf_guard(
+                    "GET",
+                    url,
+                    session=self.session,
+                    allow_private_ips=self.allow_private_ips,
+                    timeout=request_timeout,
+                )
                 response.raise_for_status()
+            except ValidationError:
+                raise
             except requests.RequestException as e:
                 self.progress_tracker.stop_tracking(
                     tracking_id, status="failed", message=str(e)
