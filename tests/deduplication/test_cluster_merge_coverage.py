@@ -579,6 +579,7 @@ class TestIncrementalDetectionCoverage(unittest.TestCase):
         self.assertNotIn(frozenset({"n1", "n2"}), pair_ids)
 
     def test_methods_incremental_detect_duplicates(self):
+        from semantica.deduplication.duplicate_detector import DuplicateCandidate
         from semantica.deduplication.methods import detect_duplicates
 
         results = detect_duplicates(
@@ -590,6 +591,19 @@ class TestIncrementalDetectionCoverage(unittest.TestCase):
             existing_entities=self.existing,
         )
         self.assertIsInstance(results, list)
+        self.assertGreater(len(results), 0)
+        for candidate in results:
+            self.assertIsInstance(candidate, DuplicateCandidate)
+            self.assertGreaterEqual(candidate.similarity_score, 0.4)
+            # Wrapper must route new×existing only: one id from each set
+            ids = {candidate.entity1["id"], candidate.entity2["id"]}
+            self.assertTrue(ids & {"a2", "g1"})
+            self.assertTrue(ids & {"a1", "m1"})
+
+        names = {
+            frozenset((c.entity1["name"], c.entity2["name"])) for c in results
+        }
+        self.assertIn(frozenset({"Apple", "Apple Inc."}), names)
 
 
 if __name__ == "__main__":
