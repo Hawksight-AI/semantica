@@ -1,4 +1,4 @@
-﻿"""
+"""
 Enrichment and reasoning routes.
 """
 
@@ -25,6 +25,15 @@ from ..session import GraphSession
 
 router = APIRouter(tags=["Enrichment"])
 _FACT_RE = re.compile(r"^(?P<predicate>[A-Za-z_][\w:-]*)\((?P<args>.*)\)$")
+
+# SECURITY: Cap the candidate pool loaded by link prediction to prevent a
+# single request from exhausting server memory (CWE-770).  Without a cap the
+# endpoint calls session.get_nodes(limit=999_999) and scores every node in
+# O(N^2), consuming ~1.6 GB RAM at the maximum limit (measured via
+# tracemalloc at 1.7 KB/node with 128-dim embeddings; see poc_runner.py).
+# Mirrors the SPARQL DoS fix from PR #898 (50k cap + semaphore).
+_LINK_PREDICTION_MAX_NODES = 10_000
+_link_prediction_semaphore = asyncio.Semaphore(2)
 
 
 def _safe_dict(obj) -> dict:
@@ -194,8 +203,20 @@ async def predict_links(
     if node is None:
         raise HTTPException(status_code=404, detail=f"Node '{body.node_id}' not found")
 
-    nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=999_999)
-    edges, _ = await asyncio.to_thread(session.get_edges, skip=0, limit=999_999)
+    # SECURITY: Load at most _LINK_PREDICTION_MAX_NODES candidates.
+    # The hardcoded limit=999_999 in the original code consumed ~1.6 GB RAM
+    # per request and had no concurrency guard, making it trivially DoS-able.
+    nodes, total = await asyncio.to_thread(session.get_nodes, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
+    if total > _LINK_PREDICTION_MAX_NODES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Graph has {total:,} nodes; link prediction is capped at "
+                f"{_LINK_PREDICTION_MAX_NODES:,} nodes to prevent memory exhaustion. "
+                "Use the graph search endpoint for large graphs."
+            ),
+        )
+    edges, _ = await asyncio.to_thread(session.get_edges, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
 
     existing_neighbors = {
         edge.get("target") for edge in edges if edge.get("source") == body.node_id
@@ -227,7 +248,8 @@ async def predict_links(
         results.sort(key=lambda item: item["score"], reverse=True)
         return results
 
-    scored = await asyncio.to_thread(_score_all)
+    async with _link_prediction_semaphore:  # max 2 concurrent link-prediction requests
+        scored = await asyncio.to_thread(_score_all)
     return LinkPredictionResponse(node_id=body.node_id, predictions=scored[: body.top_n])
 
 
