@@ -338,6 +338,13 @@ class ApacheAgeStore:
             "host=localhost dbname=agedb user=postgres password=postgres",
         )
         self.graph_name = graph_name or config.get("graph_name", "semantica")
+        # SECURITY: Sanitize graph_name to prevent SQL injection in cypher() calls.
+        # The graph_name is interpolated into SQL: cypher('{graph_name}', $$ ... $$)
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", self.graph_name):
+            raise ValidationError(
+                f"Invalid graph_name '{self.graph_name}': must contain only "
+                "alphanumeric characters and underscores."
+            )
 
         self._conn = None
 
@@ -445,7 +452,20 @@ class ApacheAgeStore:
 
         Returns:
             List of raw row tuples from the cursor.
+
+        Raises:
+            ValidationError: If the query contains ``$$`` which could break
+                out of the AGE dollar-quoted string delimiter.
         """
+        # SECURITY: Reject queries containing $$ to prevent breakout from
+        # AGE's dollar-quoted string delimiter. An attacker who injects $$
+        # into the Cypher query can terminate the cypher() argument and
+        # append arbitrary SQL.
+        if "$$" in cypher:
+            raise ValidationError(
+                "Query contains forbidden '$$' sequence. "
+                "Dollar-quoted delimiters are not allowed in Cypher queries."
+            )
         self._ensure_connection()
         sql = (
             f"SELECT * FROM cypher('{self.graph_name}', $$ {cypher} $$) "

@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, UTC
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from typing_extensions import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -1005,23 +1005,42 @@ def _validate_fetch_url(url: str) -> None:
 def _fetch_url_sync(url: str) -> bytes:
     _validate_fetch_url(url)
     import requests as _req
+    _MAX_REDIRECTS = 5
+    current_url = url
     try:
-        resp = _req.get(
-            url,
-            headers={"Accept": "text/turtle, application/rdf+xml, application/ld+json, */*;q=0.1"},
-            timeout=30,
-            stream=True,
-            allow_redirects=True,
-        )
-        resp.raise_for_status()
-        chunks: List[bytes] = []
-        total = 0
-        for chunk in resp.iter_content(65536):
-            total += len(chunk)
-            if total > _MAX_FETCH_BYTES:
-                raise HTTPException(status_code=413, detail="Remote resource exceeds 20 MB limit.")
-            chunks.append(chunk)
-        return b"".join(chunks)
+        for _ in range(_MAX_REDIRECTS + 1):
+            resp = _req.get(
+                current_url,
+                headers={"Accept": "text/turtle, application/rdf+xml, application/ld+json, */*;q=0.1"},
+                timeout=30,
+                stream=True,
+                allow_redirects=False,  # SECURITY: follow redirects manually
+            )
+            if resp.is_redirect or resp.is_permanent_redirect:
+                redirect_url = resp.headers.get("Location")
+                resp.close()  # Release the streamed connection before following the redirect
+                if not redirect_url:
+                    raise HTTPException(status_code=502, detail="Redirect without Location header.")
+                # Resolve relative redirects (e.g. /ontology.ttl) against the current URL
+                redirect_url = urljoin(current_url, redirect_url)
+                # Re-validate the redirect target to prevent SSRF via
+                # open-redirect to internal/cloud-metadata endpoints.
+                _validate_fetch_url(redirect_url)
+                current_url = redirect_url
+                continue
+            try:
+                resp.raise_for_status()
+                chunks: List[bytes] = []
+                total = 0
+                for chunk in resp.iter_content(65536):
+                    total += len(chunk)
+                    if total > _MAX_FETCH_BYTES:
+                        raise HTTPException(status_code=413, detail="Remote resource exceeds 20 MB limit.")
+                    chunks.append(chunk)
+                return b"".join(chunks)
+            finally:
+                resp.close()  # Release the streamed connection once fully read (or on error)
+        raise HTTPException(status_code=502, detail=f"Too many redirects (max {_MAX_REDIRECTS}).")
     except HTTPException:
         raise
     except Exception as exc:

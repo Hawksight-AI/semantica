@@ -3,11 +3,16 @@ SPARQL routes backed by an in-memory rdflib projection of the current graph.
 
 Security contract
 -----------------
-* Only SELECT, ASK, CONSTRUCT, and DESCRIBE are accepted (allowlist enforced
-  before graph construction so rejected queries never touch the session).
-* Multi-statement injections that start with an allowed keyword (e.g.
-  ``SELECT ... ; DROP ALL``) pass the prefix check and reach rdflib, which
-  rejects non-SELECT/ASK/CONSTRUCT/DESCRIBE update syntax in the parser.
+* Only SELECT, ASK, CONSTRUCT, and DESCRIBE are accepted, and the query
+  body is scanned for SPARQL Update keywords (INSERT/DELETE/DROP/LOAD/
+  CLEAR/CREATE/COPY/MOVE/ADD) after stripping comments and PREFIX/BASE
+  declarations — both enforced before graph construction, so rejected
+  queries never touch the session. A multi-statement injection appended
+  after an allowed keyword (e.g. ``SELECT ... ; DROP ALL``) is caught by
+  the keyword scan itself, not left to rdflib's parser.
+* rdflib's parser remains a second line of defense for malformed multi-
+  statement syntax that doesn't contain any forbidden keyword (e.g.
+  ``SELECT ... ; ASK ...``), which SPARQL 1.1 Query doesn't permit.
 * The in-memory rdflib graph is a read-only projection — the live
   ``GraphSession`` is never mutated by this route.
 """
@@ -26,14 +31,54 @@ from ..session import GraphSession
 router = APIRouter(prefix="/api/sparql", tags=["Power User Tools"])
 
 _ALLOWED_QUERY_TYPES = re.compile(
-    r"^\s*(SELECT|ASK|CONSTRUCT|DESCRIBE)\b",
+    r"^(SELECT|ASK|CONSTRUCT|DESCRIBE)\b",
     re.IGNORECASE,
 )
 
+# SPARQL Update keywords that must never appear in read-only queries.
+# These are checked AFTER comment/prefix stripping to prevent bypass via
+# comments like: # INSERT DATA { ... }\nSELECT ...
+_FORBIDDEN_KEYWORDS = re.compile(
+    r"\b(INSERT|DELETE|DROP|LOAD|CLEAR|CREATE|COPY|MOVE|ADD)\b",
+    re.IGNORECASE,
+)
+
+# Matches SPARQL single-line comments (# ...) and PREFIX/BASE declarations.
+# The comment regex only treats '#' as a comment-starter at line-start or
+# after whitespace — not mid-token — since RDF namespace IRIs commonly
+# contain a literal '#' (e.g. ".../1999/02/22-rdf-syntax-ns#"), and a naive
+# `#[^\n]*` would truncate every such PREFIX declaration's IRI, corrupting
+# the query. BASE declarations have no prefix name between the keyword and
+# the IRI (`BASE <...>`, vs. `PREFIX ex: <...>`), so the prefix-name token
+# is optional.
+_COMMENT_LINE = re.compile(r"(?:^|(?<=\s))#[^\n]*", re.MULTILINE)
+_PREFIX_DECL = re.compile(r"^\s*(?:PREFIX\s+\S+|BASE)\s*<[^>]*>\s*", re.IGNORECASE | re.MULTILINE)
+
 
 def _is_read_only_query(query: str) -> bool:
-    """Return True only for SELECT / ASK / CONSTRUCT / DESCRIBE queries."""
-    return bool(_ALLOWED_QUERY_TYPES.match(query))
+    """Return True only for genuine read-only SPARQL queries.
+
+    Strips comments, PREFIX/BASE declarations, and leading whitespace before
+    checking the first keyword. Also rejects queries containing SPARQL Update
+    keywords anywhere in the body, preventing injection via embedded strings
+    or multi-statement tricks.
+    """
+    # 1. Remove single-line comments that could hide the real query type
+    cleaned = _COMMENT_LINE.sub("", query)
+    # 2. Remove PREFIX/BASE declarations
+    cleaned = _PREFIX_DECL.sub("", cleaned)
+    # 3. Strip remaining whitespace
+    cleaned = cleaned.strip()
+
+    # 4. Check that the first keyword is a read-only query type
+    if not _ALLOWED_QUERY_TYPES.match(cleaned):
+        return False
+
+    # 5. Block any forbidden (mutating) keywords anywhere in the query
+    if _FORBIDDEN_KEYWORDS.search(cleaned):
+        return False
+
+    return True
 
 
 class SparqlRequest(BaseModel):
@@ -59,8 +104,27 @@ def _build_rdflib_graph(session: GraphSession) -> rdflib.Graph:
     graph.bind("ent", NS)
     graph.bind("prop", PROP)
 
-    nodes, _ = session.get_nodes(skip=0, limit=999_999)
-    edges, _ = session.get_edges(skip=0, limit=999_999)
+    # SECURITY: Cap the number of entities materialized into memory to
+    # prevent denial-of-service via memory exhaustion.  Without this guard
+    # an attacker can send concurrent SPARQL queries that each load ~1M
+    # nodes/edges into rdflib Graph objects, consuming gigabytes of RAM.
+    nodes, total_nodes = session.get_nodes(skip=0, limit=_SPARQL_MAX_GRAPH_NODES + 1)
+    if len(nodes) > _SPARQL_MAX_GRAPH_NODES:
+        raise ValueError(
+            f"Graph has more than {_SPARQL_MAX_GRAPH_NODES:,} nodes. "
+            f"SPARQL queries are limited to graphs with at most "
+            f"{_SPARQL_MAX_GRAPH_NODES:,} nodes to prevent excessive "
+            f"memory usage. Use the REST API for large graph operations."
+        )
+
+    edges, _ = session.get_edges(skip=0, limit=_SPARQL_MAX_GRAPH_NODES + 1)
+    if len(edges) > _SPARQL_MAX_GRAPH_NODES:
+        raise ValueError(
+            f"Graph has more than {_SPARQL_MAX_GRAPH_NODES:,} edges. "
+            f"SPARQL queries are limited to graphs with at most "
+            f"{_SPARQL_MAX_GRAPH_NODES:,} edges to prevent excessive "
+            f"memory usage. Use the REST API for large graph operations."
+        )
 
     for node in nodes:
         subject = NS[str(node.get("id", ""))]
@@ -91,6 +155,7 @@ def _build_rdflib_graph(session: GraphSession) -> rdflib.Graph:
 _SPARQL_MAX_ROWS = 5_000     # hard cap on returned rows
 _SPARQL_TIMEOUT_S = 30       # seconds before abandoning the await
 _SPARQL_MAX_CONCURRENT = 4   # semaphore: max simultaneous executions
+_SPARQL_MAX_GRAPH_NODES = 50_000  # cap on graph nodes/edges to prevent OOM
 
 # Semaphore caps how many graph.query calls run concurrently so that
 # timed-out threads (which keep running in the pool) cannot crowd out
@@ -127,7 +192,15 @@ async def execute_sparql(
             error="Only SELECT, ASK, CONSTRUCT, and DESCRIBE queries are permitted.",
         )
 
-    graph = await asyncio.to_thread(_build_rdflib_graph, session)
+    try:
+        graph = await asyncio.to_thread(_build_rdflib_graph, session)
+    except ValueError as exc:
+        return SparqlResponse(
+            columns=[],
+            rows=[],
+            total=0,
+            error=str(exc),
+        )
 
     async with _sparql_semaphore:
         try:

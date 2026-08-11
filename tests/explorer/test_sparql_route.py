@@ -199,14 +199,27 @@ def test_allowlist_rejected_query_never_touches_the_graph(client, query):
     mock_build.assert_not_called()
 
 
-def test_multi_statement_injection_reaches_graph_but_fails_in_parser(client):
-    """Confirms the distinction between allowlist rejection and parser rejection:
-    a string starting with SELECT passes _is_read_only_query and builds a graph,
-    but rdflib.Graph.query() rejects the trailing '; DROP ALL' syntax."""
+def test_multi_statement_injection_is_rejected_by_forbidden_keyword_check(client):
+    """A string starting with an allowed keyword (SELECT) but containing a
+    forbidden Update keyword later in the body (';  DROP ALL') is now
+    rejected by _is_read_only_query's keyword scan itself, before a graph
+    is ever built — a stronger, earlier rejection than relying solely on
+    rdflib's parser to reject the syntax."""
+    with patch.object(sparql_mod, "_build_rdflib_graph") as mock_build:
+        resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o } ; DROP ALL")
+    assert resp.status_code == 200
+    assert resp.json()["error"] is not None
+    mock_build.assert_not_called()
+
+
+def test_malformed_syntax_without_forbidden_keywords_still_fails_in_parser(client):
+    """The parser remains a real second line of defense for malformed
+    queries that don't contain any forbidden keyword — these pass
+    _is_read_only_query and reach rdflib, which rejects the syntax."""
     with patch.object(
         sparql_mod, "_build_rdflib_graph", wraps=sparql_mod._build_rdflib_graph
     ) as spy_build:
-        resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o } ; DROP ALL")
+        resp = _post(client, "SELECT ?s WHERE { ?s ?p ?o } ; ASK { ?x ?y ?z }")
     assert resp.status_code == 200
     assert resp.json()["error"] is not None
     spy_build.assert_called_once()
@@ -287,6 +300,20 @@ def test_query_timeout_returns_clean_error_not_a_crash(client):
     payload = resp.json()
     assert payload["error"] is not None
     assert "timed out" in payload["error"].lower()
+    assert payload["rows"] == []
+
+
+def test_oversized_graph_returns_clean_error_not_a_crash(client):
+    """The DoS-prevention node cap (GHSA-8c7v-adjacent hardening) must return
+    a normal SparqlResponse error, not an unhandled 500. Regression test for
+    a bug where _build_rdflib_graph's ValueError was raised outside of
+    execute_sparql's try/except, before the semaphore block."""
+    with patch.object(sparql_mod, "_SPARQL_MAX_GRAPH_NODES", 1):
+        resp = _post(client, "SELECT ?s WHERE { ?s a <http://semantica.local/entity/language> }")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["error"] is not None
+    assert "more than" in payload["error"].lower()
     assert payload["rows"] == []
 
 

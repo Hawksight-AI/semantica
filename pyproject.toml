@@ -233,7 +233,8 @@ explorer = [
   "fastapi>=0.100.0",
   "uvicorn[standard]>=0.22.0",
   "websockets>=15.0.1",
-  "python-multipart>=0.0.6"
+  "python-multipart>=0.0.6",
+  "defusedxml>=0.7.1"
 ]
 explorer-lite = [
   "streamlit>=1.25.0",
