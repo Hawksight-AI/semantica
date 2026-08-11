@@ -71,7 +71,10 @@ class DistanceExporter:
         try:
             result = self._centrality.calculate_betweenness_centrality(graph_dict)
             return result.get("betweenness", {}) if isinstance(result, dict) else {}
-        except Exception:
+        except Exception as exc:
+            logger.debug(
+                "betweenness_centrality computation failed: %s — returning empty dict", exc
+            )
             return {}
 
     def _hop_distance(self, graph_dict: Dict[str, Any], src: str, tgt: str) -> Optional[int]:
@@ -81,7 +84,12 @@ class DistanceExporter:
             result = self._path_finder.bfs_shortest_path(graph_dict, src, tgt)
             path = result.get("path", []) if isinstance(result, dict) else (result or [])
             return len(path) - 1 if path else None
-        except Exception:
+        except Exception as exc:
+            logger.debug(
+                "hop_distance(%s, %s) failed: %s — returning None"
+                " (indistinguishable from 'no path exists')",
+                src, tgt, exc,
+            )
             return None
 
     def _weighted_distance(self, graph_dict: Dict[str, Any], src: str, tgt: str) -> Optional[float]:
@@ -92,7 +100,12 @@ class DistanceExporter:
             if isinstance(result, dict):
                 return float(result.get("total_weight", len(result.get("path", [])) - 1))
             return None
-        except Exception:
+        except Exception as exc:
+            logger.debug(
+                "weighted_distance(%s, %s) failed: %s — returning None"
+                " (indistinguishable from 'no path exists')",
+                src, tgt, exc,
+            )
             return None
 
     def _semantic_similarity(self, graph_dict: Dict[str, Any], src: str, tgt: str) -> Optional[float]:
@@ -101,7 +114,11 @@ class DistanceExporter:
         try:
             sim = self._similarity.cosine_similarity(graph_dict, src, tgt)
             return float(sim) if isinstance(sim, (int, float)) else None
-        except Exception:
+        except Exception as exc:
+            logger.debug(
+                "semantic_similarity(%s, %s) failed: %s — returning None",
+                src, tgt, exc,
+            )
             return None
 
     def compute_pairs(
