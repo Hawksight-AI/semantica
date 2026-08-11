@@ -62,6 +62,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from .config import graph_store_config
 from .graph_store import GraphAnalytics, GraphStore, NodeManager, QueryEngine, RelationshipManager
+from .query_sanitize import sanitize_identifier
 from .registry import method_registry
 
 # Global store instance
@@ -357,7 +358,8 @@ def update_relationship(
 
     # Default implementation - execute update query
     store = _get_store()
-    set_parts = ", ".join(f"r.{k} = ${k}" for k in properties.keys())
+    safe_keys = [sanitize_identifier(k, "property key") for k in properties.keys()]
+    set_parts = ", ".join(f"r.{k} = ${k}" for k in safe_keys)
     query = f"MATCH ()-[r]->() WHERE id(r) = $rel_id SET {set_parts} RETURN id(r) as id, type(r) as type, r"
     params = {"rel_id": rel_id, **properties}
     result = store.execute_query(query, params)

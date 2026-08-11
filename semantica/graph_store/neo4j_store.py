@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Union
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .query_sanitize import sanitize_identifier
 
 # Optional Neo4j import
 try:
@@ -366,7 +367,7 @@ class Neo4jStore:
         )
 
         try:
-            label_str = ":".join(labels)
+            label_str = ":".join(sanitize_identifier(l, "label") for l in labels)
             query = f"CREATE (n:{label_str} $props) RETURN id(n) as id, n"
 
             with self.get_session() as session:
@@ -424,7 +425,7 @@ class Neo4jStore:
                     labels = node.get("labels", [])
                     properties = node.get("properties", {})
 
-                    label_str = ":".join(labels) if labels else "Node"
+                    label_str = ":".join(sanitize_identifier(l, "label") for l in labels) if labels else "Node"
                     query = f"CREATE (n:{label_str} $props) RETURN id(n) as id, n"
 
                     result = session.run(query, {"props": properties})
@@ -505,7 +506,7 @@ class Neo4jStore:
         try:
             # Build query
             if labels:
-                label_str = ":".join(labels)
+                label_str = ":".join(sanitize_identifier(l, "label") for l in labels)
                 query = f"MATCH (n:{label_str})"
             else:
                 query = "MATCH (n)"
@@ -514,7 +515,8 @@ class Neo4jStore:
             if properties:
                 conditions = []
                 for key, value in properties.items():
-                    conditions.append(f"n.{key} = ${key}")
+                    safe_key = sanitize_identifier(key, "property key")
+                    conditions.append(f"n.{safe_key} = ${safe_key}")
                 query += " WHERE " + " AND ".join(conditions)
 
             query += f" RETURN id(n) as id, n, labels(n) as labels LIMIT {limit}"
@@ -635,10 +637,11 @@ class Neo4jStore:
 
         try:
             properties = properties or {}
+            safe_rel_type = sanitize_identifier(rel_type, "relationship type")
             query = f"""
                 MATCH (a), (b)
                 WHERE id(a) = $start_id AND id(b) = $end_id
-                CREATE (a)-[r:{rel_type} $props]->(b)
+                CREATE (a)-[r:{safe_rel_type} $props]->(b)
                 RETURN id(r) as id, type(r) as type, r
             """
 
@@ -696,7 +699,7 @@ class Neo4jStore:
             List of matching relationships
         """
         try:
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
 
             if node_id is not None:
                 if direction == "out":
@@ -857,7 +860,7 @@ class Neo4jStore:
             List of neighboring nodes with path information
         """
         try:
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
 
             if direction == "out":
                 pattern = f"-[r{type_filter}*1..{depth}]->"
@@ -910,7 +913,7 @@ class Neo4jStore:
             Shortest path information or None if not found
         """
         try:
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
 
             query = f"""
                 MATCH path = shortestPath((start)-[r{type_filter}*..{max_depth}]-(end))
@@ -975,17 +978,22 @@ class Neo4jStore:
             True if index created successfully
         """
         try:
-            index_name = options.get("index_name", f"idx_{label}_{property_name}")
+            safe_label = sanitize_identifier(label, "label")
+            safe_property = sanitize_identifier(property_name, "property key")
+            index_name = sanitize_identifier(
+                options.get("index_name", f"idx_{safe_label}_{safe_property}"),
+                "index name",
+            )
 
             if index_type == "fulltext":
                 query = f"""
                     CREATE FULLTEXT INDEX {index_name} IF NOT EXISTS
-                    FOR (n:{label}) ON EACH [n.{property_name}]
+                    FOR (n:{safe_label}) ON EACH [n.{safe_property}]
                 """
             else:
                 query = f"""
                     CREATE INDEX {index_name} IF NOT EXISTS
-                    FOR (n:{label}) ON (n.{property_name})
+                    FOR (n:{safe_label}) ON (n.{safe_property})
                 """
 
             with self.get_session() as session:
