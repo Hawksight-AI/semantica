@@ -604,8 +604,8 @@ class WebIngestor:
         )
 
         try:
-            # SSRF guard: scheme allowlist + private/loopback/link-local checks
-            # (request_with_ssrf_guard re-validates the URL and each redirect hop)
+            # Validate before robots check: RobotsChecker.read() makes an unguarded
+            # HTTP request to <host>/robots.txt and must not reach blocked addresses.
             validate_url_for_request(url, allow_private_ips=self.allow_private_ips)
 
             # Check robots.txt compliance
