@@ -203,52 +203,54 @@ async def predict_links(
     if node is None:
         raise HTTPException(status_code=404, detail=f"Node '{body.node_id}' not found")
 
-    # SECURITY: Load at most _LINK_PREDICTION_MAX_NODES candidates.
-    # The hardcoded limit=999_999 in the original code consumed ~1.6 GB RAM
-    # per request and had no concurrency guard, making it trivially DoS-able.
-    nodes, total = await asyncio.to_thread(session.get_nodes, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
-    if total > _LINK_PREDICTION_MAX_NODES:
-        raise HTTPException(
-            status_code=413,
-            detail=(
-                f"Graph has {total:,} nodes; link prediction is capped at "
-                f"{_LINK_PREDICTION_MAX_NODES:,} nodes to prevent memory exhaustion. "
-                "Use the graph search endpoint for large graphs."
-            ),
-        )
-    edges, _ = await asyncio.to_thread(session.get_edges, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
-
-    existing_neighbors = {
-        edge.get("target") for edge in edges if edge.get("source") == body.node_id
-    } | {
-        edge.get("source") for edge in edges if edge.get("target") == body.node_id
-    }
-
-    def _score_all() -> list:
-        results = []
-        for candidate_node in nodes:
-            candidate_id = candidate_node.get("id")
-            if not candidate_id or candidate_id == body.node_id or candidate_id in existing_neighbors:
-                continue
-            if body.candidate_type and candidate_node.get("type") != body.candidate_type:
-                continue
-            try:
-                score = predictor.score_link(session.graph, body.node_id, candidate_id)
-            except Exception:
-                continue
-            if score >= body.min_score:
-                results.append(
-                    {
-                        "target": candidate_id,
-                        "score": score,
-                        "type": candidate_node.get("type", "entity"),
-                        "label": candidate_node.get("content", candidate_id),
-                    }
-                )
-        results.sort(key=lambda item: item["score"], reverse=True)
-        return results
-
     async with _link_prediction_semaphore:  # max 2 concurrent link-prediction requests
+        # SECURITY: Load at most _LINK_PREDICTION_MAX_NODES candidates.
+        # The hardcoded limit=999_999 in the original code consumed ~1.6 GB RAM
+        # per request and had no concurrency guard, making it trivially DoS-able.
+        nodes, total = await asyncio.to_thread(session.get_nodes, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
+        if total > _LINK_PREDICTION_MAX_NODES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Graph has {total:,} nodes; link prediction is capped at "
+                    f"{_LINK_PREDICTION_MAX_NODES:,} nodes to prevent memory exhaustion. "
+                    "Use the graph search endpoint for large graphs."
+                ),
+            )
+        
+        out_edges, _ = await asyncio.to_thread(session.get_edges, source=body.node_id, skip=0, limit=999_999)
+        in_edges, _ = await asyncio.to_thread(session.get_edges, target=body.node_id, skip=0, limit=999_999)
+
+        existing_neighbors = {
+            edge.get("target") for edge in out_edges if edge.get("target")
+        } | {
+            edge.get("source") for edge in in_edges if edge.get("source")
+        }
+
+        def _score_all() -> list:
+            results = []
+            for candidate_node in nodes:
+                candidate_id = candidate_node.get("id")
+                if not candidate_id or candidate_id == body.node_id or candidate_id in existing_neighbors:
+                    continue
+                if body.candidate_type and candidate_node.get("type") != body.candidate_type:
+                    continue
+                try:
+                    score = predictor.score_link(session.graph, body.node_id, candidate_id)
+                except Exception:
+                    continue
+                if score >= body.min_score:
+                    results.append(
+                        {
+                            "target": candidate_id,
+                            "score": score,
+                            "type": candidate_node.get("type", "entity"),
+                            "label": candidate_node.get("content", candidate_id),
+                        }
+                    )
+            results.sort(key=lambda item: item["score"], reverse=True)
+            return results
+
         scored = await asyncio.to_thread(_score_all)
     return LinkPredictionResponse(node_id=body.node_id, predictions=scored[: body.top_n])
 

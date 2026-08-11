@@ -40,6 +40,8 @@ def _sanitize_import_node_id(raw: object) -> str:
     result. These are the characters that enable CRLF header injection when
     the ID is later used in a Content-Disposition filename= parameter.
     """
+    if raw is None:
+        return ""
     cleaned = _UNSAFE_ID_CHARS.sub("_", str(raw).strip())
     if len(cleaned) > _MAX_IMPORT_NODE_ID_LEN:
         raise HTTPException(
@@ -47,6 +49,59 @@ def _sanitize_import_node_id(raw: object) -> str:
             detail=f"Node ID exceeds maximum length of {_MAX_IMPORT_NODE_ID_LEN} characters.",
         )
     return cleaned
+
+
+def _safe_float(val: object, default: float = 1.0) -> float:
+    """Safely convert weight or numeric fields to float with default fallback."""
+    if val is None or val == "":
+        return default
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _extract_raw_node_id(raw_node: dict) -> object | None:
+    """Extract raw node ID from dict checking root and properties fields."""
+    raw_id = (
+        raw_node.get("id")
+        or raw_node.get("_id")
+        or raw_node.get("node_id")
+        or raw_node.get("uri")
+        or raw_node.get("key")
+    )
+    if raw_id is None and isinstance(raw_node.get("properties"), dict):
+        raw_id = (
+            raw_node["properties"].get("id")
+            or raw_node["properties"].get("_id")
+            or raw_node["properties"].get("node_id")
+        )
+    return raw_id
+
+
+def _extract_raw_edge_endpoints(raw_edge: dict) -> tuple[object | None, object | None]:
+    """Extract raw source and target identifiers checking alternative key names."""
+    raw_source = (
+        raw_edge.get("source")
+        or raw_edge.get("source_id")
+        or raw_edge.get("start")
+        or raw_edge.get("start_id")
+        or raw_edge.get("START_ID")
+        or raw_edge.get(":START_ID")
+        or raw_edge.get("from")
+        or raw_edge.get("src")
+    )
+    raw_target = (
+        raw_edge.get("target")
+        or raw_edge.get("target_id")
+        or raw_edge.get("end")
+        or raw_edge.get("end_id")
+        or raw_edge.get("END_ID")
+        or raw_edge.get(":END_ID")
+        or raw_edge.get("to")
+        or raw_edge.get("dst")
+    )
+    return raw_source, raw_target
 
 
 def _import_response(nodes_added: int, edges_added: int, message: str = "Import successful") -> ImportResponse:
@@ -88,7 +143,10 @@ async def import_file(
             raise HTTPException(status_code=422, detail=f"Invalid JSON file: {exc}") from exc
 
         if isinstance(data, list):
-            if data and any(key in data[0] for key in {"source", "source_id", "target", "target_id", "START_ID", "END_ID"}):
+            if data and isinstance(data[0], dict) and any(
+                key in data[0]
+                for key in {"source", "source_id", "target", "target_id", "START_ID", "END_ID", "start", "end", "from", "to"}
+            ):
                 raw_nodes = []
                 raw_edges = data
             else:
@@ -102,36 +160,67 @@ async def import_file(
 
         nodes = []
         for raw_node in raw_nodes:
-            if "properties" in raw_node:
-                nodes.append(raw_node)
+            if not isinstance(raw_node, dict):
                 continue
-            metadata = raw_node.get("metadata", {}) or {}
-            nodes.append(
-                {
-                    "id": _sanitize_import_node_id(raw_node.get("id", raw_node.get("_id", raw_node.get("node_id", "")))),
-                    "type": raw_node.get("type", "entity"),
-                    "properties": {
-                        "content": raw_node.get("text", raw_node.get("content", raw_node.get("id", ""))),
-                        **metadata,
-                    },
-                }
-            )
+            raw_id = _extract_raw_node_id(raw_node)
+            sanitized_id = _sanitize_import_node_id(raw_id) if raw_id is not None else ""
+
+            if "properties" in raw_node:
+                node_dict = dict(raw_node)
+                if sanitized_id:
+                    node_dict["id"] = sanitized_id
+                    if isinstance(node_dict.get("properties"), dict) and "id" in node_dict["properties"]:
+                        node_dict["properties"]["id"] = sanitized_id
+                nodes.append(node_dict)
+            else:
+                metadata = raw_node.get("metadata", {}) or {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                content_text = raw_node.get("text") or raw_node.get("content") or raw_node.get("label") or raw_node.get("name") or sanitized_id
+                nodes.append(
+                    {
+                        "id": sanitized_id,
+                        "type": raw_node.get("type", raw_node.get("label", "entity")),
+                        "properties": {
+                            "content": content_text,
+                            **metadata,
+                        },
+                    }
+                )
 
         edges = []
         for raw_edge in raw_edges:
-            source = raw_edge.get("source") or raw_edge.get("source_id") or raw_edge.get("start") or raw_edge.get("start_id") or raw_edge.get("START_ID")
-            target = raw_edge.get("target") or raw_edge.get("target_id") or raw_edge.get("end") or raw_edge.get("end_id") or raw_edge.get("END_ID")
-            if not source or not target:
+            if not isinstance(raw_edge, dict):
                 continue
+            raw_source, raw_target = _extract_raw_edge_endpoints(raw_edge)
+            if not raw_source or not raw_target:
+                continue
+
+            source_id = _sanitize_import_node_id(raw_source)
+            target_id = _sanitize_import_node_id(raw_target)
+            if not source_id or not target_id:
+                continue
+
+            raw_edge_id = raw_edge.get("id") or raw_edge.get("edge_id")
+            edge_id = _sanitize_import_node_id(raw_edge_id) if raw_edge_id is not None else None
+
+            raw_family_id = raw_edge.get("familyId") or raw_edge.get("family_id")
+            family_id = _sanitize_import_node_id(raw_family_id) if raw_family_id is not None else None
+
             edge_properties = raw_edge.get("metadata", raw_edge.get("properties", {})) or {}
+            if not isinstance(edge_properties, dict):
+                edge_properties = {}
+
+            weight = _safe_float(raw_edge.get("weight", 1.0))
+
             edges.append(
                 {
-                    "id": raw_edge.get("id", raw_edge.get("edge_id")),
-                    "familyId": raw_edge.get("familyId", raw_edge.get("family_id")),
-                    "source_id": str(source),
-                    "target_id": str(target),
+                    "id": edge_id,
+                    "familyId": family_id,
+                    "source_id": source_id,
+                    "target_id": target_id,
                     "type": raw_edge.get("type", raw_edge.get("relationship", "related_to")),
-                    "weight": float(raw_edge.get("weight", 1.0)),
+                    "weight": weight,
                     "properties": edge_properties,
                     "valid_from": raw_edge.get("valid_from", edge_properties.get("valid_from")),
                     "valid_until": raw_edge.get("valid_until", edge_properties.get("valid_until")),
@@ -154,11 +243,29 @@ async def import_file(
         nodes = []
         edges = []
         for row in reader:
-            source = row.get("source") or row.get("source_id") or row.get(":START_ID") or row.get("START_ID")
-            target = row.get("target") or row.get("target_id") or row.get(":END_ID") or row.get("END_ID")
-            node_id = row.get("id") or row.get("node_id") or row.get(":ID") or row.get("_id") or row.get("ID")
+            raw_source, raw_target = _extract_raw_edge_endpoints(row)
+            raw_node_id = (
+                row.get("id")
+                or row.get("node_id")
+                or row.get(":ID")
+                or row.get("_id")
+                or row.get("ID")
+                or row.get("uri")
+                or row.get("key")
+            )
 
-            if source and target:
+            if raw_source and raw_target:
+                source_id = _sanitize_import_node_id(raw_source)
+                target_id = _sanitize_import_node_id(raw_target)
+                if not source_id or not target_id:
+                    continue
+
+                raw_edge_id = row.get("id") or row.get("edge_id")
+                edge_id = _sanitize_import_node_id(raw_edge_id) if raw_edge_id else None
+
+                raw_family_id = row.get("familyId") or row.get("family_id")
+                family_id = _sanitize_import_node_id(raw_family_id) if raw_family_id else None
+
                 edge_props = {
                     key: value
                     for key, value in row.items()
@@ -179,28 +286,39 @@ async def import_file(
                         ":END_ID",
                         "END_ID",
                         ":TYPE",
+                        "from",
+                        "src",
+                        "to",
+                        "dst",
                     }
+                    and value is not None
                 }
+                weight = _safe_float(row.get("weight", 1.0))
+
                 edges.append(
                     {
-                        "id": row.get("id") or row.get("edge_id"),
-                        "familyId": row.get("familyId") or row.get("family_id"),
-                        "source_id": str(source),
-                        "target_id": str(target),
+                        "id": edge_id,
+                        "familyId": family_id,
+                        "source_id": source_id,
+                        "target_id": target_id,
                         "type": row.get("type") or row.get("relationship") or row.get(":TYPE") or "related_to",
-                        "weight": float(row.get("weight", 1.0) or 1.0),
+                        "weight": weight,
                         "properties": edge_props,
                     }
                 )
-            elif node_id:
+            elif raw_node_id:
+                sanitized_node_id = _sanitize_import_node_id(raw_node_id)
+                if not sanitized_node_id:
+                    continue
                 node_props = {
                     key: value
                     for key, value in row.items()
-                    if key not in {"id", "node_id", "type", "label", ":ID", "_id", "ID", ":LABEL"}
+                    if key not in {"id", "node_id", "type", "label", ":ID", "_id", "ID", ":LABEL", "uri", "key"}
+                    and value is not None
                 }
                 nodes.append(
                     {
-                        "id": _sanitize_import_node_id(node_id),
+                        "id": sanitized_node_id,
                         "type": row.get("type") or row.get("label") or row.get(":LABEL") or "entity",
                         "properties": node_props,
                     }
