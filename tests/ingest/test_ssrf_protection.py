@@ -80,6 +80,33 @@ class TestValidateUrlForRequest:
             with pytest.raises(ValidationError, match="could not be resolved safely"):
                 validate_url_for_request("http://slow-dns.example/path")
 
+    def test_hung_getaddrinfo_returns_within_timeout_bound(self):
+        """Timeout must not wait on executor shutdown for a blocking resolver."""
+        import time
+
+        import semantica.ingest.ssrf as ssrf
+
+        hang_seconds = 1.5
+        bound = 0.1
+
+        def hanging_getaddrinfo(*_args, **_kwargs):
+            time.sleep(hang_seconds)
+            return [(None, None, None, None, ("93.184.216.34", 0))]
+
+        with patch.object(ssrf, "_DNS_RESOLVE_TIMEOUT_SECONDS", bound), patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            side_effect=hanging_getaddrinfo,
+        ):
+            start = time.monotonic()
+            with pytest.raises(ValidationError, match="could not be resolved safely"):
+                ssrf._hostname_resolves_to_blocked("hanging.example")
+            elapsed = time.monotonic() - start
+
+        # Must fail closed near the configured bound, not after hang_seconds
+        # (which is what ``with ThreadPoolExecutor`` shutdown waiting causes).
+        assert elapsed < hang_seconds / 2
+        assert elapsed < bound + 0.75
+
 
 class TestRequestWithSsrfGuardRedirects:
     def test_blocks_redirect_to_loopback(self):

@@ -10,6 +10,7 @@ from __future__ import annotations
 import concurrent.futures
 import ipaddress
 import socket
+import threading
 from typing import Any, Iterable, Optional
 from urllib.parse import urljoin, urlparse
 
@@ -22,11 +23,37 @@ ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 # Keep DNS resolution bounded so fake/unreachable hosts in tests and offline
 # environments cannot hang request validation indefinitely.
 _DNS_RESOLVE_TIMEOUT_SECONDS = 2.0
+_DNS_EXECUTOR_WORKERS = 4
 
 # Bound manual redirect following so open redirect chains cannot hang fetches.
 _DEFAULT_MAX_REDIRECTS = 10
 _REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 _STRIP_BODY_ON_REDIRECT = frozenset({301, 302, 303})
+
+_dns_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_dns_executor_lock = threading.Lock()
+
+
+def _shutdown_executor(executor: concurrent.futures.ThreadPoolExecutor) -> None:
+    """Shut down *executor* without waiting for in-flight DNS lookups."""
+    try:
+        executor.shutdown(wait=False, cancel_futures=True)
+    except TypeError:
+        # cancel_futures was added in Python 3.9.
+        executor.shutdown(wait=False)
+
+
+def _get_dns_executor() -> concurrent.futures.ThreadPoolExecutor:
+    """Return a process-wide executor for bounded DNS lookups."""
+    global _dns_executor
+    with _dns_executor_lock:
+        if _dns_executor is None:
+            _dns_executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=_DNS_EXECUTOR_WORKERS,
+                thread_name_prefix="semantica-ssrf-dns",
+            )
+        return _dns_executor
+
 
 # Explicit blocked networks from issue #867, plus common non-routable ranges.
 BLOCKED_NETWORKS = (
@@ -58,19 +85,34 @@ def _ip_is_blocked(addr: ipaddress._BaseAddress) -> bool:
 def _hostname_resolves_to_blocked(hostname: str) -> bool:
     """Return True if any resolved address for *hostname* is blocked.
 
+    DNS lookups run on a shared thread pool with ``Future.result(timeout=...)``.
+    Do not use ``with ThreadPoolExecutor(...)`` here: on timeout, leaving the
+    context waits for the hung ``getaddrinfo`` worker and defeats the bound.
+
     Raises:
         ValidationError: If DNS resolution fails or times out. Fail closed so
             outbound requests never proceed without confirmed safe IPs.
     """
+    executor = _get_dns_executor()
+    owned_executor = False
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        try:
             future = executor.submit(socket.getaddrinfo, hostname, None)
-            resolved: Iterable = future.result(timeout=_DNS_RESOLVE_TIMEOUT_SECONDS)
+        except RuntimeError:
+            # Shared executor was shut down; use a throwaway pool that never
+            # blocks the caller on shutdown.
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            owned_executor = True
+            future = executor.submit(socket.getaddrinfo, hostname, None)
+        resolved: Iterable = future.result(timeout=_DNS_RESOLVE_TIMEOUT_SECONDS)
     except (socket.gaierror, concurrent.futures.TimeoutError, OSError) as exc:
         raise ValidationError(
             f"URL host '{hostname}' could not be resolved safely "
             "(DNS error or timeout); request blocked"
         ) from exc
+    finally:
+        if owned_executor:
+            _shutdown_executor(executor)
 
     for info in resolved:
         sockaddr = info[4]
