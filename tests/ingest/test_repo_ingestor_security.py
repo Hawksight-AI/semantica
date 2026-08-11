@@ -151,6 +151,24 @@ class TestRepoUrlValidation:
             RepoIngestor._validate_repo_url("https://cached.example/other.git")
             assert mock_gai.call_count == 1
 
+    def test_rejects_malformed_netloc_as_validation_error(self):
+        with pytest.raises(ValidationError, match="Invalid repository URL"):
+            RepoIngestor._validate_repo_url("http://[::1")
+        with pytest.raises(ValidationError, match="Invalid repository URL"):
+            RepoIngestor._validate_repo_url("http://[")
+        with pytest.raises(ValidationError, match="Invalid repository URL"):
+            RepoIngestor._validate_repo_url("https://user@[::1/repo.git")
+
+    def test_malformed_url_surfaces_as_validation_error_from_ingest(self):
+        with patch("semantica.ingest.repo_ingestor.git.Repo") as MockRepo, patch(
+            "semantica.ingest.repo_ingestor.get_progress_tracker"
+        ) as mock_get_tracker:
+            mock_get_tracker.return_value = MagicMock()
+            ingestor = RepoIngestor()
+            with pytest.raises(ValidationError, match="Invalid repository URL"):
+                ingestor.ingest_repository("http://[::1")
+            MockRepo.clone_from.assert_not_called()
+
 
 class TestCloneOptionAllowlist:
     def test_allows_safe_options(self):

@@ -529,7 +529,11 @@ class RepoIngestor:
     @staticmethod
     def _is_scp_like_repo_url(repo_url: str) -> bool:
         """Return True for scp-like SSH remotes (``user@host:path``)."""
-        return bool(_SCP_LIKE_REPO_URL_RE.match(repo_url.strip()))
+        url = repo_url.strip()
+        # Avoid treating scheme URLs with userinfo as scp-like (e.g. https://u@h/...)
+        if "://" in url:
+            return False
+        return bool(_SCP_LIKE_REPO_URL_RE.match(url))
 
     @staticmethod
     def _scp_like_host(repo_url: str) -> str:
@@ -677,20 +681,20 @@ class RepoIngestor:
             RepoIngestor._validate_repo_host(RepoIngestor._scp_like_host(url))
             return
 
-        parsed = urlparse(url)
+        try:
+            parsed = urlparse(url)
+            # ``hostname`` can raise ValueError for malformed netloc (e.g. bad IPv6)
+            host = parsed.hostname
+        except ValueError as e:
+            raise ValidationError(f"Invalid repository URL: {e}") from e
+
         scheme = (parsed.scheme or "").lower()
         if scheme not in ALLOWED_REPO_URL_SCHEMES:
             raise ValidationError(
                 f"Unsupported repository URL scheme {scheme!r}. "
                 f"Allowed schemes: {sorted(ALLOWED_REPO_URL_SCHEMES)}"
             )
-        if not parsed.netloc:
-            raise ValidationError(
-                f"Repository URL must include a host: {repo_url}"
-            )
-
-        host = parsed.hostname
-        if not host:
+        if not parsed.netloc or not host:
             raise ValidationError(
                 f"Repository URL must include a host: {repo_url}"
             )
@@ -831,6 +835,12 @@ class RepoIngestor:
                 "temp_path": str(repo_path),
             }
 
+        except ValidationError as e:
+            # Keep validation failures typed for callers; do not wrap as ProcessingError
+            self.progress_tracker.update_tracking(
+                tracking_id, status="failed", message=str(e)
+            )
+            raise
         except Exception as e:
             self.progress_tracker.update_tracking(
                 tracking_id, status="failed", message=str(e)
