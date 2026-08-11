@@ -14,21 +14,23 @@ _HAS_DEFUSEDXML = importlib.util.find_spec("defusedxml") is not None
 
 
 def _safe_parse_rdf(g: rdflib.Graph, data: bytes, rdf_format: str) -> None:
-    """Parse RDF bytes into *g*, guarding against XXE for XML-based formats."""
+    """Parse RDF bytes into *g*, guarding against XXE for XML-based formats.
+
+    Raises:
+        ImportError: If ``defusedxml`` is not installed and the format is XML-based.
+    """
     xml_formats = {"xml", "rdf", "rdf/xml", "application/rdf+xml"}
     if rdf_format.lower() in xml_formats:
-        if _HAS_DEFUSEDXML:
-            # defusedxml patches xml.etree so rdflib's XML parser inherits the fix
-            import defusedxml
-            defusedxml.defuse_stdlib()
-        else:
-            # Warn once; best-effort protection via rdflib's own parser
-            import warnings
-            warnings.warn(
-                "defusedxml is not installed. Install it (`pip install defusedxml`) "
-                "to protect RDF/XML parsing against XXE attacks.",
-                stacklevel=4,
+        if not _HAS_DEFUSEDXML:
+            # Fail closed: refuse to parse untrusted XML without XXE protection.
+            raise ImportError(
+                "defusedxml is required to safely parse RDF/XML content but is "
+                "not installed. Install it with: pip install defusedxml  "
+                "(or install semantica with the explorer extra: "
+                "pip install 'semantica[explorer]')"
             )
+        import defusedxml
+        defusedxml.defuse_stdlib()
     g.parse(data=data, format=rdf_format)
 
 def _get_best_label(graph: rdflib.Graph, subject: rdflib.URIRef, predicate: rdflib.URIRef) -> str:

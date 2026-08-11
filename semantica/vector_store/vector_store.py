@@ -573,8 +573,8 @@ class VectorStore:
         Args:
             path: Directory path to save to
         """
+        import json
         import os
-        import pickle
         
         os.makedirs(path, exist_ok=True)
 
@@ -586,17 +586,20 @@ class VectorStore:
         elif self._backend_store is not None and hasattr(self._backend_store, "save_index"):
             self._backend_store.save_index(os.path.join(path, "index.bin"))
 
-        # Save Python-level data
+        # Save Python-level data using JSON (safe serialization).
+        # pickle is intentionally avoided to prevent arbitrary code execution
+        # if a malicious .pkl file is placed in the store directory.
         data = {
-            "vectors": getattr(self, "vectors", {}),
+            "vectors": {k: v.tolist() if hasattr(v, "tolist") else list(v)
+                    for k, v in getattr(self, "vectors", {}).items()},
             "metadata": getattr(self, "metadata", {}),
             "config": self.config,
             "backend": self.backend,
             "dimension": self.dimension
         }
         
-        with open(os.path.join(path, "store_data.pkl"), "wb") as f:
-            pickle.dump(data, f)
+        with open(os.path.join(path, "store_data.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
             
         self.logger.info(f"Saved vector store to {path}")
 
@@ -606,17 +609,33 @@ class VectorStore:
         
         Args:
             path: Directory path to load from
+            
+        Raises:
+            RuntimeError: If only a legacy pickle file is found (security risk).
         """
+        import json
         import os
-        import pickle
         
-        data_path = os.path.join(path, "store_data.pkl")
-        if not os.path.exists(data_path):
-            self.logger.warning(f"Store data not found: {data_path}")
+        json_path = os.path.join(path, "store_data.json")
+        legacy_pkl_path = os.path.join(path, "store_data.pkl")
+        
+        if os.path.exists(json_path):
+            data_path = json_path
+        elif os.path.exists(legacy_pkl_path):
+            # Refuse to load pickle files to prevent arbitrary code execution.
+            # A crafted .pkl file can execute arbitrary Python when deserialized.
+            raise RuntimeError(
+                f"Legacy pickle file found at {legacy_pkl_path}. "
+                "Pickle deserialization is disabled for security (arbitrary code "
+                "execution risk). Please re-save the vector store to migrate "
+                "to the safe JSON format: vs.save(path)"
+            )
+        else:
+            self.logger.warning(f"Store data not found in: {path}")
             return
             
-        with open(data_path, "rb") as f:
-            data = pickle.load(f)
+        with open(data_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
             
         self.vectors = data.get("vectors", {})
         self.metadata = data.get("metadata", {})
