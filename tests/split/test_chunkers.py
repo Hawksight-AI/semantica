@@ -409,6 +409,18 @@ class TestGraphBasedChunker:
         chunks = chunker.chunk(text)
         assert len(chunks) >= 1
         assert all(isinstance(c, Chunk) for c in chunks)
+        # Ensure the graph-based path actually ran (not fallback-to-recursive).
+        assert any(
+            c.metadata.get("method") == "graph_based" for c in chunks
+        ), "Expected at least one graph_based chunk"
+        assert any(
+            c.metadata.get("strategy") == "community"
+            and c.metadata.get("algorithm") == "louvain"
+            for c in chunks
+        ), "Expected graph_based chunk metadata to include strategy/algorithm"
+        assert not any(
+            c.metadata.get("method") == "recursive" for c in chunks
+        ), "Graph-based fallback to recursive was triggered"
 
 
 class TestOntologyAwareChunker:
@@ -558,6 +570,18 @@ Body paragraph under a distinct heading for separation checks.
         )
         assert len(chunks) >= 1
         assert all(isinstance(c, Chunk) for c in chunks)
+        # Ensure we didn't satisfy the test via the broad recursive fallback.
+        assert any(
+            c.metadata.get("method") == "graph_based" for c in chunks
+        ), "Expected at least one graph_based chunk"
+        assert any(
+            c.metadata.get("strategy") == "community"
+            and c.metadata.get("algorithm") == "louvain"
+            for c in chunks
+        ), "Expected graph_based chunk metadata to include strategy/algorithm"
+        assert not any(
+            c.metadata.get("method") == "recursive" for c in chunks
+        ), "Graph-based fallback to recursive was triggered"
 
     @requires_semantic_extract
     def test_split_ontology_aware(self):

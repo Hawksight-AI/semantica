@@ -1180,7 +1180,9 @@ def split_graph_based(
         )
 
         entities = ner_extractor.extract(text)
-        relations = relation_extractor.extract(text)
+        # Relation extraction requires the extracted entities; failing to pass
+        # them raises and can trigger the broad fallback to recursive splitting.
+        relations = relation_extractor.extract(text, entities)
 
         # Build graph
         G = nx.Graph()
