@@ -16,7 +16,7 @@ Key Features:
 Example Usage:
     >>> from semantica.kg import GraphBuilder
     >>> builder = GraphBuilder(merge_entities=True, resolve_conflicts=True)
-    >>> graph = builder.build(sources=[{"entities": [...], "relationships": [...]}])
+    >>> graph = builder.build(sources=[{"entities": [...], "relationships": [...]}])  # doctest: +SKIP
 
 Author: Semantica Contributors
 License: MIT
