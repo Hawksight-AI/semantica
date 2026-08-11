@@ -90,6 +90,14 @@ class TestRepoUrlValidation:
                 "git@github.com:org/${AWS_SECRET_ACCESS_KEY}.git"
             )
 
+    def test_accepts_literal_dollar_without_env_var_token(self):
+        with patch(
+            "semantica.ingest.repo_ingestor.socket.getaddrinfo",
+            return_value=_fake_addrinfo("140.82.112.3"),
+        ):
+            RepoIngestor._validate_repo_url("https://example.com/repo$1.git")
+            RepoIngestor._validate_repo_url("git@example.com:team/repo$1.git")
+
     def test_rejects_localhost_and_loopback(self):
         with pytest.raises(ValidationError, match="not allowed|blocked"):
             RepoIngestor._validate_repo_url("https://localhost/repo.git")

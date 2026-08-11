@@ -56,6 +56,9 @@ ALLOWED_CLONE_OPTIONS: Set[str] = {"depth", "branch", "single_branch", "no_tags"
 ALLOWED_REPO_URL_SCHEMES = frozenset({"https", "http", "git", "ssh"})
 # SCP-like SSH remotes: user@host:path/to/repo.git (no scheme)
 _SCP_LIKE_REPO_URL_RE = re.compile(r"^[^@\s]+@[^:\s]+:.+$")
+_ENV_VAR_TOKEN_RE = re.compile(
+    r"\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)"
+)
 # Short-lived DNS cache for host validation. This reduces repeated lookups but
 # does not eliminate DNS-rebinding / TOCTOU races between validate and clone —
 # network egress controls remain recommended.
@@ -694,7 +697,7 @@ class RepoIngestor:
 
         # Defense-in-depth against GitPython env-var expansion in clone URLs
         # (GHSA-2f96-g7mh-g2hx / related). Prefer rejecting before clone_from.
-        if "$" in repo_url:
+        if _ENV_VAR_TOKEN_RE.search(repo_url):
             raise ValidationError(
                 "Repository URL must not contain environment variable "
                 "references ($VAR / ${VAR})"
