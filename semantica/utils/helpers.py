@@ -63,9 +63,12 @@ import importlib
 import json
 import os
 import re
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
+
+from .exceptions import ValidationError
 
 
 def format_data(data: Any, format_type: str = "json") -> str:
@@ -584,3 +587,113 @@ def classify_path_distance(hop_count: int) -> str:
     if hop_count <= 6:
         return "mid-range"
     return "distant"
+
+
+# Graph payloads circulate under two vocabularies: 'entities'/'relationships'
+# (kg builders, most exporters) and 'nodes'/'edges' (ContextGraph.to_dict,
+# Neo4jCSVExporter, the Explorer routes). Consumers each reconciled them
+# locally, with at least three competing idioms, so the same payload could be
+# exported, silently dropped, or rejected depending on which consumer read it.
+# This is the single place that decision is made.
+_ENTITY_KEYS = ("entities", "nodes")
+_RELATIONSHIP_KEYS = ("relationships", "edges")
+_TRIPLET_KEYS = ("triplets",)
+
+
+def _resolve_collection(
+    payload: Dict[str, Any], keys: Tuple[str, ...]
+) -> List[Dict[str, Any]]:
+    """Pick one collection from a payload that may use either vocabulary.
+
+    Both spellings may legitimately be present: ``JSONExporter`` writes
+    'entities' and 'nodes' side by side, so a round-trip of its output carries
+    both, one of them empty. Where only one holds records, that one wins.
+
+    Two non-empty, unequal spellings are a different matter -- there is no
+    basis for preferring either, and picking one would silently discard the
+    other -- so that is refused rather than guessed at.
+
+    Args:
+        payload: Mapping to read from.
+        keys: Accepted spellings, most canonical first.
+
+    Returns:
+        The resolved collection, or an empty list if no spelling is present.
+
+    Raises:
+        ValidationError: if two spellings are both present, both non-empty,
+            and not equal.
+    """
+    present = {key: payload[key] for key in keys if key in payload}
+    populated = {key: value for key, value in present.items() if value}
+
+    if len(populated) > 1:
+        values = list(populated.values())
+        if any(value != values[0] for value in values[1:]):
+            named = " and ".join(f"'{key}'" for key in populated)
+            raise ValidationError(
+                f"Graph payload carries {named} with different contents; "
+                f"cannot determine which to export. Supply one, or make them "
+                f"identical."
+            )
+
+    for key in keys:
+        value = present.get(key)
+        if value:
+            return list(value)
+
+    # Every spelling present is empty (or none is): an explicit empty
+    # collection is a legitimate answer, distinct from "unrecognized".
+    return []
+
+
+def normalize_graph_payload(
+    payload: Dict[str, Any], *, require_recognized: bool = True
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Reduce a graph payload to one canonical vocabulary.
+
+    Accepts either 'entities'/'relationships' or 'nodes'/'edges' (or a mix)
+    and returns the canonical spelling, so consumers read one shape instead of
+    reimplementing the reconciliation.
+
+    Args:
+        payload: Graph payload mapping.
+        require_recognized: When True (default), a non-empty mapping that
+            shares no key with the recognized set raises rather than returning
+            empty collections -- returning empty would hand the caller a
+            valid-looking result with their records silently dropped. Pass
+            False when an unrecognized payload should degrade to empty.
+
+    Returns:
+        ``{"entities": [...], "relationships": [...], "triplets": [...]}``.
+
+    Raises:
+        ValidationError: if ``payload`` is not a mapping; if two spellings of
+            the same collection are both non-empty and differ; or, when
+            ``require_recognized`` is True, if a non-empty mapping contains no
+            recognized key.
+
+    Example:
+        >>> normalize_graph_payload({"nodes": [{"id": "n1"}], "edges": []})
+        {'entities': [{'id': 'n1'}], 'relationships': [], 'triplets': []}
+    """
+    if not isinstance(payload, Mapping):
+        raise ValidationError(
+            f"Cannot normalize graph payload of type "
+            f"'{type(payload).__name__}': expected a mapping."
+        )
+
+    recognized = _ENTITY_KEYS + _RELATIONSHIP_KEYS + _TRIPLET_KEYS
+    if require_recognized and payload and not any(key in payload for key in recognized):
+        supplied = ", ".join(f"'{key}'" for key in sorted(map(str, payload)))
+        expected = ", ".join(f"'{key}'" for key in recognized)
+        raise ValidationError(
+            f"Graph payload has no recognized key. Supplied: {supplied}. "
+            f"Expected at least one of: {expected}."
+        )
+
+    return {
+        "entities": _resolve_collection(payload, _ENTITY_KEYS),
+        "relationships": _resolve_collection(payload, _RELATIONSHIP_KEYS),
+        "triplets": _resolve_collection(payload, _TRIPLET_KEYS),
+    }

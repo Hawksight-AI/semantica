@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory
+from ..utils.helpers import ensure_directory, normalize_graph_payload
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
@@ -495,8 +495,12 @@ class Neo4jCSVExporter:
 
     def _normalize_graph(self, graph: Any) -> Dict[str, List[Dict[str, Any]]]:
         if isinstance(graph, dict):
-            nodes = graph.get("nodes") or graph.get("entities") or []
-            relationships = graph.get("edges") or graph.get("relationships") or []
+            # Mapping payloads go through the shared resolver so this backend
+            # cannot drift from the others; the attribute path below stays
+            # local, since objects are not mappings.
+            resolved = normalize_graph_payload(graph, require_recognized=False)
+            nodes = resolved["entities"]
+            relationships = resolved["relationships"]
         else:
             nodes = getattr(graph, "nodes", None)
             if nodes is None:
