@@ -494,7 +494,7 @@ def export_graph(
 
 
 def export_yaml(
-    data: Union[Dict[str, Any], List[Dict[str, Any]]],
+    data: Dict[str, Any],
     file_path: Union[str, Path],
     method: str = "semantic_network",
     **kwargs,
@@ -504,13 +504,26 @@ def export_yaml(
 
     This is a user-friendly wrapper that exports data to YAML format.
 
+    Unlike :func:`export_json` and :func:`export_csv`, which treat a list as
+    opaque records, both YAML methods are keyed formats: they distinguish
+    entities from relationships from triplets (and classes from properties
+    for ``method="schema"``). A bare list is therefore rejected rather than
+    guessed at, since inferring which collection it represents would silently
+    mislabel the records.
+
     Args:
-        data: Data to export (semantic network, entities, relationships)
+        data: Data to export, as a mapping. For ``method="semantic_network"``,
+            keyed by 'entities'/'relationships'/'triplets'; for
+            ``method="schema"``, by 'classes'/'properties'.
         file_path: Output YAML file path
         method: Export method (default: "semantic_network")
             - "semantic_network": Semantic network YAML export
             - "schema": Schema YAML export
         **kwargs: Additional options passed to YAML exporters
+
+    Raises:
+        ProcessingError: if ``data`` is not a mapping, or if ``method`` is not
+            a known YAML export method.
 
     Examples:
         >>> from semantica.export.methods import export_yaml
