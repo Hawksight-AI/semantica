@@ -297,6 +297,40 @@ export_yaml(semantic_network, "network.yaml", method="semantic_network")
 export_yaml(schema, "schema.yaml", method="schema")
 ```
 
+### Accepted Input
+
+Both YAML exporters read their payload by key, so the input must be a mapping;
+anything else raises `ProcessingError`. A bare list is rejected rather than
+wrapped, since these formats distinguish entities from relationships from
+triplets and guessing which one a list holds would mislabel the records.
+
+Each exporter then reads a fixed set of keys, and raises `ValidationError` on a
+non-empty mapping that supplies none of them — such a payload would otherwise
+serialize to a valid file with every collection empty.
+
+| Method | Recognized keys |
+| :--- | :--- |
+| `"semantic_network"` | `entities` (alias `nodes`), `relationships` (alias `edges`), `triplets` |
+| `"schema"` | `classes`, `properties`, `namespaces`, `uri`, `title`, `description`, `version` |
+
+`metadata` is carried through on both, but does not by itself make a payload
+recognized — an `export_json` envelope (`{"data": [...], "count": N,
+"metadata": {...}}`) carries one and is rejected.
+
+```python
+# ContextGraph.to_dict() exports directly via the nodes/edges aliases
+export_yaml(context_graph.to_dict(), "graph.yaml")
+
+# A bare list has no unambiguous meaning here
+export_yaml(records, "out.yaml")            # ProcessingError
+
+# An export_json payload is refused rather than written out empty
+export_yaml({"data": records}, "out.yaml")  # ValidationError
+```
+
+An empty mapping is still accepted: an empty graph is a legitimate export and
+has no records to lose.
+
 ## OWL Export
 
 ### OWL/XML Format

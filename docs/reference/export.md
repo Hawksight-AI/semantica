@@ -203,6 +203,11 @@ export_lpg(graph,  "import.cypher", method="cypher")
     exporter = SemanticNetworkYAMLExporter()
     exporter.export(graph, "graph.yaml")
     ```
+
+    The YAML exporters read `entities`/`relationships`/`triplets` (with
+    `nodes`/`edges` accepted as aliases, so `ContextGraph.to_dict()` exports
+    directly). A non-empty mapping supplying none of them raises
+    `ValidationError` rather than writing a file with every collection empty.
   </Tab>
   <Tab title="Graph DB Import">
     **LPGExporter** writes Cypher `CREATE` statements for Neo4j and Memgraph:

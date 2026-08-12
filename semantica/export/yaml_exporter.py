@@ -27,9 +27,22 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory
+from ..utils.helpers import ensure_directory, normalize_graph_payload
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
+# Keys YAMLSchemaExporter.export_ontology_schema reads. Graph payloads use the
+# recognized set owned by normalize_graph_payload() instead; schemas are a
+# separate vocabulary with no aliasing, so the set lives here.
+_SCHEMA_KEYS = (
+    "classes",
+    "properties",
+    "namespaces",
+    "uri",
+    "title",
+    "description",
+    "version",
+)
 
 
 def _require_mapping(data: Any, expected_keys: Sequence[str]) -> None:
@@ -58,6 +71,48 @@ def _require_mapping(data: Any, expected_keys: Sequence[str]) -> None:
             f"Cannot export object of type '{type(data).__name__}': "
             f"expected a dict with {keys}."
         )
+
+
+def _require_recognized_keys(
+    payload: Mapping, recognized_keys: Sequence[str], *, what: str
+) -> None:
+    """Reject a mapping whose keys the caller does not read.
+
+    An exporter that builds its output from a fixed set of ``.get(key, [])``
+    lookups turns an unrecognized mapping into a structurally valid file with
+    every collection empty -- records dropped, no exception, and the progress
+    log reporting a completed export. The only way to notice is to open the
+    file, so the mapping is refused instead.
+
+    An empty mapping is allowed through: it carries nothing that could be
+    lost, and an empty export is a legitimate result. A non-empty mapping is
+    not given the same benefit of the doubt -- its keys may well be records
+    under a name this exporter cannot read.
+
+    The two checks are separate because they answer different questions and
+    the codebase already distinguishes them: a wrong *type* cannot be exported
+    at all and raises ProcessingError, matching
+    ``Neo4jCSVExporter._normalize_graph``; a mapping whose *contents* are
+    unusable raises ValidationError, matching ``normalize_graph_payload``.
+
+    Args:
+        payload: Mapping already checked by :func:`_require_mapping`.
+        recognized_keys: Keys the caller reads.
+        what: Noun for the error message, e.g. ``"Ontology schema"``.
+
+    Raises:
+        ValidationError: if ``payload`` is non-empty and shares no key with
+            ``recognized_keys``.
+    """
+    if not payload or any(key in payload for key in recognized_keys):
+        return
+
+    supplied = ", ".join(f"'{key}'" for key in sorted(map(str, payload)))
+    expected = ", ".join(f"'{key}'" for key in recognized_keys)
+    raise ValidationError(
+        f"{what} has no recognized key. Supplied: {supplied}. "
+        f"Expected at least one of: {expected}."
+    )
 
 
 class SemanticNetworkYAMLExporter:
@@ -119,11 +174,20 @@ class SemanticNetworkYAMLExporter:
 
         Args:
             semantic_network: Semantic network dictionary containing:
-                - entities: List of entity dictionaries
+                - entities: List of entity dictionaries (alias: 'nodes')
                 - relationships: List of relationship dictionaries
+                  (alias: 'edges')
                 - triplets: List of triplet dictionaries (optional)
                 - metadata: Metadata dictionary (optional)
+
+                Key resolution is delegated to
+                :func:`~semantica.utils.helpers.normalize_graph_payload`, so
+                ``ContextGraph.to_dict()`` output ('nodes'/'edges') exports
+                directly.
             **options: Additional export options (unused)
+
+        Returns:
+            String containing YAML representation of semantic network
 
         Raises:
             ProcessingError: if ``semantic_network`` is not a mapping. A bare
@@ -131,9 +195,15 @@ class SemanticNetworkYAMLExporter:
                 distinguishes entities, relationships, and triplets, and
                 guessing which one a list represents would silently mislabel
                 it.
-
-        Returns:
-            String containing YAML representation of semantic network
+            ValidationError: if the mapping carries both spellings of a
+                collection with different contents, or is non-empty and shares
+                no key with the recognized set. The latter previously
+                serialized to a file with every collection empty while the log
+                reported success. An empty mapping is still accepted -- it has
+                no records to lose. Note that 'metadata' alone is not a
+                recognized key: an ``export_json`` envelope carries one, and
+                accepting it would readmit the silent-empty export it is the
+                most likely source of.
 
         Example:
             >>> network = {
@@ -157,15 +227,14 @@ class SemanticNetworkYAMLExporter:
             self.progress_tracker.update_tracking(
                 tracking_id, message="Preparing YAML data..."
             )
+            records = normalize_graph_payload(semantic_network)
             yaml_data = {
                 "metadata": {
                     "exported_at": datetime.now().isoformat(),
                     "version": "1.0",
                     **semantic_network.get("metadata", {}),
                 },
-                "entities": semantic_network.get("entities", []),
-                "relationships": semantic_network.get("relationships", []),
-                "triplets": semantic_network.get("triplets", []),
+                **records,
             }
 
             self.progress_tracker.update_tracking(
@@ -198,12 +267,17 @@ class SemanticNetworkYAMLExporter:
             data: Data to export
             file_path: Output file path
             **options: Additional options
+
+        Raises:
+            ProcessingError: if ``data`` is not a mapping.
+            ValidationError: on the mappings :meth:`export_semantic_network`
+                rejects. Serialization runs before the output directory is
+                created, so a rejected export leaves nothing behind.
         """
         file_path = Path(file_path)
-        ensure_directory(file_path.parent)
-
         yaml_content = self.export_semantic_network(data, **options)
 
+        ensure_directory(file_path.parent)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(yaml_content)
 
@@ -301,18 +375,34 @@ class SemanticNetworkYAMLExporter:
         • Structure for definition generation
         • Include extraction metadata
         • Return pipeline-ready YAML
+
+        Args:
+            extracted_data: Semantic network mapping, read through
+                :func:`~semantica.utils.helpers.normalize_graph_payload` on
+                the same terms as :meth:`export_semantic_network`.
+            pipeline_stage: Stage number recorded in the output.
+            **options: Additional export options (unused)
+
+        Returns:
+            Pipeline-ready YAML string.
+
+        Raises:
+            ProcessingError: if ``extracted_data`` is not a mapping.
+            ValidationError: on the same mappings as
+                :meth:`export_semantic_network` -- this method built its
+                nested semantic network from the same defaulted lookups and
+                so had the same silent-empty failure.
         """
+        _require_mapping(extracted_data, ("entities", "relationships", "triplets"))
+
+        semantic_network = normalize_graph_payload(extracted_data)
         yaml_data = {
             "pipeline_stage": pipeline_stage,
             "metadata": {
                 "extracted_at": datetime.now().isoformat(),
                 **extracted_data.get("metadata", {}),
             },
-            "semantic_network": {
-                "entities": extracted_data.get("entities", []),
-                "relationships": extracted_data.get("relationships", []),
-                "triplets": extracted_data.get("triplets", []),
-            },
+            "semantic_network": semantic_network,
         }
 
         return self.yaml.dump(yaml_data, default_flow_style=False, sort_keys=False)
@@ -347,10 +437,25 @@ class YAMLSchemaExporter:
         • Structure for easy editing
         • Return YAML schema
 
+        Args:
+            ontology: Ontology mapping keyed by any of 'classes',
+                'properties', 'namespaces', 'uri', 'title', 'description',
+                'version'.
+            **options: Additional export options (unused)
+
+        Returns:
+            YAML schema string.
+
         Raises:
             ProcessingError: if ``ontology`` is not a mapping.
+            ValidationError: if ``ontology`` is a non-empty mapping sharing no
+                key with the recognized set -- which previously produced a
+                file with empty 'classes', 'properties' and 'namespaces' and
+                no indication anything was dropped. An empty mapping is still
+                accepted.
         """
         _require_mapping(ontology, ("classes", "properties"))
+        _require_recognized_keys(ontology, _SCHEMA_KEYS, what="Ontology schema")
 
         yaml_data = {
             "ontology": {

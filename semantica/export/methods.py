@@ -524,6 +524,11 @@ def export_yaml(
     Raises:
         ProcessingError: if ``data`` is not a mapping, or if ``method`` is not
             a known YAML export method.
+        ValidationError: if ``data`` is a mapping whose keys the selected
+            exporter does not read -- an ``export_json`` envelope
+            (``{"data": [...], "count": N, "metadata": {...}}``) is the
+            common case. Such a payload used to be written out as a valid
+            YAML file with every collection empty.
 
     Examples:
         >>> from semantica.export.methods import export_yaml
