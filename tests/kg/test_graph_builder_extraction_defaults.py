@@ -112,6 +112,75 @@ class TestGraphBuilderExtractorReuse(unittest.TestCase):
         self.assertEqual(self.NER.call_count, 2)
 
 
+class TestGraphBuilderFallbackMethodLists(unittest.TestCase):
+    """All three extractors accept a list of methods for fallback ordering.
+
+    The extractor cache must key on something hashable, or passing a list
+    raises `TypeError: unhashable type: 'list'` before extraction even starts.
+    """
+
+    def setUp(self):
+        self.ner_patcher = patch(
+            "semantica.semantic_extract.ner_extractor.NERExtractor"
+        )
+        self.rel_patcher = patch(
+            "semantica.semantic_extract.relation_extractor.RelationExtractor"
+        )
+        self.trip_patcher = patch(
+            "semantica.semantic_extract.triplet_extractor.TripletExtractor"
+        )
+        self.NER = self.ner_patcher.start()
+        self.Rel = self.rel_patcher.start()
+        self.Trip = self.trip_patcher.start()
+        self.addCleanup(self.ner_patcher.stop)
+        self.addCleanup(self.rel_patcher.stop)
+        self.addCleanup(self.trip_patcher.stop)
+
+        self.NER.return_value.extract_entities.return_value = []
+        self.Rel.return_value.extract_relations.return_value = []
+        self.Trip.return_value.extract_triplets.return_value = []
+
+        self.builder = GraphBuilder(merge_entities=False, resolve_conflicts=False)
+
+    def test_list_method_does_not_raise(self):
+        self.builder._extract_from_text(
+            "x", [], [], ner_method=["pattern", "ml"], extract_triplets=False
+        )
+        self.assertEqual(self.NER.call_args.kwargs["method"], ["pattern", "ml"])
+
+    def test_list_methods_accepted_for_every_extractor(self):
+        self.builder._extract_from_text(
+            "x",
+            [],
+            [],
+            ner_method=["pattern", "ml"],
+            relation_method=["pattern", "cooccurrence"],
+            triplet_method=["pattern", "rules"],
+            extract_relations=True,
+        )
+        self.assertEqual(self.NER.call_args.kwargs["method"], ["pattern", "ml"])
+        self.assertEqual(
+            self.Rel.call_args.kwargs["method"], ["pattern", "cooccurrence"]
+        )
+        self.assertEqual(self.Trip.call_args.kwargs["method"], ["pattern", "rules"])
+
+    def test_equal_lists_reuse_one_extractor(self):
+        for _ in range(3):
+            self.builder._extract_from_text(
+                "x", [], [], ner_method=["pattern", "ml"], extract_triplets=False
+            )
+        self.assertEqual(self.NER.call_count, 1)
+
+    def test_different_lists_get_different_extractors(self):
+        self.builder._extract_from_text(
+            "x", [], [], ner_method=["pattern", "ml"], extract_triplets=False
+        )
+        self.builder._extract_from_text(
+            "x", [], [], ner_method=["ml", "pattern"], extract_triplets=False
+        )
+        self.assertEqual(self.NER.call_count, 2)
+
+
 class TestGraphBuilderDefaultsRunOffline(unittest.TestCase):
     """The default raw-text path must work with no provider and no network."""
 

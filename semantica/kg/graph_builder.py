@@ -93,7 +93,15 @@ class GraphBuilder:
         # Extractors are reused across texts: NERExtractor loads its spaCy model
         # eagerly in __init__, so constructing one per text would reload the
         # model on every source in a multi-document build.
-        self._extractor_cache: Dict[Tuple[str, str], Any] = {}
+        self._extractor_cache: Dict[Tuple[str, Any], Any] = {}
+        # build() resets these per run; seed them here so _extract_from_text
+        # is usable on its own instead of raising an AttributeError that the
+        # broad except in the extraction path silently swallows.
+        self._extraction_stats: Dict[str, int] = {
+            "extracted_entities": 0,
+            "extracted_relations": 0,
+            "extracted_triplets": 0,
+        }
 
         # Initialize logging
         from ..utils.logging import get_logger
@@ -232,15 +240,24 @@ class GraphBuilder:
             # Unknown type
             pass
 
-    def _get_extractor(self, kind: str, extractor_cls, method: str):
+    def _get_extractor(
+        self, kind: str, extractor_cls, method: Union[str, List[str]]
+    ):
         """Return a cached extractor for this method, building it on first use.
 
         Extractors hold no per-text state but are expensive to construct —
         ``NERExtractor(method="ml")`` loads a spaCy model in ``__init__``.
         Keying on kind and method is enough because ``self.config`` is fixed
         for the lifetime of the builder.
+
+        Args:
+            kind: Extractor role, one of ``"ner"``, ``"relation"``, ``"triplet"``.
+            extractor_cls: Extractor class to construct on a cache miss.
+            method: A method name, or a list of them for fallback ordering.
+                Lists are converted to tuples for the cache key only; the
+                extractor still receives the original value.
         """
-        key = (kind, method)
+        key = (kind, tuple(method) if isinstance(method, list) else method)
         if key not in self._extractor_cache:
             self._extractor_cache[key] = extractor_cls(method=method, **self.config)
         return self._extractor_cache[key]

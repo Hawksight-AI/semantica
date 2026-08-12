@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The `build()` docstring also never documented `relation_method` or `extract_triplets` at all; both are now listed, along with a note that raw-text extraction needs no provider or API key by default
   - Removed the stale `# Default to LLM methods as per requirement` comment, which read as an intentional decision but did not match the documented contract
   - **Fixed along the way**: `_extract_from_text()` constructed a fresh extractor for every text, and `NERExtractor.__init__` loads its spaCy model eagerly when the method includes `"ml"` — so with the new default, a multi-document build would have reloaded the model once per source. Extractors are now built once per `(kind, method)` and reused for the lifetime of the builder, via `GraphBuilder._get_extractor()`. This path was previously unreachable by default because the old `"llm"` default never touched spaCy
-  - New regression coverage in `tests/kg/test_graph_builder_extraction_defaults.py` pinning all four defaults, verifying that no default resolves to `"llm"`, confirming explicit LLM opt-in still routes correctly, asserting extractors are constructed once across repeated texts, and running the real default path end to end with no provider mocked. Verified to fail against the pre-fix code
-  - Full `kg` suite: 466 passed
+  - **Fixed along the way**: `GraphBuilder._extraction_stats` was only initialised inside `build()`, so calling `_extract_from_text()` directly raised an `AttributeError` that the extraction path's broad `except` swallowed and reported as `"Entity extraction failed"`. It is now seeded in `__init__` as well; `build()` still resets it per run
+  - New regression coverage in `tests/kg/test_graph_builder_extraction_defaults.py` pinning all four defaults, verifying that no default resolves to `"llm"`, confirming explicit LLM opt-in still routes correctly, asserting extractors are constructed once across repeated texts, covering fallback method lists (e.g. `ner_method=["pattern", "ml"]`) for all three extractors, and running the real default path end to end with no provider mocked. Verified to fail against the pre-fix code
+  - Full `kg` suite: 470 passed
 
 ### Fixed
 
