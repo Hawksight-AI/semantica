@@ -112,6 +112,63 @@ class TestGraphBuilderExtractorReuse(unittest.TestCase):
         self.assertEqual(self.NER.call_count, 2)
 
 
+class TestGraphBuilderForwardsRelationsToTriplets(unittest.TestCase):
+    """Relations extracted with relation_method must reach triplet extraction.
+
+    `TripletExtractor` re-derives relations itself when `relations is None`,
+    using a method derived from `triplet_method` — so not forwarding them both
+    duplicates work and can produce triplets inconsistent with the relations
+    already extracted.
+    """
+
+    def setUp(self):
+        self.ner_patcher = patch(
+            "semantica.semantic_extract.ner_extractor.NERExtractor"
+        )
+        self.rel_patcher = patch(
+            "semantica.semantic_extract.relation_extractor.RelationExtractor"
+        )
+        self.trip_patcher = patch(
+            "semantica.semantic_extract.triplet_extractor.TripletExtractor"
+        )
+        self.NER = self.ner_patcher.start()
+        self.Rel = self.rel_patcher.start()
+        self.Trip = self.trip_patcher.start()
+        self.addCleanup(self.ner_patcher.stop)
+        self.addCleanup(self.rel_patcher.stop)
+        self.addCleanup(self.trip_patcher.stop)
+
+        self.NER.return_value.extract_entities.return_value = []
+        self.Trip.return_value.extract_triplets.return_value = []
+
+        self.builder = GraphBuilder(merge_entities=False, resolve_conflicts=False)
+
+    def _triplet_kwargs(self):
+        return self.Trip.return_value.extract_triplets.call_args.kwargs
+
+    def test_extracted_relations_are_forwarded(self):
+        sentinel = [object()]
+        self.Rel.return_value.extract_relations.return_value = sentinel
+
+        self.builder._extract_from_text("x", [], [], extract_relations=True)
+
+        self.assertIs(self._triplet_kwargs()["relations"], sentinel)
+
+    def test_relations_is_none_when_extraction_disabled(self):
+        """Default path keeps TripletExtractor's own relation derivation."""
+        self.builder._extract_from_text("x", [], [])
+
+        self.assertIsNone(self._triplet_kwargs()["relations"])
+        self.Rel.assert_not_called()
+
+    def test_relations_is_none_when_extraction_fails(self):
+        self.Rel.return_value.extract_relations.side_effect = RuntimeError("boom")
+
+        self.builder._extract_from_text("x", [], [], extract_relations=True)
+
+        self.assertIsNone(self._triplet_kwargs()["relations"])
+
+
 class TestGraphBuilderFallbackMethodLists(unittest.TestCase):
     """All three extractors accept a list of methods for fallback ordering.
 

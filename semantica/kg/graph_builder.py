@@ -294,6 +294,12 @@ class GraphBuilder:
             entities = []
         
         # 2. Extract Relations (if requested)
+        # Stays None when relation extraction is skipped or fails, which lets
+        # TripletExtractor derive its own relations as before. When we do have
+        # them, they are forwarded below so triplets reuse the relations
+        # extracted with relation_method rather than re-deriving via
+        # triplet_method.
+        relations = None
         if options.get("extract_relations", False):
             rel_extractor = self._get_extractor(
                 "relation", RelationExtractor, relation_method
@@ -315,7 +321,9 @@ class GraphBuilder:
                 "triplet", TripletExtractor, triplet_method
             )
             try:
-                triplets = trip_extractor.extract_triplets(text, entities=entities, **options)
+                triplets = trip_extractor.extract_triplets(
+                    text, entities=entities, relations=relations, **options
+                )
                 extracted_count = len(triplets)
                 self._extraction_stats["extracted_triplets"] += extracted_count
                 self.logger.info(f"Extracted {extracted_count} triplets")
