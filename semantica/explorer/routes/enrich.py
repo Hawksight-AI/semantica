@@ -32,7 +32,15 @@ _FACT_RE = re.compile(r"^(?P<predicate>[A-Za-z_][\w:-]*)\((?P<args>.*)\)$")
 # O(N^2), consuming ~1.6 GB RAM at the maximum limit (measured via
 # tracemalloc at 1.7 KB/node with 128-dim embeddings; see poc_runner.py).
 # Mirrors the SPARQL DoS fix from PR #898 (50k cap + semaphore).
+#
+# NOTE: session.get_nodes()/get_edges() (paginate_nodes/paginate_edges)
+# normalize the *entire* matching set before applying `limit` -- passing
+# limit=_LINK_PREDICTION_MAX_NODES does not bound that work. The `total`
+# they return can only be checked *after* paying that full cost. To actually
+# reject an oversized graph before doing that work, check session.get_raw_counts()
+# (O(1) collection lengths) first -- see predict_links() below.
 _LINK_PREDICTION_MAX_NODES = 10_000
+_LINK_PREDICTION_MAX_EDGES = 50_000
 _link_prediction_semaphore = asyncio.Semaphore(2)
 
 
@@ -206,19 +214,35 @@ async def predict_links(
     # SECURITY: Acquire semaphore BEFORE loading data so concurrent requests
     # cannot pile up expensive threadpool work and memory pressure (Qodo #2).
     async with _link_prediction_semaphore:
-        # SECURITY: Load at most _LINK_PREDICTION_MAX_NODES candidates.
-        # The hardcoded limit in the original code consumed ~1.6 GB RAM
-        # per request and had no concurrency guard, making it trivially DoS-able.
-        nodes, total = await asyncio.to_thread(session.get_nodes, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
-        if total > _LINK_PREDICTION_MAX_NODES:
+        # SECURITY: Reject an oversized graph using the O(1) raw collection
+        # lengths BEFORE calling get_nodes()/get_edges(), which normalize the
+        # *entire* matching set before applying `limit` -- checking `total`
+        # only after that call still pays the full O(graph size) cost the cap
+        # is meant to avoid.
+        total_nodes, total_edges = await asyncio.to_thread(session.get_raw_counts)
+        if total_nodes > _LINK_PREDICTION_MAX_NODES:
             raise HTTPException(
                 status_code=413,
                 detail=(
-                    f"Graph has {total:,} nodes; link prediction is capped at "
+                    f"Graph has {total_nodes:,} nodes; link prediction is capped at "
                     f"{_LINK_PREDICTION_MAX_NODES:,} nodes to prevent memory exhaustion. "
                     "Use the graph search endpoint for large graphs."
                 ),
             )
+        if total_edges > _LINK_PREDICTION_MAX_EDGES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Graph has {total_edges:,} edges; link prediction is capped at "
+                    f"{_LINK_PREDICTION_MAX_EDGES:,} edges to prevent memory exhaustion. "
+                    "Use the graph search endpoint for large graphs."
+                ),
+            )
+
+        # SECURITY: Load at most _LINK_PREDICTION_MAX_NODES candidates.
+        # The hardcoded limit in the original code consumed ~1.6 GB RAM
+        # per request and had no concurrency guard, making it trivially DoS-able.
+        nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
 
         # Load edges specific to the queried node rather than a globally
         # truncated page — avoids missing neighbours when the node's edges

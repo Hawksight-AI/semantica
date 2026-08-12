@@ -105,7 +105,14 @@ async def import_file(
         nodes = []
         for raw_node in raw_nodes:
             if "properties" in raw_node:
-                nodes.append(raw_node)
+                # SECURITY: this pre-built-node path bypasses the id/type/properties
+                # construction below entirely, so it must sanitize the id itself --
+                # otherwise a payload like {"id": "<crlf>", "properties": {}} skips
+                # _sanitize_import_node_id() completely (CWE-20/CWE-113 bypass).
+                safe_node_id = _sanitize_import_node_id(
+                    raw_node.get("id", raw_node.get("_id", raw_node.get("node_id", "")))
+                )
+                nodes.append({**raw_node, "id": safe_node_id})
                 continue
             metadata = raw_node.get("metadata", {}) or {}
             nodes.append(
