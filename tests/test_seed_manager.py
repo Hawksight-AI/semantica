@@ -147,11 +147,11 @@ def test_load_from_database_import_error(seed_manager):
             seed_manager.load_from_database("sqlite:///:memory:", query="SELECT 1")
         assert "Database ingestion module not available" in str(excinfo.value)
 
-@patch("requests.get")
-def test_load_from_api(mock_get, seed_manager):
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api(mock_guard, seed_manager):
     mock_response = MagicMock()
     mock_response.json.return_value = {"results": [{"id": 1, "name": "Alice"}]}
-    mock_get.return_value = mock_response
+    mock_guard.return_value = mock_response
 
     records = seed_manager.load_from_api(
         api_url="http://api.example.com",
@@ -162,7 +162,31 @@ def test_load_from_api(mock_get, seed_manager):
     assert len(records) == 1
     assert records[0]["id"] == 1
     assert records[0]["entity_type"] == "User"
-    mock_get.assert_called_once()
+    mock_guard.assert_called_once()
+
+def test_load_from_api_blocks_private_by_default(seed_manager):
+    with pytest.raises(ProcessingError) as excinfo:
+        seed_manager.load_from_api(api_url="http://127.0.0.1:8000/secret")
+    assert "blocked" in str(excinfo.value).lower() or "not allowed" in str(excinfo.value).lower()
+
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_allows_private_when_configured(mock_guard, seed_manager):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"results": [{"id": 1, "name": "Alice"}]}
+    mock_guard.return_value = mock_response
+
+    manager = SeedDataManager(config={"allow_private_ips": True})
+    records = manager.load_from_api(
+        api_url="http://127.0.0.1:8000",
+        endpoint="users",
+        entity_type="User"
+    )
+
+    assert len(records) == 1
+    mock_guard.assert_called_once()
+    # The opt-in flag must reach the guard
+    call_kwargs = mock_guard.call_args[1]
+    assert call_kwargs["allow_private_ips"] is True
 
 def test_load_source(seed_manager, temp_data_dir):
     json_file = temp_data_dir / "source.json"
