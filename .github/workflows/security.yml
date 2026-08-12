@@ -21,6 +21,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.11'
+      # Upgrade first: actions/setup-python's baked-in setuptools has been
+      # behind known-vulnerable floors before (e.g. PYSEC-2026-3447 /
+      # CVE-2026-59890, fixed in 83.0.0) regardless of what this project's
+      # own [build-system] requires -- that only governs isolated build
+      # environments, not the ambient one pip-audit scans here.
+      - run: python -m pip install --upgrade pip setuptools
       - run: pip install pip-audit
       # Install the [all] extra so pip-audit sees every optional dependency
       # group (fastapi, python-multipart, etc.), not just pip-audit's own
