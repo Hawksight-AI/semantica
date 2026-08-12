@@ -181,6 +181,22 @@ pip install -e ".[dev]"
 pre-commit install
 ```
 
+### Pinned CI dependencies
+
+`requirements-ci.txt` pins every transitive dependency at exact versions so CI,
+security scans, and release builds install the same packages every run (the
+Python equivalent of `explorer/package-lock.json` + `npm ci`).
+
+Regenerate it after changing `pyproject.toml` dependencies:
+
+```bash
+pip install uv
+uv pip compile pyproject.toml --python-version 3.11 --all-extras -o requirements-ci.txt
+```
+
+CI fails if `requirements-ci.txt` is stale (`uv pip compile` must produce a
+byte-identical file).
+
 ### 3. Create Branch
 
 ```bash

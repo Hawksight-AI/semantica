@@ -42,6 +42,15 @@ jobs:
       - name: Build Explorer frontend
         working-directory: explorer
         run: npm run build
+      - name: Install pinned Python dependencies
+        run: |
+          pip install -r requirements-ci.txt
+      - name: Verify requirements-ci.txt is up to date
+        run: |
+          pip install uv
+          cp requirements-ci.txt /tmp/requirements-ci-committed.txt
+          uv pip compile pyproject.toml --python-version 3.11 --all-extras -o requirements-ci.txt
+          diff /tmp/requirements-ci-committed.txt requirements-ci.txt
       - run: pip install build
       - run: python -m build
       - name: Verify Explorer frontend is packaged
