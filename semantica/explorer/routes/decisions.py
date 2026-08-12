@@ -23,7 +23,7 @@ def _node_to_decision(node: dict) -> DecisionResponse:
         reasoning=properties.get("reasoning", ""),
         outcome=properties.get("outcome", ""),
         confidence=float(properties.get("confidence", 0.0) or 0.0),
-        timestamp=properties.get("timestamp"),
+        timestamp=None if properties.get("timestamp") is None else str(properties.get("timestamp")),
         metadata=properties,
     )
 
