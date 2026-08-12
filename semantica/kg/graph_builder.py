@@ -237,10 +237,12 @@ class GraphBuilder:
         from ..semantic_extract.relation_extractor import RelationExtractor
         from ..semantic_extract.triplet_extractor import TripletExtractor
         
-        # Default to LLM methods as per requirement
-        ner_method = options.get("ner_method", "llm")
-        relation_method = options.get("relation_method", "llm")
-        triplet_method = options.get("triplet_method", "llm")
+        # Local extractors by default — raw-text build() must not require a
+        # provider, API key, or network access. Pass ner_method="llm" (and the
+        # relation/triplet equivalents) to opt into LLM extraction.
+        ner_method = options.get("ner_method", "ml")
+        relation_method = options.get("relation_method", "pattern")
+        triplet_method = options.get("triplet_method", "pattern")
         
         self.logger.info(f"Extracting knowledge from text ({len(text)} chars) using {ner_method}...")
         
@@ -258,7 +260,7 @@ class GraphBuilder:
             entities = []
         
         # 2. Extract Relations (if requested)
-        if options.get("extract_relations", True):
+        if options.get("extract_relations", False):
             rel_extractor = RelationExtractor(method=relation_method, **self.config)
             try:
                 # Pass entities if available to help relation extraction
@@ -307,19 +309,23 @@ class GraphBuilder:
                   raw string or ``{"text": ...}`` dict is passed as a source
                   (default: ``True``).
                 - ``extract_relations`` (bool): Whether to extract relations
-                  during text extraction (default: ``True``).
+                  during text extraction (default: ``False``).
                 - ``extract_triplets`` (bool): Whether to extract triplets
                   during text extraction (default: ``True``).
                 - ``ner_method`` (str): NER backend used for text extraction
-                  (e.g. ``"ml"``, ``"pattern"``, ``"llm"``; default: ``"llm"``).
+                  (e.g. ``"ml"``, ``"pattern"``, ``"llm"``; default: ``"ml"``).
                 - ``relation_method`` (str): Relation-extraction backend
-                  (e.g. ``"pattern"``, ``"llm"``; default: ``"llm"``).
+                  (e.g. ``"pattern"``, ``"llm"``; default: ``"pattern"``).
                 - ``triplet_method`` (str): Triplet-extraction backend
-                  (e.g. ``"pattern"``, ``"llm"``; default: ``"llm"``).
+                  (e.g. ``"pattern"``, ``"llm"``; default: ``"pattern"``).
                 - ``entity_resolver``: An :class:`EntityResolver` instance
                   that overrides the one configured on the builder.
                 - ``relationships`` (list): An explicit list of relationships
                   to include in addition to those found in *sources*.
+
+            Raw-text extraction uses local extractors by default and needs no
+            provider or API key. To use LLM extraction, pass the methods
+            explicitly, e.g. ``ner_method="llm"``.
 
         Returns:
             A dictionary containing the graph's ``entities``,
