@@ -1,4 +1,4 @@
-﻿"""
+"""
 Import and export routes for graph datasets.
 """
 
@@ -6,6 +6,7 @@ import csv
 import io
 import json
 import logging
+import re
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -21,6 +22,33 @@ _IMPORT_MAX_BYTES = 50 * 1024 * 1024  # 50 MB
 # Only formats that the import handler actually parses.
 # Do not add extensions here unless a corresponding parsing branch exists below.
 _ALLOWED_IMPORT_EXTENSIONS = frozenset({".json", ".csv"})
+
+# SECURITY: Strip characters from imported node IDs that would enable stored
+# HTTP response header injection (CWE-20 / CWE-113).  These IDs are later
+# reflected verbatim into Content-Disposition filename= headers by the
+# provenance report endpoint -- CRLF sequences in an ID can split the HTTP
+# response and inject arbitrary headers (Set-Cookie, Content-Type, etc.).
+# NUL bytes truncate filenames on POSIX and some Windows APIs.
+_UNSAFE_ID_CHARS = re.compile(r'[\r\n\x00"\\]')
+_MAX_IMPORT_NODE_ID_LEN = 512
+
+
+def _sanitize_import_node_id(raw: object) -> str:
+    """Sanitize a node ID arriving from an uploaded CSV or JSON file.
+
+    Strips CR, LF, NUL, double-quotes, and backslashes, then length-caps the
+    result. These are the characters that enable CRLF header injection when
+    the ID is later used in a Content-Disposition filename= parameter.
+    """
+    if raw is None:
+        return ""
+    cleaned = _UNSAFE_ID_CHARS.sub("_", str(raw).strip())
+    if len(cleaned) > _MAX_IMPORT_NODE_ID_LEN:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Node ID exceeds maximum length of {_MAX_IMPORT_NODE_ID_LEN} characters.",
+        )
+    return cleaned
 
 
 def _import_response(nodes_added: int, edges_added: int, message: str = "Import successful") -> ImportResponse:
@@ -77,12 +105,19 @@ async def import_file(
         nodes = []
         for raw_node in raw_nodes:
             if "properties" in raw_node:
-                nodes.append(raw_node)
+                # SECURITY: this pre-built-node path bypasses the id/type/properties
+                # construction below entirely, so it must sanitize the id itself --
+                # otherwise a payload like {"id": "<crlf>", "properties": {}} skips
+                # _sanitize_import_node_id() completely (CWE-20/CWE-113 bypass).
+                safe_node_id = _sanitize_import_node_id(
+                    raw_node.get("id", raw_node.get("_id", raw_node.get("node_id", "")))
+                )
+                nodes.append({**raw_node, "id": safe_node_id})
                 continue
             metadata = raw_node.get("metadata", {}) or {}
             nodes.append(
                 {
-                    "id": str(raw_node.get("id", raw_node.get("_id", raw_node.get("node_id", "")))),
+                    "id": _sanitize_import_node_id(raw_node.get("id", raw_node.get("_id", raw_node.get("node_id", "")))),
                     "type": raw_node.get("type", "entity"),
                     "properties": {
                         "content": raw_node.get("text", raw_node.get("content", raw_node.get("id", ""))),
@@ -102,8 +137,8 @@ async def import_file(
                 {
                     "id": raw_edge.get("id", raw_edge.get("edge_id")),
                     "familyId": raw_edge.get("familyId", raw_edge.get("family_id")),
-                    "source_id": str(source),
-                    "target_id": str(target),
+                    "source_id": _sanitize_import_node_id(source),
+                    "target_id": _sanitize_import_node_id(target),
                     "type": raw_edge.get("type", raw_edge.get("relationship", "related_to")),
                     "weight": float(raw_edge.get("weight", 1.0)),
                     "properties": edge_properties,
@@ -159,8 +194,8 @@ async def import_file(
                     {
                         "id": row.get("id") or row.get("edge_id"),
                         "familyId": row.get("familyId") or row.get("family_id"),
-                        "source_id": str(source),
-                        "target_id": str(target),
+                        "source_id": _sanitize_import_node_id(source),
+                        "target_id": _sanitize_import_node_id(target),
                         "type": row.get("type") or row.get("relationship") or row.get(":TYPE") or "related_to",
                         "weight": float(row.get("weight", 1.0) or 1.0),
                         "properties": edge_props,
@@ -174,7 +209,7 @@ async def import_file(
                 }
                 nodes.append(
                     {
-                        "id": str(node_id),
+                        "id": _sanitize_import_node_id(node_id),
                         "type": row.get("type") or row.get("label") or row.get(":LABEL") or "entity",
                         "properties": node_props,
                     }

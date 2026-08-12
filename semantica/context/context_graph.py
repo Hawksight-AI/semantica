@@ -1847,47 +1847,48 @@ class ContextGraph:
 
     def to_dict(self) -> Dict[str, Any]:
         """Export graph to dictionary format."""
-        nodes_out = []
-        for n in self.nodes.values():
-            entry: Dict[str, Any] = {
-                "id": n.node_id,
-                "type": n.node_type,
-                "content": n.content,
-                "properties": n.properties,
-                "metadata": n.metadata,
-            }
-            if n.valid_from is not None:
-                entry["valid_from"] = n.valid_from
-            if n.valid_until is not None:
-                entry["valid_until"] = n.valid_until
-            nodes_out.append(entry)
+        with self._lock:
+            nodes_out = []
+            for n in self.nodes.values():
+                entry: Dict[str, Any] = {
+                    "id": n.node_id,
+                    "type": n.node_type,
+                    "content": n.content,
+                    "properties": n.properties,
+                    "metadata": n.metadata,
+                }
+                if n.valid_from is not None:
+                    entry["valid_from"] = n.valid_from
+                if n.valid_until is not None:
+                    entry["valid_until"] = n.valid_until
+                nodes_out.append(entry)
 
-        edges_out = []
-        for e in self.edges:
-            entry = {
-                "id": e.edge_id,
-                "familyId": e.family_id or e.edge_id,
-                "source": e.source_id,
-                "target": e.target_id,
-                "type": e.edge_type,
-                "weight": e.weight,
-            }
-            if e.metadata:
-                entry["metadata"] = e.metadata
-            if e.valid_from is not None:
-                entry["valid_from"] = e.valid_from
-            if e.valid_until is not None:
-                entry["valid_until"] = e.valid_until
-            edges_out.append(entry)
+            edges_out = []
+            for e in self.edges:
+                entry = {
+                    "id": e.edge_id,
+                    "familyId": e.family_id or e.edge_id,
+                    "source": e.source_id,
+                    "target": e.target_id,
+                    "type": e.edge_type,
+                    "weight": e.weight,
+                }
+                if e.metadata:
+                    entry["metadata"] = e.metadata
+                if e.valid_from is not None:
+                    entry["valid_from"] = e.valid_from
+                if e.valid_until is not None:
+                    entry["valid_until"] = e.valid_until
+                edges_out.append(entry)
 
-        return {
-            "nodes": nodes_out,
-            "edges": edges_out,
-            "statistics": {
-                "node_count": len(self.nodes),
-                "edge_count": len(self.edges),
-            },
-        }
+            return {
+                "nodes": nodes_out,
+                "edges": edges_out,
+                "statistics": {
+                    "node_count": len(self.nodes),
+                    "edge_count": len(self.edges),
+                },
+            }
 
     def from_dict(self, graph_dict: Dict[str, Any]) -> None:
         """Load graph from dictionary format."""

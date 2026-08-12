@@ -616,6 +616,96 @@ class SQLiteVecStore:
             self.logger.warning(f"Failed to get metadata for {vector_id}: {e}")
             return None
 
+    def filter_by_metadata(
+        self, filters: Dict[str, Any], limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter stored vectors by metadata using SQLite JSON functions.
+
+        Args:
+            filters: Dictionary of metadata filter conditions
+            limit: Maximum number of results
+
+        Returns:
+            List of results containing id, metadata, and vector
+        """
+        filter_conditions = []
+        filter_params = []
+
+        if filters:
+            for key, value in filters.items():
+                if not self._is_safe_identifier(key):
+                    raise ValidationError(
+                        f"Invalid filter key: {key!r}. "
+                        "Keys must start with a letter or underscore and contain "
+                        "only alphanumeric characters and underscores."
+                    )
+                if isinstance(value, dict):
+                    if "min" in value and value["min"] is not None:
+                        filter_conditions.append(f"CAST(json_extract(metadata, '$.{key}') AS NUMERIC) >= ?")
+                        filter_params.append(value["min"])
+                    if "max" in value and value["max"] is not None:
+                        filter_conditions.append(f"CAST(json_extract(metadata, '$.{key}') AS NUMERIC) <= ?")
+                        filter_params.append(value["max"])
+                elif isinstance(value, list):
+                    # If the metadata value at this key is itself a JSON array, match on
+                    # intersection (mirrors the in-memory backend's set-intersection
+                    # semantics); otherwise fall back to plain scalar membership. Both
+                    # cases are handled uniformly via json_each: a non-array value is
+                    # wrapped in a one-element array first so json_each always sees a
+                    # valid JSON array to iterate.
+                    placeholders = ", ".join(["?"] * len(value))
+                    filter_conditions.append(
+                        f"EXISTS (SELECT 1 FROM json_each("
+                        f"  CASE WHEN json_type(metadata, '$.{key}') = 'array'"
+                        f"       THEN json_extract(metadata, '$.{key}')"
+                        f"       ELSE json_array(json_extract(metadata, '$.{key}'))"
+                        f"  END"
+                        f") je WHERE je.value IN ({placeholders}))"
+                    )
+                    filter_params.extend([str(v) if not isinstance(v, (int, float, bool)) else v for v in value])
+                else:
+                    filter_conditions.append(f"json_extract(metadata, '$.{key}') = ?")
+                    if isinstance(value, bool):
+                        filter_params.append(1 if value else 0)
+                    else:
+                        filter_params.append(value)
+
+        where_clause = ""
+        if filter_conditions:
+            where_clause = " WHERE " + " AND ".join(filter_conditions)
+
+        query_sql = f"""
+            SELECT id, embedding, metadata
+            FROM {self.table_name}
+            {where_clause}
+            LIMIT ?
+        """
+        params = filter_params + [limit]
+
+        with self._lock, self._get_connection() as conn:
+            try:
+                cur = conn.cursor()
+                cur.execute(query_sql, params)
+                rows = cur.fetchall()
+                cur.close()
+
+                results = []
+                for row in rows:
+                    vec_id, embedding_blob, meta_json = row
+                    vec = None
+                    if embedding_blob:
+                        vec = np.frombuffer(embedding_blob, dtype=np.float32).copy()
+
+                    results.append({
+                        "id": vec_id,
+                        "metadata": json.loads(meta_json) if meta_json else {},
+                        "vector": vec
+                    })
+                return results
+            except Exception as e:
+                raise ProcessingError(f"Failed to filter by metadata: {str(e)}") from e
+
     def create_index(
         self,
         index_type: str = "hnsw",
