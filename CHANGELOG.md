@@ -56,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fixed along the way**: `MilvusStore`'s metadata expression builder rendered `NaN`/`Infinity` filter values as bare unquoted tokens, producing an invalid Milvus expression whose server-side rejection was then swallowed by a broad `except`, indistinguishable from "no matches"; these values are now rejected up front with a clear `ValidationError`
   - New/expanded test coverage in `tests/vector_store/test_backend_metadata_filtering.py` (all 7 backends, including the Pinecone dimension/zero-vector, PgVector boolean-list, FAISS `limit=0`, and Milvus `NaN` regressions) and `tests/vector_store/test_sqlite_vec_store.py` (new `TestSQLiteVecStoreFilterByMetadata`, run against the real `sqlite-vec` extension, including the array-vs-scalar intersection case)
 
+- **`DistanceExporter` silently swallowed metric computation failures, exporting `None` values indistinguishable from a legitimate "no path" result** (#879, closes #874) by @AmirF194
+  - `_betweenness`, `_hop_distance`, `_weighted_distance`, and `_semantic_similarity` each caught `Exception` and returned their sentinel (`None`/`{}`) with no logging; a failed computation and a real "no path exists" looked identical in exported CSV/JSONL/DataFrame data. All four now log a `warning` with `exc_info=True` before returning the sentinel; exported row shape and values are unchanged
+  - **Fixed along the way**: the module logger was built with `get_logger(__name__)`, which double-prefixed it to `semantica.semantica.export.distance_exporter` — a name `setup_logging()` never configures — so this module's logging (including a pre-existing `logger.debug` call) was silent regardless. Now uses `get_logger("export.distance_exporter")`, matching every other exporter in the module
+  - New regression coverage in `tests/export/test_distance_exporter.py`: warnings fire on exception for all four helpers, exported sentinel values/shape stay unchanged, and the legitimate "no KG backend" `None` path still logs nothing
+  - Full `tests/export/` suite: 71 passed
+
 ### Security
 
 - **HTTP response header injection via `node_id`, unbounded-memory DoS in link prediction, and unsanitized imported node IDs in the Explorer** (#912) by @Sunil56224972
