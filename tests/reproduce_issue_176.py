@@ -94,7 +94,7 @@ class TestMaxTokensPropagation(unittest.TestCase):
         print(f"Triplets Call kwargs: {kwargs}")
         
         self.assertIn("max_tokens", kwargs)
-        self.assertEqual(kwargs["max_tokens"], 128000)
+        self.assertEqual(kWargs["max_tokens"], 128000)
 
 if __name__ == "__main__":
     unittest.main()
