@@ -375,6 +375,19 @@ class GraphSession:
         )
         return page, total
 
+    def get_raw_counts(self) -> tuple[int, int]:
+        """O(1) node/edge counts from the raw collections, with no per-item
+        normalization.
+
+        ``paginate_nodes``/``paginate_edges`` always normalize the *entire*
+        matching set before applying ``limit``, so callers that need to reject
+        an oversized graph before paying that cost (e.g. link prediction's DoS
+        guard) should check this first rather than inspecting the ``total``
+        returned by ``get_nodes``/``get_edges`` after the fact.
+        """
+        with self._lock:
+            return len(self.graph.nodes), len(self.graph.edges)
+
     def paginate_edges(
         self,
         edge_type: Optional[str] = None,

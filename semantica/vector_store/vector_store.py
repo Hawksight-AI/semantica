@@ -573,8 +573,8 @@ class VectorStore:
         Args:
             path: Directory path to save to
         """
+        import json
         import os
-        import pickle
         
         os.makedirs(path, exist_ok=True)
 
@@ -586,17 +586,20 @@ class VectorStore:
         elif self._backend_store is not None and hasattr(self._backend_store, "save_index"):
             self._backend_store.save_index(os.path.join(path, "index.bin"))
 
-        # Save Python-level data
+        # Save Python-level data using JSON (safe serialization).
+        # pickle is intentionally avoided to prevent arbitrary code execution
+        # if a malicious .pkl file is placed in the store directory.
         data = {
-            "vectors": getattr(self, "vectors", {}),
+            "vectors": {k: v.tolist() if hasattr(v, "tolist") else list(v)
+                    for k, v in getattr(self, "vectors", {}).items()},
             "metadata": getattr(self, "metadata", {}),
             "config": self.config,
             "backend": self.backend,
             "dimension": self.dimension
         }
         
-        with open(os.path.join(path, "store_data.pkl"), "wb") as f:
-            pickle.dump(data, f)
+        with open(os.path.join(path, "store_data.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
             
         self.logger.info(f"Saved vector store to {path}")
 
@@ -606,17 +609,33 @@ class VectorStore:
         
         Args:
             path: Directory path to load from
+            
+        Raises:
+            RuntimeError: If only a legacy pickle file is found (security risk).
         """
+        import json
         import os
-        import pickle
         
-        data_path = os.path.join(path, "store_data.pkl")
-        if not os.path.exists(data_path):
-            self.logger.warning(f"Store data not found: {data_path}")
+        json_path = os.path.join(path, "store_data.json")
+        legacy_pkl_path = os.path.join(path, "store_data.pkl")
+        
+        if os.path.exists(json_path):
+            data_path = json_path
+        elif os.path.exists(legacy_pkl_path):
+            # Refuse to load pickle files to prevent arbitrary code execution.
+            # A crafted .pkl file can execute arbitrary Python when deserialized.
+            raise RuntimeError(
+                f"Legacy pickle file found at {legacy_pkl_path}. "
+                "Pickle deserialization is disabled for security (arbitrary code "
+                "execution risk). Please re-save the vector store to migrate "
+                "to the safe JSON format: vs.save(path)"
+            )
+        else:
+            self.logger.warning(f"Store data not found in: {path}")
             return
             
-        with open(data_path, "rb") as f:
-            data = pickle.load(f)
+        with open(data_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
             
         self.vectors = data.get("vectors", {})
         self.metadata = data.get("metadata", {})
@@ -1029,16 +1048,23 @@ class VectorStore:
     ) -> Dict[str, Any]:
         """
         Build decision context graph.
-        
+
         Args:
             decision_id: Decision vector ID
             depth: Context depth
             include_entities: Whether to include entities
             include_policies: Whether to include policies
             max_hops: Maximum hops for context expansion
-            
+
         Returns:
-            Decision context graph
+            Decision context graph dict with keys:
+              - decision_id, decision_metadata, entities, policies,
+                related_decisions, context_graph.
+            If the backend cannot retrieve the raw vector for *decision_id*
+            (e.g. a FAISS index built without ``make_direct_map``), similarity
+            enrichment is skipped, a WARNING is emitted, and the key
+            ``similarity_unavailable=True`` is added.  ``related_decisions``
+            remains an empty list for schema stability.
         """
         # Get decision metadata
         decision_metadata = self.get_metadata(decision_id)
@@ -1062,8 +1088,8 @@ class VectorStore:
             context["entities"] = decision_metadata["entities"]
         
         # Add related decisions based on similarity
-        if decision_id in self.vectors:
-            query_vector = self.vectors[decision_id]
+        query_vector = self.get_vector(decision_id)
+        if query_vector is not None:
             similar_decisions = self.search_vectors(query_vector, k=depth * 5)
             
             for result in similar_decisions:
@@ -1073,6 +1099,13 @@ class VectorStore:
                         "similarity": result["score"],
                         "metadata": result.get("metadata", {})
                     })
+        else:
+            self.logger.warning(
+                "Backend cannot retrieve vector for decision '%s' — "
+                "similarity enrichment skipped.",
+                decision_id,
+            )
+            context["similarity_unavailable"] = True
         
         return context
 
@@ -1085,15 +1118,20 @@ class VectorStore:
     ) -> Dict[str, Any]:
         """
         Generate explanation for a decision.
-        
+
         Args:
             decision_id: Decision vector ID
             include_paths: Whether to include reasoning paths
             include_confidence: Whether to include confidence scores
             include_weights: Whether to include similarity weights
-            
+
         Returns:
-            Decision explanation
+            Decision explanation dict.  When *include_paths* is True and the
+            backend can retrieve the raw vector, ``similar_decisions`` is
+            populated.  If the backend cannot retrieve the vector (e.g. a FAISS
+            index without ``make_direct_map``), a WARNING is emitted, the key
+            ``similarity_unavailable=True`` is added, and ``similar_decisions``
+            is set to ``[]`` for schema stability.
         """
         decision_metadata = self.get_metadata(decision_id)
         if not decision_metadata:
@@ -1116,10 +1154,18 @@ class VectorStore:
         
         if include_paths:
             # Find similar decisions for reasoning paths
-            if decision_id in self.vectors:
-                query_vector = self.vectors[decision_id]
+            query_vector = self.get_vector(decision_id)
+            if query_vector is not None:
                 similar_decisions = self.search_vectors(query_vector, k=3)
                 explanation["similar_decisions"] = similar_decisions
+            else:
+                self.logger.warning(
+                    "Backend cannot retrieve vector for decision '%s' — "
+                    "similarity enrichment skipped.",
+                    decision_id,
+                )
+                explanation["similarity_unavailable"] = True
+                explanation["similar_decisions"] = []
         
         return explanation
 
@@ -1139,50 +1185,25 @@ class VectorStore:
             from datetime import datetime, timedelta
             cutoff = datetime.now() - timedelta(days=7)
             filters["timestamp"] = {"min": cutoff.isoformat()}
-        
         return filters
 
     def _filter_by_metadata(self, filters: Dict[str, Any], limit: int) -> List[Dict[str, Any]]:
         """Filter decisions by metadata only."""
+        if self._backend_store is not None:
+            if hasattr(self._backend_store, "filter_by_metadata"):
+                return self._backend_store.filter_by_metadata(filters=filters, limit=limit)
+            raise NotImplementedError(
+                f"Backend store {type(self._backend_store).__name__} does not "
+                "implement filter_by_metadata. Metadata-only filtering via "
+                "filter_decisions(query=None, ...) is only supported for backends "
+                "that implement filter_by_metadata. Pass a query string to use search_decisions() "
+                "instead, which is supported by all backends."
+            )
+
         results = []
         
         for vector_id, metadata in self.metadata.items():
-            match = True
-            
-            for key, value in filters.items():
-                if key not in metadata:
-                    match = False
-                    break
-                
-                if isinstance(value, dict):
-                    # Handle range filters
-                    metadata_value = metadata[key]
-                    if "min" in value and metadata_value < value["min"]:
-                        match = False
-                        break
-                    if "max" in value and metadata_value > value["max"]:
-                        match = False
-                        break
-                elif isinstance(value, list):
-                    # Handle list membership
-                    metadata_value = metadata[key]
-                    if isinstance(metadata_value, list):
-                        # Both are lists - check for intersection
-                        if not set(metadata_value) & set(value):
-                            match = False
-                            break
-                    else:
-                        # Metadata value is scalar, check if it's in the filter list
-                        if metadata_value not in value:
-                            match = False
-                            break
-                else:
-                    # Handle exact match
-                    if metadata[key] != value:
-                        match = False
-                        break
-            
-            if match:
+            if _matches_filter(metadata, filters):
                 results.append({
                     "id": vector_id,
                     "metadata": metadata,
@@ -1193,6 +1214,43 @@ class VectorStore:
                     break
         
         return results
+
+
+def _matches_filter(metadata: Dict[str, Any], filters: Dict[str, Any]) -> bool:
+    """Check if metadata dictionary matches filter criteria."""
+    if not filters:
+        return True
+    if metadata is None:
+        return False
+
+    for key, value in filters.items():
+        if key not in metadata:
+            return False
+
+        metadata_value = metadata[key]
+
+        if isinstance(value, dict):
+            # Handle range filters
+            if "min" in value and value["min"] is not None:
+                if metadata_value is None or metadata_value < value["min"]:
+                    return False
+            if "max" in value and value["max"] is not None:
+                if metadata_value is None or metadata_value > value["max"]:
+                    return False
+        elif isinstance(value, list):
+            # Handle list membership
+            if isinstance(metadata_value, list):
+                if not (set(metadata_value) & set(value)):
+                    return False
+            else:
+                if metadata_value not in value:
+                    return False
+        else:
+            # Handle exact match
+            if metadata_value != value:
+                return False
+
+    return True
 
 
 class VectorIndexer:

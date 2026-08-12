@@ -553,6 +553,12 @@ def ingest_web(
         # Get config
         config = ingest_config.get_method_config("web")
         config.update(kwargs)
+        if "allow_private_ips" in config:
+            from .ssrf import parse_bool
+
+            config["allow_private_ips"] = parse_bool(
+                config["allow_private_ips"], default=False
+            )
 
         ingestor = WebIngestor(**config)
 

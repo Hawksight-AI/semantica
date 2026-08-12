@@ -16,6 +16,8 @@ services:
       ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000
       FALKORDB_HOST: falkordb
       FALKORDB_PORT: "6379"
+      # Local dev only: this compose file is not for public exposure.
+      SEMANTICA_ALLOW_ANONYMOUS: "true"
     volumes:
       - ./semantica:/app/semantica
       - ./pyproject.toml:/app/pyproject.toml:ro
