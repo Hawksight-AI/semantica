@@ -21,10 +21,10 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.helpers import ensure_directory
