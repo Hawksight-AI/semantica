@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from semantica.seed.seed_manager import SeedData, SeedDataManager, SeedDataSource
+from semantica.seed.seed_manager import SeedData, SeedDataManager, SeedDataSource, is_safe_api_url
 from semantica.utils.exceptions import ProcessingError
 
 
@@ -82,6 +82,45 @@ class TestSeedDataManager(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["name"], "Alice")
         self.assertEqual(records[0]["entity_type"], "Person")
+
+class TestIsSafeApiUrl(unittest.TestCase):
+    """SSRF guard: URL validation for load_from_api (issue #936)."""
+
+    def test_public_https_url_allowed(self):
+        self.assertTrue(is_safe_api_url("https://8.8.8.8/dns"))
+
+    def test_public_http_url_allowed(self):
+        self.assertTrue(is_safe_api_url("http://8.8.8.8/dns"))
+
+    def test_loopback_ip_blocked(self):
+        self.assertFalse(is_safe_api_url("http://127.0.0.1:8000/secret"))
+
+    def test_loopback_hostname_blocked(self):
+        self.assertFalse(is_safe_api_url("http://localhost:8000/secret"))
+
+    def test_private_ip_blocked(self):
+        self.assertFalse(is_safe_api_url("http://192.168.1.1/admin"))
+
+    def test_link_local_blocked(self):
+        self.assertFalse(is_safe_api_url("http://169.254.169.254/latest/meta-data"))
+
+    def test_private_cidr_blocked(self):
+        self.assertFalse(is_safe_api_url("http://10.0.0.5/internal"))
+
+    def test_ipv6_loopback_blocked(self):
+        self.assertFalse(is_safe_api_url("http://[::1]:8080/secret"))
+
+    def test_invalid_scheme_blocked(self):
+        self.assertFalse(is_safe_api_url("file:///etc/passwd"))
+
+    def test_public_ipv4_allowed(self):
+        self.assertTrue(is_safe_api_url("http://8.8.8.8/dns"))
+
+    def test_load_from_api_rejects_loopback(self):
+        manager = SeedDataManager()
+        with self.assertRaises(ProcessingError):
+            manager.load_from_api("http://127.0.0.1:8000/secret")
+
 
 if __name__ == "__main__":
     unittest.main()

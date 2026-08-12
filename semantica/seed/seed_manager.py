@@ -32,17 +32,59 @@ License: MIT
 """
 
 import csv
+import ipaddress
 import json
+import socket
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+from urllib.parse import urlparse
 
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.helpers import read_json_file, write_json_file
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from ..utils.types import EntityDict, RelationshipDict
+
+
+def is_safe_api_url(api_url: str) -> bool:
+    """SSRF guard: reject URLs that resolve to non-public addresses.
+
+    Blocks loopback, private, link-local, and IPv6 loopback ranges (issue #936).
+    Raises no exception — returns False for unsafe or unparseable URLs.
+    """
+    try:
+        parsed = urlparse(api_url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # Resolve hostname (DNS rebinding is outside this check's scope; the
+        # connection itself is not re-validated after resolution).
+        try:
+            infos = socket.getaddrinfo(hostname, None)
+            addresses = {info[4][0] for info in infos}
+        except socket.gaierror:
+            return False
+        for addr in addresses:
+            try:
+                ip = ipaddress.ip_address(str(addr).split("%")[0])
+            except ValueError:
+                continue
+            if (
+                ip.is_loopback
+                or ip.is_private
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+                or ip.is_unspecified
+            ):
+                return False
+        return True
+    except (ValueError, OSError):
+        return False
 
 
 @dataclass
@@ -490,6 +532,13 @@ class SeedDataManager:
             request_headers = headers or {}
             if api_key:
                 request_headers["Authorization"] = f"Bearer {api_key}"
+
+            # SSRF guard: reject loopback/private/link-local targets (issue #936)
+            if not is_safe_api_url(full_url):
+                raise ProcessingError(
+                    f"Unsafe API URL rejected: {full_url} "
+                    "(loopback, private, or link-local addresses are not allowed)"
+                )
 
             # Make API request
             response = requests.get(full_url, headers=request_headers, timeout=30)

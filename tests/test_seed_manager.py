@@ -154,7 +154,7 @@ def test_load_from_api(mock_get, seed_manager):
     mock_get.return_value = mock_response
 
     records = seed_manager.load_from_api(
-        api_url="http://api.example.com",
+        api_url="http://8.8.8.8",
         endpoint="users",
         entity_type="User"
     )
