@@ -71,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`PipelineWithProvenance` raised `ModuleNotFoundError` on import and `AttributeError` on `.run()`** (#858, closes #858) by @Karunasagar12
+  - `from .pipeline import Pipeline` failed because `semantica/pipeline/pipeline.py` does not exist; corrected to `from .pipeline_builder import Pipeline`
+  - `.run()` called `self._pipeline.run()` on the `Pipeline` dataclass, which has no such method; replaced with `self._engine.execute_pipeline(self._pipeline, ...)` delegating to `ExecutionEngine`
+  - Constructor now accepts a built `Pipeline` instance (from `PipelineBuilder.build()`) instead of `**config`; the old `Pipeline(**config)` internal construction was invalid and never functional
+  - Replaced deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)` in `run()`
+
 - **`VectorStore.search_vectors()` returned inconsistent result shapes across backend implementations** (#853, closes #845) by @Sameer6305, reviewed by @KaifAhmad1
   - Every built-in backend (FAISS, Milvus, pgvector, Pinecone, Qdrant, SQLite-vec, Weaviate, in-memory) now returns the same canonical `SearchResult` shape (`id`, `score`, `metadata`, `vector`, `distance`), instead of some backends omitting `vector`/`metadata`/`distance` or, for Weaviate, returning a backend-specific `properties` key instead of `metadata`
   - Added a `SearchResult` `TypedDict` (`semantica/vector_store/vector_store.py`, exported from `semantica.vector_store`) documenting the contract; `metadata` now always defaults to `{}` rather than being absent, and `id` accepts `Union[str, int]` to accommodate Milvus/Qdrant's native integer IDs without casting
