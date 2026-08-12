@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`VectorStore._filter_by_metadata()` `AttributeError` on all persistent backends** (#857, closes #849) by @TaherTadpatri
+  - `_filter_by_metadata()` iterated `self.metadata` directly, which only exists on the `inmemory` backend — any persistent backend (`faiss`, `qdrant`, `pinecone`, `milvus`, `pgvector`, `sqlite`, `weaviate`) crashed with `AttributeError` on `filter_decisions(query=None, ...)` / metadata-only filtering. Filtering is now delegated to a native `filter_by_metadata()` implemented on each backend store, using backend-native payload/SQL/JSON filtering (Qdrant `scroll()`, Pinecone `query()`, Milvus expression filters, PostgreSQL JSONB, SQLite `json_extract()`, Weaviate collection filters)
+  - **Fixed along the way**: `PineconeStore.get_index()` and `filter_by_metadata()` called a nonexistent `self.describe_index_stats()` on the store itself (the method only exists on the `PineconeIndex` wrapper returned by `self.index`); the resulting `AttributeError` was silently swallowed, so dimension auto-detection always failed quietly. Now correctly calls `self.index.describe_index_stats()`
+  - **Fixed along the way**: `PineconeStore.filter_by_metadata()` probed for filter-only matches using an all-zero dummy query vector, which Pinecone rejects for cosine-metric indexes — the library's own default — making metadata-only filtering silently non-functional out of the box. Now uses a unit vector instead
+  - **Fixed along the way**: `PgVectorStore.filter_by_metadata()`'s list-filter branch formatted boolean values with `str(v)` (`'True'`/`'False'`), never matching PostgreSQL JSONB's lowercase `'true'`/`'false'` text rendering, even though the equivalent scalar-filter branch already handled this correctly
+  - **Fixed along the way**: list-valued metadata fields (e.g. `{"tags": ["python", "js"]}`) could never match a list filter on the SQLite or PostgreSQL backends, because both extracted the whole array as its JSON/text representation instead of matching individual elements — silently diverging from the in-memory backend's set-intersection semantics. SQLite now uses `json_each()` over a `json_type`-guarded array/scalar wrapper; PostgreSQL now uses the `?|` "any array element" operator alongside the existing scalar `= ANY(...)` path
+  - **Fixed along the way**: `FAISSStore.filter_by_metadata(limit=0)` returned one result instead of zero, because the limit check ran after appending the current match
+  - **Fixed along the way**: `MilvusStore`'s metadata expression builder rendered `NaN`/`Infinity` filter values as bare unquoted tokens, producing an invalid Milvus expression whose server-side rejection was then swallowed by a broad `except`, indistinguishable from "no matches"; these values are now rejected up front with a clear `ValidationError`
+  - New/expanded test coverage in `tests/vector_store/test_backend_metadata_filtering.py` (all 7 backends, including the Pinecone dimension/zero-vector, PgVector boolean-list, FAISS `limit=0`, and Milvus `NaN` regressions) and `tests/vector_store/test_sqlite_vec_store.py` (new `TestSQLiteVecStoreFilterByMetadata`, run against the real `sqlite-vec` extension, including the array-vs-scalar intersection case)
+
 ## [0.6.5] - 2026-08-11
 
 ### Added
