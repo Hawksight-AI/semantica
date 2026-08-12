@@ -85,11 +85,15 @@ def test_ingest_feed_errors() -> None:
         ingestor.ingest_feed("not_a_url")
 
     with patch(
-        "requests.get",
-        side_effect=requests.exceptions.RequestException("Fail"),
+        "semantica.ingest.ssrf.socket.getaddrinfo",
+        return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
     ):
-        with pytest.raises(ProcessingError):
-            ingestor.ingest_feed("http://valid.com")
+        with patch(
+            "requests.request",
+            side_effect=requests.exceptions.RequestException("Fail"),
+        ):
+            with pytest.raises(ProcessingError):
+                ingestor.ingest_feed("http://valid.com")
 
 
 def test_monitor_loop_lifecycle() -> None:
@@ -227,15 +231,16 @@ def test_discover_feeds_found() -> None:
     mock_response = MagicMock()
     mock_response.text = html
     mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "application/rss+xml"}
 
-    with patch("requests.get", return_value=mock_response):
-        with patch("requests.head") as mock_head:
-            # Mock HEAD request headers for the verification step
-            mock_head.return_value.headers = {
-                "Content-Type": "application/rss+xml",
-            }
-            mock_head.return_value.status_code = 200
+    def fake_request(method, url, **kwargs):
+        return mock_response
 
+    with patch(
+        "semantica.ingest.ssrf.socket.getaddrinfo",
+        return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+    ):
+        with patch("requests.request", side_effect=fake_request):
             feeds = ingestor.discover_feeds("http://site.com")
 
     assert "http://site.com/rss.xml" in feeds
