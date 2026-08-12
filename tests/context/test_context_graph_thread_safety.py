@@ -35,16 +35,20 @@ class TestToDictHoldsTheLock:
         returns immediately, since it never asks for the lock at all.
         """
         graph = _seeded_graph(10)
+        started = threading.Event()
         finished = threading.Event()
 
         def snapshot():
+            started.set()
             graph.to_dict()
             finished.set()
 
         with graph._lock:
             worker = threading.Thread(target=snapshot, daemon=True)
             worker.start()
-            # The worker cannot finish while this thread owns the lock.
+            assert started.wait(timeout=5.0), "the worker thread never started running"
+            # The worker is now running and cannot finish while this thread
+            # owns the lock.
             assert not finished.wait(timeout=0.5), (
                 "to_dict() completed while another thread held _lock, so it is "
                 "reading graph state unguarded"
@@ -54,13 +58,27 @@ class TestToDictHoldsTheLock:
         worker.join(timeout=5.0)
 
     def test_to_dict_is_reentrant_for_a_caller_holding_the_lock(self):
-        """``_lock`` is an ``RLock``, so lock-holding callers must not deadlock."""
+        """``_lock`` is an ``RLock``, so lock-holding callers must not deadlock.
+
+        The nested acquisition runs in a daemon worker joined with a timeout so
+        that a non-reentrant lock fails the test instead of hanging it.
+        """
         graph = _seeded_graph(10)
+        result = {}
 
-        with graph._lock:
-            snapshot = graph.to_dict()
+        def nested_snapshot():
+            with graph._lock:
+                result["snapshot"] = graph.to_dict()
 
-        assert len(snapshot["nodes"]) == 10
+        worker = threading.Thread(target=nested_snapshot, daemon=True)
+        worker.start()
+        worker.join(timeout=5.0)
+
+        assert not worker.is_alive(), (
+            "to_dict() deadlocked when called by a thread already holding "
+            "_lock -- the lock is no longer reentrant"
+        )
+        assert len(result["snapshot"]["nodes"]) == 10
 
 
 class TestToDictUnderConcurrentWrites:
