@@ -199,8 +199,12 @@ The `all` extra is the repo's cross-platform dependency set (GPU extras like
 `pyproject.toml`). Keep the pinned `uv` version in sync with CI so regeneration
 is deterministic.
 
-CI fails if `requirements-ci.txt` is stale (`uv pip compile` must produce a
-byte-identical file).
+CI's staleness check re-resolves with the committed lockfile as a constraint
+and compares version lines only: upstream package releases never fail CI —
+the lockfile changes only when `pyproject.toml` changes intentionally.
+
+CI fails if `requirements-ci.txt` is stale relative to `pyproject.toml`
+(the version-line comparison detects new/removed/changed dependencies).
 
 ### 3. Create Branch
 
