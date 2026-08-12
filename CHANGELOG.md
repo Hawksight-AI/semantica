@@ -18,6 +18,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Corrected during review**: `add_temporal_edge`/`create_temporal_snapshot` docstrings overclaimed numeric-timestamp support; `_parse_time()` only special-cases `str` and `datetime`, falling back to a bare `str()` cast for anything else (not true numeric parsing). Narrowed to "datetime or ISO-formatted string"
   - **Fixed along the way**: `build()`'s `**options` documented a default only for `extract`; `extract_relations`, `extract_triplets`, `ner_method`, `relation_method`, and `triplet_method` all have concrete defaults in `_extract_from_text()` (`True`, `True`, `"llm"`, `"llm"`, `"llm"`) that were left unstated, inconsistent with CONTRIBUTING.md's own docstring example of noting defaults inline
   - `python -m pytest tests/kg/test_kg.py tests/kg/test_graph_builder_external.py -q`: 45 passed
+- **`GraphBuilder` raw-text extraction now defaults to local extractors instead of LLM extraction** (closes #930) by @dex0shubham
+  - `GraphBuilder._extract_from_text()` defaulted `ner_method`, `relation_method`, and `triplet_method` to `"llm"`, and ran relation extraction unconditionally (`extract_relations` defaulted to `True`) — all four contradicting the defaults documented in the `build()` docstring at the time (`"ml"` / `"pattern"` / `False`), and diverging from the standalone extractors (`NERExtractor` defaults to `method="ml"`, `RelationExtractor` and `TripletExtractor` to `method="pattern"`). The practical effect was that any raw-text `build()` call silently required a configured provider, an API key, and network access
+  - Defaults are now `ner_method="ml"`, `relation_method="pattern"`, `triplet_method="pattern"`, and `extract_relations=False`, matching the docstring. LLM extraction remains fully available and is now opt-in
+  - **To restore the previous behaviour**, pass the methods explicitly:
+    ```python
+    builder.build(
+        sources,
+        ner_method="llm",
+        relation_method="llm",
+        triplet_method="llm",
+        extract_relations=True,
+    )
+    ```
+  - #878 landed in the meantime and resolved the same mismatch in the opposite direction, documenting the LLM values (`"llm"` / `"llm"` / `"llm"`, `extract_relations: True`) as the contract. Per the decision on #930 the code is the side that changes, so those docstring defaults are corrected here to `"ml"` / `"pattern"` / `"pattern"` / `False`, keeping #878's formatting
+  - Removed the stale `# Default to LLM methods as per requirement` comment, which read as an intentional decision but did not match the documented contract
+  - **Fixed along the way**: `_extract_from_text()` constructed a fresh extractor for every text, and `NERExtractor.__init__` loads its spaCy model eagerly when the method includes `"ml"` — so with the new default, a multi-document build would have reloaded the model once per source. Extractors are now built once per `(kind, method)` and reused for the lifetime of the builder, via `GraphBuilder._get_extractor()`. This path was previously unreachable by default because the old `"llm"` default never touched spaCy
+  - **Fixed along the way**: `_extract_from_text()` never forwarded its extracted relations to triplet extraction — it passed only `entities=`, so `TripletExtractor` re-derived relations itself (via a method taken from `triplet_method`) whenever `relations is None`, duplicating work and producing triplets that could disagree with the relations already extracted using `relation_method`. Relations are now passed through as `relations=`; when relation extraction is disabled or fails, `None` is forwarded and `TripletExtractor` keeps its existing self-derivation behaviour
+  - **Fixed along the way**: `GraphBuilder._extraction_stats` was only initialised inside `build()`, so calling `_extract_from_text()` directly raised an `AttributeError` that the extraction path's broad `except` swallowed and reported as `"Entity extraction failed"`. It is now seeded in `__init__` as well; `build()` still resets it per run
+  - New regression coverage in `tests/kg/test_graph_builder_extraction_defaults.py` pinning all four defaults, verifying that no default resolves to `"llm"`, confirming explicit LLM opt-in still routes correctly, asserting extractors are constructed once across repeated texts, covering fallback method lists (e.g. `ner_method=["pattern", "ml"]`) for all three extractors, asserting relations are forwarded to triplet extraction (and that `None` is forwarded when relation extraction is disabled or fails), and running the real default path end to end with no provider mocked. Verified to fail against the pre-fix code
+  - Full `kg` suite: 473 passed
 
 ### Fixed
 
