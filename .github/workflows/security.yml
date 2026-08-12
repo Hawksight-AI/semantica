@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 0 * * 1'
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'pyproject.toml'
+      - '.github/workflows/security.yml'
 
 permissions:
   contents: read
@@ -17,5 +22,16 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install pip-audit
+      # Install the [all] extra so pip-audit sees every optional dependency
+      # group (fastapi, python-multipart, etc.), not just pip-audit's own
+      # deps. PYSEC-2024-38 (#869) shipped in the first place because
+      # neither this job (bare env, no extras) nor security-scan.yml's
+      # Safety check (installs only [llm-litellm]) ever had fastapi or
+      # python-multipart installed to look at.
+      - run: pip install -e ".[all]"
+      # PR runs gate on findings, since they're scoped to actual
+      # pyproject.toml changes under review. The schedule/workflow_dispatch
+      # runs stay non-blocking until a full pass over pre-existing findings
+      # across the whole [all] tree has been done.
       - run: pip-audit
-        continue-on-error: true
+        continue-on-error: ${{ github.event_name != 'pull_request' }}

@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fixed along the way**: `MilvusStore`'s metadata expression builder rendered `NaN`/`Infinity` filter values as bare unquoted tokens, producing an invalid Milvus expression whose server-side rejection was then swallowed by a broad `except`, indistinguishable from "no matches"; these values are now rejected up front with a clear `ValidationError`
   - New/expanded test coverage in `tests/vector_store/test_backend_metadata_filtering.py` (all 7 backends, including the Pinecone dimension/zero-vector, PgVector boolean-list, FAISS `limit=0`, and Milvus `NaN` regressions) and `tests/vector_store/test_sqlite_vec_store.py` (new `TestSQLiteVecStoreFilterByMetadata`, run against the real `sqlite-vec` extension, including the array-vs-scalar intersection case)
 
+### Security
+
+- **`fastapi`/`python-multipart` floors in the `explorer` extra allowed PYSEC-2024-38 (CVE-2024-24762 / GHSA-2jv5-9r88-3w3p, `python-multipart` ReDoS)** (#871, closes #869) by @agu2347
+  - `explorer` declared `fastapi>=0.100.0` and `python-multipart>=0.0.6`; both floors resolve to versions carrying a ReDoS in `python-multipart`'s `Content-Type` header option parser (`parse_options_header`), reachable by any endpoint that accepts form/multipart data — an attacker-crafted header option can stall the event loop for minutes
+  - **Corrected during review**: the original fix raised only `fastapi>=0.109.1`, leaving `python-multipart>=0.0.6` unchanged. `python-multipart` is declared as its own direct dependency in the `explorer` extra rather than pulled in transitively via `fastapi[all]`, so a bare `fastapi` install enforces no `python-multipart` floor at all — the vulnerable `0.0.6` could still resolve with `fastapi>=0.109.1` in place. Floors raised to `fastapi>=0.109.2` / `python-multipart>=0.0.7`, the first versions of each that exclude the vulnerable range
+  - **Fixed along the way**: the `Security` workflow's `pip-audit` job ran only on a weekly schedule with `continue-on-error: true`, against a bare Python environment with none of Semantica's optional extras installed — it would never have seen `fastapi`/`python-multipart` regardless of which floor was pinned. `security-scan.yml`'s Safety check has the same blind spot (`pip install -e ".[llm-litellm]"` only, never `[explorer]`). `pip-audit` now also runs on `pull_request` when `pyproject.toml` changes, installs `semantica[all]`, and fails the build on any finding for that trigger; the schedule/`workflow_dispatch` runs stay non-blocking pending a full pass over any pre-existing findings across the whole `[all]` tree
+  - Full `explorer` suite: 241 passed
+
 ## [0.6.5] - 2026-08-11
 
 ### Added
