@@ -23,7 +23,7 @@ License: MIT
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import time
 
 
@@ -90,6 +90,10 @@ class GraphBuilder:
         self.version_snapshots = version_snapshots
         self.graph_store = graph_store
         self.config = kwargs  # Store additional config for extractors
+        # Extractors are reused across texts: NERExtractor loads its spaCy model
+        # eagerly in __init__, so constructing one per text would reload the
+        # model on every source in a multi-document build.
+        self._extractor_cache: Dict[Tuple[str, str], Any] = {}
 
         # Initialize logging
         from ..utils.logging import get_logger
@@ -228,6 +232,19 @@ class GraphBuilder:
             # Unknown type
             pass
 
+    def _get_extractor(self, kind: str, extractor_cls, method: str):
+        """Return a cached extractor for this method, building it on first use.
+
+        Extractors hold no per-text state but are expensive to construct —
+        ``NERExtractor(method="ml")`` loads a spaCy model in ``__init__``.
+        Keying on kind and method is enough because ``self.config`` is fixed
+        for the lifetime of the builder.
+        """
+        key = (kind, method)
+        if key not in self._extractor_cache:
+            self._extractor_cache[key] = extractor_cls(method=method, **self.config)
+        return self._extractor_cache[key]
+
     def _extract_from_text(self, text: str, all_entities: List[Any], all_relationships: List[Any], **options):
         """Helper to extract knowledge from text using configured methods."""
         if not options.get("extract", True):
@@ -247,7 +264,7 @@ class GraphBuilder:
         self.logger.info(f"Extracting knowledge from text ({len(text)} chars) using {ner_method}...")
         
         # 1. Extract Entities
-        ner = NERExtractor(method=ner_method, **self.config)
+        ner = self._get_extractor("ner", NERExtractor, ner_method)
         try:
             entities = ner.extract_entities(text, **options)
             extracted_count = len(entities)
@@ -261,7 +278,9 @@ class GraphBuilder:
         
         # 2. Extract Relations (if requested)
         if options.get("extract_relations", False):
-            rel_extractor = RelationExtractor(method=relation_method, **self.config)
+            rel_extractor = self._get_extractor(
+                "relation", RelationExtractor, relation_method
+            )
             try:
                 # Pass entities if available to help relation extraction
                 relations = rel_extractor.extract_relations(text, entities=entities, **options)
@@ -275,7 +294,9 @@ class GraphBuilder:
 
         # 3. Extract Triplets (if requested)
         if options.get("extract_triplets", True):
-            trip_extractor = TripletExtractor(method=triplet_method, **self.config)
+            trip_extractor = self._get_extractor(
+                "triplet", TripletExtractor, triplet_method
+            )
             try:
                 triplets = trip_extractor.extract_triplets(text, entities=entities, **options)
                 extracted_count = len(triplets)
