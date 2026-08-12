@@ -455,6 +455,7 @@ class ContextGraph:
 
         self.nodes: Dict[str, ContextNode] = {}
         self.edges: List[ContextEdge] = []
+        self._edge_index: Dict[str, ContextEdge] = {}
 
         self._adjacency: Dict[str, List[ContextEdge]] = defaultdict(list)
 
@@ -1043,6 +1044,7 @@ class ContextGraph:
             # Clear existing
             self.nodes.clear()
             self.edges.clear()
+            self._edge_index.clear()
             self._adjacency.clear()
             self.node_type_index.clear()
             self.edge_type_index.clear()
@@ -1436,6 +1438,7 @@ class ContextGraph:
         with self._lock:
             self.nodes.clear()
             self.edges.clear()
+            self._edge_index.clear()
             self._adjacency.clear()
             self.node_type_index.clear()
             self.edge_type_index.clear()
@@ -1508,6 +1511,11 @@ class ContextGraph:
             self.logger.warning("Skipping internal edge with invalid endpoints: %r", edge)
             return False
         with self._lock:
+            # Edge identity is content-derived, so an existing edge_id means this
+            # exact edge is already stored; re-adding it is a no-op (issue #922).
+            if edge.edge_id in self._edge_index:
+                return False
+
             # Ensure nodes exist
             if edge.source_id not in self.nodes:
                 self._add_internal_node(
@@ -1518,6 +1526,7 @@ class ContextGraph:
                     ContextNode(edge.target_id, "entity", edge.target_id)
                 )
 
+            self._edge_index[edge.edge_id] = edge
             self.edges.append(edge)
             self.edge_type_index[edge.edge_type].append(edge)
             self._adjacency[edge.source_id].append(edge)
