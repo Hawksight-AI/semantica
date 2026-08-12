@@ -230,10 +230,10 @@ dev = [
 
 # Explorer Dashboard
 explorer = [
-  "fastapi>=0.109.1",
+  "fastapi>=0.109.2",
   "uvicorn[standard]>=0.22.0",
   "websockets>=15.0.1",
-  "python-multipart>=0.0.6",
+  "python-multipart>=0.0.7",
   "defusedxml>=0.7.1"
 ]
 explorer-lite = [
