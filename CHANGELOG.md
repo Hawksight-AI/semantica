@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`GraphBuilder`'s 6 public methods now have Google-style docstrings** (#878, closes #876) by @cakeni
+  - `semantica/kg/graph_builder.py`'s `build`, `build_single_source`, `add_temporal_edge`, `create_temporal_snapshot`, `query_temporal`, and `load_from_neo4j` — the core knowledge-graph construction API, imported directly by callers — previously had zero docstrings across all 6 methods, the only file in a 10-file audit sample with that gap, despite CONTRIBUTING.md requiring Google-style `Args`/`Returns`/`Raises`/`Example` docs for public methods. Added full docstrings for all 6, plus the previously undocumented `build_single_source`, with runnable (`# doctest: +SKIP`) usage examples
+  - **Corrected during review**: `query_temporal`'s docstring claimed the query text was used to filter the graph; the implementation only records it in the result (`results = {"query": query, ...}`) with no interpretation or filtering. Corrected to state that explicitly
+  - **Corrected during review**: `create_temporal_snapshot`'s docstring implied entities were filtered for validity at the snapshot timestamp like relationships are; the implementation copies all entities unfiltered and only filters `relationships` by `valid_from`/`valid_until`. Docstring now distinguishes the two
+  - **Corrected during review**: `add_temporal_edge`/`create_temporal_snapshot` docstrings overclaimed numeric-timestamp support; `_parse_time()` only special-cases `str` and `datetime`, falling back to a bare `str()` cast for anything else (not true numeric parsing). Narrowed to "datetime or ISO-formatted string"
+  - **Fixed along the way**: `build()`'s `**options` documented a default only for `extract`; `extract_relations`, `extract_triplets`, `ner_method`, `relation_method`, and `triplet_method` all have concrete defaults in `_extract_from_text()` (`True`, `True`, `"llm"`, `"llm"`, `"llm"`) that were left unstated, inconsistent with CONTRIBUTING.md's own docstring example of noting defaults inline
+  - `python -m pytest tests/kg/test_kg.py tests/kg/test_graph_builder_external.py -q`: 45 passed
+
 ### Fixed
 
 - **MCP server reported a stale `0.4.0` version instead of the installed package version** (#870, closes #863) by @oiahoon
