@@ -18,6 +18,7 @@ actionable message, and every mapping that worked before still exports.
 """
 
 import os
+import shutil
 import tempfile
 import unittest
 from collections import OrderedDict, defaultdict
@@ -70,6 +71,7 @@ class TestExportYamlRejectsNonMappings(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
 
     def _path(self, name="out.yaml"):
         return os.path.join(self.tmpdir, name)
@@ -128,9 +130,14 @@ class TestExportYamlStillAcceptsMappings(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
 
     def _path(self, name="out.yaml"):
         return os.path.join(self.tmpdir, name)
+
+    def _load(self, path):
+        with open(path, encoding="utf-8") as handle:
+            return yaml.safe_load(handle)
 
     def test_valid_mapping_exports_for_each_method(self):
         for method, spec in METHODS.items():
@@ -138,13 +145,13 @@ class TestExportYamlStillAcceptsMappings(unittest.TestCase):
                 path = self._path(f"{method}.yaml")
                 export_yaml(spec["valid"], path, method=method)
                 self.assertTrue(os.path.exists(path))
-                loaded = yaml.safe_load(open(path, encoding="utf-8"))
+                loaded = self._load(path)
                 self.assertIn(spec["top_level_key"], loaded)
 
     def test_semantic_network_records_survive_the_round_trip(self):
         path = self._path("network.yaml")
         export_yaml(METHODS["semantic_network"]["valid"], path)
-        loaded = yaml.safe_load(open(path, encoding="utf-8"))
+        loaded = self._load(path)
         self.assertEqual(loaded["entities"], [{"id": "1", "name": "Acme"}])
 
     def test_empty_mapping_is_still_accepted(self):
@@ -166,7 +173,7 @@ class TestExportYamlStillAcceptsMappings(unittest.TestCase):
             with self.subTest(case=label):
                 path = self._path(f"{label}.yaml")
                 export_yaml(payload, path)
-                loaded = yaml.safe_load(open(path, encoding="utf-8"))
+                loaded = self._load(path)
                 self.assertEqual(loaded["entities"], valid["entities"])
 
 
