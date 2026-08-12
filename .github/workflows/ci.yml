@@ -47,9 +47,9 @@ jobs:
           pip install -r requirements-ci.txt
       - name: Verify requirements-ci.txt is up to date
         run: |
-          pip install uv
+          pip install uv==0.12.1
           cp requirements-ci.txt /tmp/requirements-ci-committed.txt
-          uv pip compile pyproject.toml --python-version 3.11 --all-extras -o requirements-ci.txt
+          uv pip compile pyproject.toml --python-version 3.11 --extra all -o requirements-ci.txt
           diff /tmp/requirements-ci-committed.txt requirements-ci.txt
       - run: pip install build
       - run: python -m build

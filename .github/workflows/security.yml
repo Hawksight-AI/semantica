@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'pyproject.toml'
+      - 'requirements-ci.txt'
       - '.github/workflows/security.yml'
 
 permissions:
@@ -23,21 +24,18 @@ jobs:
           python-version: '3.11'
       # Upgrade first: actions/setup-python's baked-in setuptools has been
       # behind known-vulnerable floors before (e.g. PYSEC-2026-3447 /
-      # CVE-2026-59890, fixed in 83.0.0) regardless of what this project's
-      # own [build-system] requires -- that only governs isolated build
-      # environments, not the ambient one pip-audit scans here.
+      # setuptools 75.1.0), so don't trust the preinstalled one.
       - run: python -m pip install --upgrade pip setuptools
-      - run: pip install pip-audit
-      # Install the [all] extra so pip-audit sees every optional dependency
-      # group (fastapi, python-multipart, etc.), not just pip-audit's own
-      # deps. PYSEC-2024-38 (#869) shipped in the first place because
-      # neither this job (bare env, no extras) nor security-scan.yml's
-      # Safety check (installs only [llm-litellm]) ever had fastapi or
+      # Audit the pinned dependency set (requirements-ci.txt is compiled from
+      # pyproject.toml with --extra all — the same coverage as the [all]
+      # extra, minus the Linux-only gpu set — so this keeps scan parity with
+      # CI/release builds without a time-dependent resolution). This is the
+      # fix for PYSEC-2024-38 (#869): the bare-env job never had fastapi or
       # python-multipart installed to look at.
-      - run: pip install -e ".[all]"
+      - run: pip install -r requirements-ci.txt
       # PR runs gate on findings, since they're scoped to actual
       # pyproject.toml changes under review. The schedule/workflow_dispatch
       # runs stay non-blocking until a full pass over pre-existing findings
       # across the whole [all] tree has been done.
-      - run: pip-audit
+      - run: pip-audit -r requirements-ci.txt
         continue-on-error: ${{ github.event_name != 'pull_request' }}

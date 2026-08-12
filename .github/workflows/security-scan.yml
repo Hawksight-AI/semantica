@@ -46,10 +46,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install safety bandit semgrep jq
-          # Install the project itself (core deps + the LiteLLM provider extra)
-          # so Safety scans Semantica's actual dependency tree, not just the
-          # scanner tools' own dependencies.
-          pip install -e ".[llm-litellm]"
+          # Install the pinned dependency set so Safety scans Semantica's exact
+          # CI/release dependency tree (requirements-ci.txt is generated from
+          # pyproject.toml extras, so this covers the project's real deps).
+          pip install -r requirements-ci.txt
 
       - name: Run Safety Check (Package Vulnerabilities)
         run: |

@@ -190,9 +190,14 @@ Python equivalent of `explorer/package-lock.json` + `npm ci`).
 Regenerate it after changing `pyproject.toml` dependencies:
 
 ```bash
-pip install uv
-uv pip compile pyproject.toml --python-version 3.11 --all-extras -o requirements-ci.txt
+pip install uv==0.12.1
+uv pip compile pyproject.toml --python-version 3.11 --extra all -o requirements-ci.txt
 ```
+
+The `all` extra is the repo's cross-platform dependency set (GPU extras like
+`faiss-gpu`/`cupy` are excluded and installed separately on Linux — see
+`pyproject.toml`). Keep the pinned `uv` version in sync with CI so regeneration
+is deterministic.
 
 CI fails if `requirements-ci.txt` is stale (`uv pip compile` must produce a
 byte-identical file).
