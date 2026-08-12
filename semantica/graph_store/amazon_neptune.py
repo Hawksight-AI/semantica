@@ -47,6 +47,7 @@ from typing import Any, Dict, List, Optional, Union
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .query_sanitize import sanitize_identifier
 
 # Optional boto3 for AWS credentials and SigV4 signing
 try:
@@ -981,7 +982,8 @@ class AmazonNeptuneStore:
             node_id = props_copy.pop("id", None) or self._generate_id()
             use_merge = options.get("merge", True)
 
-            label_str = ":".join(labels) if labels else "Node"
+            label_str = ":".join(sanitize_identifier(l, "label") for l in labels) if labels else "Node"
+            safe_keys = [sanitize_identifier(k, "property key") for k in props_copy.keys()]
 
             # Build parameters
             params = {"node_id": str(node_id)}
@@ -990,9 +992,7 @@ class AmazonNeptuneStore:
 
             if use_merge:
                 # MERGE: Return existing node if ID matches, or create new
-                set_parts = []
-                for key in props_copy.keys():
-                    set_parts.append(f"n.{key} = ${key}")
+                set_parts = [f"n.{key} = ${key}" for key in safe_keys]
 
                 if set_parts:
                     set_clause = ", ".join(set_parts)
@@ -1005,9 +1005,7 @@ class AmazonNeptuneStore:
                     query = f"MERGE (n:{label_str} {{`~id`: $node_id}}) RETURN n"
             else:
                 # CREATE: Will fail if node with same ID exists
-                prop_parts = ["`~id`: $node_id"]
-                for key in props_copy.keys():
-                    prop_parts.append(f"{key}: ${key}")
+                prop_parts = ["`~id`: $node_id"] + [f"{key}: ${key}" for key in safe_keys]
                 prop_assignments = ", ".join(prop_parts)
                 query = f"CREATE (n:{label_str} {{{prop_assignments}}}) RETURN n"
 
@@ -1162,7 +1160,7 @@ class AmazonNeptuneStore:
 
             # Build query
             if labels:
-                label_str = ":".join(labels)
+                label_str = ":".join(sanitize_identifier(l, "label") for l in labels)
                 query = f"MATCH (n:{label_str})"
             else:
                 query = "MATCH (n)"
@@ -1172,8 +1170,9 @@ class AmazonNeptuneStore:
             if properties:
                 conditions = []
                 for key, value in properties.items():
-                    param_key = f"prop_{key}"
-                    conditions.append(f"n.{key} = ${param_key}")
+                    safe_key = sanitize_identifier(key, "property key")
+                    param_key = f"prop_{safe_key}"
+                    conditions.append(f"n.{safe_key} = ${param_key}")
                     params[param_key] = value
                 query += " WHERE " + " AND ".join(conditions)
 
@@ -1341,15 +1340,16 @@ class AmazonNeptuneStore:
             }
 
             # Build property assignments including ~id
+            safe_rel_type = sanitize_identifier(rel_type, "relationship type")
             prop_parts = ["`~id`: $rel_id"]
             for key, value in props_copy.items():
-                prop_parts.append(f"{key}: ${key}")
+                prop_parts.append(f"{sanitize_identifier(key, 'property key')}: ${key}")
                 params[key] = value
 
             prop_assignments = ", ".join(prop_parts)
             query = (
                 f"MATCH (a), (b) WHERE id(a) = $start_id AND id(b) = $end_id "
-                f"CREATE (a)-[r:{rel_type} {{{prop_assignments}}}]->(b) RETURN r"
+                f"CREATE (a)-[r:{safe_rel_type} {{{prop_assignments}}}]->(b) RETURN r"
             )
 
             records = self._run_query(query, params)
@@ -1405,7 +1405,7 @@ class AmazonNeptuneStore:
         try:
             self._ensure_connected()
 
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
             params = {}
 
             if node_id is not None:
@@ -1564,7 +1564,8 @@ class AmazonNeptuneStore:
         try:
             self._ensure_connected()
 
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
+            depth = int(depth)
 
             if direction == "out":
                 pattern = f"-[r{type_filter}*1..{depth}]->"
@@ -1634,7 +1635,7 @@ class AmazonNeptuneStore:
         try:
             self._ensure_connected()
 
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
 
             # Neptune doesn't support named path patterns in shortestPath
             # Use iterative depth search instead

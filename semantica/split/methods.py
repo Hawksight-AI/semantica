@@ -1180,7 +1180,9 @@ def split_graph_based(
         )
 
         entities = ner_extractor.extract(text)
-        relations = relation_extractor.extract(text)
+        # Relation extraction requires the extracted entities; failing to pass
+        # them raises and can trigger the broad fallback to recursive splitting.
+        relations = relation_extractor.extract(text, entities)
 
         # Build graph
         G = nx.Graph()
@@ -1623,8 +1625,9 @@ def split_sliding_window(
         )
 
     try:
+        effective_stride = stride if stride is not None else (chunk_size - overlap)
         chunker = SlidingWindowChunker(
-            chunk_size=chunk_size, overlap=overlap, stride=stride, **kwargs
+            chunk_size=chunk_size, overlap=overlap, stride=effective_stride, **kwargs
         )
         return chunker.chunk(text, preserve_boundaries=preserve_boundaries, **kwargs)
     except Exception as e:

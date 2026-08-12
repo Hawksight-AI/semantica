@@ -4065,7 +4065,7 @@ def server(ctx: click.Context) -> None:
 @click.option("--port", default=8000, type=int, show_default=True)
 @click.option("--workers", default=1, type=int, show_default=True)
 @click.option("--reload", is_flag=True, default=False, help="Enable hot reload.")
-@click.option("--host", default="0.0.0.0", show_default=True)
+@click.option("--host", default="127.0.0.1", show_default=True)
 @click.pass_obj
 def server_start(cli_ctx: CLIContext, port: int, workers: int, reload: bool, host: str) -> None:
     """Start the REST API server.
@@ -4075,6 +4075,16 @@ def server_start(cli_ctx: CLIContext, port: int, workers: int, reload: bool, hos
       semantica server start --port 8000 --workers 4
     """
     cli_ctx = _require_ctx(cli_ctx)
+
+    _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+    if host not in _LOOPBACK_HOSTS:
+        console.print(
+            f"[{_WARN_STY}] ⚠[/{_WARN_STY}] Binding to [cyan]{host}[/cyan] exposes "
+            "the server to the network. Set SEMANTICA_API_KEY before doing this "
+            "in any reachable environment — without it, protected routes refuse "
+            "all requests (503), and with SEMANTICA_ALLOW_ANONYMOUS=true they are "
+            "wide open."
+        )
 
     def _action() -> None:
         import subprocess as sp
