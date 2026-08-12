@@ -109,6 +109,7 @@ License: MIT
 import re
 import difflib
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..utils.exceptions import ProcessingError
@@ -152,6 +153,39 @@ spacy, SPACY_AVAILABLE = safe_import("spacy")
 # Global cache for spacy model and text embedder to avoid reloading
 _nlp_cache = None
 _embedder_cache = None
+
+
+@lru_cache(maxsize=8)
+def load_spacy_model(model_name: str):
+    """Load a spaCy model, reusing the instance across calls.
+
+    Loading a spaCy pipeline costs ~100-150 ms, which dominates the actual
+    extraction work on short texts. The pipeline is read-only here (no
+    ``add_pipe``/``remove_pipe`` anywhere in this module), so a single
+    instance can be shared by every caller.
+
+    Failures are not cached: ``lru_cache`` only stores return values, so a
+    missing model raises ``OSError`` on every call and existing fallback
+    paths keep working.
+
+    Args:
+        model_name: Name of the spaCy model, e.g. ``"en_core_web_sm"``.
+
+    Returns:
+        The loaded spaCy ``Language`` pipeline.
+
+    Raises:
+        OSError: If the model is not installed.
+
+    Example:
+        >>> nlp = load_spacy_model("en_core_web_sm")  # doctest: +SKIP
+        >>> nlp is load_spacy_model("en_core_web_sm")  # doctest: +SKIP
+        True
+    """
+    # ponytail: process-wide sharing, same assumption get_nlp_model() already
+    # makes. Move to a per-thread cache only if spaCy calls are parallelised.
+    return spacy.load(model_name)
+
 
 def get_text_embedder():
     """
@@ -676,11 +710,11 @@ def extract_entities_ml(
         return extract_entities_pattern(text, **kwargs)
 
     try:
-        nlp = spacy.load(model)
+        nlp = load_spacy_model(model)
     except OSError:
         logger.warning(f"spaCy model {model} not found, using en_core_web_sm")
         try:
-            nlp = spacy.load("en_core_web_sm")
+            nlp = load_spacy_model("en_core_web_sm")
         except OSError:
             logger.warning(
                 "spaCy model not available, falling back to pattern extraction"
@@ -1400,12 +1434,12 @@ def extract_relations_similarity(
             # Prefer larger models for vectors
             for model_name in ["en_core_web_lg", "en_core_web_md", "en_core_web_sm"]:
                 if spacy.util.is_package(model_name):
-                    nlp = spacy.load(model_name)
+                    nlp = load_spacy_model(model_name)
                     break
             if not nlp:
                  # Try loading what we have
                  try:
-                     nlp = spacy.load("en_core_web_sm") 
+                     nlp = load_spacy_model("en_core_web_sm")
                  except:
                      pass
         except Exception:
@@ -1505,7 +1539,7 @@ def extract_relations_dependency(
         return extract_relations_pattern(text, entities, **kwargs)
 
     try:
-        nlp = spacy.load(model)
+        nlp = load_spacy_model(model)
     except OSError:
         logger.warning(f"spaCy model {model} not found")
         return extract_relations_pattern(text, entities, **kwargs)
