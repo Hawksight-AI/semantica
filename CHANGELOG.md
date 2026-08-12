@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **MCP server reported a stale `0.4.0` version instead of the installed package version** (#870, closes #863) by @oiahoon
+  - `semantica/mcp_server/__init__.py` hardcoded `"version": "0.4.0"` in both the MCP `initialize` response (`SERVER_INFO`) and the `semantica://schema/info` resource, regardless of the actual installed `semantica` version — every MCP client (Claude Desktop, Windsurf, Cline, Continue, VS Code Copilot, etc.) showed the wrong server version. Both surfaces now derive from `semantica.__version__`, the package's authoritative version source, so they can no longer drift from `pyproject.toml`
+  - New regression coverage in `tests/test_mcp_server_version.py`, including `!= "0.4.0"` canaries and a cross-surface consistency check
+  - **Fixed along the way**: the separate root-level `mcp/` package (`mcp/__init__.py`, `mcp/server.py`, `mcp/resources/registry.py`) — a companion MCP server implementation not included in the built distribution, but documented in `mcp/__init__.py` as a supported way to run against Claude Desktop/Windsurf/etc. from a source checkout — had the same three hardcoded `0.4.0` literals; fixed the same way, with matching regression tests in `tests/test_mcp_package_version.py`
+
+- **`VectorStore._filter_by_metadata()` `AttributeError` on all persistent backends** (#857, closes #849) by @TaherTadpatri
+  - `_filter_by_metadata()` iterated `self.metadata` directly, which only exists on the `inmemory` backend — any persistent backend (`faiss`, `qdrant`, `pinecone`, `milvus`, `pgvector`, `sqlite`, `weaviate`) crashed with `AttributeError` on `filter_decisions(query=None, ...)` / metadata-only filtering. Filtering is now delegated to a native `filter_by_metadata()` implemented on each backend store, using backend-native payload/SQL/JSON filtering (Qdrant `scroll()`, Pinecone `query()`, Milvus expression filters, PostgreSQL JSONB, SQLite `json_extract()`, Weaviate collection filters)
+  - **Fixed along the way**: `PineconeStore.get_index()` and `filter_by_metadata()` called a nonexistent `self.describe_index_stats()` on the store itself (the method only exists on the `PineconeIndex` wrapper returned by `self.index`); the resulting `AttributeError` was silently swallowed, so dimension auto-detection always failed quietly. Now correctly calls `self.index.describe_index_stats()`
+  - **Fixed along the way**: `PineconeStore.filter_by_metadata()` probed for filter-only matches using an all-zero dummy query vector, which Pinecone rejects for cosine-metric indexes — the library's own default — making metadata-only filtering silently non-functional out of the box. Now uses a unit vector instead
+  - **Fixed along the way**: `PgVectorStore.filter_by_metadata()`'s list-filter branch formatted boolean values with `str(v)` (`'True'`/`'False'`), never matching PostgreSQL JSONB's lowercase `'true'`/`'false'` text rendering, even though the equivalent scalar-filter branch already handled this correctly
+  - **Fixed along the way**: list-valued metadata fields (e.g. `{"tags": ["python", "js"]}`) could never match a list filter on the SQLite or PostgreSQL backends, because both extracted the whole array as its JSON/text representation instead of matching individual elements — silently diverging from the in-memory backend's set-intersection semantics. SQLite now uses `json_each()` over a `json_type`-guarded array/scalar wrapper; PostgreSQL now uses the `?|` "any array element" operator alongside the existing scalar `= ANY(...)` path
+  - **Fixed along the way**: `FAISSStore.filter_by_metadata(limit=0)` returned one result instead of zero, because the limit check ran after appending the current match
+  - **Fixed along the way**: `MilvusStore`'s metadata expression builder rendered `NaN`/`Infinity` filter values as bare unquoted tokens, producing an invalid Milvus expression whose server-side rejection was then swallowed by a broad `except`, indistinguishable from "no matches"; these values are now rejected up front with a clear `ValidationError`
+  - New/expanded test coverage in `tests/vector_store/test_backend_metadata_filtering.py` (all 7 backends, including the Pinecone dimension/zero-vector, PgVector boolean-list, FAISS `limit=0`, and Milvus `NaN` regressions) and `tests/vector_store/test_sqlite_vec_store.py` (new `TestSQLiteVecStoreFilterByMetadata`, run against the real `sqlite-vec` extension, including the array-vs-scalar intersection case)
+
+### Security
+
+- **`fastapi`/`python-multipart` floors in the `explorer` extra allowed PYSEC-2024-38 (CVE-2024-24762 / GHSA-2jv5-9r88-3w3p, `python-multipart` ReDoS)** (#871, closes #869) by @agu2347
+  - `explorer` declared `fastapi>=0.100.0` and `python-multipart>=0.0.6`; both floors resolve to versions carrying a ReDoS in `python-multipart`'s `Content-Type` header option parser (`parse_options_header`), reachable by any endpoint that accepts form/multipart data — an attacker-crafted header option can stall the event loop for minutes
+  - **Corrected during review**: the original fix raised only `fastapi>=0.109.1`, leaving `python-multipart>=0.0.6` unchanged. `python-multipart` is declared as its own direct dependency in the `explorer` extra rather than pulled in transitively via `fastapi[all]`, so a bare `fastapi` install enforces no `python-multipart` floor at all — the vulnerable `0.0.6` could still resolve with `fastapi>=0.109.1` in place. Floors raised to `fastapi>=0.109.2` / `python-multipart>=0.0.7`, the first versions of each that exclude the vulnerable range
+  - **Fixed along the way**: the `Security` workflow's `pip-audit` job ran only on a weekly schedule with `continue-on-error: true`, against a bare Python environment with none of Semantica's optional extras installed — it would never have seen `fastapi`/`python-multipart` regardless of which floor was pinned. `security-scan.yml`'s Safety check has the same blind spot (`pip install -e ".[llm-litellm]"` only, never `[explorer]`). `pip-audit` now also runs on `pull_request` when `pyproject.toml` changes, installs `semantica[all]`, and fails the build on any finding for that trigger; the schedule/`workflow_dispatch` runs stay non-blocking pending a full pass over any pre-existing findings across the whole `[all]` tree
+  - **Caught by the new gate on its first run**: `python -m pip install -e ".[all]"` pulled in `setuptools==79.0.1`, vulnerable to CVE-2026-59890/GHSA-h35f-9h28-mq5c/PYSEC-2026-3447 (Unicode-normalization bypass of `MANIFEST.in` exclude/prune patterns on macOS APFS/HFS+, letting excluded files leak into a built sdist), fixed in `83.0.0`. `[build-system] requires` had the exact same too-permissive-floor pattern this whole entry is about (`setuptools>=61.0`), and `actions/setup-python`'s baked-in `setuptools` isn't governed by that pin at all since it's outside any isolated build. Bumped `[build-system] requires` to `setuptools>=83.0.0`, and the `Security` workflow now runs `pip install --upgrade pip setuptools` before auditing so the scanned environment can't have a stale ambient copy regardless of what governs it
+  - Full `explorer` suite: 241 passed
+
 ## [0.6.5] - 2026-08-11
 
 ### Added
@@ -70,6 +96,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Documented the file contract and workflow in `docs/reference/context.md`; 43 new tests in `tests/context/test_agent_memory_markdown.py` cover round-trip losslessness, idempotency, validation errors, rollback on failure, and vector-store sync ordering
 
 ### Fixed
+
+- **`PipelineWithProvenance` raised `ModuleNotFoundError` on import and `AttributeError` on `.run()`** (#858, closes #858) by @Karunasagar12
+  - `from .pipeline import Pipeline` failed because `semantica/pipeline/pipeline.py` does not exist; corrected to `from .pipeline_builder import Pipeline`
+  - `.run()` called `self._pipeline.run()` on the `Pipeline` dataclass, which has no such method; replaced with `self._engine.execute_pipeline(self._pipeline, ...)` delegating to `ExecutionEngine`
+  - Constructor now accepts a built `Pipeline` instance (from `PipelineBuilder.build()`) instead of `**config`; the old `Pipeline(**config)` internal construction was invalid and never functional
+  - Replaced deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)` in `run()`
 
 - **`VectorStore.search_vectors()` returned inconsistent result shapes across backend implementations** (#853, closes #845) by @Sameer6305, reviewed by @KaifAhmad1
   - Every built-in backend (FAISS, Milvus, pgvector, Pinecone, Qdrant, SQLite-vec, Weaviate, in-memory) now returns the same canonical `SearchResult` shape (`id`, `score`, `metadata`, `vector`, `distance`), instead of some backends omitting `vector`/`metadata`/`distance` or, for Weaviate, returning a backend-specific `properties` key instead of `metadata`
