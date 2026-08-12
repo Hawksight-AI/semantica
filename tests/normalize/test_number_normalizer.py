@@ -32,6 +32,11 @@ class TestUnitConverter(unittest.TestCase):
         # 1 kg = 1000 g
         self.assertEqual(self.converter.convert_units(1, "kg", "g"), 1000.0)
 
+    def test_convert_accepts_aliases_for_category_validation(self):
+        # Aliases are part of the documented API, not just parsing syntax.
+        self.assertEqual(self.converter.convert_units(1, "feet", "m"), 0.3048)
+        self.assertEqual(self.converter.convert_units(1, "gal", "liter"), 3.78541)
+
     def test_normalize_unit(self):
         self.assertEqual(self.converter.normalize_unit("km"), "kilometer")
         self.assertEqual(self.converter.normalize_unit("kgs"), "kilogram")
