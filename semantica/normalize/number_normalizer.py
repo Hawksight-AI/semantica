@@ -562,6 +562,11 @@ class CurrencyNormalizer:
             "SEK",
             "NOK",
             "DKK",
+            "RUB",
+            "KRW",
+            "ILS",
+            "NGN",
+            "PKR",
         ]
 
         self.logger.debug("Currency normalizer initialized")
