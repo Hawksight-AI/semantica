@@ -59,9 +59,11 @@ License: MIT
 """
 
 import copy
+import errno
 import hashlib
 import os
 import re
+import stat
 import tempfile
 from collections import deque
 from dataclasses import dataclass, field
@@ -1906,7 +1908,42 @@ class AgentMemory:
 
         return memories
 
+    def _read_markdown_file_content(self, file_path: Path) -> str:
+        if file_path.is_symlink():
+            raise ValueError(f"Symlink Markdown import paths are rejected: {file_path}")
+
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+
+        try:
+            fd = os.open(str(file_path), flags)
+        except OSError as exc:
+            if exc.errno == getattr(errno, "ELOOP", None):
+                raise ValueError(
+                    f"Symlink Markdown import paths are rejected: {file_path}"
+                ) from exc
+            raise
+
+        try:
+            stat_res = os.fstat(fd)
+            if not stat.S_ISREG(stat_res.st_mode):
+                raise ValueError(
+                    f"Markdown import path is not a regular file: {file_path}"
+                )
+            with open(fd, "r", encoding="utf-8", closefd=True) as f:
+                return f.read()
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            raise
+
     def _read_markdown_path(self, path: Path) -> List[Tuple[str, str]]:
+        if path.is_symlink():
+            raise ValueError(f"Symlink Markdown import paths are rejected: {path}")
+
         if not path.exists():
             raise FileNotFoundError(f"Markdown import path does not exist: {path}")
 
@@ -1916,6 +1953,7 @@ class AgentMemory:
                     file_path
                     for file_path in path.iterdir()
                     if file_path.is_file()
+                    and not file_path.is_symlink()
                     and file_path.suffix.lower() in self._MARKDOWN_EXTENSIONS
                 ),
                 key=lambda file_path: (file_path.name.casefold(), file_path.name),
@@ -1926,7 +1964,7 @@ class AgentMemory:
             raise ValueError(f"Markdown import path is not a file or directory: {path}")
 
         return [
-            (str(file_path), file_path.read_text(encoding="utf-8"))
+            (str(file_path), self._read_markdown_file_content(file_path))
             for file_path in file_paths
         ]
 

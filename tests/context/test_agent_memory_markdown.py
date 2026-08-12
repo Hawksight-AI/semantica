@@ -724,3 +724,14 @@ def test_markdown_export_destination_must_be_a_directory(tmp_path):
 
     with pytest.raises(ValueError, match="not a directory"):
         AgentMemory().export(format="markdown", destination=destination)
+
+
+def test_markdown_import_file_open_security_rejects_symlink(tmp_path):
+    memory = AgentMemory()
+    target = tmp_path / "secret.txt"
+    target.write_text("secret content", encoding="utf-8")
+    symlink_file = tmp_path / "memory.md"
+    symlink_file.symlink_to(target)
+
+    with pytest.raises(ValueError, match="Symlink Markdown import paths are rejected"):
+        memory._read_markdown_file_content(symlink_file)
