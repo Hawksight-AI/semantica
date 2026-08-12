@@ -301,9 +301,25 @@ class GraphBuilder:
                 for backward compatibility.
             pipeline_id: Optional pipeline identifier used for progress
                 tracking.
-            **options: Graph-building options, including extraction toggles,
-                extraction methods, and an ``entity_resolver`` or explicit
-                ``relationships`` list.
+            **options: Additional graph-building options:
+
+                - ``extract`` (bool): Whether to run text extraction when a
+                  raw string or ``{"text": ...}`` dict is passed as a source
+                  (default: ``True``).
+                - ``extract_relations`` (bool): Whether to extract relations
+                  during text extraction.
+                - ``extract_triplets`` (bool): Whether to extract triplets
+                  during text extraction.
+                - ``ner_method`` (str): NER backend used for text extraction
+                  (e.g. ``"ml"``, ``"pattern"``, ``"llm"``).
+                - ``relation_method`` (str): Relation-extraction backend
+                  (e.g. ``"pattern"``, ``"llm"``).
+                - ``triplet_method`` (str): Triplet-extraction backend
+                  (e.g. ``"pattern"``, ``"llm"``).
+                - ``entity_resolver``: An :class:`EntityResolver` instance
+                  that overrides the one configured on the builder.
+                - ``relationships`` (list): An explicit list of relationships
+                  to include in addition to those found in *sources*.
 
         Returns:
             A dictionary containing the graph's ``entities``,
