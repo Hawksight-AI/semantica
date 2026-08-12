@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "semantica"
-version = "0.6.0"
+version = "0.6.5"
 description = "Accountability and context layer for AI agents. Context graphs, decision intelligence, full provenance tracking, and explainable reasoning engines — every AI decision traceable, every output auditable."
 readme = "README.md"
 license = { text = "MIT" }
@@ -230,10 +230,11 @@ dev = [
 
 # Explorer Dashboard
 explorer = [
-  "fastapi>=0.100.0",
+  "fastapi>=0.109.2",
   "uvicorn[standard]>=0.22.0",
   "websockets>=15.0.1",
-  "python-multipart>=0.0.6"
+  "python-multipart>=0.0.7",
+  "defusedxml>=0.7.1"
 ]
 explorer-lite = [
   "streamlit>=1.25.0",

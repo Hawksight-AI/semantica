@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional, Union
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .query_sanitize import sanitize_identifier
 
 # Optional FalkorDB import
 try:
@@ -330,11 +331,11 @@ class FalkorDBStore:
         try:
             graph = self._ensure_graph()
 
-            label_str = ":".join(labels)
+            label_str = ":".join(sanitize_identifier(l, "label") for l in labels)
 
             # Build property string for Cypher
             props_str = ", ".join(
-                f"{k}: ${k}" for k in properties.keys()
+                f"{sanitize_identifier(k, 'property key')}: ${k}" for k in properties.keys()
             )
 
             query = f"CREATE (n:{label_str} {{{props_str}}}) RETURN id(n) as id, n"
@@ -392,9 +393,9 @@ class FalkorDBStore:
                 labels = node.get("labels", [])
                 properties = node.get("properties", {})
 
-                label_str = ":".join(labels) if labels else "Node"
+                label_str = ":".join(sanitize_identifier(l, "label") for l in labels) if labels else "Node"
                 props_str = ", ".join(
-                    f"{k}: ${k}" for k in properties.keys()
+                    f"{sanitize_identifier(k, 'property key')}: ${k}" for k in properties.keys()
                 )
 
                 query = f"CREATE (n:{label_str} {{{props_str}}}) RETURN id(n) as id"
@@ -447,7 +448,7 @@ class FalkorDBStore:
 
             # Build query
             if labels:
-                label_str = ":".join(labels)
+                label_str = ":".join(sanitize_identifier(l, "label") for l in labels)
                 query = f"MATCH (n:{label_str})"
             else:
                 query = "MATCH (n)"
@@ -456,7 +457,8 @@ class FalkorDBStore:
             if properties:
                 conditions = []
                 for key in properties.keys():
-                    conditions.append(f"n.{key} = ${key}")
+                    safe_key = sanitize_identifier(key, "property key")
+                    conditions.append(f"n.{safe_key} = ${safe_key}")
                 query += " WHERE " + " AND ".join(conditions)
 
             query += f" RETURN id(n) as id, n, labels(n) as labels LIMIT {limit}"
@@ -504,7 +506,8 @@ class FalkorDBStore:
             # Build SET clause
             set_parts = []
             for key in properties.keys():
-                set_parts.append(f"n.{key} = ${key}")
+                safe_key = sanitize_identifier(key, "property key")
+                set_parts.append(f"n.{safe_key} = ${safe_key}")
 
             if merge:
                 query = f"MATCH (n) WHERE id(n) = $node_id SET {', '.join(set_parts)} RETURN id(n) as id, n, labels(n) as labels"
@@ -592,9 +595,13 @@ class FalkorDBStore:
             graph = self._ensure_graph()
             properties = properties or {}
 
+            safe_rel_type = sanitize_identifier(rel_type, "relationship type")
+
             # Build property string
             if properties:
-                props_str = ", ".join(f"{k}: ${k}" for k in properties.keys())
+                props_str = ", ".join(
+                    f"{sanitize_identifier(k, 'property key')}: ${k}" for k in properties.keys()
+                )
                 props_str = f" {{{props_str}}}"
             else:
                 props_str = ""
@@ -602,7 +609,7 @@ class FalkorDBStore:
             query = f"""
                 MATCH (a), (b)
                 WHERE id(a) = $start_id AND id(b) = $end_id
-                CREATE (a)-[r:{rel_type}{props_str}]->(b)
+                CREATE (a)-[r:{safe_rel_type}{props_str}]->(b)
                 RETURN id(r) as id, type(r) as type
             """
 
@@ -656,7 +663,7 @@ class FalkorDBStore:
         """
         try:
             graph = self._ensure_graph()
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
 
             if node_id is not None:
                 if direction == "out":
@@ -806,7 +813,8 @@ class FalkorDBStore:
         """
         try:
             graph = self._ensure_graph()
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
+            depth = int(depth)
 
             if direction == "out":
                 pattern = f"-[r{type_filter}*1..{depth}]->"
@@ -860,7 +868,8 @@ class FalkorDBStore:
         """
         try:
             graph = self._ensure_graph()
-            type_filter = f":{rel_type}" if rel_type else ""
+            type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
+            max_depth = int(max_depth)
 
             query = f"""
                 MATCH path = shortestPath((start)-[r{type_filter}*..{max_depth}]-(end))
@@ -929,11 +938,13 @@ class FalkorDBStore:
         """
         try:
             graph = self._ensure_graph()
+            safe_label = sanitize_identifier(label, "label")
+            safe_property = sanitize_identifier(property_name, "property key")
 
             if index_type == "fulltext":
-                query = f"CALL db.idx.fulltext.createNodeIndex('{label}', '{property_name}')"
+                query = f"CALL db.idx.fulltext.createNodeIndex('{safe_label}', '{safe_property}')"
             else:
-                query = f"CREATE INDEX FOR (n:{label}) ON (n.{property_name})"
+                query = f"CREATE INDEX FOR (n:{safe_label}) ON (n.{safe_property})"
 
             graph.query(query)
             self.logger.info(f"Created {index_type} index on {label}.{property_name}")

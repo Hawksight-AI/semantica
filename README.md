@@ -132,7 +132,7 @@ compliant = graph.check_decision_rules({"category": "vendor_selection"})  # poli
 ```bash
 semantica doctor
 # Python 3.11.9         pass
-# semantica 0.6.0       pass
+# semantica 0.6.5       pass
 # faiss vector store    pass
 # Config file           pass    ~/.semantica/config.yaml
 ```
@@ -1474,12 +1474,18 @@ For contributor / dev-server setup: **[explorer/README.md: Local Setup Guide](ex
 
 ---
 
-## What's New in v0.6.0
+## What's New in v0.6.5
 
-- **Named-Graph Support for `JenaStore`:** Migrated onto `rdflib.Dataset(default_union=False)`, completing cross-backend named-graph parity across Blazegraph, RDF4J, and Jena; `add_triplets()` gains a `graph=` option
-- **SPARQL CONSTRUCT Query Templates:** Parameterized, injection-safe `CONSTRUCT` templates extended from Blazegraph-only to RDF4J and Jena, plus pipeline integration via the `construct_template` step type
-- **Databricks Connector:** `DatabricksIngestor` for Unity Catalog + Delta Lake ingestion, with PAT/OAuth M2M auth, table/query ingestion, and catalog/schema/table/lineage introspection. Install with `pip install "semantica[db-databricks]"`
-- **SQLite Vector Store Backend:** `SQLiteVecStore`, a disk-backed local vector store on `sqlite-vec`'s `vec0` virtual tables, with Cosine/L2 metrics, metadata filtering, and WAL mode. Install with `pip install semantica[vectorstore-sqlite]`
+**Security release — upgrading is strongly recommended.** Fixes for 5 externally-reported vulnerabilities in the Explorer API and graph/triplet store backends, plus a CodeQL-flagged ReDoS:
+
+- **Missing authentication on all Explorer API routes** (GHSA-j4mq-hprp-987v, Critical): every route now requires `SEMANTICA_API_KEY`, fails closed (503) rather than open when unconfigured
+- **SSRF via redirect bypass in ontology URL fetching** (GHSA-8c7v-62gr-hj6g, High): redirect targets are now re-validated at every hop and the connection is pinned to the validated address, closing a DNS check-then-use race
+- **Cypher injection via unvalidated node labels and property keys** (GHSA-482h-hw99-h62p, Critical): Neptune, Neo4j, and FalkorDB now sanitize every label/relationship-type/property-key interpolation site
+- **SPARQL injection via unvalidated triplet IRIs** (GHSA-8vgg-8mr4-r236, Critical): Blazegraph, RDF4J, and Jena now validate subject/predicate/object IRIs before interpolation
+- **Missing Origin validation on the WebSocket handshake** (GHSA-4643-wpgq-w329, Moderate, anonymous-mode only): `/ws/graph-updates` now checks `Origin` against the same allowlist `CORSMiddleware` enforces for HTTP
+- **Polynomial ReDoS in SPARQL query validation** (CodeQL `py/polynomial-redos`): fixed a backtracking regex in the Explorer's SPARQL route
+
+Also includes: embedded Oxigraph backend for `TripletStore`, PROV-O trust/spec completeness for `ProvenanceManager`, and the Altair Anzo triplet store backend.
 
 → [Full release notes](RELEASE_NOTES.md) · [Changelog](CHANGELOG.md)
 
