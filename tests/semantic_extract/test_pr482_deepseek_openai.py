@@ -243,7 +243,7 @@ class TestVerboseModeAssignment(unittest.TestCase):
         mock_instructor.Mode.TOOLS = "tools"
 
         with patch("semantica.semantic_extract.providers.instructor", mock_instructor):
-            with self.assertLogs(provider.logger, level="DEBUG") as captured:
+            with self.assertLogs(provider.logger.name, level="DEBUG") as captured:
                 try:
                     provider.generate_typed("prompt", Schema, verbose=True)
                 except Exception:
@@ -300,7 +300,7 @@ class TestVerboseModeAssignment(unittest.TestCase):
         mock_instructor.Mode.TOOLS = "tools"
 
         with patch("semantica.semantic_extract.providers.instructor", mock_instructor):
-            with self.assertLogs(provider.logger, level="DEBUG") as captured:
+            with self.assertLogs(provider.logger.name, level="DEBUG") as captured:
                 try:
                     provider.generate_typed("prompt", Schema)
                 except Exception:
