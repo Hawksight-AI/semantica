@@ -208,8 +208,22 @@ def test_discover_feeds_empty() -> None:
     ingestor = FeedIngestor()
     html = "<html><body>No feeds here</body></html>"
 
-    with patch("requests.get", return_value=MagicMock(text=html)):
-        feeds = ingestor.discover_feeds("http://site.com")
+    mock_response = MagicMock()
+    mock_response.text = html
+    mock_response.status_code = 200
+    mock_response.headers = {}
+
+    def fake_request(method, url, **kwargs):
+        if url == "http://site.com":
+            return mock_response
+        raise requests.exceptions.RequestException("not found")
+
+    with patch(
+        "semantica.ingest.ssrf.socket.getaddrinfo",
+        return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+    ):
+        with patch("requests.request", side_effect=fake_request):
+            feeds = ingestor.discover_feeds("http://site.com")
 
     assert len(feeds) == 0
 
