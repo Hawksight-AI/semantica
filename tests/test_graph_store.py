@@ -215,6 +215,26 @@ class TestGraphStore(unittest.TestCase):
         result = self.store.execute_query("MATCH (n) RETURN n")
         self.assertEqual(result["summary"], "Mock query executed")
 
+    def test_degree_centrality_rejects_malicious_label(self):
+        """Regression test for GHSA-482h-hw99-h62p: degree_centrality()
+        interpolates labels/rel_type directly into a Cypher MATCH clause
+        (graph_store.py's own query builder, not delegated to the backend),
+        so an unvalidated label was a direct injection point."""
+        from semantica.utils.exceptions import ValidationError
+        evil_label = "N}) MATCH (victim) DETACH DELETE victim //"
+        with self.assertRaises(ValidationError):
+            self.store._manager.analytics.degree_centrality(labels=[evil_label])
+
+    def test_degree_centrality_rejects_malicious_rel_type(self):
+        from semantica.utils.exceptions import ValidationError
+        evil_rel_type = "R]-() DETACH DELETE n //"
+        with self.assertRaises(ValidationError):
+            self.store._manager.analytics.degree_centrality(rel_type=evil_rel_type)
+
+    def test_degree_centrality_with_legitimate_input_still_works(self):
+        result = self.store._manager.analytics.degree_centrality(labels=["Person"])
+        self.assertEqual(result, [])  # MockGraphStore.execute_query returns no records
+
 class TestGraphStoreInitialization(unittest.TestCase):
     def test_falkordb_initialization(self):
         with patch('semantica.graph_store.falkordb_store.FalkorDBStore', side_effect=MockGraphStore) as mock_falkor:

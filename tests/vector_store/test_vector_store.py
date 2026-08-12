@@ -1,3 +1,6 @@
+import json
+import shutil
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 import numpy as np
@@ -133,6 +136,112 @@ class TestVectorStore(unittest.TestCase):
         store.store_vectors(vectors, metadata=metadata)
         
         self.assertTrue(mock_backend.called)
+
+    def test_filter_by_metadata_inmemory(self):
+        """Test _filter_by_metadata on inmemory backend."""
+        store = VectorStore(backend="inmemory")
+        store.metadata = {
+            "v1": {"category": "finance", "amount": 100, "tags": ["a", "b"]},
+            "v2": {"category": "finance", "amount": 500, "tags": ["b", "c"]},
+            "v3": {"category": "tech", "amount": 200, "tags": ["c"]},
+        }
+        store.vectors = {
+            "v1": np.array([0.1]),
+            "v2": np.array([0.2]),
+            "v3": np.array([0.3]),
+        }
+
+        # Exact filter
+        results = store._filter_by_metadata({"category": "finance"}, limit=10)
+        self.assertEqual(len(results), 2)
+        res_ids = {r["id"] for r in results}
+        self.assertEqual(res_ids, {"v1", "v2"})
+
+        # Range filter
+        results = store._filter_by_metadata({"amount": {"min": 150}}, limit=10)
+        self.assertEqual(len(results), 2)
+        res_ids = {r["id"] for r in results}
+        self.assertEqual(res_ids, {"v2", "v3"})
+
+        # List intersection filter
+        results = store._filter_by_metadata({"tags": ["a"]}, limit=10)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], "v1")
+
+    def test_filter_by_metadata_persistent_backend_delegation(self):
+        """Test that persistent backend delegates filter_by_metadata without AttributeError."""
+        store = VectorStore(backend="inmemory")
+        # Simulate persistent backend by deleting self.metadata attribute if any
+        if hasattr(store, "metadata"):
+            delattr(store, "metadata")
+
+        mock_backend = MagicMock()
+        mock_backend.filter_by_metadata.return_value = [
+            {"id": "p1", "metadata": {"category": "test"}, "vector": np.array([0.5])}
+        ]
+        store._backend_store = mock_backend
+        store.backend = "faiss"
+
+        # Should NOT raise AttributeError: 'VectorStore' object has no attribute 'metadata'
+        results = store._filter_by_metadata({"category": "test"}, limit=5)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], "p1")
+        mock_backend.filter_by_metadata.assert_called_once_with(filters={"category": "test"}, limit=5)
+
+    def test_filter_by_metadata_backend_not_implemented(self):
+        """Test that missing filter_by_metadata method raises NotImplementedError."""
+        store = VectorStore(backend="inmemory")
+        if hasattr(store, "metadata"):
+            delattr(store, "metadata")
+
+        store.backend = "unknown"
+        store._backend_store = object()
+
+        with self.assertRaises(NotImplementedError):
+            store._filter_by_metadata({"key": "val"}, limit=10)
+
+    def test_save_load_roundtrip_numpy_vectors(self):
+        """save()/load() must handle numpy float32 vectors without raising.
+
+        Regression test: json.dump() rejects numpy scalar types, so a naive
+        `list(v)` conversion (which yields np.float32 elements, not native
+        floats) raises TypeError. `v.tolist()` converts recursively to
+        native Python floats and must be used instead.
+        """
+        store = VectorStore(backend="inmemory", dimension=3)
+        store.vectors = {"v1": np.array([0.1, 0.2, 0.3], dtype=np.float32)}
+        store.metadata = {"v1": {"id": "1"}}
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            store.save(tmpdir)  # must not raise TypeError
+
+            # The JSON file itself must be valid and free of numpy types.
+            with open(f"{tmpdir}/store_data.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.assertTrue(all(isinstance(x, float) for x in data["vectors"]["v1"]))
+
+            loaded = VectorStore(backend="inmemory", dimension=3)
+            loaded.load(tmpdir)
+            np.testing.assert_allclose(
+                loaded.vectors["v1"], [0.1, 0.2, 0.3], rtol=1e-6
+            )
+            self.assertEqual(loaded.metadata["v1"], {"id": "1"})
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_load_rejects_legacy_pickle(self):
+        """load() must refuse legacy .pkl stores rather than deserializing them."""
+        store = VectorStore(backend="inmemory", dimension=3)
+        tmpdir = tempfile.mkdtemp()
+        try:
+            with open(f"{tmpdir}/store_data.pkl", "wb") as f:
+                f.write(b"not a real pickle, just needs to exist")
+            with self.assertRaises(RuntimeError):
+                store.load(tmpdir)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
 
 if __name__ == '__main__':
     unittest.main()
