@@ -20,6 +20,8 @@ services:
           type: keyvalue
           name: semantica-explorer-redis
           property: port
+      - key: SEMANTICA_API_KEY
+        generateValue: true
 
   - type: keyvalue
     name: semantica-explorer-redis

@@ -167,7 +167,6 @@ class TestProvenanceEnabledDisabled:
         """Test all modules work with provenance=False."""
         modules_to_test = [
             ('semantica.context.context_provenance', 'ContextManagerWithProvenance'),
-            ('semantica.pipeline.pipeline_provenance', 'PipelineWithProvenance'),
         ]
         
         for module_path, class_name in modules_to_test:
@@ -183,7 +182,6 @@ class TestProvenanceEnabledDisabled:
         """Test all modules work with provenance=True."""
         modules_to_test = [
             ('semantica.context.context_provenance', 'ContextManagerWithProvenance'),
-            ('semantica.pipeline.pipeline_provenance', 'PipelineWithProvenance'),
         ]
         
         for module_path, class_name in modules_to_test:
@@ -194,6 +192,23 @@ class TestProvenanceEnabledDisabled:
                 assert obj.provenance is True
             except ImportError:
                 pytest.skip(f"{module_path} not available")
+
+    def test_pipeline_with_provenance_supports_provenance_flag(self):
+        """PipelineWithProvenance accepts provenance=True/False.
+
+        PipelineWithProvenance requires a built Pipeline instance (unlike
+        other *WithProvenance wrappers that own their internal state), so it
+        cannot participate in the generic no-argument constructor loop above.
+        """
+        try:
+            from semantica.pipeline.pipeline_builder import Pipeline
+            from semantica.pipeline.pipeline_provenance import PipelineWithProvenance
+
+            pipeline = Pipeline(name="compat_test")
+            assert PipelineWithProvenance(pipeline, provenance=False).provenance is False
+            assert PipelineWithProvenance(pipeline, provenance=True).provenance is True
+        except ImportError:
+            pytest.skip("pipeline_provenance not available")
 
 
 class TestAllModulesEdgeCases:
@@ -219,10 +234,14 @@ class TestAllModulesEdgeCases:
         """Test each module has independent provenance manager."""
         try:
             from semantica.context.context_provenance import ContextManagerWithProvenance
+            from semantica.pipeline.pipeline_builder import Pipeline
             from semantica.pipeline.pipeline_provenance import PipelineWithProvenance
             
             ctx = ContextManagerWithProvenance(provenance=True)
-            pipe = PipelineWithProvenance(provenance=True)
+            pipe = PipelineWithProvenance(
+                Pipeline(name="independence_test"),
+                provenance=True,
+            )
             
             # Each should have its own manager
             assert ctx._prov_manager is not None

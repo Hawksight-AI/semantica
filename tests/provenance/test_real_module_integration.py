@@ -29,14 +29,17 @@ class TestRealModuleIntegration:
     def test_pipeline_real_execution_tracking(self):
         """Test pipeline tracks execution with provenance."""
         try:
+            from semantica.pipeline.pipeline_builder import Pipeline
             from semantica.pipeline.pipeline_provenance import PipelineWithProvenance
-            
-            pipeline = PipelineWithProvenance(provenance=True)
-            
+
+            pipeline = Pipeline(name="provenance_tracking_test")
+            runner = PipelineWithProvenance(pipeline, provenance=True)
+
             # Verify provenance setup
-            assert pipeline.provenance is True
-            assert pipeline._prov_manager is not None
-            
+            assert runner.provenance is True
+            assert runner._prov_manager is not None
+            assert isinstance(runner._prov_manager, ProvenanceManager)
+
         except ImportError:
             pytest.skip("Pipeline not available")
     
