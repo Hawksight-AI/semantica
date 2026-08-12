@@ -307,15 +307,15 @@ class GraphBuilder:
                   raw string or ``{"text": ...}`` dict is passed as a source
                   (default: ``True``).
                 - ``extract_relations`` (bool): Whether to extract relations
-                  during text extraction.
+                  during text extraction (default: ``True``).
                 - ``extract_triplets`` (bool): Whether to extract triplets
-                  during text extraction.
+                  during text extraction (default: ``True``).
                 - ``ner_method`` (str): NER backend used for text extraction
-                  (e.g. ``"ml"``, ``"pattern"``, ``"llm"``).
+                  (e.g. ``"ml"``, ``"pattern"``, ``"llm"``; default: ``"llm"``).
                 - ``relation_method`` (str): Relation-extraction backend
-                  (e.g. ``"pattern"``, ``"llm"``).
+                  (e.g. ``"pattern"``, ``"llm"``; default: ``"llm"``).
                 - ``triplet_method`` (str): Triplet-extraction backend
-                  (e.g. ``"pattern"``, ``"llm"``).
+                  (e.g. ``"pattern"``, ``"llm"``; default: ``"llm"``).
                 - ``entity_resolver``: An :class:`EntityResolver` instance
                   that overrides the one configured on the builder.
                 - ``relationships`` (list): An explicit list of relationships
