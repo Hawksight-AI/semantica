@@ -56,6 +56,7 @@ class TestToDictHoldsTheLock:
 
         assert finished.wait(timeout=5.0), "to_dict() did not complete after _lock was released"
         worker.join(timeout=5.0)
+        assert not worker.is_alive(), "the worker thread is still running after to_dict() finished"
 
     def test_to_dict_is_reentrant_for_a_caller_holding_the_lock(self):
         """``_lock`` is an ``RLock``, so lock-holding callers must not deadlock.
@@ -119,6 +120,10 @@ class TestToDictUnderConcurrentWrites:
         stop.set()
         for thread in threads:
             thread.join(timeout=5.0)
+            assert not thread.is_alive(), (
+                "a worker thread was still running 5s after the stop signal -- "
+                "a hang here would otherwise leak into subsequent tests"
+            )
 
         return errors, reads
 
