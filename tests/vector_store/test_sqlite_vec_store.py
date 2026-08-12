@@ -413,3 +413,51 @@ class TestSQLiteVecStoreStats:
 
         stats = store.get_stats()
         assert stats["vector_count"] == 4
+
+
+class TestSQLiteVecStoreFilterByMetadata:
+    """Test filter_by_metadata, including list-valued metadata handling."""
+
+    def test_filter_exact_match(self, store):
+        vectors = [np.random.rand(128).astype(np.float32) for _ in range(2)]
+        metadata = [{"category": "finance"}, {"category": "tech"}]
+        ids = store.add(vectors, metadata, ids=["v1", "v2"])
+
+        results = store.filter_by_metadata({"category": "finance"}, limit=10)
+
+        assert [r["id"] for r in results] == ["v1"]
+
+    def test_filter_scalar_field_against_list_filter(self, store):
+        """A scalar metadata value should match via plain IN-list membership."""
+        vectors = [np.random.rand(128).astype(np.float32) for _ in range(2)]
+        metadata = [{"category": "finance"}, {"category": "tech"}]
+        store.add(vectors, metadata, ids=["v1", "v2"])
+
+        results = store.filter_by_metadata({"category": ["finance", "ops"]}, limit=10)
+
+        assert [r["id"] for r in results] == ["v1"]
+
+    def test_filter_array_field_intersects_list_filter(self, store):
+        """A list-valued metadata field must match on set intersection with the
+        filter list, mirroring the in-memory backend's semantics -- not on a
+        literal comparison of the whole array's JSON text against each candidate.
+        """
+        vectors = [np.random.rand(128).astype(np.float32) for _ in range(3)]
+        metadata = [
+            {"tags": ["python", "js"]},
+            {"tags": ["go"]},
+            {"tags": ["python", "ml"]},
+        ]
+        store.add(vectors, metadata, ids=["v1", "v2", "v3"])
+
+        results = store.filter_by_metadata({"tags": ["python", "ml"]}, limit=10)
+
+        assert {r["id"] for r in results} == {"v1", "v3"}
+
+    def test_filter_limit_zero_returns_empty(self, store):
+        vectors = [np.random.rand(128).astype(np.float32)]
+        store.add(vectors, [{"category": "finance"}], ids=["v1"])
+
+        results = store.filter_by_metadata({"category": "finance"}, limit=0)
+
+        assert results == []
