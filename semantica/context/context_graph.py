@@ -466,6 +466,12 @@ class ContextGraph:
 
         self._unresolved_links: Dict[str, Dict[str, str]] = {}
 
+        # Retraction closes an entity's validity window but keeps it in the
+        # graph; a tombstone records that an entity was purged outright,
+        # without retaining the purged content. Keyed by node id / edge id.
+        self._retractions: Dict[str, Dict[str, Any]] = {}
+        self._tombstones: Dict[str, Dict[str, Any]] = {}
+
   
         self.progress_tracker = get_progress_tracker()
   
@@ -1431,6 +1437,260 @@ class ContextGraph:
             max_edges = n * (n - 1) 
             return len(self.edges) / max_edges
 
+    def retract_node(
+        self,
+        node_id: str,
+        reason: Optional[str] = None,
+        at: Optional[Union[str, datetime]] = None,
+        cascade: bool = True,
+    ) -> bool:
+        """Retract a node: no longer active, but still visible in history.
+
+        Closes the node's validity window rather than deleting it, so
+        :meth:`state_at` before ``at`` still returns the node and any decision
+        recorded against it remains explainable. Use :meth:`purge_node` when
+        the data itself has to be gone.
+
+        Args:
+            node_id: Node to retract.
+            reason: Why it was retracted, stored on the retraction record.
+            at: When the retraction takes effect (ISO string or datetime).
+                Defaults to now, UTC.
+            cascade: Also retract every edge touching the node. Leaving edges
+                active around an inactive node means :meth:`find_active_nodes`
+                drops the node while its relationships still read as current,
+                so the default keeps the active view self-consistent.
+
+        Retraction is expressed through the temporal window, so it is visible
+        to the activity-aware views -- :meth:`find_active_nodes`,
+        :meth:`state_at`, ``ContextNode.is_active`` -- and not to membership
+        checks like :meth:`has_node` or :meth:`stats`, which continue to count
+        the retained record. That matches how ``valid_until`` already behaved
+        before retraction existed.
+
+        Returns:
+            True if the node was retracted; False if it does not exist or was
+            already retracted.
+
+        Note:
+            Emits ``UPDATE_NODE`` to the audit-trail callback, since retraction
+            changes the validity window rather than removing the record.
+        """
+        at_iso = _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            node = self.nodes.get(node_id)
+            if node is None:
+                self.logger.warning("Cannot retract unknown node: %r", node_id)
+                return False
+            if node_id in self._retractions:
+                return False
+
+            node.valid_until = at_iso
+            record = {
+                "entity_id": node_id,
+                "entity_kind": "node",
+                "retracted_at": at_iso,
+                "reason": reason,
+            }
+            self._retractions[node_id] = record
+
+            cascaded = []
+            if cascade:
+                for edge in self._incident_edges(node_id):
+                    if edge.edge_id in self._retractions:
+                        continue
+                    edge.valid_until = at_iso
+                    self._retractions[edge.edge_id] = {
+                        "entity_id": edge.edge_id,
+                        "entity_kind": "edge",
+                        "retracted_at": at_iso,
+                        "reason": reason,
+                        "cascaded_from": node_id,
+                    }
+                    cascaded.append(edge)
+            payload = node.to_dict()
+
+        self._emit_mutation("UPDATE_NODE", node_id, {**payload, "retraction": record})
+        for edge in cascaded:
+            self._emit_mutation(
+                "UPDATE_EDGE",
+                edge.edge_id,
+                {**edge.to_dict(), "retraction": self._retractions[edge.edge_id]},
+            )
+        self.logger.info(
+            "Retracted node %r at %s (cascaded %d edge(s))",
+            node_id,
+            at_iso,
+            len(cascaded),
+        )
+        return True
+
+    def retract_edge(
+        self,
+        edge_id: str,
+        reason: Optional[str] = None,
+        at: Optional[Union[str, datetime]] = None,
+    ) -> bool:
+        """Retract a single edge, leaving its endpoints untouched.
+
+        Args:
+            edge_id: Edge to retract.
+            reason: Why it was retracted.
+            at: When the retraction takes effect. Defaults to now, UTC.
+
+        Returns:
+            True if the edge was retracted; False if it does not exist or was
+            already retracted.
+        """
+        at_iso = _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            edge = next((e for e in self.edges if e.edge_id == edge_id), None)
+            if edge is None:
+                self.logger.warning("Cannot retract unknown edge: %r", edge_id)
+                return False
+            if edge_id in self._retractions:
+                return False
+
+            edge.valid_until = at_iso
+            record = {
+                "entity_id": edge_id,
+                "entity_kind": "edge",
+                "retracted_at": at_iso,
+                "reason": reason,
+            }
+            self._retractions[edge_id] = record
+            payload = edge.to_dict()
+
+        self._emit_mutation("UPDATE_EDGE", edge_id, {**payload, "retraction": record})
+        self.logger.info("Retracted edge %r at %s", edge_id, at_iso)
+        return True
+
+    def purge_node(
+        self, node_id: str, reason: Optional[str] = None, cascade: bool = True
+    ) -> bool:
+        """Permanently remove a node; history no longer contains it.
+
+        Unlike :meth:`retract_node` this is destructive: the node disappears
+        from :meth:`state_at` as well as from the active view. Only a tombstone
+        remains, recording that a purge happened and why -- deliberately
+        without the purged content, since retaining it would defeat the point.
+
+        Scope is this graph only. Copies held elsewhere (``AgentMemory``, a
+        bound vector store, an exported file) are not reached, so this is one
+        step of an erasure workflow, not the whole of it.
+
+        Args:
+            node_id: Node to purge.
+            reason: Why it was purged, e.g. an erasure-request reference.
+            cascade: Also purge every edge touching the node. Defaults to True
+                because leaving edges pointing at a removed node produces
+                dangling endpoints.
+
+        Returns:
+            True if the node was purged; False if it does not exist.
+
+        Note:
+            Emits ``REMOVE_NODE``/``REMOVE_EDGE`` to the audit-trail callback.
+        """
+        purged_at = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            node = self.nodes.get(node_id)
+            if node is None:
+                self.logger.warning("Cannot purge unknown node: %r", node_id)
+                return False
+
+            purged_edges = []
+            if cascade:
+                for edge in self._incident_edges(node_id):
+                    self._drop_edge_from_indexes(edge)
+                    self._tombstones[edge.edge_id] = {
+                        "entity_id": edge.edge_id,
+                        "entity_kind": "edge",
+                        "purged_at": purged_at,
+                        "reason": reason,
+                        "cascaded_from": node_id,
+                    }
+                    self._retractions.pop(edge.edge_id, None)
+                    purged_edges.append(edge.edge_id)
+
+            del self.nodes[node_id]
+            bucket = self.node_type_index.get(node.node_type)
+            if bucket is not None:
+                bucket.discard(node_id)
+                if not bucket:
+                    del self.node_type_index[node.node_type]
+            self._adjacency.pop(node_id, None)
+            self._retractions.pop(node_id, None)
+            self._tombstones[node_id] = {
+                "entity_id": node_id,
+                "entity_kind": "node",
+                "purged_at": purged_at,
+                "reason": reason,
+            }
+
+        for edge_id in purged_edges:
+            self._emit_mutation("REMOVE_EDGE", edge_id, self._tombstones[edge_id])
+        self._emit_mutation("REMOVE_NODE", node_id, self._tombstones[node_id])
+        self.logger.info(
+            "Purged node %r (cascaded %d edge(s))", node_id, len(purged_edges)
+        )
+        return True
+
+    def purge_edge(self, edge_id: str, reason: Optional[str] = None) -> bool:
+        """Permanently remove a single edge, leaving its endpoints in place.
+
+        Args:
+            edge_id: Edge to purge.
+            reason: Why it was purged.
+
+        Returns:
+            True if the edge was purged; False if it does not exist.
+        """
+        purged_at = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            edge = next((e for e in self.edges if e.edge_id == edge_id), None)
+            if edge is None:
+                self.logger.warning("Cannot purge unknown edge: %r", edge_id)
+                return False
+            self._drop_edge_from_indexes(edge)
+            self._retractions.pop(edge_id, None)
+            self._tombstones[edge_id] = {
+                "entity_id": edge_id,
+                "entity_kind": "edge",
+                "purged_at": purged_at,
+                "reason": reason,
+            }
+
+        self._emit_mutation("REMOVE_EDGE", edge_id, self._tombstones[edge_id])
+        self.logger.info("Purged edge %r", edge_id)
+        return True
+
+    def get_retraction(self, entity_id: str) -> Optional[Dict[str, Any]]:
+        """Return the retraction record for a node or edge, or None."""
+        with self._lock:
+            record = self._retractions.get(entity_id)
+            return dict(record) if record is not None else None
+
+    def get_tombstone(self, entity_id: str) -> Optional[Dict[str, Any]]:
+        """Return the purge tombstone for a node or edge, or None.
+
+        The tombstone records that a purge happened, when, and why. It never
+        contains the purged content.
+        """
+        with self._lock:
+            record = self._tombstones.get(entity_id)
+            return dict(record) if record is not None else None
+
+    def list_retractions(self) -> List[Dict[str, Any]]:
+        """Return every retraction record."""
+        with self._lock:
+            return [dict(record) for record in self._retractions.values()]
+
+    def list_tombstones(self) -> List[Dict[str, Any]]:
+        """Return every purge tombstone."""
+        with self._lock:
+            return [dict(record) for record in self._tombstones.values()]
+
     def clear(self) -> None:
         """Fully reset the graph state and indexes."""
         with self._lock:
@@ -1441,6 +1701,8 @@ class ContextGraph:
             self.edge_type_index.clear()
             self._linked_graphs.clear()
             self._unresolved_links.clear()
+            self._retractions.clear()
+            self._tombstones.clear()
         self.logger.debug("Graph state fully cleared.")
 
     # --- Internal Helpers ---
@@ -1532,6 +1794,67 @@ class ContextGraph:
                     f"Audit trail callback failed for edge {edge.edge_id}: {e}"
                 )
         return True
+
+    def _emit_mutation(
+        self, operation: str, entity_id: str, payload: Dict[str, Any]
+    ) -> None:
+        """Fire the audit-trail callback, mirroring the add paths.
+
+        Kept in one place so retraction and purge record themselves the same
+        way ``_add_internal_node``/``_add_internal_edge`` already do, including
+        the ``_suspend_mutation_callback`` guard used during restores.
+        """
+        if not getattr(self, "mutation_callback", None):
+            return
+        if getattr(self, "_suspend_mutation_callback", False):
+            return
+        try:
+            self.mutation_callback(operation, entity_id, payload)
+        except Exception as e:
+            self.logger.warning(
+                f"Audit trail callback failed for {operation} {entity_id}: {e}"
+            )
+
+    def _incident_edges(self, node_id: str) -> List[ContextEdge]:
+        """Every edge touching ``node_id``, in either direction.
+
+        ``_adjacency`` is keyed by source only, so incoming edges have to come
+        from a scan of ``self.edges``; relying on ``_adjacency`` alone would
+        silently leave inbound edges pointing at a removed node.
+        """
+        return [
+            edge
+            for edge in self.edges
+            if edge.source_id == node_id or edge.target_id == node_id
+        ]
+
+    def _drop_edge_from_indexes(self, edge: ContextEdge) -> None:
+        """Remove one edge from every structure that references it.
+
+        The caller must hold ``self._lock``. ``edges``, ``edge_type_index`` and
+        ``_adjacency`` must be updated together or the indexes drift out of
+        step with the edge list.
+        """
+        try:
+            self.edges.remove(edge)
+        except ValueError:
+            pass
+        bucket = self.edge_type_index.get(edge.edge_type)
+        if bucket is not None:
+            try:
+                bucket.remove(edge)
+            except ValueError:
+                pass
+            if not bucket:
+                del self.edge_type_index[edge.edge_type]
+        adjacent = self._adjacency.get(edge.source_id)
+        if adjacent is not None:
+            try:
+                adjacent.remove(edge)
+            except ValueError:
+                pass
+            if not adjacent:
+                del self._adjacency[edge.source_id]
 
     # --- Builder Methods (Legacy/Utility) ---
 
