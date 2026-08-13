@@ -740,6 +740,15 @@ class SQLiteVecStore:
             except Exception as e:
                 raise ProcessingError("Failed to get store statistics") from e
 
+    def count(self) -> int:
+        """Return the exact number of vectors stored in this SQLite table.
+
+        Executes ``SELECT COUNT(*) FROM <table>`` under the store's lock to
+        guarantee a consistent, transaction-aware result.
+        """
+        stats = self.get_stats()
+        return int(stats["vector_count"])
+
     def close(self):
         """Close the database connection."""
         if hasattr(self, "_lock") and self._lock:
