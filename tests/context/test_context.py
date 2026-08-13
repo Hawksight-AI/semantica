@@ -321,6 +321,18 @@ class TestContextGraphNodePropertyContract(unittest.TestCase):
         graph.add_node_attribute("ghost", {"extra": "value"})
         self.assertEqual(len(fired), 0)
 
+    def test_add_node_attribute_raising_callback_does_not_propagate(self):
+        graph = self._graph_with_node()
+
+        def _boom(op, nid, data):
+            raise RuntimeError("audit sink unavailable")
+
+        graph.mutation_callback = _boom
+        # Should not raise, matching _add_internal_node/_add_internal_edge,
+        # which already catch and log mutation_callback exceptions.
+        graph.add_node_attribute("n1", {"extra": "value"})
+        self.assertEqual(graph.get_node_property("n1", "extra"), "value")
+
 
 if __name__ == '__main__':
     unittest.main()

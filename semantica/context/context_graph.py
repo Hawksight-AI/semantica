@@ -789,7 +789,10 @@ class ContextGraph:
         if getattr(self, "mutation_callback", None) and not getattr(
             self, "_suspend_mutation_callback", False
         ):
-            self.mutation_callback("UPDATE_NODE", node_id, node.to_dict())
+            try:
+                self.mutation_callback("UPDATE_NODE", node_id, node.to_dict())
+            except Exception as e:
+                self.logger.warning(f"Audit trail callback failed for node {node_id}: {e}")
 
     def get_edge_data(self, source_id: str, target_id: str) -> Dict[str, Any]:
         """Return metadata for the edge between *source_id* and *target_id*.
