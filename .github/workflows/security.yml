@@ -37,5 +37,6 @@ jobs:
       # pyproject.toml changes under review. The schedule/workflow_dispatch
       # runs stay non-blocking until a full pass over pre-existing findings
       # across the whole [all] tree has been done.
+      - run: pip install pip-audit
       - run: pip-audit -r requirements-ci.txt
         continue-on-error: ${{ github.event_name != 'pull_request' }}
