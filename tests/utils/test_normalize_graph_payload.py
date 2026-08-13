@@ -164,5 +164,54 @@ class TestExportersAgree(unittest.TestCase):
                 )
 
 
+class TestRecordsCannotBeDroppedSilently(unittest.TestCase):
+    """Presence of a recognized key is not proof the records survived.
+
+    ``{"entities": [], "data": [...]}`` clears a presence-only check and still
+    resolves to empty, so the records under 'data' would be dropped with no
+    signal -- the same failure the recognition check exists to prevent.
+    """
+
+    def test_empty_recognized_key_does_not_excuse_records_elsewhere(self):
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload({"entities": [], "data": [ENTITY]})
+
+        message = str(ctx.exception)
+        self.assertIn("'data'", message)
+        self.assertIn("holds records", message)
+
+    def test_check_applies_to_every_recognized_spelling(self):
+        for key in ("entities", "nodes", "relationships", "edges", "triplets"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValidationError):
+                    normalize_graph_payload({key: [], "records": [ENTITY]})
+
+    def test_non_record_keys_are_not_mistaken_for_dropped_records(self):
+        """ContextGraph.to_dict() always carries 'statistics'.
+
+        An empty graph must stay exportable, so only a non-empty list counts
+        as evidence that records were dropped.
+        """
+        result = normalize_graph_payload(
+            {"nodes": [], "edges": [], "statistics": {"node_count": 0}}
+        )
+
+        self.assertEqual(result["entities"], [])
+        self.assertEqual(result["relationships"], [])
+
+    def test_records_alongside_a_populated_collection_are_not_refused(self):
+        """Something resolved, so the export is not silently empty."""
+        result = normalize_graph_payload({"entities": [ENTITY], "statistics": {"n": 1}})
+
+        self.assertEqual(result["entities"], [ENTITY])
+
+    def test_degrading_callers_are_unaffected(self):
+        result = normalize_graph_payload(
+            {"entities": [], "data": [ENTITY]}, require_recognized=False
+        )
+
+        self.assertEqual(result["entities"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

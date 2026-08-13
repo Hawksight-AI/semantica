@@ -76,6 +76,44 @@ class TestSemanticNetworkKeyRecognition:
         with pytest.raises(ValidationError):
             exporter.export_semantic_network(payload)
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"entities": [], "data": ENTITIES},
+            {"nodes": [], "edges": [], "records": ENTITIES},
+            {"triplets": [], "data": ENTITIES, "metadata": {"source": "test"}},
+        ],
+        ids=["entities-empty", "nodes-edges-empty", "triplets-empty"],
+    )
+    def test_recognized_but_empty_with_records_elsewhere_is_rejected(self, payload):
+        """Presence of a recognized key is not proof the records survived.
+
+        ``{"entities": [], "data": [...]}`` clears a presence-only check and
+        still resolves to empty, dropping everything under 'data' -- the same
+        silent-empty export by a narrower route.
+        """
+        exporter = SemanticNetworkYAMLExporter()
+        with pytest.raises(ValidationError) as excinfo:
+            exporter.export_semantic_network(payload)
+
+        message = str(excinfo.value)
+        assert "holds records" in message
+        assert "'entities'" in message, "error should name where records belong"
+
+    def test_empty_graph_with_non_record_keys_still_exports(self, tmp_path):
+        """The rejection must key on dropped *records*, not on unread keys.
+
+        ``ContextGraph.to_dict()`` always carries a populated 'statistics'
+        dict, so an empty graph would be refused if any unread key counted.
+        """
+        graph = ContextGraph()
+        path = tmp_path / "empty_graph.yaml"
+        export_yaml(graph.to_dict(), path)
+
+        written = _load(path)
+        assert written["entities"] == []
+        assert written["relationships"] == []
+
     def test_empty_mapping_still_exports(self, tmp_path):
         """An empty graph is legitimate and carries nothing that could be lost."""
         path = tmp_path / "empty.yaml"
@@ -213,6 +251,26 @@ class TestSchemaKeyRecognition:
         with pytest.raises(ProcessingError):
             exporter.export_ontology_schema([{"id": "1"}])
 
+    def test_recognized_but_empty_with_records_elsewhere_is_rejected(self):
+        """The schema path had the same presence-only hole."""
+        exporter = YAMLSchemaExporter()
+        with pytest.raises(ValidationError) as excinfo:
+            exporter.export_ontology_schema({"classes": [], "nodes": [{"id": "1"}]})
+
+        assert "holds records" in str(excinfo.value)
+
+    def test_ontology_metadata_without_records_still_exports(self):
+        """A schema described only by its identity is not a dropped export."""
+        exporter = YAMLSchemaExporter()
+        written = yaml.safe_load(
+            exporter.export_ontology_schema(
+                {"uri": "http://example.org/o", "classes": []}
+            )
+        )
+
+        assert written["ontology"]["uri"] == "http://example.org/o"
+        assert written["classes"] == []
+
     def test_empty_mapping_still_exports(self, tmp_path):
         path = tmp_path / "schema.yaml"
         export_yaml({}, path, method="schema")
@@ -256,6 +314,68 @@ class TestFailureIsObservable:
             record.levelname in ("WARNING", "ERROR", "CRITICAL")
             for record in caplog.records
         ), "a rejected export should leave something at warning or above"
+
+
+class _RecordingTracker:
+    """Records the exporter's own progress calls, which are what is under test."""
+
+    def __init__(self):
+        self.stopped = []
+        self._next_id = 0
+
+    def start_tracking(self, **kwargs):
+        self._next_id += 1
+        return str(self._next_id)
+
+    def update_tracking(self, tracking_id, **kwargs):
+        pass
+
+    def stop_tracking(self, tracking_id, status=None, message=None):
+        self.stopped.append((status, message))
+
+
+class TestProgressReflectsTheWrite:
+    """Serialization completing is not the same as the file landing on disk."""
+
+    def test_failed_write_is_not_reported_as_completed(self, tmp_path):
+        """A write failure after serialization must not leave a clean tracker.
+
+        The path's parent is an existing *file*, so directory creation fails
+        after `export_semantic_network` has already reported its own
+        completion.
+        """
+        blocker = tmp_path / "blocker"
+        blocker.write_text("not a directory", encoding="utf-8")
+        target = blocker / "nested" / "out.yaml"
+
+        exporter = SemanticNetworkYAMLExporter()
+        tracker = _RecordingTracker()
+        exporter.progress_tracker = tracker
+
+        with pytest.raises(OSError):
+            exporter.export({"entities": ENTITIES}, target)
+
+        assert not target.exists()
+        statuses = [status for status, _ in tracker.stopped]
+        assert "failed" in statuses, f"write failure went unreported: {tracker.stopped}"
+        assert not any(
+            status == "completed" and "Exported YAML" in (message or "")
+            for status, message in tracker.stopped
+        ), "no span may claim a completed export when nothing was written"
+
+    def test_successful_write_is_reported_as_completed(self, tmp_path):
+        target = tmp_path / "out.yaml"
+        exporter = SemanticNetworkYAMLExporter()
+        tracker = _RecordingTracker()
+        exporter.progress_tracker = tracker
+
+        exporter.export({"entities": ENTITIES}, target)
+
+        assert target.exists()
+        assert all(status == "completed" for status, _ in tracker.stopped)
+        assert any(
+            "Exported YAML" in (message or "") for _, message in tracker.stopped
+        ), "the write should report its own completion, not just serialization"
 
 
 class TestUnaffectedExporters:

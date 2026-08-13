@@ -306,7 +306,9 @@ triplets and guessing which one a list holds would mislabel the records.
 
 Each exporter then reads a fixed set of keys, and raises `ValidationError` on a
 non-empty mapping that supplies none of them — such a payload would otherwise
-serialize to a valid file with every collection empty.
+serialize to a valid file with every collection empty. Naming a recognized key
+is not enough on its own: `{"entities": [], "data": [...]}` also raises, since
+nothing resolves while the records sit under a key the exporter never reads.
 
 | Method | Recognized keys |
 | :--- | :--- |
@@ -326,6 +328,9 @@ export_yaml(records, "out.yaml")            # ProcessingError
 
 # An export_json payload is refused rather than written out empty
 export_yaml({"data": records}, "out.yaml")  # ValidationError
+
+# ...and so is one that names a recognized key but leaves it empty
+export_yaml({"entities": [], "data": records}, "out.yaml")  # ValidationError
 ```
 
 An empty mapping is still accepted: an empty graph is a legitimate export and

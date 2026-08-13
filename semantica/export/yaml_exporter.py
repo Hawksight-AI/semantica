@@ -27,7 +27,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory, normalize_graph_payload
+from ..utils.helpers import (
+    _require_nothing_dropped,
+    _require_recognized_keys,
+    ensure_directory,
+    normalize_graph_payload,
+)
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
@@ -73,45 +78,38 @@ def _require_mapping(data: Any, expected_keys: Sequence[str]) -> None:
         )
 
 
-def _require_recognized_keys(
-    payload: Mapping, recognized_keys: Sequence[str], *, what: str
-) -> None:
-    """Reject a mapping whose keys the caller does not read.
+def _require_usable_schema(ontology: Mapping) -> None:
+    """Reject a schema mapping this exporter cannot read.
 
-    An exporter that builds its output from a fixed set of ``.get(key, [])``
-    lookups turns an unrecognized mapping into a structurally valid file with
-    every collection empty -- records dropped, no exception, and the progress
-    log reporting a completed export. The only way to notice is to open the
-    file, so the mapping is refused instead.
+    Two ways an ontology mapping produces an empty file: it shares no key with
+    the recognized set at all, or it names a recognized key that is empty
+    while the real records sit under a key this exporter does not read
+    (``{"classes": [], "nodes": [...]}``). Both are refused, using the same
+    checks the graph payloads go through, so the two vocabularies cannot drift
+    apart in what they consider a silent-empty export.
 
     An empty mapping is allowed through: it carries nothing that could be
-    lost, and an empty export is a legitimate result. A non-empty mapping is
-    not given the same benefit of the doubt -- its keys may well be records
-    under a name this exporter cannot read.
+    lost, and an empty export is a legitimate result.
 
-    The two checks are separate because they answer different questions and
-    the codebase already distinguishes them: a wrong *type* cannot be exported
-    at all and raises ProcessingError, matching
-    ``Neo4jCSVExporter._normalize_graph``; a mapping whose *contents* are
-    unusable raises ValidationError, matching ``normalize_graph_payload``.
+    Note the deliberate split in exception types, which the codebase already
+    makes: a wrong *type* cannot be exported at all and raises
+    ProcessingError, matching ``Neo4jCSVExporter._normalize_graph``; a mapping
+    whose *contents* are unusable raises ValidationError, matching
+    ``normalize_graph_payload``.
 
     Args:
-        payload: Mapping already checked by :func:`_require_mapping`.
-        recognized_keys: Keys the caller reads.
-        what: Noun for the error message, e.g. ``"Ontology schema"``.
+        ontology: Mapping already checked by :func:`_require_mapping`.
 
     Raises:
-        ValidationError: if ``payload`` is non-empty and shares no key with
-            ``recognized_keys``.
+        ValidationError: if the mapping shares no key with ``_SCHEMA_KEYS``,
+            or resolves to nothing while an unread key still holds records.
     """
-    if not payload or any(key in payload for key in recognized_keys):
-        return
-
-    supplied = ", ".join(f"'{key}'" for key in sorted(map(str, payload)))
-    expected = ", ".join(f"'{key}'" for key in recognized_keys)
-    raise ValidationError(
-        f"{what} has no recognized key. Supplied: {supplied}. "
-        f"Expected at least one of: {expected}."
+    _require_recognized_keys(ontology, _SCHEMA_KEYS, what="Ontology schema")
+    _require_nothing_dropped(
+        ontology,
+        _SCHEMA_KEYS,
+        [ontology.get(key) for key in _SCHEMA_KEYS],
+        what="Ontology schema",
     )
 
 
@@ -196,8 +194,10 @@ class SemanticNetworkYAMLExporter:
                 guessing which one a list represents would silently mislabel
                 it.
             ValidationError: if the mapping carries both spellings of a
-                collection with different contents, or is non-empty and shares
-                no key with the recognized set. The latter previously
+                collection with different contents; if it is non-empty and
+                shares no key with the recognized set; or if it resolves to
+                nothing while an unread key still holds records
+                (``{"entities": [], "data": [...]}``). Each previously
                 serialized to a file with every collection empty while the log
                 reported success. An empty mapping is still accepted -- it has
                 no records to lose. Note that 'metadata' alone is not a
@@ -247,7 +247,7 @@ class SemanticNetworkYAMLExporter:
             self.progress_tracker.stop_tracking(
                 tracking_id,
                 status="completed",
-                message="Exported semantic network to YAML",
+                message="Serialized semantic network to YAML",
             )
             return result
 
@@ -273,15 +273,40 @@ class SemanticNetworkYAMLExporter:
             ValidationError: on the mappings :meth:`export_semantic_network`
                 rejects. Serialization runs before the output directory is
                 created, so a rejected export leaves nothing behind.
+            OSError: if the file cannot be written. The write is tracked
+                separately from serialization, so no progress entry reports a
+                completed export until the bytes are on disk.
         """
         file_path = Path(file_path)
         yaml_content = self.export_semantic_network(data, **options)
 
-        ensure_directory(file_path.parent)
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(yaml_content)
+        # Serialization reports its own completion, but it says nothing about
+        # the file: without this second span, a failing write would leave the
+        # tracker showing a completed export and no output.
+        tracking_id = self.progress_tracker.start_tracking(
+            file=str(file_path),
+            module="export",
+            submodule="SemanticNetworkYAMLExporter",
+            message=f"Writing YAML to {file_path}",
+        )
 
-        self.logger.info(f"Exported YAML to: {file_path}")
+        try:
+            ensure_directory(file_path.parent)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(yaml_content)
+
+            self.logger.info(f"Exported YAML to: {file_path}")
+            self.progress_tracker.stop_tracking(
+                tracking_id,
+                status="completed",
+                message=f"Exported YAML to: {file_path}",
+            )
+
+        except Exception as e:
+            self.progress_tracker.stop_tracking(
+                tracking_id, status="failed", message=str(e)
+            )
+            raise
 
     def export_entities(
         self, entities: List[Dict[str, Any]], include_metadata: bool = True, **options
@@ -448,14 +473,16 @@ class YAMLSchemaExporter:
 
         Raises:
             ProcessingError: if ``ontology`` is not a mapping.
-            ValidationError: if ``ontology`` is a non-empty mapping sharing no
-                key with the recognized set -- which previously produced a
-                file with empty 'classes', 'properties' and 'namespaces' and
-                no indication anything was dropped. An empty mapping is still
-                accepted.
+            ValidationError: if ``ontology`` is a non-empty mapping sharing
+                no key with the recognized set, or resolves to nothing while
+                an unread key still holds records
+                (``{"classes": [], "nodes": [...]}``) -- each previously
+                produced a file with empty 'classes', 'properties' and
+                'namespaces' and no indication anything was dropped. An empty
+                mapping is still accepted.
         """
         _require_mapping(ontology, ("classes", "properties"))
-        _require_recognized_keys(ontology, _SCHEMA_KEYS, what="Ontology schema")
+        _require_usable_schema(ontology)
 
         yaml_data = {
             "ontology": {

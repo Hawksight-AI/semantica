@@ -66,7 +66,7 @@ import re
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
 
 from .exceptions import ValidationError
 
@@ -599,6 +599,93 @@ _ENTITY_KEYS = ("entities", "nodes")
 _RELATIONSHIP_KEYS = ("relationships", "edges")
 _TRIPLET_KEYS = ("triplets",)
 
+# Keys that legitimately travel alongside the collections without being
+# records themselves, so their presence is never evidence that records were
+# dropped: ContextGraph.to_dict() carries 'statistics', JSON envelopes carry
+# 'metadata' and 'count'.
+_CONTEXT_KEYS = ("metadata", "statistics", "count")
+
+
+def _require_recognized_keys(
+    payload: Mapping, recognized_keys: Sequence[str], *, what: str
+) -> None:
+    """Reject a mapping that shares no key with the recognized set.
+
+    A consumer that reads a fixed set of keys turns an unrecognized mapping
+    into an empty result that looks like a legitimate one. An empty mapping is
+    allowed through -- it carries nothing that could be lost.
+
+    Args:
+        payload: Mapping to check.
+        recognized_keys: Keys the consumer reads.
+        what: Noun for the error message, e.g. ``"Graph payload"``.
+
+    Raises:
+        ValidationError: if ``payload`` is non-empty and shares no key with
+            ``recognized_keys``.
+    """
+    if not payload or any(key in payload for key in recognized_keys):
+        return
+
+    supplied = ", ".join(f"'{key}'" for key in sorted(map(str, payload)))
+    expected = ", ".join(f"'{key}'" for key in recognized_keys)
+    raise ValidationError(
+        f"{what} has no recognized key. Supplied: {supplied}. "
+        f"Expected at least one of: {expected}."
+    )
+
+
+def _require_nothing_dropped(
+    payload: Mapping,
+    recognized_keys: Sequence[str],
+    resolved: Iterable[Any],
+    *,
+    what: str,
+) -> None:
+    """Reject a mapping that resolved to nothing while still holding records.
+
+    Checking that a recognized key is *present* is not enough:
+    ``{"entities": [], "data": [...]}`` clears that bar and still resolves to
+    empty, dropping every record under 'data'. Presence answers "did the
+    caller use our vocabulary"; this answers the question that actually
+    matters, "did anything the caller supplied survive".
+
+    Only non-empty lists count as evidence of dropped records. A payload can
+    carry scalars and dicts that are not collections -- ContextGraph.to_dict()
+    always includes 'statistics' -- and an empty graph must stay exportable.
+
+    Args:
+        payload: Mapping to check.
+        recognized_keys: Keys the consumer reads.
+        resolved: The collections the consumer resolved from ``payload``.
+        what: Noun for the error message, e.g. ``"Graph payload"``.
+
+    Raises:
+        ValidationError: if nothing resolved and an unread key holds a
+            non-empty list.
+    """
+    if any(resolved):
+        return
+
+    dropped = sorted(
+        str(key)
+        for key, value in payload.items()
+        if key not in recognized_keys
+        and key not in _CONTEXT_KEYS
+        and isinstance(value, (list, tuple))
+        and value
+    )
+    if not dropped:
+        return
+
+    named = ", ".join(f"'{key}'" for key in dropped)
+    expected = ", ".join(f"'{key}'" for key in recognized_keys)
+    raise ValidationError(
+        f"{what} resolved to nothing, but {named} still holds records. "
+        f"Exporting it would drop them silently. Supply the records under "
+        f"one of: {expected}."
+    )
+
 
 def _resolve_collection(
     payload: Dict[str, Any], keys: Tuple[str, ...]
@@ -658,9 +745,9 @@ def normalize_graph_payload(
 
     Args:
         payload: Graph payload mapping.
-        require_recognized: When True (default), a non-empty mapping that
-            shares no key with the recognized set raises rather than returning
-            empty collections -- returning empty would hand the caller a
+        require_recognized: When True (default), a payload whose records this
+            function cannot see raises rather than returning empty
+            collections -- returning empty would hand the caller a
             valid-looking result with their records silently dropped. Pass
             False when an unrecognized payload should degrade to empty.
 
@@ -671,7 +758,8 @@ def normalize_graph_payload(
         ValidationError: if ``payload`` is not a mapping; if two spellings of
             the same collection are both non-empty and differ; or, when
             ``require_recognized`` is True, if a non-empty mapping contains no
-            recognized key.
+            recognized key, or resolves to nothing while an unread key still
+            holds records.
 
     Example:
         >>> normalize_graph_payload({"nodes": [{"id": "n1"}], "edges": []})
@@ -684,16 +772,18 @@ def normalize_graph_payload(
         )
 
     recognized = _ENTITY_KEYS + _RELATIONSHIP_KEYS + _TRIPLET_KEYS
-    if require_recognized and payload and not any(key in payload for key in recognized):
-        supplied = ", ".join(f"'{key}'" for key in sorted(map(str, payload)))
-        expected = ", ".join(f"'{key}'" for key in recognized)
-        raise ValidationError(
-            f"Graph payload has no recognized key. Supplied: {supplied}. "
-            f"Expected at least one of: {expected}."
-        )
+    if require_recognized:
+        _require_recognized_keys(payload, recognized, what="Graph payload")
 
-    return {
+    resolved = {
         "entities": _resolve_collection(payload, _ENTITY_KEYS),
         "relationships": _resolve_collection(payload, _RELATIONSHIP_KEYS),
         "triplets": _resolve_collection(payload, _TRIPLET_KEYS),
     }
+
+    if require_recognized:
+        _require_nothing_dropped(
+            payload, recognized, resolved.values(), what="Graph payload"
+        )
+
+    return resolved
