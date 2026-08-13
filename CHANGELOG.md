@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`DistanceExporter.compute_pairs()` gains an opt-in `metric_errors` column to distinguish legitimate `None` results from computation failures** (#960, follow-up to #879) by @Karunasagar12
+  - Previously, a `None` in `hop_count`/`weighted_distance`/`semantic_similarity`/betweenness could mean either "no path exists" or "the underlying computation raised" — logged as a warning per #879, but not otherwise surfaced, so the two cases were indistinguishable in exported CSV/JSONL/DataFrame data. `include=["metric_errors"]` now adds a `metric_errors` field per row: `""` when all requested metrics succeeded, or a comma-separated list of metric names that raised (e.g. `"hop_count,weighted_distance"`)
+  - Opt-in only — default `compute_pairs()`/`to_csv()`/`to_dataframe()`/`to_jsonl()` schema is unchanged unless `"metric_errors"` is explicitly requested
+  - The four metric helpers (`_betweenness`, `_hop_distance`, `_weighted_distance`, `_semantic_similarity`) now return `(value, error_name | None)` tuples internally; `compute_pairs()` aggregates the error names per row
+  - **Fixed during review** (Qodo): `_betweenness()` failures weren't tracked into `metric_errors` in the initial version — centrality computation could raise and the column would still report `""`. Now returns its error tuple like the other three helpers
+  - **Known limitation**: `include=["metric_errors"]` with no other metric names computes nothing, so the column is always `""` in that case — pass it alongside the metrics you want tracked, e.g. `include=["hop_count", "metric_errors"]`
+  - New `tests/export/test_distance_exporter_metric_errors.py`: 6 tests covering success, single/multiple failures, opt-out, the no-path-vs-error distinction, and default-schema stability; existing `tests/export/test_distance_exporter.py` updated for the new tuple return type
+  - Full `tests/export/` suite: 77 passed
+
 ### Changed
 
 - **`GraphBuilder`'s 6 public methods now have Google-style docstrings** (#878, closes #876) by @cakeni
