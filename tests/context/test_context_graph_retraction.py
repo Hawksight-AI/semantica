@@ -15,13 +15,18 @@ than a mock callback, since the behaviour under test is precisely that these
 operations reach the existing mutation-recording path.
 """
 
+import json
+import os
+import tempfile
 import threading
 import unittest
+from datetime import datetime
 
 from semantica.change_management import TemporalVersionManager
 from semantica.context import ContextGraph
 
 BEFORE = "2025-06-01T00:00:00Z"
+BETWEEN = "2025-09-01T00:00:00Z"
 CUTOFF = "2026-01-01T00:00:00Z"
 AFTER = "2026-06-01T00:00:00Z"
 
@@ -199,6 +204,171 @@ class TestPurge(unittest.TestCase):
         self.assertIsNotNone(graph.get_tombstone("alice"))
 
 
+class TestRetractionNeverWidensTheWindow(unittest.TestCase):
+    """Retraction closes a validity window; it must never extend one.
+
+    An entity added with ``valid_until`` already in the past was inactive from
+    that point on. Overwriting the bound with a later retraction time would
+    make ``state_at`` report it active over a span it previously was not.
+    """
+
+    def test_a_node_keeps_an_earlier_valid_until(self):
+        graph = ContextGraph(advanced_analytics=False)
+        graph.add_node("alice", "person", valid_until=BEFORE)
+        self.assertTrue(graph.retract_node("alice", at=AFTER))
+        self.assertEqual(graph.nodes["alice"].valid_until, BEFORE)
+        self.assertNotIn("alice", _ids_at(graph, BETWEEN))
+
+    def test_an_edge_keeps_an_earlier_valid_until(self):
+        graph = ContextGraph(advanced_analytics=False)
+        graph.add_node("alice", "person")
+        graph.add_node("acme", "org")
+        graph.add_edge("alice", "acme", "works_at", valid_until=BEFORE)
+        edge = graph.edges[0]
+        self.assertTrue(graph.retract_edge(edge.edge_id, at=AFTER))
+        self.assertEqual(edge.valid_until, BEFORE)
+        self.assertFalse(edge.is_active(datetime(2025, 9, 1)))
+
+    def test_cascade_keeps_an_earlier_edge_bound(self):
+        graph = ContextGraph(advanced_analytics=False)
+        graph.add_node("alice", "person")
+        graph.add_node("acme", "org")
+        graph.add_edge("alice", "acme", "works_at", valid_until=BEFORE)
+        graph.retract_node("alice", at=AFTER)
+        self.assertEqual(graph.edges[0].valid_until, BEFORE)
+
+    def test_an_open_window_is_still_closed_at_the_retraction_time(self):
+        graph = _graph()
+        graph.retract_node("alice", at=CUTOFF)
+        self.assertEqual(graph.nodes["alice"].valid_until, "2026-01-01T00:00:00")
+
+
+class TestPurgeTimestamp(unittest.TestCase):
+    """Purge accepts an explicit effective time, as retraction does."""
+
+    def test_node_tombstone_records_the_supplied_time(self):
+        graph = _graph()
+        graph.purge_node("alice", reason="erasure request #4", at=CUTOFF)
+        self.assertEqual(
+            graph.get_tombstone("alice")["purged_at"], "2026-01-01T00:00:00"
+        )
+
+    def test_edge_tombstone_records_the_supplied_time(self):
+        graph = _graph()
+        edge_id = graph.edges[0].edge_id
+        graph.purge_edge(edge_id, at=CUTOFF)
+        self.assertEqual(
+            graph.get_tombstone(edge_id)["purged_at"], "2026-01-01T00:00:00"
+        )
+
+    def test_cascaded_edge_tombstones_share_the_supplied_time(self):
+        graph = _graph()
+        edge_id = graph.edges[0].edge_id
+        graph.purge_node("alice", at=CUTOFF)
+        self.assertEqual(
+            graph.get_tombstone(edge_id)["purged_at"], "2026-01-01T00:00:00"
+        )
+
+    def test_purge_time_defaults_to_now(self):
+        graph = _graph()
+        graph.purge_node("alice")
+        self.assertIn("purged_at", graph.get_tombstone("alice"))
+
+
+class TestIdKeyspaces(unittest.TestCase):
+    """Node ids are caller-supplied and edge ids are UUIDs, so they can collide."""
+
+    def _colliding(self):
+        graph = _graph()
+        edge_id = graph.edges[0].edge_id
+        graph.add_node(edge_id, "person")
+        return graph, edge_id
+
+    def test_an_edge_retraction_does_not_block_a_colliding_node(self):
+        graph, edge_id = self._colliding()
+        self.assertTrue(graph.retract_edge(edge_id, reason="edge"))
+        self.assertTrue(graph.retract_node(edge_id, reason="node"))
+        self.assertEqual(graph.get_retraction(edge_id, "edge")["reason"], "edge")
+        self.assertEqual(graph.get_retraction(edge_id, "node")["reason"], "node")
+
+    def test_purging_a_node_leaves_a_colliding_edge_alone(self):
+        graph, edge_id = self._colliding()
+        self.assertTrue(graph.purge_node(edge_id))
+        self.assertEqual(len(graph.edges), 1)
+        self.assertIsNone(graph.get_tombstone(edge_id, "edge"))
+        self.assertIsNotNone(graph.get_tombstone(edge_id, "node"))
+
+    def test_an_unknown_entity_kind_is_rejected(self):
+        with self.assertRaises(ValueError):
+            _graph().get_retraction("alice", "vertex")
+
+
+class TestPurgeCrossGraphLinks(unittest.TestCase):
+    """link_graph() registers a link, a marker node and a bridge edge."""
+
+    def _linked(self):
+        graph = _graph()
+        other = ContextGraph(advanced_analytics=False)
+        other.add_node("target", "topic")
+        return graph, other, graph.link_graph(other, "alice", "target")
+
+    def test_purging_the_source_removes_link_marker_and_registration(self):
+        graph, _, link_id = self._linked()
+        graph.purge_node("alice", reason="erasure request #5")
+        self.assertFalse(graph.has_node(f"__cross_graph_{link_id}"))
+        with self.assertRaises(KeyError):
+            graph.navigate_to(link_id)
+        totals = _index_totals(graph)
+        self.assertEqual(totals["node_index"], totals["nodes"])
+        self.assertEqual(totals["edge_index"], totals["edges"])
+        self.assertEqual(totals["adjacency"], totals["edges"])
+
+    def test_the_marker_purge_is_recorded_as_cascaded(self):
+        graph, _, link_id = self._linked()
+        graph.purge_node("alice")
+        tombstone = graph.get_tombstone(f"__cross_graph_{link_id}")
+        self.assertEqual(tombstone["cascaded_from"], "alice")
+
+    def test_a_purged_link_is_not_serialized(self):
+        graph, _, _ = self._linked()
+        graph.purge_node("alice")
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "graph.json")
+            graph.save_to_file(path)
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        self.assertEqual(data["links"], [])
+
+    def test_cascade_disabled_still_deregisters_the_link(self):
+        """The source node is gone either way, so the link cannot resolve."""
+        graph, _, link_id = self._linked()
+        graph.purge_node("alice", cascade=False)
+        with self.assertRaises(KeyError):
+            graph.navigate_to(link_id)
+        self.assertTrue(graph.has_node(f"__cross_graph_{link_id}"))
+
+    def test_purging_the_bridge_edge_deregisters_the_link(self):
+        graph, _, link_id = self._linked()
+        bridge = next(
+            edge for edge in graph.edges if edge.metadata.get("link_id") == link_id
+        )
+        self.assertTrue(graph.purge_edge(bridge.edge_id))
+        with self.assertRaises(KeyError):
+            graph.navigate_to(link_id)
+
+    def test_purging_the_marker_node_deregisters_the_link(self):
+        graph, _, link_id = self._linked()
+        self.assertTrue(graph.purge_node(f"__cross_graph_{link_id}"))
+        with self.assertRaises(KeyError):
+            graph.navigate_to(link_id)
+        self.assertTrue(graph.has_node("alice"))
+
+    def test_an_unrelated_link_survives(self):
+        graph, other, link_id = self._linked()
+        graph.purge_node("bob")
+        self.assertEqual(graph.navigate_to(link_id), (other, "target"))
+
+
 class TestClearResetsRecords(unittest.TestCase):
     def test_clear_drops_retractions_and_tombstones(self):
         graph = _graph()
@@ -207,6 +377,24 @@ class TestClearResetsRecords(unittest.TestCase):
         graph.clear()
         self.assertEqual(graph.list_retractions(), [])
         self.assertEqual(graph.list_tombstones(), [])
+
+    def test_load_from_file_drops_records_from_the_previous_graph(self):
+        source = _graph()
+        graph = ContextGraph(advanced_analytics=False)
+        graph.add_node("alice", "person")
+        graph.add_node("carol", "person")
+        graph.retract_node("alice", at=CUTOFF)
+        graph.purge_node("carol")
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "graph.json")
+            source.save_to_file(path)
+            graph.load_from_file(path)
+
+        self.assertEqual(graph.list_retractions(), [])
+        self.assertEqual(graph.list_tombstones(), [])
+        # The reloaded alice is a fresh record, not one already retracted.
+        self.assertTrue(graph.retract_node("alice", at=CUTOFF))
 
 
 class TestAuditTrailIntegration(unittest.TestCase):
@@ -252,6 +440,55 @@ class TestAuditTrailIntegration(unittest.TestCase):
         self.assertTrue(
             seen <= allowed, f"undocumented mutation operation(s): {seen - allowed}"
         )
+
+
+class TestMutationEmissionIsSelfContained(unittest.TestCase):
+    """Audit payloads must be snapshotted before the lock is released.
+
+    The callback fires outside the lock, so anything read from
+    ``_retractions``/``_tombstones`` at emission time can already have been
+    wiped by a concurrent ``clear()``. A callback that clears the graph on its
+    first call stands in for that interleaving deterministically.
+    """
+
+    def _clearing_callback(self, graph, seen):
+        def callback(operation, entity_id, payload):
+            seen.append((operation, entity_id, payload))
+            if len(seen) == 1:
+                graph.clear()
+
+        return callback
+
+    def test_purge_emits_every_mutation_after_a_concurrent_clear(self):
+        graph = _graph()
+        graph.add_edge("bob", "alice", "knows")
+        seen = []
+        graph.mutation_callback = self._clearing_callback(graph, seen)
+
+        self.assertTrue(graph.purge_node("alice", reason="erasure request #6"))
+
+        self.assertEqual(
+            [operation for operation, _, _ in seen],
+            ["REMOVE_EDGE", "REMOVE_EDGE", "REMOVE_NODE"],
+        )
+        for _, entity_id, payload in seen:
+            self.assertEqual(payload["entity_id"], entity_id)
+            self.assertEqual(payload["reason"], "erasure request #6")
+
+    def test_retraction_emits_every_mutation_after_a_concurrent_clear(self):
+        graph = _graph()
+        graph.add_edge("bob", "alice", "knows")
+        seen = []
+        graph.mutation_callback = self._clearing_callback(graph, seen)
+
+        self.assertTrue(graph.retract_node("alice", reason="left", at=CUTOFF))
+
+        self.assertEqual(
+            [operation for operation, _, _ in seen],
+            ["UPDATE_NODE", "UPDATE_EDGE", "UPDATE_EDGE"],
+        )
+        for _, _, payload in seen:
+            self.assertEqual(payload["retraction"]["reason"], "left")
 
 
 class TestConcurrency(unittest.TestCase):

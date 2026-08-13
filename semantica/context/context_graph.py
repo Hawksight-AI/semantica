@@ -188,6 +188,26 @@ def _normalize_temporal_input(value: Optional[Union[str, int, float, datetime]])
     raise ValueError("Temporal values must be datetime, epoch seconds, ISO strings, or None")
 
 
+def _closing_valid_until(current: Optional[str], at_iso: str) -> str:
+    """Return the earlier of an existing end bound and a retraction time.
+
+    Retraction closes a validity window and must never widen one: an entity
+    added with ``valid_until`` already in the past would otherwise be reported
+    active by ``is_active``/``state_at`` for the span between its original end
+    and the retraction. An unparseable ``current`` imposes no end bound at all
+    (see :func:`_parse_iso_dt`), so ``at_iso`` still closes it.
+    """
+    if current is None:
+        return at_iso
+    existing = _parse_iso_dt(current)
+    if existing is None:
+        return at_iso
+    requested = _parse_iso_dt(at_iso)
+    if requested is None or existing <= requested:
+        return current
+    return at_iso
+
+
 def _pick_first(*values: Any) -> Any:
     for value in values:
         if value is None:
@@ -468,9 +488,12 @@ class ContextGraph:
 
         # Retraction closes an entity's validity window but keeps it in the
         # graph; a tombstone records that an entity was purged outright,
-        # without retaining the purged content. Keyed by node id / edge id.
-        self._retractions: Dict[str, Dict[str, Any]] = {}
-        self._tombstones: Dict[str, Dict[str, Any]] = {}
+        # without retaining the purged content. Keyed by
+        # ``(entity_kind, entity_id)`` -- node ids are caller-supplied strings
+        # and edge ids are UUID strings, so a single id keyspace would let a
+        # node record mask an edge of the same id, and vice versa.
+        self._retractions: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        self._tombstones: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
   
         self.progress_tracker = get_progress_tracker()
@@ -1054,6 +1077,10 @@ class ContextGraph:
             self.edge_type_index.clear()
             self._linked_graphs.clear()
             self._unresolved_links.clear()
+            # Deletion metadata belongs to the graph being replaced; keeping it
+            # would make entities in the loaded graph read as already retracted.
+            self._retractions.clear()
+            self._tombstones.clear()
 
             if "graph_id" in data:
                 self.graph_id = data["graph_id"]
@@ -1468,6 +1495,10 @@ class ContextGraph:
         the retained record. That matches how ``valid_until`` already behaved
         before retraction existed.
 
+        A node whose ``valid_until`` is already earlier than ``at`` keeps that
+        earlier bound: retraction only ever closes a validity window, never
+        widens one.
+
         Returns:
             True if the node was retracted; False if it does not exist or was
             already retracted.
@@ -1482,41 +1513,46 @@ class ContextGraph:
             if node is None:
                 self.logger.warning("Cannot retract unknown node: %r", node_id)
                 return False
-            if node_id in self._retractions:
+            if ("node", node_id) in self._retractions:
                 return False
 
-            node.valid_until = at_iso
+            node.valid_until = _closing_valid_until(node.valid_until, at_iso)
             record = {
                 "entity_id": node_id,
                 "entity_kind": "node",
                 "retracted_at": at_iso,
                 "reason": reason,
             }
-            self._retractions[node_id] = record
+            self._retractions[("node", node_id)] = record
+            node_payload = {**node.to_dict(), "retraction": dict(record)}
 
-            cascaded = []
+            cascaded: List[Tuple[str, Dict[str, Any]]] = []
             if cascade:
                 for edge in self._incident_edges(node_id):
-                    if edge.edge_id in self._retractions:
+                    if ("edge", edge.edge_id) in self._retractions:
                         continue
-                    edge.valid_until = at_iso
-                    self._retractions[edge.edge_id] = {
+                    edge.valid_until = _closing_valid_until(edge.valid_until, at_iso)
+                    edge_record = {
                         "entity_id": edge.edge_id,
                         "entity_kind": "edge",
                         "retracted_at": at_iso,
                         "reason": reason,
                         "cascaded_from": node_id,
                     }
-                    cascaded.append(edge)
-            payload = node.to_dict()
+                    self._retractions[("edge", edge.edge_id)] = edge_record
+                    # Payloads are snapshotted here, not read back after the
+                    # lock is released: a concurrent clear() would otherwise
+                    # wipe the record out from under the emission below.
+                    cascaded.append(
+                        (
+                            edge.edge_id,
+                            {**edge.to_dict(), "retraction": dict(edge_record)},
+                        )
+                    )
 
-        self._emit_mutation("UPDATE_NODE", node_id, {**payload, "retraction": record})
-        for edge in cascaded:
-            self._emit_mutation(
-                "UPDATE_EDGE",
-                edge.edge_id,
-                {**edge.to_dict(), "retraction": self._retractions[edge.edge_id]},
-            )
+        self._emit_mutation("UPDATE_NODE", node_id, node_payload)
+        for edge_id, edge_payload in cascaded:
+            self._emit_mutation("UPDATE_EDGE", edge_id, edge_payload)
         self.logger.info(
             "Retracted node %r at %s (cascaded %d edge(s))",
             node_id,
@@ -1533,6 +1569,9 @@ class ContextGraph:
     ) -> bool:
         """Retract a single edge, leaving its endpoints untouched.
 
+        An edge whose ``valid_until`` is already earlier than ``at`` keeps that
+        earlier bound; retraction never widens a validity window.
+
         Args:
             edge_id: Edge to retract.
             reason: Why it was retracted.
@@ -1548,25 +1587,29 @@ class ContextGraph:
             if edge is None:
                 self.logger.warning("Cannot retract unknown edge: %r", edge_id)
                 return False
-            if edge_id in self._retractions:
+            if ("edge", edge_id) in self._retractions:
                 return False
 
-            edge.valid_until = at_iso
+            edge.valid_until = _closing_valid_until(edge.valid_until, at_iso)
             record = {
                 "entity_id": edge_id,
                 "entity_kind": "edge",
                 "retracted_at": at_iso,
                 "reason": reason,
             }
-            self._retractions[edge_id] = record
-            payload = edge.to_dict()
+            self._retractions[("edge", edge_id)] = record
+            payload = {**edge.to_dict(), "retraction": dict(record)}
 
-        self._emit_mutation("UPDATE_EDGE", edge_id, {**payload, "retraction": record})
+        self._emit_mutation("UPDATE_EDGE", edge_id, payload)
         self.logger.info("Retracted edge %r at %s", edge_id, at_iso)
         return True
 
     def purge_node(
-        self, node_id: str, reason: Optional[str] = None, cascade: bool = True
+        self,
+        node_id: str,
+        reason: Optional[str] = None,
+        at: Optional[Union[str, datetime]] = None,
+        cascade: bool = True,
     ) -> bool:
         """Permanently remove a node; history no longer contains it.
 
@@ -1582,9 +1625,17 @@ class ContextGraph:
         Args:
             node_id: Node to purge.
             reason: Why it was purged, e.g. an erasure-request reference.
-            cascade: Also purge every edge touching the node. Defaults to True
+            at: When the purge takes effect, recorded as the tombstone's
+                ``purged_at`` (ISO string or datetime). Defaults to now, UTC.
+            cascade: Also purge every edge touching the node, and the marker
+                node of any cross-graph link it exits through. Defaults to True
                 because leaving edges pointing at a removed node produces
                 dangling endpoints.
+
+        Cross-graph links registered by :meth:`link_graph` out of this node are
+        deregistered either way -- a link whose source no longer exists would
+        still resolve through :meth:`navigate_to` and still be serialized by
+        :meth:`save_to_file`.
 
         Returns:
             True if the node was purged; False if it does not exist.
@@ -1592,94 +1643,149 @@ class ContextGraph:
         Note:
             Emits ``REMOVE_NODE``/``REMOVE_EDGE`` to the audit-trail callback.
         """
-        purged_at = datetime.now(timezone.utc).isoformat()
+        purged_at = (
+            _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
+        )
         with self._lock:
-            node = self.nodes.get(node_id)
-            if node is None:
+            if node_id not in self.nodes:
                 self.logger.warning("Cannot purge unknown node: %r", node_id)
                 return False
 
-            purged_edges = []
+            # The link marker node is scaffolding reachable only from the node
+            # being purged, so it goes with the cascade rather than surviving as
+            # an orphan. Resolve the markers before deregistering the links they
+            # are derived from.
+            targets = [node_id]
             if cascade:
-                for edge in self._incident_edges(node_id):
-                    self._drop_edge_from_indexes(edge)
-                    self._tombstones[edge.edge_id] = {
-                        "entity_id": edge.edge_id,
-                        "entity_kind": "edge",
-                        "purged_at": purged_at,
-                        "reason": reason,
-                        "cascaded_from": node_id,
-                    }
-                    self._retractions.pop(edge.edge_id, None)
-                    purged_edges.append(edge.edge_id)
+                targets.extend(self._cross_graph_marker_nodes(node_id))
+            for link_id in self._cross_graph_links_for(node_id):
+                self._linked_graphs.pop(link_id, None)
+                self._unresolved_links.pop(link_id, None)
 
-            del self.nodes[node_id]
-            bucket = self.node_type_index.get(node.node_type)
-            if bucket is not None:
-                bucket.discard(node_id)
-                if not bucket:
-                    del self.node_type_index[node.node_type]
-            self._adjacency.pop(node_id, None)
-            self._retractions.pop(node_id, None)
-            self._tombstones[node_id] = {
-                "entity_id": node_id,
-                "entity_kind": "node",
-                "purged_at": purged_at,
-                "reason": reason,
-            }
+            # Tombstones are snapshotted into locals before the lock is
+            # released; reading them back afterwards would race a clear().
+            purged_edges: List[Tuple[str, Dict[str, Any]]] = []
+            purged_nodes: List[Tuple[str, Dict[str, Any]]] = []
+            for target in targets:
+                cascaded_from = None if target == node_id else node_id
+                if cascade:
+                    for edge in self._incident_edges(target):
+                        self._drop_edge_from_indexes(edge)
+                        edge_record = {
+                            "entity_id": edge.edge_id,
+                            "entity_kind": "edge",
+                            "purged_at": purged_at,
+                            "reason": reason,
+                            "cascaded_from": node_id,
+                        }
+                        self._tombstones[("edge", edge.edge_id)] = edge_record
+                        self._retractions.pop(("edge", edge.edge_id), None)
+                        purged_edges.append((edge.edge_id, dict(edge_record)))
 
-        for edge_id in purged_edges:
-            self._emit_mutation("REMOVE_EDGE", edge_id, self._tombstones[edge_id])
-        self._emit_mutation("REMOVE_NODE", node_id, self._tombstones[node_id])
+                self._drop_node_from_indexes(target)
+                node_record = {
+                    "entity_id": target,
+                    "entity_kind": "node",
+                    "purged_at": purged_at,
+                    "reason": reason,
+                }
+                if cascaded_from is not None:
+                    node_record["cascaded_from"] = cascaded_from
+                self._tombstones[("node", target)] = node_record
+                self._retractions.pop(("node", target), None)
+                purged_nodes.append((target, dict(node_record)))
+
+        for edge_id, payload in purged_edges:
+            self._emit_mutation("REMOVE_EDGE", edge_id, payload)
+        for purged_id, payload in purged_nodes:
+            self._emit_mutation("REMOVE_NODE", purged_id, payload)
         self.logger.info(
-            "Purged node %r (cascaded %d edge(s))", node_id, len(purged_edges)
+            "Purged node %r (cascaded %d edge(s), %d node(s))",
+            node_id,
+            len(purged_edges),
+            len(purged_nodes) - 1,
         )
         return True
 
-    def purge_edge(self, edge_id: str, reason: Optional[str] = None) -> bool:
+    def purge_edge(
+        self,
+        edge_id: str,
+        reason: Optional[str] = None,
+        at: Optional[Union[str, datetime]] = None,
+    ) -> bool:
         """Permanently remove a single edge, leaving its endpoints in place.
+
+        If the edge is the bridge of a cross-graph link, the link is also
+        deregistered -- :meth:`navigate_to` should not keep resolving a link
+        whose bridge is gone. The marker node itself is an endpoint and is left
+        in place; purge it directly, or purge the link's source node, to remove
+        it too.
 
         Args:
             edge_id: Edge to purge.
             reason: Why it was purged.
+            at: When the purge takes effect, recorded as the tombstone's
+                ``purged_at``. Defaults to now, UTC.
 
         Returns:
             True if the edge was purged; False if it does not exist.
         """
-        purged_at = datetime.now(timezone.utc).isoformat()
+        purged_at = (
+            _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
+        )
         with self._lock:
             edge = next((e for e in self.edges if e.edge_id == edge_id), None)
             if edge is None:
                 self.logger.warning("Cannot purge unknown edge: %r", edge_id)
                 return False
             self._drop_edge_from_indexes(edge)
-            self._retractions.pop(edge_id, None)
-            self._tombstones[edge_id] = {
+            link_id = (edge.metadata or {}).get("link_id")
+            if (edge.metadata or {}).get("cross_graph") and link_id:
+                self._linked_graphs.pop(link_id, None)
+                self._unresolved_links.pop(link_id, None)
+            self._retractions.pop(("edge", edge_id), None)
+            record = {
                 "entity_id": edge_id,
                 "entity_kind": "edge",
                 "purged_at": purged_at,
                 "reason": reason,
             }
+            self._tombstones[("edge", edge_id)] = record
+            payload = dict(record)
 
-        self._emit_mutation("REMOVE_EDGE", edge_id, self._tombstones[edge_id])
+        self._emit_mutation("REMOVE_EDGE", edge_id, payload)
         self.logger.info("Purged edge %r", edge_id)
         return True
 
-    def get_retraction(self, entity_id: str) -> Optional[Dict[str, Any]]:
-        """Return the retraction record for a node or edge, or None."""
-        with self._lock:
-            record = self._retractions.get(entity_id)
-            return dict(record) if record is not None else None
+    def get_retraction(
+        self, entity_id: str, entity_kind: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Return the retraction record for a node or edge, or None.
 
-    def get_tombstone(self, entity_id: str) -> Optional[Dict[str, Any]]:
+        Args:
+            entity_id: Node id or edge id.
+            entity_kind: ``"node"`` or ``"edge"``. Records are keyed by kind as
+                well as id, so pass this when a node id and an edge id could
+                collide; without it a node record is preferred over an edge one.
+        """
+        with self._lock:
+            return self._find_removal_record(self._retractions, entity_id, entity_kind)
+
+    def get_tombstone(
+        self, entity_id: str, entity_kind: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """Return the purge tombstone for a node or edge, or None.
 
         The tombstone records that a purge happened, when, and why. It never
         contains the purged content.
+
+        Args:
+            entity_id: Node id or edge id.
+            entity_kind: ``"node"`` or ``"edge"``; disambiguates a node id that
+                collides with an edge id, as for :meth:`get_retraction`.
         """
         with self._lock:
-            record = self._tombstones.get(entity_id)
-            return dict(record) if record is not None else None
+            return self._find_removal_record(self._tombstones, entity_id, entity_kind)
 
     def list_retractions(self) -> List[Dict[str, Any]]:
         """Return every retraction record."""
@@ -1827,6 +1933,86 @@ class ContextGraph:
             for edge in self.edges
             if edge.source_id == node_id or edge.target_id == node_id
         ]
+
+    @staticmethod
+    def _find_removal_record(
+        store: Dict[Tuple[str, str], Dict[str, Any]],
+        entity_id: str,
+        entity_kind: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """Look a retraction/tombstone up by id, optionally narrowed by kind.
+
+        The caller must hold ``self._lock``. Records are keyed by
+        ``(entity_kind, entity_id)``; with no kind given, both keyspaces are
+        tried so callers that know an id is unambiguous can pass it alone.
+        """
+        if entity_kind is not None:
+            if entity_kind not in ("node", "edge"):
+                raise ValueError(
+                    f"entity_kind must be 'node', 'edge' or None, got {entity_kind!r}"
+                )
+            kinds: Tuple[str, ...] = (entity_kind,)
+        else:
+            kinds = ("node", "edge")
+        for kind in kinds:
+            record = store.get((kind, entity_id))
+            if record is not None:
+                return dict(record)
+        return None
+
+    def _cross_graph_links_for(self, node_id: str) -> List[str]:
+        """Link ids that ``node_id`` participates in, as exit point or marker.
+
+        The caller must hold ``self._lock``. :meth:`link_graph` registers a link
+        in three places -- ``_linked_graphs``, a marker node and the bridge edge
+        -- so removing only the node would leave :meth:`navigate_to` resolving a
+        link whose source is gone.
+        """
+        link_ids = [
+            link_id
+            for link_id, (_, source_node_id, _) in self._linked_graphs.items()
+            if source_node_id == node_id
+        ]
+        link_ids.extend(
+            link_id
+            for link_id, meta in self._unresolved_links.items()
+            if meta.get("source_node_id") == node_id
+        )
+        node = self.nodes.get(node_id)
+        metadata = getattr(node, "metadata", None) or {}
+        if metadata.get("cross_graph") and metadata.get("link_id"):
+            link_ids.append(metadata["link_id"])
+        return list(dict.fromkeys(link_ids))
+
+    def _cross_graph_marker_nodes(self, node_id: str) -> List[str]:
+        """Marker nodes of the cross-graph links ``node_id`` exits through.
+
+        The caller must hold ``self._lock``.
+        """
+        return [
+            marker_id
+            for marker_id in (
+                f"__cross_graph_{link_id}"
+                for link_id in self._cross_graph_links_for(node_id)
+            )
+            if marker_id != node_id and marker_id in self.nodes
+        ]
+
+    def _drop_node_from_indexes(self, node_id: str) -> None:
+        """Remove one node from ``nodes``, ``node_type_index`` and ``_adjacency``.
+
+        The caller must hold ``self._lock``. Incident edges are not touched --
+        see :meth:`_drop_edge_from_indexes`.
+        """
+        node = self.nodes.pop(node_id, None)
+        if node is None:
+            return
+        bucket = self.node_type_index.get(node.node_type)
+        if bucket is not None:
+            bucket.discard(node_id)
+            if not bucket:
+                del self.node_type_index[node.node_type]
+        self._adjacency.pop(node_id, None)
 
     def _drop_edge_from_indexes(self, edge: ContextEdge) -> None:
         """Remove one edge from every structure that references it.
