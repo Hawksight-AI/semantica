@@ -1,5 +1,6 @@
 
 import pytest
+import builtins
 import os
 import json
 import csv
@@ -177,6 +178,23 @@ def test_load_from_database_import_error(seed_manager):
             seed_manager.load_from_database("sqlite:///:memory:", query="SELECT 1")
         assert "Database ingestion module not available" in str(excinfo.value)
         assert isinstance(excinfo.value.__cause__, ImportError)
+
+# Module loading can fail on the filesystem, which escapes as OSError rather
+# than ImportError and would otherwise bypass the ProcessingError contract.
+def test_load_from_database_import_os_error(seed_manager):
+    real_import = builtins.__import__
+
+    def failing_import(name, *args, **kwargs):
+        if "db_ingestor" in name:
+            raise OSError(5, "Input/output error")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", failing_import):
+        with pytest.raises(ProcessingError) as excinfo:
+            seed_manager.load_from_database("sqlite:///:memory:", query="SELECT 1")
+
+    assert "Database ingestion module not available" in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, OSError)
 
 @patch("requests.get")
 def test_load_from_api(mock_get, seed_manager):

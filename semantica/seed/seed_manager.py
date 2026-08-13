@@ -398,11 +398,13 @@ class SeedDataManager:
             ...     entity_type="Person"
             ... )
         """
-        # Guard only the import itself: a broader guard would report unrelated
-        # failures below as a missing module.
+        # OSError is caught here because module loading can fail on the
+        # filesystem, which does mean the module is unavailable. The guard stays
+        # wrapped around the import alone: over the body below it would report
+        # unrelated connection and driver failures as a missing module.
         try:
             from ..ingest.db_ingestor import DBIngestor
-        except ImportError as e:
+        except (ImportError, OSError) as e:
             raise ProcessingError(
                 "Database ingestion module not available. Install required dependencies."
             ) from e
