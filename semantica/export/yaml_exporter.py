@@ -79,8 +79,53 @@ class SemanticNetworkYAMLExporter:
 
         self.logger.debug("Semantic network YAML exporter initialized")
 
+    _SEMANTIC_NETWORK_KEYS = ("entities", "relationships", "triplets", "metadata")
+
+    def _normalize_semantic_network(
+        self, semantic_network: Union[Dict[str, Any], List[Dict[str, Any]]]
+    ) -> Dict[str, Any]:
+        """
+        Normalize exporter input to a semantic network dictionary.
+
+        A bare list of records is treated as the entity collection, matching
+        the behavior of the JSON and CSV exporters. A dictionary that contains
+        none of the recognized keys still exports, but a warning is logged so
+        a silently empty export is never mistaken for success.
+
+        Raises:
+            ValidationError: If the input is neither a dict nor a list of dicts
+        """
+        if isinstance(semantic_network, list):
+            if not all(isinstance(item, dict) for item in semantic_network):
+                raise ValidationError(
+                    "YAML export expects a list of dictionaries; "
+                    "found a list containing non-dict items",
+                    validation_context={"input_type": "list"},
+                )
+            return {"entities": semantic_network}
+
+        if not isinstance(semantic_network, dict):
+            raise ValidationError(
+                "YAML export expects a dict or a list of dicts, "
+                f"got {type(semantic_network).__name__}",
+                validation_context={"input_type": type(semantic_network).__name__},
+            )
+
+        if semantic_network and not any(
+            key in semantic_network for key in self._SEMANTIC_NETWORK_KEYS
+        ):
+            self.logger.warning(
+                "YAML export input has none of the recognized keys "
+                f"{self._SEMANTIC_NETWORK_KEYS}; the exported file will contain "
+                "empty entities/relationships/triplets collections"
+            )
+
+        return semantic_network
+
     def export_semantic_network(
-        self, semantic_network: Dict[str, Any], **options
+        self,
+        semantic_network: Union[Dict[str, Any], List[Dict[str, Any]]],
+        **options,
     ) -> str:
         """
         Export semantic network to YAML string.
@@ -94,6 +139,8 @@ class SemanticNetworkYAMLExporter:
                 - relationships: List of relationship dictionaries
                 - triplets: List of triplet dictionaries (optional)
                 - metadata: Metadata dictionary (optional)
+                A bare list of entity dictionaries is also accepted and is
+                exported as the entities collection.
             **options: Additional export options (unused)
 
         Returns:
@@ -119,6 +166,7 @@ class SemanticNetworkYAMLExporter:
             self.progress_tracker.update_tracking(
                 tracking_id, message="Preparing YAML data..."
             )
+            semantic_network = self._normalize_semantic_network(semantic_network)
             yaml_data = {
                 "metadata": {
                     "exported_at": datetime.now().isoformat(),
@@ -151,7 +199,10 @@ class SemanticNetworkYAMLExporter:
             raise
 
     def export(
-        self, data: Dict[str, Any], file_path: Union[str, Path], **options
+        self,
+        data: Union[Dict[str, Any], List[Dict[str, Any]]],
+        file_path: Union[str, Path],
+        **options,
     ) -> None:
         """
         Export data to YAML file.
@@ -300,7 +351,19 @@ class YAMLSchemaExporter:
         except (ImportError, OSError):
             raise ImportError("PyYAML not installed. Install with: pip install pyyaml")
 
-    def export_ontology_schema(self, ontology: Dict[str, Any], **options) -> str:
+    _SCHEMA_KEYS = (
+        "uri",
+        "title",
+        "description",
+        "version",
+        "classes",
+        "properties",
+        "namespaces",
+    )
+
+    def export_ontology_schema(
+        self, ontology: Union[Dict[str, Any], List[Dict[str, Any]]], **options
+    ) -> str:
         """
         Export ontology schema to YAML.
 
@@ -308,7 +371,31 @@ class YAMLSchemaExporter:
         • Include hierarchies and constraints
         • Structure for easy editing
         • Return YAML schema
+
+        A bare list of class dictionaries is accepted and exported as the
+        classes collection.
         """
+        if isinstance(ontology, list):
+            if not all(isinstance(item, dict) for item in ontology):
+                raise ValidationError(
+                    "YAML schema export expects a list of dictionaries; "
+                    "found a list containing non-dict items",
+                    validation_context={"input_type": "list"},
+                )
+            ontology = {"classes": ontology}
+        elif not isinstance(ontology, dict):
+            raise ValidationError(
+                "YAML schema export expects a dict or a list of dicts, "
+                f"got {type(ontology).__name__}",
+                validation_context={"input_type": type(ontology).__name__},
+            )
+        elif ontology and not any(key in ontology for key in self._SCHEMA_KEYS):
+            self.logger.warning(
+                "YAML schema export input has none of the recognized keys "
+                f"{self._SCHEMA_KEYS}; the exported file will contain empty "
+                "classes/properties collections"
+            )
+
         yaml_data = {
             "ontology": {
                 "uri": ontology.get("uri", ""),
