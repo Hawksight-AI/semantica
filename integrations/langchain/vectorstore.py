@@ -65,16 +65,23 @@ class SemanticaVectorStore(_VectorStoreBase):  # type: ignore[misc]
         metadatas: Optional[List[Dict[str, Any]]] = None,
         **kwargs: Any,
     ) -> List[str]:
-        """Embed and store texts; return the generated IDs."""
-        ids: List[str] = []
-        for idx, text in enumerate(texts):
-            meta = metadatas[idx] if metadatas and idx < len(metadatas) else {}
-            try:
-                node_id = self.hybrid.add_text(text, metadata=meta, **kwargs)
-            except TypeError:
-                node_id = self.hybrid.add_text(text, metadata=meta)
-            ids.append(str(node_id))
-        return ids
+        """Embed and store texts; return the generated IDs.
+
+        Delegates to the Semantica ``VectorStore.add_documents`` backing the
+        HybridSearch instance (or to ``hybrid.vector_store`` if provided).
+        """
+        if self.vector_store is not None:
+            return self.vector_store.add_documents(
+                list(texts), metadata=metadatas, **kwargs
+            )
+        vs = getattr(self.hybrid, "vector_store", None)
+        if vs is not None and hasattr(vs, "add_documents"):
+            return vs.add_documents(list(texts), metadata=metadatas, **kwargs)
+        raise ValueError(
+            "SemanticaVectorStore requires a Semantica vector store with "
+            "add_documents (pass vector_store=... to the HybridSearch or to "
+            "SemanticaVectorStore)"
+        )
 
     def similarity_search(self, query: str, k: int = 4, **kwargs: Any) -> List[Any]:
         """Return documents most similar to the query."""

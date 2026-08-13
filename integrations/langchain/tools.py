@@ -85,20 +85,20 @@ class SemanticaKGTool:
             """Search the shared context graph for entities relevant to a query."""
             try:
                 return json.dumps(
-                    self.graph.search_nodes(query, limit=limit),
+                    self.graph.query(query, limit=limit),
                     default=str,
                     ensure_ascii=False,
                 )[:4000]
             except Exception as exc:
                 return f"error: {exc}"
 
-        def add_entity(name: str, entity_type: str = "entity", **attrs: Any) -> str:
+        def add_entity(name: str, node_type: str = "entity", **properties: Any) -> str:
             """Add an entity node to the context graph."""
             try:
-                node = self.graph.add_node(
-                    name=name, node_type=entity_type, attributes=attrs or None
+                ok = self.graph.add_node(
+                    node_id=name, node_type=node_type, **properties
                 )
-                return json.dumps(node, default=str)[:2000]
+                return json.dumps({"added": bool(ok), "node_id": name}, default=str)[:2000]
             except Exception as exc:
                 return f"error: {exc}"
 
@@ -128,14 +128,18 @@ class SemanticaDecisionTool:
         if not LANGCHAIN_AVAILABLE:
             return None
 
-        def query_decisions(query: str, limit: int = 10) -> str:
+        def query_decisions(category: str = "", limit: int = 10) -> str:
             """Search recorded decisions and their rationale in Semantica."""
             try:
-                return json.dumps(
-                    self.graph.search_decisions(query, limit=limit),
-                    default=str,
-                    ensure_ascii=False,
-                )[:4000]
+                if category:
+                    # Keyword search across decision scenarios/reasoning
+                    return json.dumps(
+                        self.graph.query(category, limit=limit),
+                        default=str,
+                        ensure_ascii=False,
+                    )[:4000]
+                insights = self.graph.get_decision_insights()
+                return json.dumps(insights, default=str, ensure_ascii=False)[:4000]
             except Exception as exc:
                 return f"error: {exc}"
 

@@ -63,6 +63,36 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
     top_k: int = 10
     graph_weight: float = 0.5
 
+    def __init__(
+        self,
+        graph: Any,
+        hybrid: Any = None,
+        hops: int = 2,
+        top_k: int = 10,
+        graph_weight: float = 0.5,
+        **kwargs: Any,
+    ) -> None:
+        """Explicit init so the retriever works with and without langchain."""
+        if LANGCHAIN_AVAILABLE:
+            # BaseRetriever is a Pydantic model: pass the declared fields
+            # through so validation succeeds.
+            super().__init__(
+                graph=graph,
+                hybrid=hybrid,
+                hops=hops,
+                top_k=top_k,
+                graph_weight=graph_weight,
+                **kwargs,
+            )
+        else:
+            # Without langchain-core, BaseRetriever is a plain object
+            super().__init__()  # type: ignore[call-arg]
+            self.graph = graph
+            self.hybrid = hybrid
+            self.hops = hops
+            self.top_k = top_k
+            self.graph_weight = graph_weight
+
     def _get_relevant_documents(self, query: str, **kwargs: Any) -> List[Any]:
         """LangChain BaseRetriever entry point."""
         seed = self._seed_results(query)
@@ -98,18 +128,19 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
             except Exception as exc:  # graph expansion is best-effort
                 logger.debug("graph expansion failed for %s: %s", node_id, exc)
 
-        # Order: seed hits first (they have real scores), then neighbors
-        ordered = []
-        seen = set()
+        # Order: seed hits first (they have real scores), then neighbors.
+        # Keep a deterministic id->payload list (sets are unordered — see Qodo).
+        ordered_pairs: List[tuple] = []
+        seen_ids = set()
         for hit in seed:
             nid = hit.get("node_id") or hit.get("id")
-            if nid and nid in expanded and nid not in seen:
-                ordered.append(expanded[nid])
-                seen.add(nid)
+            if nid and nid in expanded and nid not in seen_ids:
+                ordered_pairs.append((nid, expanded[nid]))
+                seen_ids.add(nid)
         for nid, item in expanded.items():
-            if nid not in seen:
-                ordered.append(item)
-                seen.add(nid)
+            if nid not in seen_ids:
+                ordered_pairs.append((nid, item))
+                seen_ids.add(nid)
 
         return [
             _get_document(
@@ -120,7 +151,7 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
                     "score": item["score"],
                 },
             )
-            for nid, item in zip(seen, ordered)
+            for nid, item in ordered_pairs
         ]
 
     def _seed_results(self, query: str) -> List[Dict[str, Any]]:
@@ -130,8 +161,8 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
                 return self.hybrid.search(query, k=self.top_k)
             except Exception as exc:
                 logger.debug("hybrid search failed, falling back: %s", exc)
-        # Best-effort keyword scan over graph nodes
+        # Best-effort keyword scan over graph nodes (ContextGraph.query)
         try:
-            return self.graph.search_nodes(query, limit=self.top_k)
+            return self.graph.query(query, limit=self.top_k)
         except Exception:
             return []
