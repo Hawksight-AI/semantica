@@ -84,7 +84,9 @@ def test_semantic_similarity_logs_warning_on_exception(exporter, caplog):
 def test_betweenness_logs_warning_on_exception(exporter, caplog):
     with caplog.at_level(logging.WARNING, logger="semantica.export.distance_exporter"):
         result = exporter._betweenness({})
-    assert result == {}
+    value, error = result
+    assert value == {}
+    assert error == "betweenness"
     assert any("Betweenness" in rec.message for rec in caplog.records)
 
 

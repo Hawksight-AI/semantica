@@ -69,14 +69,19 @@ class TestMetricErrorsColumn:
         exporter._path_finder.bfs_shortest_path.side_effect = RuntimeError("fail")
         exporter._path_finder.dijkstra_shortest_path.side_effect = RuntimeError("fail")
         exporter._similarity.cosine_similarity.side_effect = TypeError("fail")
+        exporter._centrality.calculate_betweenness_centrality.side_effect = RuntimeError("fail")
 
-        rows = exporter.compute_pairs(include=["hop_count", "weighted_distance", "semantic_similarity", "metric_errors"])
+        rows = exporter.compute_pairs(include=[
+            "hop_count", "weighted_distance", "semantic_similarity",
+            "source_betweenness", "metric_errors",
+        ])
 
         for row in rows:
             errors = row["metric_errors"].split(",")
             assert "hop_count" in errors
             assert "weighted_distance" in errors
             assert "semantic_similarity" in errors
+            assert "betweenness" in errors
             assert row["hop_count"] is None
             assert row["weighted_distance"] is None
             assert row["semantic_similarity"] is None

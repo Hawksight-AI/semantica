@@ -40,7 +40,7 @@ _ALL_COLUMNS = [
 ]
 
 # Error status columns — opt-in via include=["metric_errors"]
-_ERROR_COLUMNS = ["metric_errors"]
+# (used by compute_pairs when "metric_errors" is in include set)
 
 
 class DistanceExporter:
@@ -71,15 +71,16 @@ class DistanceExporter:
         node = getattr(self.graph, "nodes", {}).get(node_id)
         return getattr(node, "node_type", "") if node else ""
 
-    def _betweenness(self, graph_dict: Dict[str, Any]) -> Dict[str, float]:
+    def _betweenness(self, graph_dict: Dict[str, Any]) -> Tuple[Dict[str, float], Optional[str]]:
+        """Return (betweenness_dict, error). error is None on success."""
         if self._centrality is None:
-            return {}
+            return {}, None
         try:
             result = self._centrality.calculate_betweenness_centrality(graph_dict)
-            return result.get("betweenness", {}) if isinstance(result, dict) else {}
+            return (result.get("betweenness", {}) if isinstance(result, dict) else {}), None
         except Exception:
             logger.warning("Betweenness centrality computation failed; omitting from export", exc_info=True)
-            return {}
+            return {}, "betweenness"
 
     def _hop_distance(self, graph_dict: Dict[str, Any], src: str, tgt: str) -> Tuple[Optional[int], Optional[str]]:
         """Return (hop_count, error). error is None on success or a short description on failure."""
@@ -138,8 +139,9 @@ class DistanceExporter:
         node_ids = node_subset or list(self.graph.nodes.keys())
 
         betweenness: Dict[str, float] = {}
+        betweenness_err: Optional[str] = None
         if "source_betweenness" in include_set or "target_betweenness" in include_set:
-            betweenness = self._betweenness(graph_dict)
+            betweenness, betweenness_err = self._betweenness(graph_dict)
 
         rows = []
         for i, src in enumerate(node_ids):
@@ -148,6 +150,8 @@ class DistanceExporter:
                     continue
                 row: Dict[str, Any] = {}
                 errors: List[str] = []
+                if betweenness_err:
+                    errors.append(betweenness_err)
 
                 if "source_id" in include_set:
                     row["source_id"] = src
