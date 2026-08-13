@@ -33,6 +33,46 @@ _DEFAULT_MAX_REDIRECTS = 10
 _REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 _STRIP_BODY_ON_REDIRECT = frozenset({301, 302, 303})
 
+# Standard port per scheme (mirrors requests' DEFAULT_PORTS).
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _should_strip_auth(old_url: str, new_url: str) -> bool:
+    """Decide whether credentials must not follow a redirect.
+
+    Mirrors ``requests.utils.should_strip_auth``: credentials are stripped
+    when the hostname changes, when the port changes (outside default
+    ports), or on an https -> http downgrade on the same host. The single
+    exception is an http -> https upgrade on default ports, which requests
+    treats as safe to keep the credential for.
+    """
+    old_parsed = urlparse(old_url)
+    new_parsed = urlparse(new_url)
+
+    if old_parsed.hostname != new_parsed.hostname:
+        return True
+
+    # Special case: allow http -> https redirect on standard ports.
+    if (
+        old_parsed.scheme == "http"
+        and old_parsed.port in (80, None)
+        and new_parsed.scheme == "https"
+        and new_parsed.port in (443, None)
+    ):
+        return False
+
+    changed_port = old_parsed.port != new_parsed.port
+    changed_scheme = old_parsed.scheme != new_parsed.scheme
+    default_port = (_DEFAULT_PORTS.get(old_parsed.scheme), None)
+    if (
+        not changed_scheme
+        and old_parsed.port in default_port
+        and new_parsed.port in default_port
+    ):
+        return False
+
+    return changed_port or changed_scheme
+
 _dns_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
 _dns_executor_lock = threading.Lock()
 
@@ -276,12 +316,10 @@ def request_with_ssrf_guard(
         next_url = urljoin(current_url, str(location).strip())
         validate_url_for_request(next_url, allow_private_ips=allow_private_ips)
 
-        # Do not leak sensitive headers to a different origin (host) on
-        # redirects: reuse the caller's headers only while the origin is
-        # unchanged, mirroring requests' cross-host credential stripping.
-        current_origin = urlparse(current_url).netloc
-        next_origin = urlparse(next_url).netloc
-        if current_origin != next_origin:
+        # Do not leak sensitive headers to a different origin on redirects:
+        # reuse the caller's headers only while host, port, and scheme keep
+        # the credential safe, mirroring requests' should_strip_auth.
+        if _should_strip_auth(current_url, next_url):
             kwargs = dict(kwargs)
             headers = dict(kwargs.get("headers") or {})
             for sensitive in ("Authorization", "Proxy-Authorization"):
