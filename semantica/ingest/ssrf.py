@@ -276,6 +276,18 @@ def request_with_ssrf_guard(
         next_url = urljoin(current_url, str(location).strip())
         validate_url_for_request(next_url, allow_private_ips=allow_private_ips)
 
+        # Do not leak sensitive headers to a different origin (host) on
+        # redirects: reuse the caller's headers only while the origin is
+        # unchanged, mirroring requests' cross-host credential stripping.
+        current_origin = urlparse(current_url).netloc
+        next_origin = urlparse(next_url).netloc
+        if current_origin != next_origin:
+            kwargs = dict(kwargs)
+            headers = dict(kwargs.get("headers") or {})
+            for sensitive in ("Authorization", "Proxy-Authorization"):
+                headers.pop(sensitive, None)
+            kwargs["headers"] = headers
+
         # Match requests' historical method rewriting for 301/302/303.
         if (
             response.status_code in _STRIP_BODY_ON_REDIRECT

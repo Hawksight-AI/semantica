@@ -182,6 +182,67 @@ class TestRequestWithSsrfGuardRedirects:
                     session=session,
                 )
 
+    def test_strips_authorization_on_cross_host_redirect(self):
+        """Sensitive headers must not leak to a different redirect host."""
+        redirect = MagicMock()
+        redirect.status_code = 302
+        redirect.headers = {"Location": "https://other-host.example/final"}
+        redirect.close = MagicMock()
+
+        final = MagicMock()
+        final.status_code = 200
+        final.headers = {}
+
+        session = MagicMock()
+        session.request.side_effect = [redirect, final]
+
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            request_with_ssrf_guard(
+                "GET",
+                "https://example.com/start",
+                session=session,
+                headers={"Authorization": "Bearer secret-token"},
+            )
+
+        assert session.request.call_count == 2
+        second_call_headers = session.request.call_args_list[1].kwargs.get("headers", {})
+        assert "Authorization" not in second_call_headers
+        # The first hop still had the credential
+        first_call_headers = session.request.call_args_list[0].kwargs.get("headers", {})
+        assert first_call_headers.get("Authorization") == "Bearer secret-token"
+
+    def test_keeps_authorization_on_same_host_redirect(self):
+        """Same-host redirects keep the credential (requests semantics)."""
+        redirect = MagicMock()
+        redirect.status_code = 302
+        redirect.headers = {"Location": "https://example.com/final"}
+        redirect.close = MagicMock()
+
+        final = MagicMock()
+        final.status_code = 200
+        final.headers = {}
+
+        session = MagicMock()
+        session.request.side_effect = [redirect, final]
+
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            request_with_ssrf_guard(
+                "GET",
+                "https://example.com/start",
+                session=session,
+                headers={"Authorization": "Bearer secret-token"},
+            )
+
+        assert session.request.call_count == 2
+        second_call_headers = session.request.call_args_list[1].kwargs.get("headers", {})
+        assert second_call_headers.get("Authorization") == "Bearer secret-token"
+
     def test_follows_safe_redirect(self):
         redirect = MagicMock()
         redirect.status_code = 302

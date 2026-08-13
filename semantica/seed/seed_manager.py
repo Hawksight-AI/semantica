@@ -455,9 +455,11 @@ class SeedDataManager:
         entity_type, relationship_type, and source metadata if provided.
 
         SSRF protection is enabled by default: URLs resolving to private,
-        loopback, or link-local addresses are rejected. For trusted internal
-        deployments, pass ``allow_private_ips=True`` in the manager config to
-        opt in (documented for internal use only).
+        loopback, link-local (including cloud metadata endpoints such as
+        169.254.169.254), or other blocked addresses are rejected, and every
+        redirect hop is re-validated before being followed. For trusted
+        internal deployments, pass ``allow_private_ips=True`` in the manager
+        config to opt in (documented for internal use only).
 
         Args:
             api_url: Base API URL
