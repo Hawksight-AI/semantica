@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`DistanceExporter.compute_pairs()` gains an opt-in `metric_errors` column to distinguish legitimate `None` results from computation failures** (#960, follow-up to #879) by @Karunasagar12
+  - Previously, a `None` in `hop_count`/`weighted_distance`/`semantic_similarity`/betweenness could mean either "no path exists" or "the underlying computation raised" — logged as a warning per #879, but not otherwise surfaced, so the two cases were indistinguishable in exported CSV/JSONL/DataFrame data. `include=["metric_errors"]` now adds a `metric_errors` field per row: `""` when all requested metrics succeeded, or a comma-separated list of metric names that raised (e.g. `"hop_count,weighted_distance"`)
+  - Opt-in only — default `compute_pairs()`/`to_csv()`/`to_dataframe()`/`to_jsonl()` schema is unchanged unless `"metric_errors"` is explicitly requested
+  - The four metric helpers (`_betweenness`, `_hop_distance`, `_weighted_distance`, `_semantic_similarity`) now return `(value, error_name | None)` tuples internally; `compute_pairs()` aggregates the error names per row
+  - **Fixed during review** (Qodo): `_betweenness()` failures weren't tracked into `metric_errors` in the initial version — centrality computation could raise and the column would still report `""`. Now returns its error tuple like the other three helpers
+  - **Known limitation**: `include=["metric_errors"]` with no other metric names computes nothing, so the column is always `""` in that case — pass it alongside the metrics you want tracked, e.g. `include=["hop_count", "metric_errors"]`
+  - New `tests/export/test_distance_exporter_metric_errors.py`: 6 tests covering success, single/multiple failures, opt-out, the no-path-vs-error distinction, and default-schema stability; existing `tests/export/test_distance_exporter.py` updated for the new tuple return type
+  - Full `tests/export/` suite: 77 passed
+
 ### Changed
 
 - **`GraphBuilder`'s 6 public methods now have Google-style docstrings** (#878, closes #876) by @cakeni
@@ -41,6 +52,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ContextGraph.get_node_property`/`get_node_attributes` "not found" contract clarified; `add_node_attribute` mutation-callback exception safety fixed** (#882, closes #877) by @ZohaibHassan16
+  - `get_node_property` returned `None` for both "node missing" and "property missing" with no way to distinguish them, and `get_node_attributes` returned `{}` for a missing node while its siblings disagreed on the not-found signal (`get_node_property`/`find_node` → `None`, `get_edge_data` → `{}`). Both now accept a `default=` parameter matching `dict.get()`'s convention, defaulting to their historical return values (`None` and `{}` respectively) for backward compatibility. Callers that need to disambiguate "node missing" from "value legitimately absent" can pass a private sentinel as `default`
+  - Added Google-style docstrings to `get_node_property`, `get_node_attributes`, `get_edge_data`, and `find_node` documenting each method's not-found contract, addressing #877's "sibling not-found contract undocumented" gap
+  - **Corrected during review**: the PR as submitted claimed to fix `add_node_attribute` firing its `mutation_callback` "outside `with self._lock`, without holding the lock," but the diff only removed a stray blank line — the callback call remained outside the lock, unchanged. Further investigation found this was not actually a bug: `self._lock` is a `threading.RLock`, and the same release-the-lock-before-invoking-the-callback pattern is used deliberately in `_add_internal_node`/`_add_internal_edge` elsewhere in this class, avoiding holding the lock for the duration of an arbitrary user-supplied callback. The real inconsistency was that, unlike those two siblings, `add_node_attribute`'s callback call wasn't wrapped in `try/except` — a raising callback propagated uncaught here but was caught and logged there. Now wrapped the same way (`except Exception as e: self.logger.warning(...)`)
+  - 13 tests covering happy path, missing node, missing property, sentinel disambiguation, falsy-zero, callback firing/non-firing, and (added during review) a raising callback no longer propagating out of `add_node_attribute`
+  - `pytest tests/context/test_context.py -q`: 27 passed
+
+- **Three `tests/normalize/` tests failed for reasons unrelated to the normalize implementations: a missing optional-dependency skip guard, an incomplete chardet allowlist, and a UTC/local timezone mismatch** (#881, closes #860) by @aoright
+  - `test_detect_language`/`test_detect_with_confidence` in `tests/normalize/test_language_detector.py` asserted on real `langdetect` output with no skip guard, even though `langdetect` is an optional dependency absent from `pyproject.toml` that `LanguageDetector` already degrades gracefully without (`LANGDETECT_AVAILABLE = False`, falls back to `default_language`) — any environment without it failed both tests unconditionally, including a fresh CI run without optional extras installed. Both are now gated with `@unittest.skipUnless(LANGDETECT_AVAILABLE, ...)`
+  - `test_detect_encoding` in `tests/normalize/test_encoding_handler.py` asserted `chardet.detect()`'s result against a 3-name allowlist (`iso-8859-1`/`windows-1252`/`latin-1`); on a short Latin-1 sample, chardet is free to return other compatible single-byte codepages (e.g. `windows-1253`), which fails the allowlist and then cascades into `test_convert_to_utf8` decoding the bytes as Greek instead of the original text. The test now uses a longer, unambiguous Latin-1 corpus and asserts that the detected encoding round-trip-decodes the original text instead of matching a fixed name list; `test_convert_to_utf8` now passes `source_encoding="latin-1"` explicitly rather than relying on chardet's heuristic auto-detection
+  - `test_normalize_date_relative` in `tests/normalize/test_date_normalizer.py` compared `RelativeDateProcessor`'s local-clock-based `"today"` (`datetime.now()`, naive, UTC-normalized after the fact by `convert_to_utc()`) against a separately-computed UTC reference date — failing intermittently in any timezone east of UTC whenever the local and UTC dates diverge for part of the day. The test now patches `datetime.now()` to a fixed reference time, making the assertion independent of host timezone
+  - `pytest tests/normalize`: 77 passed, 2 skipped (`langdetect` not installed); `black`/`isort`/`flake8 --max-line-length=88` clean on all three changed files. Test-only change; no production code touched
+
 - **MCP server reported a stale `0.4.0` version instead of the installed package version** (#870, closes #863) by @oiahoon
   - `semantica/mcp_server/__init__.py` hardcoded `"version": "0.4.0"` in both the MCP `initialize` response (`SERVER_INFO`) and the `semantica://schema/info` resource, regardless of the actual installed `semantica` version — every MCP client (Claude Desktop, Windsurf, Cline, Continue, VS Code Copilot, etc.) showed the wrong server version. Both surfaces now derive from `semantica.__version__`, the package's authoritative version source, so they can no longer drift from `pyproject.toml`
   - New regression coverage in `tests/test_mcp_server_version.py`, including `!= "0.4.0"` canaries and a cross-surface consistency check
@@ -55,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fixed along the way**: `FAISSStore.filter_by_metadata(limit=0)` returned one result instead of zero, because the limit check ran after appending the current match
   - **Fixed along the way**: `MilvusStore`'s metadata expression builder rendered `NaN`/`Infinity` filter values as bare unquoted tokens, producing an invalid Milvus expression whose server-side rejection was then swallowed by a broad `except`, indistinguishable from "no matches"; these values are now rejected up front with a clear `ValidationError`
   - New/expanded test coverage in `tests/vector_store/test_backend_metadata_filtering.py` (all 7 backends, including the Pinecone dimension/zero-vector, PgVector boolean-list, FAISS `limit=0`, and Milvus `NaN` regressions) and `tests/vector_store/test_sqlite_vec_store.py` (new `TestSQLiteVecStoreFilterByMetadata`, run against the real `sqlite-vec` extension, including the array-vs-scalar intersection case)
+
+- **`DistanceExporter` silently swallowed metric computation failures, exporting `None` values indistinguishable from a legitimate "no path" result** (#879, closes #874) by @AmirF194
+  - `_betweenness`, `_hop_distance`, `_weighted_distance`, and `_semantic_similarity` each caught `Exception` and returned their sentinel (`None`/`{}`) with no logging; a failed computation and a real "no path exists" looked identical in exported CSV/JSONL/DataFrame data. All four now log a `warning` with `exc_info=True` before returning the sentinel; exported row shape and values are unchanged
+  - **Fixed along the way**: the module logger was built with `get_logger(__name__)`, which double-prefixed it to `semantica.semantica.export.distance_exporter` — a name `setup_logging()` never configures — so this module's logging (including a pre-existing `logger.debug` call) was silent regardless. Now uses `get_logger("export.distance_exporter")`, matching every other exporter in the module
+  - New regression coverage in `tests/export/test_distance_exporter.py`: warnings fire on exception for all four helpers, exported sentinel values/shape stay unchanged, and the legitimate "no KG backend" `None` path still logs nothing
+  - Full `tests/export/` suite: 71 passed
 
 ### Security
 
