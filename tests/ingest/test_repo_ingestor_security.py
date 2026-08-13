@@ -335,3 +335,148 @@ class TestIngestRepositoryGuards:
             assert MockRepo.clone_from.call_args.args[0] == (
                 "ssh://git@github.com/user/repo.git"
             )
+
+class TestIsReservedNAT64Regression:
+    """Regression tests for the is_reserved / NAT64 false-positive fix.
+
+    Python's ipaddress.is_reserved marks 64:ff9b::/96 (NAT64 Well-Known
+    Prefix, RFC 6052) as reserved=True, which caused github.com to be
+    falsely blocked on IPv6-only / dual-stack networks that use NAT64.
+    """
+
+    def test_nat64_prefix_not_blocked(self):
+        """64:ff9b::/96 addresses must not be blocked by _is_blocked_ip."""
+        import ipaddress
+
+        # Typical NAT64 translation of 140.82.112.3 (github.com)
+        addr = ipaddress.ip_address("64:ff9b::8c52:7003")
+        assert not RepoIngestor._is_blocked_ip(addr), (
+            "NAT64 WKP address should not be blocked; "
+            "it is a legitimate public IPv6 address on NAT64 networks."
+        )
+
+    def test_nat64_local_prefix_not_blocked(self):
+        """64:ff9b:1::/48 (RFC 8215 local NAT64) is private by Python 3.12
+        definition and IS correctly blocked — it's a locally-assigned range,
+        not globally routable.
+        """
+        import ipaddress
+
+        addr = ipaddress.ip_address("64:ff9b:1::1")
+        # is_private=True in Python 3.12 — legitimately blocked
+        assert RepoIngestor._is_blocked_ip(addr)
+
+    def test_private_ipv6_still_blocked(self):
+        """ULA (fc00::/7) must still be blocked."""
+        import ipaddress
+
+        assert RepoIngestor._is_blocked_ip(ipaddress.ip_address("fc00::1"))
+        assert RepoIngestor._is_blocked_ip(ipaddress.ip_address("fd12:3456::1"))
+
+    def test_ipv6_loopback_still_blocked(self):
+        import ipaddress
+
+        assert RepoIngestor._is_blocked_ip(ipaddress.ip_address("::1"))
+
+    def test_ipv6_link_local_still_blocked(self):
+        import ipaddress
+
+        assert RepoIngestor._is_blocked_ip(ipaddress.ip_address("fe80::1"))
+
+    def test_documentation_prefix_blocked(self):
+        """2001:db8::/32 is documentation-only and classified as
+        is_private=True in Python 3.12. It is correctly blocked.
+        """
+        import ipaddress
+
+        addr = ipaddress.ip_address("2001:db8::1")
+        assert RepoIngestor._is_blocked_ip(addr)
+
+    def test_public_ipv4_not_blocked(self):
+        import ipaddress
+
+        assert not RepoIngestor._is_blocked_ip(ipaddress.ip_address("140.82.112.3"))
+
+    def test_public_ipv6_not_blocked(self):
+        import ipaddress
+
+        assert not RepoIngestor._is_blocked_ip(
+            ipaddress.ip_address("2001:4860:4860::8888")
+        )
+
+    def test_host_resolving_to_nat64_address_is_allowed(self):
+        """A hostname that resolves to a NAT64 address (plus a public IPv4)
+        must not be blocked — this was the real-world failure mode.
+        """
+        # Simulate github.com on a NAT64 network
+        with patch(
+            "semantica.ingest.repo_ingestor.socket.getaddrinfo",
+            return_value=_fake_addrinfo("64:ff9b::8c52:7003", "140.82.112.3"),
+        ):
+            # Should not raise
+            RepoIngestor._validate_repo_url("https://github.com/user/repo.git")
+
+    def test_host_resolving_only_to_nat64_is_allowed(self):
+        """Even if the only resolved address is a NAT64 address, it is allowed
+        because it is a valid public address.
+        """
+        with patch(
+            "semantica.ingest.repo_ingestor.socket.getaddrinfo",
+            return_value=_fake_addrinfo("64:ff9b::8c52:7003"),
+        ):
+            RepoIngestor._validate_repo_url("https://github.com/user/repo.git")
+
+
+class TestLocalPathSupport:
+    """Regression tests for local repository path backward compatibility."""
+
+    def test_is_local_repo_path_absolute(self, tmp_path):
+        """Absolute paths are recognised as local."""
+        assert RepoIngestor._is_local_repo_path(str(tmp_path))
+
+    def test_is_local_repo_path_relative(self):
+        """./… and ../… are recognised as local."""
+        assert RepoIngestor._is_local_repo_path("./repo")
+        assert RepoIngestor._is_local_repo_path("../sibling-repo")
+
+    def test_is_local_repo_path_not_remote(self):
+        """Remote URLs are not local."""
+        assert not RepoIngestor._is_local_repo_path("https://github.com/u/r.git")
+        assert not RepoIngestor._is_local_repo_path("git@github.com:u/r.git")
+        assert not RepoIngestor._is_local_repo_path("ssh://git@github.com/r.git")
+
+    def test_validate_repo_url_accepts_absolute_local_path(self, tmp_path):
+        """_validate_repo_url must not raise for an absolute local path."""
+        RepoIngestor._validate_repo_url(str(tmp_path))
+
+    def test_validate_repo_url_accepts_relative_local_path(self):
+        """_validate_repo_url must not raise for ./… paths."""
+        RepoIngestor._validate_repo_url("./repo")
+
+    def test_validate_repo_url_env_var_still_blocked_in_local_path(self):
+        """Env-var tokens in local paths are still rejected."""
+        with pytest.raises(ValidationError, match="environment variable"):
+            RepoIngestor._validate_repo_url("./$SECRET_KEY/repo")
+
+    def test_local_path_never_reaches_dns_resolution(self, tmp_path):
+        """Local paths must not trigger DNS lookups."""
+        with patch(
+            "semantica.ingest.repo_ingestor.socket.getaddrinfo"
+        ) as mock_gai:
+            RepoIngestor._validate_repo_url(str(tmp_path))
+        mock_gai.assert_not_called()
+
+    def test_ingest_repository_local_path_passes_validation(self, tmp_path):
+        """ingest_repository with a local path must not fail at URL validation."""
+        with patch("semantica.ingest.repo_ingestor.git.Repo") as MockRepo, patch(
+            "semantica.ingest.repo_ingestor.get_progress_tracker"
+        ) as mock_get_tracker:
+            mock_get_tracker.return_value = MagicMock()
+            ingestor = RepoIngestor()
+            # Expect clone to fail (temp_dir logic), but NOT a ValidationError
+            try:
+                ingestor.ingest_repository(str(tmp_path))
+            except Exception as exc:
+                assert not isinstance(exc, ValidationError), (
+                    f"Local path must not raise ValidationError; got: {exc}"
+                )

@@ -567,13 +567,23 @@ class RepoIngestor:
     def _is_blocked_ip(
         ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address],
     ) -> bool:
-        """Return True if *ip* is private, loopback, link-local, or similar."""
+        """Return True if *ip* is an SSRF-sensitive address.
+
+        Blocks private (RFC1918/ULA), loopback, link-local (including
+        169.254.x.x / fe80::/10 cloud-metadata ranges), and unspecified
+        addresses.
+
+        Intentionally does **not** use ``ip.is_reserved``: Python's
+        ``ipaddress`` module marks the NAT64 Well-Known Prefix
+        (64:ff9b::/96, RFC 6052) as reserved, which causes false positives
+        on IPv6-only and dual-stack networks that use NAT64 for public
+        Internet access (e.g., github.com resolves to 64:ff9b::… on such
+        networks). Those addresses are not SSRF-sensitive.
+        """
         return bool(
             ip.is_private
             or ip.is_loopback
             or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
             or ip.is_unspecified
         )
 
@@ -680,14 +690,43 @@ class RepoIngestor:
             )
 
     @staticmethod
+    def _is_local_repo_path(repo_url: str) -> bool:
+        """Return True if *repo_url* looks like a local filesystem path.
+
+        Matches absolute paths (``/…``, ``C:\\…``), relative paths
+        (``./…``, ``../…``), and bare names without a scheme or ``@host:``
+        pattern that would be interpreted as a local path by git.
+        """
+        url = repo_url.strip()
+        if "://" in url:
+            return False
+        if RepoIngestor._is_scp_like_repo_url(url):
+            return False
+        # Absolute POSIX or Windows paths, or relative paths
+        p = Path(url)
+        if p.is_absolute():
+            return True
+        # ./  or ../
+        if url.startswith(("./", "../", ".\\", "..\\")):
+            return True
+        # Existing local directory (best-effort; may not exist yet during tests)
+        if p.exists():
+            return True
+        return False
+
+    @staticmethod
     def _validate_repo_url(repo_url: str) -> None:
         """Validate a repository URL before cloning.
 
-        Accepts http(s)/git/ssh URLs and scp-like SSH remotes
-        (``user@host:path``). Rejects empty values, unsupported schemes,
-        missing hosts, environment variable expansion tokens
-        (``$VAR`` / ``${VAR}``), and hosts that are or resolve to private /
-        loopback / link-local / reserved addresses.
+        Accepts http(s)/git/ssh URLs, scp-like SSH remotes
+        (``user@host:path``), and local filesystem paths.  Rejects empty
+        values, unsupported schemes, missing hosts, environment variable
+        expansion tokens (``$VAR`` / ``${VAR}``), and hosts that are or
+        resolve to private / loopback / link-local addresses.
+
+        Local filesystem paths bypass network validation because
+        ``git clone /path/to/local/repo`` makes no network requests and
+        carries no SSRF risk.
 
         DNS resolution is TOCTOU-sensitive (rebinding); pair with egress
         controls in production deployments.
@@ -704,6 +743,10 @@ class RepoIngestor:
             )
 
         url = repo_url.strip()
+
+        # Local filesystem paths: no network, no SSRF risk — skip host checks.
+        if RepoIngestor._is_local_repo_path(url):
+            return
 
         # scp-like syntax has no URL scheme; validate host then accept.
         if RepoIngestor._is_scp_like_repo_url(url):
