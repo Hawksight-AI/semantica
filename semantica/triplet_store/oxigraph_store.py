@@ -42,6 +42,10 @@ class OxigraphStore:
             ProcessingError: If the store cannot be opened.
         """
         self.logger = get_logger("oxigraph_store")
+        # Accept storage_path as an alias for path (matches the convention used
+        # by other Semantica stores). Pop it so it isn't left in self.config.
+        if path is None and "storage_path" in config:
+            path = config.pop("storage_path")
         self.config = config
         self.path = path if path is not None else config.get("path")
 
@@ -83,6 +87,14 @@ class OxigraphStore:
             graph_name = self._graph_name(options.get("graph"))
             quads = [self._to_quad(triplet, graph_name) for triplet in triplets]
             self.store.extend(quads)
+            # pyoxigraph persists via background threads but, per its docs,
+            # "flushes are automatically done using background threads but
+            # might lag a little bit." That lag is a race: reopening or
+            # crashing immediately after add_triplets can observe fewer
+            # triples than were written. An explicit flush() closes that
+            # window for on-disk stores. Skip for in-memory stores (no path).
+            if self.path is not None:
+                self.flush()
             return {
                 "success": True,
                 "triplets_loaded": len(triplets),

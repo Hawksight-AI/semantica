@@ -159,3 +159,40 @@ def test_missing_optional_dependency_has_install_hint():
     ):
         with pytest.raises(ImportError, match="tripletstore-oxigraph"):
             _store()
+
+
+def test_on_disk_store_persists_without_explicit_flush(tmp_path):
+    """An on-disk store must persist writes via the default add path, with no
+    need for callers to call flush() themselves. pyoxigraph auto-flushes via
+    background threads but "might lag a little bit"; add_triplets now calls
+    flush() explicitly to close that race for on-disk stores. This test pins
+    the contract that the default write path is durable on reopen."""
+    path = tmp_path / "oxigraph"
+    first = OxigraphStore(path=path)
+    first.add_triplet(Triplet(EX + "alice", EX + "knows", EX + "bob"))
+    del first
+    gc.collect()
+
+    reopened = OxigraphStore(path=path)
+    assert len(reopened.get_triplets()) == 1
+    assert reopened.get_triplets()[0].object == EX + "bob"
+
+
+def test_storage_path_is_accepted_as_alias_for_path(tmp_path):
+    """Regression: ``storage_path=...`` used to be silently swallowed by
+    ``**config`` (the __init__ parameter is named ``path``), so the store
+    silently degraded to in-memory with no warning. It must now be accepted
+    as an alias consistent with other Semantica stores (e.g. ProvenanceManager)."""
+    storage_path = tmp_path / "oxigraph"
+
+    store = OxigraphStore(storage_path=str(storage_path))
+
+    assert store.path == str(storage_path)
+    # and it must actually persist (proves the alias wired through to the
+    # on-disk path, not just set the attribute)
+    store.add_triplet(Triplet(EX + "alice", EX + "knows", EX + "bob"))
+    del store
+    gc.collect()
+
+    reopened = OxigraphStore(storage_path=str(storage_path))
+    assert len(reopened.get_triplets()) == 1
