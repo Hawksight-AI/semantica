@@ -109,36 +109,66 @@ def test_load_from_json_not_found(seed_manager):
     with pytest.raises(ProcessingError):
         seed_manager.load_from_json("non_existent.json")
 
-@patch("semantica.ingest.db_ingestor.DBIngestor")
+# autospec so the mock enforces DBIngestor's real signatures: an unspecced
+# MagicMock accepts any arity and hid the missing connection_string argument.
+@patch("semantica.ingest.db_ingestor.DBIngestor", autospec=True)
 def test_load_from_database(mock_db_ingestor_cls, seed_manager):
-    mock_db_ingestor = MagicMock()
-    mock_db_ingestor_cls.return_value = mock_db_ingestor
-    
+    mock_db_ingestor = mock_db_ingestor_cls.return_value
+
     # Mock execute_query result
     mock_db_ingestor.execute_query.return_value = [{"id": 1, "name": "Alice"}]
-    
+
     records = seed_manager.load_from_database(
         connection_string="sqlite:///:memory:",
         query="SELECT * FROM users",
         entity_type="User"
     )
-    
+
     assert len(records) == 1
     assert records[0]["id"] == 1
     assert records[0]["entity_type"] == "User"
-    mock_db_ingestor.execute_query.assert_called_once_with("SELECT * FROM users")
+    mock_db_ingestor.execute_query.assert_called_once_with(
+        "sqlite:///:memory:", "SELECT * FROM users"
+    )
 
     # Mock export_table result
     mock_table_data = MagicMock()
     mock_table_data.rows = [{"id": 2, "name": "Bob"}]
     mock_db_ingestor.export_table.return_value = mock_table_data
-    
+
     records = seed_manager.load_from_database(
         connection_string="sqlite:///:memory:",
         table_name="users"
     )
     assert len(records) == 1
     assert records[0]["id"] == 2
+    mock_db_ingestor.export_table.assert_called_once_with(
+        "sqlite:///:memory:", "users"
+    )
+
+# OSError used to be caught alongside ImportError, so genuine connection and
+# driver failures were reported as a missing module with the cause dropped.
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError(111, "Connection refused"),
+        PermissionError(13, "Permission denied"),
+    ],
+)
+@patch("semantica.ingest.db_ingestor.DBIngestor", autospec=True)
+def test_load_from_database_os_error_reports_real_cause(
+    mock_db_ingestor_cls, error, seed_manager
+):
+    mock_db_ingestor_cls.return_value.execute_query.side_effect = error
+
+    with pytest.raises(ProcessingError) as excinfo:
+        seed_manager.load_from_database("sqlite:///:memory:", query="SELECT 1")
+
+    message = str(excinfo.value)
+    assert "Failed to load from database" in message
+    assert str(error) in message
+    assert "Database ingestion module not available" not in message
+    assert excinfo.value.__cause__ is error
 
 def test_load_from_database_import_error(seed_manager):
     with patch.dict("sys.modules", {"semantica.ingest.db_ingestor": None}):
@@ -146,6 +176,7 @@ def test_load_from_database_import_error(seed_manager):
         with pytest.raises(ProcessingError) as excinfo:
             seed_manager.load_from_database("sqlite:///:memory:", query="SELECT 1")
         assert "Database ingestion module not available" in str(excinfo.value)
+        assert isinstance(excinfo.value.__cause__, ImportError)
 
 @patch("requests.get")
 def test_load_from_api(mock_get, seed_manager):

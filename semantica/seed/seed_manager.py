@@ -398,20 +398,27 @@ class SeedDataManager:
             ...     entity_type="Person"
             ... )
         """
+        # Guard only the import itself: a broader guard would report unrelated
+        # failures below as a missing module.
         try:
             from ..ingest.db_ingestor import DBIngestor
+        except ImportError as e:
+            raise ProcessingError(
+                "Database ingestion module not available. Install required dependencies."
+            ) from e
 
+        try:
             # Initialize DB ingestor
             db_ingestor = DBIngestor(config={"connection_string": connection_string})
 
             # Execute query or export table
             if query:
                 # Execute custom query
-                result = db_ingestor.execute_query(query)
+                result = db_ingestor.execute_query(connection_string, query)
                 records = result if isinstance(result, list) else [result]
             elif table_name:
                 # Export table
-                table_data = db_ingestor.export_table(table_name)
+                table_data = db_ingestor.export_table(connection_string, table_name)
                 records = table_data.rows if hasattr(table_data, "rows") else []
             else:
                 raise ProcessingError("Either 'query' or 'table_name' must be provided")
@@ -428,10 +435,6 @@ class SeedDataManager:
             self.logger.info(f"Loaded {len(records)} records from database")
             return records
 
-        except (ImportError, OSError):
-            raise ProcessingError(
-                "Database ingestion module not available. Install required dependencies."
-            )
         except Exception as e:
             raise ProcessingError(f"Failed to load from database: {e}") from e
 
