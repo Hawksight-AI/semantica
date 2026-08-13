@@ -845,8 +845,8 @@ class VectorStore:
                 return cast(int, count_attr())
             raise NotImplementedError(
                 f"Backend store {type(self._backend_store).__name__} does not "
-                "implement count. Vector counting is only supported for the "
-                "inmemory backend."
+                "implement a count() method. Add a count() method to the "
+                "backend store adapter to enable vector counting for this backend."
             )
         raise NotImplementedError(
             f"Backend store is not initialized; cannot count vectors for "
@@ -1481,22 +1481,41 @@ class VectorManager:
     def maintain_store(
         self, store: VectorStore, **options: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Maintain vector store health."""
-        # Check integrity through the public count() accessor so persistent
-        # backends don't crash on the inmemory-only .vectors/.metadata
-        # internals (#855).
-        vector_count = store.count()
-        # Inmemory keeps vectors and metadata in separate dicts; persistent
-        # backends store metadata alongside each vector (1:1), so the
-        # counts coincide there.
-        metadata_count = (
-            len(store.metadata) if store.backend == "inmemory" else vector_count
-        )
+        """Maintain vector store health.
 
+        For the inmemory backend, both the vector count and the metadata
+        count are independently tracked in separate dicts and are compared
+        as an integrity check.
+
+        For persistent backends that implement ``VectorStore.count()``,
+        only the vector count is available.  Metadata is co-located with
+        each vector in the underlying store (added/deleted atomically),
+        so a separate metadata count cannot be meaningfully distinguished
+        from the vector count.  The response omits ``metadata_count`` for
+        such backends and reports ``healthy: True`` to indicate that the
+        store is reachable and operational.
+
+        If the backend does not implement ``count()``, the ``NotImplementedError``
+        propagates to the caller — it is not silenced.
+        """
+        if store.backend == "inmemory":
+            # Inmemory keeps vectors and metadata in separate dicts; compare
+            # them to detect accidental divergence (#855).
+            vector_count = len(store.vectors)
+            metadata_count = len(store.metadata)
+            return {
+                "healthy": vector_count == metadata_count,
+                "vector_count": vector_count,
+                "metadata_count": metadata_count,
+            }
+
+        # Persistent backend: delegate to count().  Metadata and vectors are
+        # stored together, so only one count is available.
+        vector_count = store.count()
         return {
-            "healthy": vector_count == metadata_count,
+            "healthy": True,
             "vector_count": vector_count,
-            "metadata_count": metadata_count,
+            "metadata_count": None,
         }
 
     def collect_statistics(self, store: VectorStore) -> Dict[str, Any]:
