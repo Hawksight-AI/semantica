@@ -57,5 +57,26 @@ class TestGraphStoreMethods(unittest.TestCase):
         # Verify
         self.mock_store.execute_query.assert_called_once_with(query, None)
 
+    def test_update_relationship_rejects_malicious_property_key(self):
+        """Regression test for GHSA-482h-hw99-h62p: update_relationship()
+        interpolates property keys directly into a Cypher SET clause
+        (methods.py's own query builder, not delegated to the backend
+        store), so an unvalidated key was a direct injection point."""
+        from semantica.utils.exceptions import ValidationError
+
+        evil_key = "x} MATCH (victim) DETACH DELETE victim //"
+        with self.assertRaises(ValidationError):
+            methods.update_relationship(1, {evil_key: "value"})
+        self.mock_store.execute_query.assert_not_called()
+
+    def test_update_relationship_with_legitimate_keys_still_works(self):
+        self.mock_store.execute_query.return_value = {
+            "records": [{"id": 1, "type": "KNOWS"}]
+        }
+        result = methods.update_relationship(1, {"weight": 0.5})
+        query = self.mock_store.execute_query.call_args[0][0]
+        self.assertIn("r.weight = $weight", query)
+        self.assertNotIn("DETACH DELETE", query)
+
 if __name__ == '__main__':
     unittest.main()

@@ -5,6 +5,7 @@ Provenance routes for lineage visualization and exportable reports.
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 import networkx as nx
@@ -18,6 +19,24 @@ from ...provenance.integrity import verify_checksum
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/provenance", tags=["Power User Tools"])
+
+# SECURITY: Strip characters that could break out of a Content-Disposition
+# filename= value and inject new HTTP response headers (CWE-113 / CRLF injection).
+# \r, \n, \x00 are the primary header-splitting vectors; " and \ would close
+# or escape the filename attribute.
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\r\n\x00"\\]')
+_MAX_FILENAME_ID_LEN = 128
+
+
+def _safe_content_disposition_filename(node_id: str, suffix: str) -> str:
+    """Return a sanitized Content-Disposition filename for the given node_id.
+
+    Strips CR, LF, NUL, double-quotes, and backslashes that could split HTTP
+    response headers or escape the filename attribute, then length-caps the
+    result so it never produces an excessively long header value.
+    """
+    sanitized = _UNSAFE_FILENAME_CHARS.sub("_", str(node_id))[:_MAX_FILENAME_ID_LEN]
+    return f"{sanitized}{suffix}"
 
 _AGENT_TYPES = {"person", "organization", "system", "agent"}
 _ACTIVITY_TYPES = {"action", "event", "process", "activity", "decision", "publication"}
@@ -333,12 +352,12 @@ async def export_provenance_report(
         content = _render_markdown(report)
         return PlainTextResponse(
             content,
-            headers={"Content-Disposition": f'attachment; filename="{node_id}_provenance.md"'},
+            headers={"Content-Disposition": f'attachment; filename="{_safe_content_disposition_filename(node_id, "_provenance.md")}"'},
         )
 
     content = json.dumps(report, indent=2, default=str)
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{node_id}_provenance.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_content_disposition_filename(node_id, "_provenance.json")}"'},
     )

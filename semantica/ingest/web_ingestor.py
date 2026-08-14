@@ -48,6 +48,7 @@ from urllib3.util.retry import Retry
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .ssrf import parse_bool, request_with_ssrf_guard, validate_url_for_request
 
 
 @dataclass
@@ -338,10 +339,14 @@ class SitemapCrawler:
         Sets up the crawler with configuration options.
 
         Args:
-            **config: Crawler configuration options (currently unused)
+            **config: Crawler configuration options. Recognized keys:
+                - allow_private_ips: Allow private/loopback sitemap hosts
         """
         self.logger = get_logger("sitemap_crawler")
         self.config = config
+        self.allow_private_ips = parse_bool(
+            config.get("allow_private_ips"), default=False
+        )
 
     def parse_sitemap(self, sitemap_url: str) -> List[str]:
         """
@@ -359,10 +364,16 @@ class SitemapCrawler:
 
         Raises:
             ProcessingError: If sitemap cannot be fetched or parsed
+            ValidationError: If sitemap_url fails SSRF checks
         """
         try:
-            # Fetch sitemap
-            response = requests.get(sitemap_url, timeout=30)
+            # Fetch sitemap (SSRF-safe; validates URL and each redirect hop)
+            response = request_with_ssrf_guard(
+                "GET",
+                sitemap_url,
+                allow_private_ips=self.allow_private_ips,
+                timeout=30,
+            )
             response.raise_for_status()
 
             # Parse XML
@@ -391,6 +402,8 @@ class SitemapCrawler:
             )
             return urls
 
+        except ValidationError:
+            raise
         except Exception as e:
             self.logger.error(f"Failed to parse sitemap {sitemap_url}: {e}")
             raise ProcessingError(f"Failed to parse sitemap: {e}") from e
@@ -411,10 +424,16 @@ class SitemapCrawler:
 
         Raises:
             ProcessingError: If sitemap index cannot be fetched or parsed
+            ValidationError: If index_url fails SSRF checks
         """
         try:
-            # Fetch sitemap index
-            response = requests.get(index_url, timeout=30)
+            # Fetch sitemap index (SSRF-safe; validates URL and each redirect hop)
+            response = request_with_ssrf_guard(
+                "GET",
+                index_url,
+                allow_private_ips=self.allow_private_ips,
+                timeout=30,
+            )
             response.raise_for_status()
 
             # Parse XML
@@ -448,6 +467,8 @@ class SitemapCrawler:
             )
             return all_urls
 
+        except ValidationError:
+            raise
         except Exception as e:
             self.logger.error(f"Failed to crawl sitemap index {index_url}: {e}")
             raise ProcessingError(f"Failed to crawl sitemap index: {e}") from e
@@ -487,6 +508,7 @@ class WebIngestor:
         max_retries: int = 3,
         backoff_factor: float = 1.0,
         timeout: int = 30,
+        allow_private_ips: bool = False,
         config: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
@@ -503,12 +525,19 @@ class WebIngestor:
             max_retries: Maximum number of retry attempts (default: 3)
             backoff_factor: Backoff factor for retries (default: 1.0)
             timeout: Request timeout in seconds (default: 30)
+            allow_private_ips: Allow fetching private/loopback/link-local hosts
+                (default: False). Opt in only for trusted internal deployments.
             config: Optional configuration dictionary (merged with kwargs)
             **kwargs: Additional configuration parameters
         """
         self.logger = get_logger("web_ingestor")
         self.config = config or {}
         self.config.update(kwargs)
+        self.allow_private_ips = parse_bool(
+            self.config.get("allow_private_ips", allow_private_ips),
+            default=False,
+        )
+        self.config["allow_private_ips"] = self.allow_private_ips
 
         # Initialize HTTP session with retry strategy
         self.session = requests.Session()
@@ -544,7 +573,8 @@ class WebIngestor:
 
         self.logger.debug(
             f"Web ingestor initialized: user_agent={user_agent}, "
-            f"delay={delay}, respect_robots={respect_robots}"
+            f"delay={delay}, respect_robots={respect_robots}, "
+            f"allow_private_ips={self.allow_private_ips}"
         )
 
     def ingest_url(
@@ -574,16 +604,9 @@ class WebIngestor:
         )
 
         try:
-            # Validate URL format
-            try:
-                parsed = urlparse(url)
-                if not parsed.scheme or not parsed.netloc:
-                    raise ValidationError(
-                        f"Invalid URL format: {url}. "
-                        "URL must include scheme (http/https) and netloc (domain)."
-                    )
-            except Exception as e:
-                raise ValidationError(f"Invalid URL: {url}") from e
+            # Validate before robots check: RobotsChecker.read() makes an unguarded
+            # HTTP request to <host>/robots.txt and must not reach blocked addresses.
+            validate_url_for_request(url, allow_private_ips=self.allow_private_ips)
 
             # Check robots.txt compliance
             if self.robots_checker and not self.robots_checker.can_fetch(url):
@@ -593,11 +616,19 @@ class WebIngestor:
             # Apply rate limiting (wait if necessary)
             self.rate_limiter.wait_if_needed()
 
-            # Fetch content with retry logic
+            # Fetch content with retry logic (SSRF-safe redirects)
             try:
                 request_timeout = timeout or self.config.get("timeout", 30)
-                response = self.session.get(url, timeout=request_timeout)
+                response = request_with_ssrf_guard(
+                    "GET",
+                    url,
+                    session=self.session,
+                    allow_private_ips=self.allow_private_ips,
+                    timeout=request_timeout,
+                )
                 response.raise_for_status()
+            except ValidationError:
+                raise
             except requests.RequestException as e:
                 self.progress_tracker.stop_tracking(
                     tracking_id, status="failed", message=str(e)

@@ -154,10 +154,13 @@ class TestModuleSpecificEdgeCases:
     def test_pipeline_with_empty_data(self):
         """Test pipeline with empty data."""
         try:
+            from semantica.pipeline.pipeline_builder import Pipeline
             from semantica.pipeline.pipeline_provenance import PipelineWithProvenance
-            pipeline = PipelineWithProvenance(provenance=True)
+
+            pipeline = Pipeline(name="edge_case_test")
+            runner = PipelineWithProvenance(pipeline, provenance=True)
             # Should handle empty data
-            assert pipeline is not None
+            assert runner is not None
         except ImportError:
             pytest.skip("Pipeline not available")
     

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 
+from mcp import __version__
 from mcp.session import get_graph
 
 log = logging.getLogger("semantica.mcp.resources")
@@ -60,7 +61,7 @@ def _read_decisions_list(uri: str) -> dict:
 
 def _read_schema_info(uri: str) -> dict:
     info = {
-        "version": "0.4.0",
+        "version": __version__,
         "node_types": [
             "Entity", "decision", "Decision", "Event", "Concept",
             "Person", "Organisation", "Location",

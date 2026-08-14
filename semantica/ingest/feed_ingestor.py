@@ -42,6 +42,7 @@ from bs4 import BeautifulSoup
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .ssrf import parse_bool, request_with_ssrf_guard
 
 
 @dataclass
@@ -425,6 +426,9 @@ class FeedMonitor:
         self.thread: Optional[threading.Thread] = None
         self.update_callback: Optional[callable] = None
         self.check_interval = config.get("check_interval", 3600)  # Default 1 hour
+        self.allow_private_ips = parse_bool(
+            config.get("allow_private_ips"), default=False
+        )
 
     def add_feed(self, feed_url: str, **options):
         """
@@ -485,7 +489,12 @@ class FeedMonitor:
 
         try:
             # Fetch feed
-            response = requests.get(feed_url, timeout=30)
+            response = request_with_ssrf_guard(
+                "GET",
+                feed_url,
+                allow_private_ips=self.allow_private_ips,
+                timeout=30,
+            )
             response.raise_for_status()
 
             # Parse feed
@@ -575,6 +584,9 @@ class FeedIngestor:
         self.logger = get_logger("feed_ingestor")
         self.config = config or {}
         self.config.update(kwargs)
+        self.allow_private_ips = parse_bool(
+            self.config.get("allow_private_ips"), default=False
+        )
 
         # Initialize feed parser
         self.parser = FeedParser(**self.config)
@@ -638,7 +650,12 @@ class FeedIngestor:
                 request_timeout = timeout or options.get(
                     "timeout", self.config.get("timeout", 30)
                 )
-                response = requests.get(feed_url, timeout=request_timeout)
+                response = request_with_ssrf_guard(
+                    "GET",
+                    feed_url,
+                    allow_private_ips=self.allow_private_ips,
+                    timeout=request_timeout,
+                )
                 response.raise_for_status()
                 self.logger.debug(
                     f"Fetched feed from {feed_url}: {len(response.text)} bytes"
@@ -693,7 +710,12 @@ class FeedIngestor:
 
         try:
             # Fetch website content
-            response = requests.get(website_url, timeout=30)
+            response = request_with_ssrf_guard(
+                "GET",
+                website_url,
+                allow_private_ips=self.allow_private_ips,
+                timeout=30,
+            )
             response.raise_for_status()
 
             # Parse HTML
@@ -723,7 +745,12 @@ class FeedIngestor:
             for path in common_paths:
                 try:
                     feed_url = urljoin(website_url, path)
-                    test_response = requests.head(feed_url, timeout=10)
+                    test_response = request_with_ssrf_guard(
+                        "HEAD",
+                        feed_url,
+                        allow_private_ips=self.allow_private_ips,
+                        timeout=10,
+                    )
                     if test_response.status_code == 200:
                         content_type = test_response.headers.get("Content-Type", "")
                         if (
@@ -741,7 +768,12 @@ class FeedIngestor:
             for feed_url in feed_urls:
                 try:
                     # Quick validation by fetching feed
-                    test_response = requests.get(feed_url, timeout=10)
+                    test_response = request_with_ssrf_guard(
+                        "GET",
+                        feed_url,
+                        allow_private_ips=self.allow_private_ips,
+                        timeout=10,
+                    )
                     if test_response.status_code == 200:
                         validated_feeds.append(feed_url)
                 except Exception:
