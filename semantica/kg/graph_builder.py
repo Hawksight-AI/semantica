@@ -23,7 +23,7 @@ License: MIT
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import time
 
 
@@ -90,6 +90,18 @@ class GraphBuilder:
         self.version_snapshots = version_snapshots
         self.graph_store = graph_store
         self.config = kwargs  # Store additional config for extractors
+        # Extractors are reused across texts: NERExtractor loads its spaCy model
+        # eagerly in __init__, so constructing one per text would reload the
+        # model on every source in a multi-document build.
+        self._extractor_cache: Dict[Tuple[str, Any], Any] = {}
+        # build() resets these per run; seed them here so _extract_from_text
+        # is usable on its own instead of raising an AttributeError that the
+        # broad except in the extraction path silently swallows.
+        self._extraction_stats: Dict[str, int] = {
+            "extracted_entities": 0,
+            "extracted_relations": 0,
+            "extracted_triplets": 0,
+        }
 
         # Initialize logging
         from ..utils.logging import get_logger
@@ -228,6 +240,99 @@ class GraphBuilder:
             # Unknown type
             pass
 
+    def _get_extractor(
+        self, kind: str, extractor_cls, method: Union[str, List[str]]
+    ):
+        """Return a cached extractor for this method, building it on first use.
+
+        Extractors hold no per-text state but are expensive to construct —
+        ``NERExtractor(method="ml")`` loads a spaCy model in ``__init__``.
+        Keying on kind and method is enough because ``self.config`` is fixed
+        for the lifetime of the builder.
+
+        Args:
+            kind: Extractor role, one of ``"ner"``, ``"relation"``, ``"triplet"``.
+            extractor_cls: Extractor class to construct on a cache miss.
+            method: A method name, or a list of them for fallback ordering.
+                Lists are converted to tuples for the cache key only; the
+                extractor still receives the original value.
+        """
+        key = (kind, tuple(method) if isinstance(method, list) else method)
+        if key not in self._extractor_cache:
+            self._extractor_cache[key] = extractor_cls(method=method, **self.config)
+        return self._extractor_cache[key]
+
+    def _remap_relationship_endpoints(
+        self,
+        entities: List[Dict[str, Any]],
+        relationships: List[Dict[str, Any]],
+    ) -> int:
+        """Rewrite relationship endpoints after entity resolution.
+
+        Entity merging keeps the canonical entity ID and records the IDs of all
+        merged inputs in ``merged_from``.  Relationships are collected before
+        resolution, so without this remapping they can continue to reference an
+        entity that is no longer present in the graph.
+
+        Returns:
+            The number of relationship endpoints that were remapped.
+        """
+        endpoint_map: Dict[Any, Any] = {}
+
+        for entity in entities:
+            if not isinstance(entity, dict):
+                continue
+
+            canonical_id = entity.get("id")
+            if canonical_id is None:
+                canonical_id = entity.get("entity_id")
+            if canonical_id is None:
+                continue
+
+            # Keep canonical IDs stable and map every source ID retained by the
+            # merge operation to the surviving entity.
+            try:
+                endpoint_map[canonical_id] = canonical_id
+            except TypeError:
+                # Invalid/unhashable IDs are left for graph validation to report
+                # rather than making graph construction fail here.
+                continue
+
+            merged_from = entity.get("merged_from") or []
+            if isinstance(merged_from, (list, tuple, set)):
+                for source_id in merged_from:
+                    if source_id is not None:
+                        try:
+                            endpoint_map[source_id] = canonical_id
+                        except TypeError:
+                            # Skip invalid aliases while preserving valid ones.
+                            continue
+
+        remapped_count = 0
+        for relationship in relationships:
+            if not isinstance(relationship, dict):
+                continue
+
+            for endpoint in ("source", "target"):
+                endpoint_id = relationship.get(endpoint)
+                try:
+                    canonical_id = endpoint_map.get(endpoint_id)
+                except TypeError:
+                    # Invalid/unhashable endpoints are left for graph validation
+                    # to report rather than making graph construction fail here.
+                    continue
+
+                if canonical_id is not None and canonical_id != endpoint_id:
+                    relationship[endpoint] = canonical_id
+                    remapped_count += 1
+
+        if remapped_count:
+            self.logger.info(
+                "Remapped %d relationship endpoint(s) after entity resolution",
+                remapped_count,
+            )
+        return remapped_count
+
     def _extract_from_text(self, text: str, all_entities: List[Any], all_relationships: List[Any], **options):
         """Helper to extract knowledge from text using configured methods."""
         if not options.get("extract", True):
@@ -237,15 +342,17 @@ class GraphBuilder:
         from ..semantic_extract.relation_extractor import RelationExtractor
         from ..semantic_extract.triplet_extractor import TripletExtractor
         
-        # Default to LLM methods as per requirement
-        ner_method = options.get("ner_method", "llm")
-        relation_method = options.get("relation_method", "llm")
-        triplet_method = options.get("triplet_method", "llm")
+        # Local extractors by default — raw-text build() must not require a
+        # provider, API key, or network access. Pass ner_method="llm" (and the
+        # relation/triplet equivalents) to opt into LLM extraction.
+        ner_method = options.get("ner_method", "ml")
+        relation_method = options.get("relation_method", "pattern")
+        triplet_method = options.get("triplet_method", "pattern")
         
         self.logger.info(f"Extracting knowledge from text ({len(text)} chars) using {ner_method}...")
         
         # 1. Extract Entities
-        ner = NERExtractor(method=ner_method, **self.config)
+        ner = self._get_extractor("ner", NERExtractor, ner_method)
         try:
             entities = ner.extract_entities(text, **options)
             extracted_count = len(entities)
@@ -258,8 +365,16 @@ class GraphBuilder:
             entities = []
         
         # 2. Extract Relations (if requested)
-        if options.get("extract_relations", True):
-            rel_extractor = RelationExtractor(method=relation_method, **self.config)
+        # Stays None when relation extraction is skipped or fails, which lets
+        # TripletExtractor derive its own relations as before. When we do have
+        # them, they are forwarded below so triplets reuse the relations
+        # extracted with relation_method rather than re-deriving via
+        # triplet_method.
+        relations = None
+        if options.get("extract_relations", False):
+            rel_extractor = self._get_extractor(
+                "relation", RelationExtractor, relation_method
+            )
             try:
                 # Pass entities if available to help relation extraction
                 relations = rel_extractor.extract_relations(text, entities=entities, **options)
@@ -273,9 +388,13 @@ class GraphBuilder:
 
         # 3. Extract Triplets (if requested)
         if options.get("extract_triplets", True):
-            trip_extractor = TripletExtractor(method=triplet_method, **self.config)
+            trip_extractor = self._get_extractor(
+                "triplet", TripletExtractor, triplet_method
+            )
             try:
-                triplets = trip_extractor.extract_triplets(text, entities=entities, **options)
+                triplets = trip_extractor.extract_triplets(
+                    text, entities=entities, relations=relations, **options
+                )
                 extracted_count = len(triplets)
                 self._extraction_stats["extracted_triplets"] += extracted_count
                 self.logger.info(f"Extracted {extracted_count} triplets")
@@ -307,19 +426,23 @@ class GraphBuilder:
                   raw string or ``{"text": ...}`` dict is passed as a source
                   (default: ``True``).
                 - ``extract_relations`` (bool): Whether to extract relations
-                  during text extraction (default: ``True``).
+                  during text extraction (default: ``False``).
                 - ``extract_triplets`` (bool): Whether to extract triplets
                   during text extraction (default: ``True``).
                 - ``ner_method`` (str): NER backend used for text extraction
-                  (e.g. ``"ml"``, ``"pattern"``, ``"llm"``; default: ``"llm"``).
+                  (e.g. ``"ml"``, ``"pattern"``, ``"llm"``; default: ``"ml"``).
                 - ``relation_method`` (str): Relation-extraction backend
-                  (e.g. ``"pattern"``, ``"llm"``; default: ``"llm"``).
+                  (e.g. ``"pattern"``, ``"llm"``; default: ``"pattern"``).
                 - ``triplet_method`` (str): Triplet-extraction backend
-                  (e.g. ``"pattern"``, ``"llm"``; default: ``"llm"``).
+                  (e.g. ``"pattern"``, ``"llm"``; default: ``"pattern"``).
                 - ``entity_resolver``: An :class:`EntityResolver` instance
                   that overrides the one configured on the builder.
                 - ``relationships`` (list): An explicit list of relationships
                   to include in addition to those found in *sources*.
+
+            Raw-text extraction uses local extractors by default and needs no
+            provider or API key. To use LLM extraction, pass the methods
+            explicitly, e.g. ``ner_method="llm"``.
 
         Returns:
             A dictionary containing the graph's ``entities``,
@@ -632,6 +755,16 @@ class GraphBuilder:
                 self.logger.info(
                     f"Entity resolution complete: {len(all_entities)} -> {len(resolved_entities)} unique entities"
                 )
+
+            # Relationships were collected before entity resolution. Rewrite
+            # endpoints only when resolution produced merged entity IDs.
+            if resolver_to_use:
+                has_merged_entities = any(
+                    isinstance(entity, dict) and entity.get("merged_from")
+                    for entity in resolved_entities
+                )
+                if has_merged_entities:
+                    self._remap_relationship_endpoints(resolved_entities, all_relationships)
 
             if input_relationships_count > 0 and len(all_relationships) == 0:
                 warning_msg = (
