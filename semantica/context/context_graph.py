@@ -2780,11 +2780,22 @@ class ContextGraph:
         direct_influence.discard(decision_id)
         direct_influence.update(self._decision_index.get(decision["category"], set()))
         direct_influence.discard(decision_id)
+
+        # Explicit causal relationships recorded via add_causal_relationship() are
+        # ground truth and always count as direct influence, in either direction.
+        causal_edge_types = {"CAUSED", "INFLUENCED", "PRECEDENT_FOR"}
+        for edge in self.edges:
+            if edge.edge_type not in causal_edge_types:
+                continue
+            if edge.source_id == decision_id and edge.target_id in self._decisions:
+                direct_influence.add(edge.target_id)
+            elif edge.target_id == decision_id and edge.source_id in self._decisions:
+                direct_influence.add(edge.source_id)
         
         # Indirect influence (through graph relationships)
         indirect_influence = set()
         if include_indirect and self.config.get("advanced_analytics"):
-            indirect_influence = self._find_indirect_decision_influence(decision_id, max_depth)
+            indirect_influence = self._find_indirect_decision_influence(decision_id, max_depth) - direct_influence
         
         # Calculate influence scores
         influence_scores = {}
@@ -2908,22 +2919,53 @@ class ContextGraph:
             causal_chain = []
             visited = set()
             
+            causal_edge_types = {"CAUSED", "INFLUENCED", "PRECEDENT_FOR"}
+
             def trace_recursive(current_id, depth, path):
                 if depth >= max_depth or current_id in visited:
                     return
-                
+
                 visited.add(current_id)
                 current_decision = self._decisions[current_id]
-                
-                # Find potential causes (decisions that influenced this one)
+
+                # Explicit causal relationships recorded via add_causal_relationship()
+                # take precedence - they are the ground truth the caller recorded.
+                # Edges may reference decision nodes that were never recorded through
+                # record_decision() (e.g. a graph restored via from_dict), so only
+                # traverse causes that have a known decision record.
+                explicit_causes = {}
+                for edge in self.edges:
+                    if (edge.target_id == current_id
+                            and edge.edge_type in causal_edge_types
+                            and edge.source_id in self._decisions):
+                        explicit_causes[edge.source_id] = edge
+
+                for cause_id, edge in explicit_causes.items():
+                    cause_dec = self._decisions[cause_id]
+                    edge_weight = float(getattr(edge, "weight", 1.0) or 1.0)
+                    hop = {
+                        "from": cause_id,
+                        "from_scenario": cause_dec.get("scenario", ""),
+                        "to": current_id,
+                        "to_scenario": current_decision.get("scenario", ""),
+                        "type": edge.edge_type,
+                        "edge_weight": edge_weight,
+                    }
+                    cause_path = path + [hop]
+                    causal_chain.append(self._build_causal_chain_report(list(reversed(cause_path))))
+                    trace_recursive(cause_id, depth + 1, cause_path)
+
+                # Find potential causes (decisions that influenced this one) via
+                # shared entities/timestamps - additive heuristic, skipping anything
+                # already covered by an explicit relationship above.
                 potential_causes = []
                 for entity in current_decision["entities"]:
                     for other_decision_id in self._entity_index.get(entity, set()):
-                        if other_decision_id != current_id:
+                        if other_decision_id != current_id and other_decision_id not in explicit_causes:
                             other_decision = self._decisions[other_decision_id]
                             if other_decision["timestamp"] < current_decision["timestamp"]:
                                 potential_causes.append(other_decision_id)
-                
+
                 for cause_id in potential_causes:
                     cause_dec = self._decisions.get(cause_id, {})
                     edge_weight = float(cause_dec.get("confidence", 1.0))
