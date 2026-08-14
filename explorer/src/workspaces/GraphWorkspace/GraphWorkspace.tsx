@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
   Users,
+  X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -1539,6 +1540,11 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     }
   }, [searchQuery]);
 
+  const handleClearSearchResults = useCallback(() => {
+    setSearchResults([]);
+    setSearchError("");
+  }, []);
+
   const handleRunPredictions = useCallback(async () => {
     if (!inspectableNodeId) return;
     setIsRunningPredictions(true);
@@ -2855,20 +2861,36 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
               {searchError ? <div style={{ color: "#ff7b72", fontSize: 12 }}>{searchError}</div> : null}
 
               {searchResults.length ? (
-                <div className="explore-search-results hud-scrollbar" style={searchResultsStripStyle}>
-                  {searchResults.map((result) => (
-                    <button key={result.node.id} style={predictionCardStyle} onClick={() => focusNode(result.node.id)}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ color: "#fff", fontWeight: 600 }}>{result.node.content || result.node.id}</div>
-                          <div style={{ color: "#8b949e", fontSize: 12 }}>{result.node.type}</div>
-                        </div>
-                        <div style={{ color: "#58a6ff", fontSize: 12, whiteSpace: "nowrap" }}>
-                          {result.score.toFixed(3)}
-                        </div>
-                      </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ color: "#8b949e", fontSize: 12 }}>
+                      {searchResults.length} result{searchResults.length === 1 ? "" : "s"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearSearchResults}
+                      style={{ ...secondaryActionButtonStyle, minHeight: 26, padding: "4px 9px", gap: 5 }}
+                      aria-label="Dismiss search results"
+                    >
+                      <X size={12} strokeWidth={2.4} />
+                      Dismiss
                     </button>
-                  ))}
+                  </div>
+                  <div className="explore-search-results hud-scrollbar" style={searchResultsStripStyle}>
+                    {searchResults.map((result) => (
+                      <button key={result.node.id} style={predictionCardStyle} onClick={() => focusNode(result.node.id)}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ color: "#fff", fontWeight: 600 }}>{result.node.content || result.node.id}</div>
+                            <div style={{ color: "#8b949e", fontSize: 12 }}>{result.node.type}</div>
+                          </div>
+                          <div style={{ color: "#58a6ff", fontSize: 12, whiteSpace: "nowrap" }}>
+                            {Math.round(result.score)}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : null}
 
