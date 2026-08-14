@@ -35,6 +35,7 @@ import re
 import shutil
 import socket
 import tempfile
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -67,6 +68,14 @@ _REPO_HOST_RESOLVE_CACHE: "OrderedDict[str, Tuple[float, Tuple[str, ...]]]" = (
 )
 _REPO_HOST_RESOLVE_CACHE_TTL_SECONDS = 60.0
 _REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES = 1024
+# Guards all reads/writes/prunes of _REPO_HOST_RESOLVE_CACHE. The cache is a
+# module-level OrderedDict shared by every RepoIngestor instance and every
+# thread; without a lock, concurrent ingest_repository() calls can mutate the
+# dict while another thread is iterating it (e.g. during pruning), raising
+# "RuntimeError: OrderedDict mutated during iteration". The blocking
+# socket.getaddrinfo() call is intentionally kept outside this lock so a slow
+# DNS lookup for one host cannot stall cache access for other hosts.
+_REPO_HOST_RESOLVE_CACHE_LOCK = threading.Lock()
 
 
 @dataclass
@@ -597,15 +606,19 @@ class RepoIngestor:
         """
         cache_key = host.lower().rstrip(".")
         now = time.monotonic()
-        RepoIngestor._prune_repo_host_resolve_cache(now)
-        cached = _REPO_HOST_RESOLVE_CACHE.get(cache_key)
-        if cached is not None:
-            expires_at, ips = cached
-            if now < expires_at:
-                _REPO_HOST_RESOLVE_CACHE.move_to_end(cache_key)
-                return ips
-            _REPO_HOST_RESOLVE_CACHE.pop(cache_key, None)
+        with _REPO_HOST_RESOLVE_CACHE_LOCK:
+            RepoIngestor._prune_repo_host_resolve_cache_locked(now)
+            cached = _REPO_HOST_RESOLVE_CACHE.get(cache_key)
+            if cached is not None:
+                expires_at, ips = cached
+                if now < expires_at:
+                    _REPO_HOST_RESOLVE_CACHE.move_to_end(cache_key)
+                    return ips
+                _REPO_HOST_RESOLVE_CACHE.pop(cache_key, None)
 
+        # DNS resolution is blocking I/O; keep it outside the lock so a slow
+        # or hanging lookup for one host cannot stall cache access for
+        # concurrent lookups of other hosts.
         try:
             addrinfos = socket.getaddrinfo(
                 host, None, type=socket.SOCK_STREAM
@@ -629,17 +642,32 @@ class RepoIngestor:
             )
 
         result = tuple(ips)
-        _REPO_HOST_RESOLVE_CACHE[cache_key] = (
-            now + _REPO_HOST_RESOLVE_CACHE_TTL_SECONDS,
-            result,
-        )
-        _REPO_HOST_RESOLVE_CACHE.move_to_end(cache_key)
-        RepoIngestor._prune_repo_host_resolve_cache(now)
+        with _REPO_HOST_RESOLVE_CACHE_LOCK:
+            now = time.monotonic()
+            _REPO_HOST_RESOLVE_CACHE[cache_key] = (
+                now + _REPO_HOST_RESOLVE_CACHE_TTL_SECONDS,
+                result,
+            )
+            _REPO_HOST_RESOLVE_CACHE.move_to_end(cache_key)
+            RepoIngestor._prune_repo_host_resolve_cache_locked(now)
         return result
 
     @staticmethod
     def _prune_repo_host_resolve_cache(now: Optional[float] = None) -> None:
-        """Remove expired host entries and enforce a hard cache size cap."""
+        """Remove expired host entries and enforce a hard cache size cap.
+
+        Acquires ``_REPO_HOST_RESOLVE_CACHE_LOCK``. Callers that already hold
+        the lock must use ``_prune_repo_host_resolve_cache_locked`` instead to
+        avoid deadlocking on the (non-reentrant) lock.
+        """
+        if now is None:
+            now = time.monotonic()
+        with _REPO_HOST_RESOLVE_CACHE_LOCK:
+            RepoIngestor._prune_repo_host_resolve_cache_locked(now)
+
+    @staticmethod
+    def _prune_repo_host_resolve_cache_locked(now: Optional[float] = None) -> None:
+        """Prune implementation; caller must already hold the cache lock."""
         if now is None:
             now = time.monotonic()
 
