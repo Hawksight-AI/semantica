@@ -2903,24 +2903,32 @@ class ContextGraph:
     def trace_decision_causality(
         self,
         decision_id: str,
-        max_depth: int = 5
+        max_depth: int = 5,
+        max_chains: Optional[int] = 10000
     ) -> List[Dict[str, Any]]:
         """
         Trace causal chain for a decision.
-        
+
         Args:
             decision_id: Decision to trace
             max_depth: Maximum depth for causal analysis
-            
+            max_chains: Maximum number of chains to return. Densely connected
+                graphs can contain a combinatorial number of distinct causal
+                paths, so the traversal stops once this many chains have been
+                collected and appends a ``{"truncated": True, ...}`` marker so
+                callers can tell the trace is incomplete. Pass None for no limit.
+
         Returns:
             Causal chain as list of decision relationships
         """
         if not hasattr(self, '_decisions') or decision_id not in self._decisions:
             raise ValueError(f"Decision {decision_id} not found")
-        
+
         try:
             # Use graph traversal to find causal relationships
             causal_chain = []
+            chain_limit = float("inf") if max_chains is None else max_chains
+            truncated = False
 
             # Reverse index of explicit causal edges, built once per call so the
             # traversal does not rescan the edge list at every visited node.
@@ -2933,12 +2941,23 @@ class ContextGraph:
                     if edge.source_id in self._decisions:
                         incoming_causal_edges[edge.target_id].append(edge)
 
+            def record_chain(cause_path):
+                """Record one chain. Returns False once the cap is reached."""
+                nonlocal truncated
+                if len(causal_chain) >= chain_limit:
+                    truncated = True
+                    return False
+                causal_chain.append(
+                    self._build_causal_chain_report(list(reversed(cause_path)))
+                )
+                return True
+
             def trace_recursive(current_id, depth, path, path_ids):
                 # Cycle detection is per-path rather than global: a decision reached
                 # through one branch must stay traversable through another, otherwise
                 # branching graphs silently lose valid chains. max_depth bounds the
                 # traversal.
-                if depth >= max_depth or current_id in path_ids:
+                if truncated or depth >= max_depth or current_id in path_ids:
                     return
 
                 path_ids = path_ids | {current_id}
@@ -2967,8 +2986,11 @@ class ContextGraph:
                         "edge_weight": edge_weight,
                     }
                     cause_path = path + [hop]
-                    causal_chain.append(self._build_causal_chain_report(list(reversed(cause_path))))
+                    if not record_chain(cause_path):
+                        return
                     trace_recursive(cause_id, depth + 1, cause_path, path_ids)
+                    if truncated:
+                        return
 
                 # Find potential causes (decisions that influenced this one) via
                 # shared entities/timestamps - additive heuristic, skipping anything
@@ -2993,10 +3015,32 @@ class ContextGraph:
                         "edge_weight": edge_weight,
                     }
                     cause_path = path + [hop]
-                    causal_chain.append(self._build_causal_chain_report(list(reversed(cause_path))))
+                    if not record_chain(cause_path):
+                        return
                     trace_recursive(cause_id, depth + 1, cause_path, path_ids)
+                    if truncated:
+                        return
 
             trace_recursive(decision_id, 0, [], frozenset())
+
+            if truncated:
+                # Never drop chains silently: the caller is told the trace is partial.
+                self.logger.warning(
+                    "Causal trace for %s truncated at %s chains; "
+                    "raise max_chains or lower max_depth for a complete trace.",
+                    decision_id,
+                    max_chains,
+                )
+                causal_chain.append({
+                    "truncated": True,
+                    "max_chains": max_chains,
+                    "message": (
+                        f"Causal trace truncated at {max_chains} chains. "
+                        "The result is incomplete; raise max_chains or lower "
+                        "max_depth for a complete trace."
+                    ),
+                })
+
             return causal_chain
             
         except Exception as e:
@@ -3465,21 +3509,25 @@ class ContextGraph:
     def trace_decision_chain(
         self,
         decision_id: str,
-        max_steps: int = 5
+        max_steps: int = 5,
+        max_chains: Optional[int] = 10000
     ) -> List[Dict[str, Any]]:
         """
         Easy way to trace how decisions are connected.
-        
+
         Args:
             decision_id: Starting decision
             max_steps: Maximum steps to trace
-            
+            max_chains: Maximum number of chains to return; see
+                trace_decision_causality(). Pass None for no limit.
+
         Returns:
             Decision chain connections
         """
         return self.trace_decision_causality(
             decision_id=decision_id,
-            max_depth=max_steps
+            max_depth=max_steps,
+            max_chains=max_chains
         )
     
     def check_decision_rules(

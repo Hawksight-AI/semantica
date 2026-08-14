@@ -242,6 +242,62 @@ def test_cyclic_causal_edges_terminate():
     assert not any("error" in chain for chain in chains)
 
 
+def _dense_causal_graph(levels, width):
+    """Layered DAG where every decision in a layer causes every one in the next."""
+    graph = ContextGraph(advanced_analytics=True)
+    layers = []
+    for level in range(levels):
+        layers.append([
+            graph.record_decision(
+                category="ops", scenario=f"L{level}n{index}", reasoning="r",
+                outcome="approved", confidence=0.9,
+            )
+            for index in range(width)
+        ])
+    for level in range(levels - 1):
+        for source in layers[level]:
+            for target in layers[level + 1]:
+                graph.add_causal_relationship(source, target, relationship_type="CAUSED")
+    return graph, layers[-1][0]
+
+
+def test_dense_graph_is_bounded_and_reports_truncation():
+    """Per-path traversal is combinatorial, so the result must stay bounded.
+
+    Truncation is reported rather than silently dropping chains, which is the
+    very failure this module exists to prevent.
+    """
+    graph, sink = _dense_causal_graph(levels=9, width=5)
+
+    chains = graph.trace_decision_chain(sink, max_steps=9, max_chains=500)
+
+    markers = [chain for chain in chains if chain.get("truncated")]
+    assert len(markers) == 1, "truncation must be reported exactly once"
+    assert markers[0]["max_chains"] == 500
+    assert len(chains) == 501, "500 chains plus the marker"
+
+
+def test_small_graph_reports_no_truncation():
+    """The cap must not alter results for graphs that fit within it."""
+    graph, sink = _dense_causal_graph(levels=5, width=2)
+
+    chains = graph.trace_decision_chain(sink)
+
+    assert chains
+    assert not any(chain.get("truncated") for chain in chains)
+
+
+def test_max_chains_none_disables_the_cap():
+    graph, sink = _dense_causal_graph(levels=5, width=5)
+
+    capped = graph.trace_decision_chain(sink, max_chains=100)
+    uncapped = graph.trace_decision_chain(sink, max_chains=None)
+
+    assert len(capped) == 101
+    assert not any(chain.get("truncated") for chain in uncapped)
+    assert len(uncapped) > len(capped)
+
+
 def test_entity_based_inference_still_applies_without_explicit_edges():
     """The entity heuristic remains as a fallback; it must not be regressed."""
     graph = ContextGraph(advanced_analytics=True)
