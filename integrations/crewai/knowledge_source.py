@@ -263,27 +263,27 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
 
         save = getattr(self, "_save_documents", None)
         if save is not None:
-            try:
-                save()
-                logger.info(
-                    "SemanticaKnowledgeSource.add: stored %d chunks", len(chunks)
-                )
-                return
-            except ValueError as exc:
+            if getattr(self, "storage", None) is None:
                 logger.debug(
-                    "SemanticaKnowledgeSource.add: storage not wired (%s) — "
-                    "keeping chunks in memory",
-                    exc,
+                    "SemanticaKnowledgeSource.add: storage not wired — "
+                    "keeping chunks in memory"
                 )
-            except Exception as exc:
-                logger.error(
-                    "SemanticaKnowledgeSource.add: storage save FAILED (%s) — "
-                    "chunks are only kept in memory and agents will retrieve "
-                    "nothing. Configure the Crew embedder (e.g. an OpenAI "
-                    "embedder with OPENAI_API_KEY, or a local embedder) before "
-                    "running the crew.",
-                    exc,
-                )
+            else:
+                try:
+                    save()
+                    logger.info(
+                        "SemanticaKnowledgeSource.add: stored %d chunks", len(chunks)
+                    )
+                    return
+                except Exception as exc:
+                    logger.error(
+                        "SemanticaKnowledgeSource.add: storage save FAILED (%s) — "
+                        "chunks are only kept in memory and agents will retrieve "
+                        "nothing. Configure the Crew embedder (e.g. an OpenAI "
+                        "embedder with OPENAI_API_KEY, or a local embedder) before "
+                        "running the crew.",
+                        exc,
+                    )
 
         logger.info(
             "SemanticaKnowledgeSource.add: %d chunks ready in memory", len(chunks)

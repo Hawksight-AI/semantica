@@ -28,6 +28,17 @@ class _FakeStorage:
         self.saved_chunks.extend(chunks)
 
 
+class _RaisingStorage(_FakeStorage):
+    """Mirrors real crewai: storage is wired but ``save`` raises ``ValueError``
+    (e.g. the embedder has no credentials configured)."""
+
+    def save(self, chunks: list) -> None:
+        raise ValueError("The OPENAI_API_KEY environment variable is not set.")
+
+    async def asave(self, chunks: list) -> None:
+        raise ValueError("The OPENAI_API_KEY environment variable is not set.")
+
+
 def _build_graph() -> ContextGraph:
     graph = ContextGraph()
     graph.add_node(node_id="privacy", node_type="policy", content="privacy policy doc")
@@ -120,6 +131,21 @@ class TestAdd(unittest.TestCase):
         self.src.add()
         self.assertGreater(len(self.src.chunks), 0)
         self.assertGreater(len(self.src._chunks), 0)
+
+    def test_add_wired_storage_failure_logs_error_not_debug(self):
+        """Regression: real crewai raises ``ValueError`` for a missing embedder
+        even though storage IS wired. That used to fall into the "storage not
+        wired" DEBUG branch, silently hiding the failure — it must log an
+        actionable ERROR instead."""
+        self.src.storage = _RaisingStorage()
+        with self.assertLogs(
+            f"semantica.{SemanticaKnowledgeSource.__module__}", level="ERROR"
+        ) as caught:
+            self.src.add()
+        joined = "\n".join(caught.output)
+        self.assertIn("storage save FAILED", joined)
+        self.assertIn("OPENAI_API_KEY", joined)
+        self.assertGreater(len(self.src.chunks), 0)
 
     def test_add_empty_graph_no_chunks(self):
         src = SemanticaKnowledgeSource(
