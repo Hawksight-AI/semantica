@@ -51,11 +51,12 @@ jobs:
           # Re-resolve with the committed file as a constraint: upstream package
           # releases must NOT fail CI (deps only change when pyproject.toml
           # changes intentionally). Compare only version lines (pkg==ver),
-          # ignoring the -c constraint comments.
+          # ignoring the -c constraint comments and the `\` line continuations
+          # that --generate-hashes emits.
           uv pip compile pyproject.toml --python-version 3.11 --extra all \
             --constraint requirements-ci.txt -o /tmp/requirements-ci-check.txt
           diff \
-            <(grep -E '^[a-zA-Z0-9._-]+==' requirements-ci.txt) \
+            <(grep -E '^[a-zA-Z0-9._-]+==' requirements-ci.txt | sed 's/ \\$//') \
             <(grep -E '^[a-zA-Z0-9._-]+==' /tmp/requirements-ci-check.txt)
       - run: pip install build
       - run: python -m build
