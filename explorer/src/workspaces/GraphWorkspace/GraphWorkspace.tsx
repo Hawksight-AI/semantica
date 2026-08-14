@@ -313,6 +313,7 @@ function SearchCommandBar({
 
     const query = value.trim();
     if (disabled || !query) {
+      abortRef.current?.abort();
       setSuggestions([]);
       setSuggestionsOpen(false);
       setHighlightedIndex(-1);
@@ -330,9 +331,13 @@ function SearchCommandBar({
         body: JSON.stringify({ query, limit: SUGGESTION_LIMIT }),
         signal: controller.signal,
       })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((data: { results?: SearchResult[] } | null) => {
-          if (!data) return;
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Search failed with status ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data: { results?: SearchResult[] }) => {
           setSuggestions(data.results ?? []);
           setSuggestionsOpen(true);
           setHighlightedIndex(-1);
@@ -341,6 +346,9 @@ function SearchCommandBar({
           if (suggestionError instanceof DOMException && suggestionError.name === "AbortError") {
             return;
           }
+          setSuggestions([]);
+          setSuggestionsOpen(false);
+          setHighlightedIndex(-1);
         });
     }, SUGGESTION_DEBOUNCE_MS);
 
@@ -348,10 +356,9 @@ function SearchCommandBar({
       if (debounceRef.current !== null) {
         window.clearTimeout(debounceRef.current);
       }
+      abortRef.current?.abort();
     };
   }, [value, disabled]);
-
-  useEffect(() => () => abortRef.current?.abort(), []);
 
   const closeSuggestions = () => {
     setSuggestionsOpen(false);
