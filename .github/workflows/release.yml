@@ -41,6 +41,9 @@ jobs:
       - name: Install pinned build dependencies
         run: pip install -r requirements-ci.txt
       - run: pip install build
+      # wheel is build-time only (not in requirements-ci.txt) — install the
+      # same pinned version [build-system] declares so --no-isolation works.
+      - run: pip install wheel==0.48.0
       - name: Build package (no isolation — pinned deps)
         run: python -m build --no-isolation
       - name: Verify Explorer frontend is packaged

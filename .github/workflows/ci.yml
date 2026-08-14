@@ -59,6 +59,9 @@ jobs:
             <(grep -E '^[a-zA-Z0-9._-]+==' requirements-ci.txt | sed 's/ \\$//') \
             <(grep -E '^[a-zA-Z0-9._-]+==' /tmp/requirements-ci-check.txt)
       - run: pip install build
+      # wheel is build-time only (not in requirements-ci.txt) — install the
+      # same pinned version [build-system] declares so --no-isolation works.
+      - run: pip install wheel==0.48.0
       - name: Build package (no isolation — pinned deps)
         run: python -m build --no-isolation
       - name: Verify Explorer frontend is packaged
