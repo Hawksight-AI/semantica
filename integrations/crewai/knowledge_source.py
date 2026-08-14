@@ -34,7 +34,10 @@ full Semantica API, but cannot be passed to a ``Crew``.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List, Optional
+
+from pydantic import Field
 
 from semantica.utils.logging import get_logger
 
@@ -95,7 +98,7 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
     """
 
     name: str = "semantica_knowledge_graph"
-    graph: Any = None
+    graph: Any = Field(default=None, exclude=True)
     chunk_size: int = 4000
     chunk_overlap: int = 200
 
@@ -132,6 +135,19 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
             CREWAI_AVAILABLE,
             self.chunk_size,
         )
+
+    def model_post_init(self, __context: Any) -> None:
+        """Re-create default state after validation/deserialisation.
+
+        ``graph`` is excluded from JSON serialisation (CrewAI checkpoints
+        serialise their models via ``model_dump(mode="json")``), so a source
+        restored from a checkpoint has ``None`` state until this runs.
+        """
+        if self.graph is None:
+            from semantica.context import ContextGraph
+
+            self.graph = ContextGraph()
+        super().model_post_init(__context)
 
     # ------------------------------------------------------------------
     # Content extraction
@@ -274,10 +290,11 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
         """
         Asynchronous variant of ``add()`` (current CrewAI contract).
 
-        The graph serialisation is CPU-bound and in-memory, so this simply
-        delegates to ``add()``.
+        The graph serialisation is CPU-bound, so it runs in a thread pool to
+        avoid blocking the event loop.
         """
-        self.add()
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.add)
 
     # ------------------------------------------------------------------
     # Inspection helpers

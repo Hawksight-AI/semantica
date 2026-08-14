@@ -33,6 +33,7 @@ find_related       — Find concepts related to a given entity within ``hops``
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any, Dict, List, Literal, Optional, Sequence, Type
 
 from pydantic import BaseModel, Field
@@ -56,6 +57,10 @@ try:
     CREWAI_AVAILABLE = True
 except ImportError as exc:
     CREWAI_IMPORT_ERROR = str(exc)
+
+# Serialises batches of node/edge writes so concurrent tool invocations sharing
+# one graph cannot double-count duplicate adds (check-then-act is not atomic).
+_add_batch_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -135,9 +140,9 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
         "hops). Returns JSON."
     )
     args_schema: Type[BaseModel] = SemanticaKGToolInput
-    graph: Any = None
-    ner_extractor: Any = None
-    relation_extractor: Any = None
+    graph: Any = Field(default=None, exclude=True)
+    ner_extractor: Any = Field(default=None, exclude=True)
+    relation_extractor: Any = Field(default=None, exclude=True)
 
     def __init__(
         self,
@@ -158,12 +163,32 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             self.graph = graph
             self.ner_extractor = ner_extractor
             self.relation_extractor = relation_extractor
+            # Degraded mode is a plain class — no model_post_init lifecycle.
+            self._ensure_defaults()
 
+        logger.info("SemanticaKGTool initialised (crewai=%s)", CREWAI_AVAILABLE)
+
+    def model_post_init(self, __context: Any) -> None:
+        """Re-create default state after validation/deserialisation.
+
+        ``graph``/extractors are excluded from JSON serialisation (CrewAI
+        checkpoints serialise every tool via ``model_dump(mode="json")``), so a
+        tool restored from a checkpoint has ``None`` state until this runs.
+        """
+        self._ensure_defaults()
+        super().model_post_init(__context)
+
+    def _ensure_defaults(self) -> None:
+        """Lazy-import and build defaults for any missing shared state."""
         # Lazy imports keep the module importable without heavy deps
         if self.graph is None:
             from semantica.context import ContextGraph
 
             self.graph = ContextGraph()
+            logger.warning(
+                "SemanticaKGTool created a fresh in-memory ContextGraph — "
+                "agents sharing this tool's graph must be wired explicitly"
+            )
         if self.ner_extractor is None:
             from semantica.semantic_extract import NERExtractor
 
@@ -172,8 +197,6 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             from semantica.semantic_extract import RelationExtractor
 
             self.relation_extractor = RelationExtractor()
-
-        logger.info("SemanticaKGTool initialised (crewai=%s)", CREWAI_AVAILABLE)
 
     # ------------------------------------------------------------------
     # CrewAI entry points
@@ -255,7 +278,7 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
     @classmethod
     def _entity_name(cls, e: Any) -> str:
         """Best-effort name for an entity-like object."""
-        return cls._first_str(e, ("name", "text", "label", "node_id", "id")) or str(e)
+        return cls._first_str(e, ("name", "text", "label", "node_id", "id"))
 
     @classmethod
     def _entity_type(cls, e: Any) -> str:
@@ -299,6 +322,7 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
                     "confidence": round(float(getattr(e, "confidence", 1.0)), 4),
                 }
                 for e in raw
+                if self._entity_name(e)
             ]
             logger.debug("extract_entities → %d entities", len(entities))
             return json.dumps({"entities": entities, "count": len(entities)})
@@ -336,56 +360,62 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
         nodes_added = 0
         edges_added = 0
         try:
-            existing_nodes = {
-                n.get("id") or n.get("node_id")
-                for n in (self.graph.find_nodes() or [])  # type: ignore[attr-defined]
-                if n.get("id") or n.get("node_id")
-            }
-            existing_edges = {
-                (e.get("source"), e.get("type") or "related_to", e.get("target"))
-                for e in (self.graph.find_edges() or [])  # type: ignore[attr-defined]
-                if e.get("source") and e.get("target")
-            }
+            with _add_batch_lock:
+                existing_nodes = {
+                    n.get("id") or n.get("node_id")
+                    for n in (
+                        self.graph.find_nodes() or []  # type: ignore[attr-defined]
+                    )
+                    if n.get("id") or n.get("node_id")
+                }
+                existing_edges = {
+                    (e.get("source"), e.get("type") or "related_to", e.get("target"))
+                    for e in (
+                        self.graph.find_edges() or []  # type: ignore[attr-defined]
+                    )
+                    if e.get("source") and e.get("target")
+                }
 
-            raw_entities = self.ner_extractor.extract_entities(text) or []
-            entities: List[Any] = []
-            seen: set = set()
-            for e in raw_entities:
-                name = self._entity_name(e)
-                ntype = self._entity_type(e)
-                if not name or name in seen:
-                    continue
-                seen.add(name)
-                entities.append(e)
-                if name in existing_nodes:
-                    continue
-                try:
-                    if self.graph.add_node(node_id=name, node_type=ntype):
-                        nodes_added += 1
-                        existing_nodes.add(name)
-                except Exception:
-                    pass
+                raw_entities = self.ner_extractor.extract_entities(text) or []
+                entities: List[Any] = []
+                seen: set = set()
+                for e in raw_entities:
+                    name = self._entity_name(e)
+                    ntype = self._entity_type(e)
+                    if not name or name in seen:
+                        continue
+                    seen.add(name)
+                    entities.append(e)
+                    if name in existing_nodes:
+                        continue
+                    try:
+                        if self.graph.add_node(node_id=name, node_type=ntype):
+                            nodes_added += 1
+                            existing_nodes.add(name)
+                    except Exception as exc:
+                        logger.debug("add_node(%r) failed: %s", name, exc)
 
-            raw_relations = (
-                self.relation_extractor.extract_relations(text, entities=entities) or []
-            )
-            for r in raw_relations:
-                src = self._relation_source(r)
-                tgt = self._relation_target(r)
-                rtype = self._relation_type(r)
-                if not src or not tgt:
-                    continue
-                key = (src, rtype, tgt)
-                if key in existing_edges:
-                    continue
-                try:
-                    if self.graph.add_edge(
-                        source_id=src, target_id=tgt, edge_type=rtype
-                    ):
-                        edges_added += 1
-                        existing_edges.add(key)
-                except Exception:
-                    pass
+                raw_relations = (
+                    self.relation_extractor.extract_relations(text, entities=entities)
+                    or []
+                )
+                for r in raw_relations:
+                    src = self._relation_source(r)
+                    tgt = self._relation_target(r)
+                    rtype = self._relation_type(r)
+                    if not src or not tgt:
+                        continue
+                    key = (src, rtype, tgt)
+                    if key in existing_edges:
+                        continue
+                    try:
+                        if self.graph.add_edge(
+                            source_id=src, target_id=tgt, edge_type=rtype
+                        ):
+                            edges_added += 1
+                            existing_edges.add(key)
+                    except Exception as exc:
+                        logger.debug("add_edge(%r) failed: %s", key, exc)
             logger.debug("add_to_graph: +%d nodes, +%d edges", nodes_added, edges_added)
             return json.dumps({"nodes_added": nodes_added, "edges_added": edges_added})
         except Exception as exc:
@@ -393,20 +423,46 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             return json.dumps({"nodes_added": 0, "edges_added": 0, "error": str(exc)})
 
     def _query_graph(self, query: str) -> str:
-        """Keyword-search all graph nodes for ``query``."""
+        """Keyword-search graph nodes by id, type and content."""
         try:
-            all_nodes = self.graph.find_nodes()  # type: ignore[attr-defined]
-            q_lower = query.lower()
+            q = (query or "").strip().lower()
             out: List[dict] = []
-            for n in all_nodes or []:
-                if isinstance(n, dict):
-                    node_id = n.get("id", "") or n.get("node_id", "")
-                    node_type = n.get("type", "") or n.get("node_type", "")
-                else:
-                    node_id = getattr(n, "id", getattr(n, "label", str(n)))
-                    node_type = getattr(n, "node_type", "")
-                if q_lower in str(node_id).lower() or q_lower in str(node_type).lower():
-                    out.append({"id": node_id, "type": node_type, "label": node_id})
+            seen: set = set()
+
+            query_method = getattr(self.graph, "query", None)
+            if query_method is not None:
+                for match in query_method(query) or []:
+                    node = match.get("node") or {}
+                    nid = node.get("id", "") or node.get("node_id", "")
+                    if not nid or nid in seen:
+                        continue
+                    seen.add(nid)
+                    content = match.get("content") or node.get("content", "")
+                    out.append(
+                        {
+                            "id": nid,
+                            "type": node.get("type", "") or node.get("node_type", ""),
+                            "label": nid,
+                            "content": str(content)[:500],
+                            "score": round(float(match.get("score") or 0.0), 4),
+                        }
+                    )
+
+            if q:
+                for n in self.graph.find_nodes() or []:  # type: ignore[attr-defined]
+                    if isinstance(n, dict):
+                        nid = n.get("id", "") or n.get("node_id", "")
+                        ntype = n.get("type", "") or n.get("node_type", "")
+                    else:
+                        nid = getattr(n, "id", getattr(n, "label", ""))
+                        ntype = getattr(n, "node_type", "")
+                    if not nid or nid in seen:
+                        continue
+                    if q in str(nid).lower() or q in str(ntype).lower():
+                        seen.add(nid)
+                        out.append(
+                            {"id": nid, "type": ntype, "label": nid, "content": ""}
+                        )
             return json.dumps({"results": out, "count": len(out)})
         except Exception as exc:
             logger.warning("query_graph failed: %s", exc)

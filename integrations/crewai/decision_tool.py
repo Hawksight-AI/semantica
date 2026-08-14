@@ -169,7 +169,7 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
         "rules like 'confidence >= 0.7'). Returns JSON."
     )
     args_schema: Type[BaseModel] = SemanticaDecisionToolInput
-    context: Any = None
+    context: Any = Field(default=None, exclude=True)
     max_precedents: int = 5
     causal_depth: int = 3
 
@@ -181,14 +181,34 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
         **kwargs: Any,
     ) -> None:
         if CREWAI_AVAILABLE:
-            super().__init__(context=context, **kwargs)
+            super().__init__(
+                context=context,
+                max_precedents=max_precedents,
+                causal_depth=causal_depth,
+                **kwargs,
+            )
         else:
             super().__init__()
             self.context = context
+            self.max_precedents = max_precedents
+            self.causal_depth = causal_depth
+            # Degraded mode is a plain class — no model_post_init lifecycle.
+            self._ensure_defaults()
 
-        self.max_precedents = max_precedents
-        self.causal_depth = causal_depth
+        logger.info("SemanticaDecisionTool initialised (crewai=%s)", CREWAI_AVAILABLE)
 
+    def model_post_init(self, __context: Any) -> None:
+        """Re-create default state after validation/deserialisation.
+
+        ``context`` is excluded from JSON serialisation (CrewAI checkpoints
+        serialise every tool via ``model_dump(mode="json")``), so a tool
+        restored from a checkpoint has ``None`` state until this runs.
+        """
+        self._ensure_defaults()
+        super().model_post_init(__context)
+
+    def _ensure_defaults(self) -> None:
+        """Lazy-import and build a real AgentContext when none is wired."""
         if self.context is None:
             from semantica.context import AgentContext, ContextGraph
             from semantica.vector_store import VectorStore
@@ -198,8 +218,10 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
                 decision_tracking=True,
                 knowledge_graph=ContextGraph(),
             )
-
-        logger.info("SemanticaDecisionTool initialised (crewai=%s)", CREWAI_AVAILABLE)
+            logger.warning(
+                "SemanticaDecisionTool created a fresh in-memory AgentContext — "
+                "agents sharing decision state must be wired to the same context"
+            )
 
     # ------------------------------------------------------------------
     # CrewAI entry points
@@ -296,11 +318,12 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
         category: Optional[str] = None,
         limit: Optional[int] = None,
     ) -> str:
-        k = limit or self.max_precedents
+        k = limit if limit is not None else self.max_precedents
         try:
             precedents = self.context.find_precedents_advanced(
                 scenario=scenario,
                 category=category,
+                limit=k,
             )
             out: List[Dict[str, Any]] = []
             for p in (precedents or [])[:k]:
@@ -324,23 +347,34 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
     def _trace_causal_chain(self, decision_id: str, depth: Optional[int] = None) -> str:
         max_depth = depth or self.causal_depth
         graph = self.context.knowledge_graph
-        try:
-            chain = graph.trace_decision_causality(  # type: ignore[attr-defined]
-                decision_id,
-                depth=max_depth,
+        if not decision_id:
+            return json.dumps(
+                {
+                    "error": "decision_id is required for trace_causal_chain",
+                    "causal_chain": [],
+                    "decision_id": "",
+                }
             )
+        trace = getattr(graph, "trace_decision_causality", None)
+        if trace is None:
+            return json.dumps(
+                {
+                    "error": (
+                        "causal tracing is not available on this knowledge graph "
+                        "(graph.trace_decision_causality is not implemented)"
+                    ),
+                    "causal_chain": [],
+                    "decision_id": decision_id,
+                }
+            )
+        try:
+            chain = trace(decision_id, max_depth=max_depth)
             return json.dumps({"causal_chain": chain, "decision_id": decision_id})
-        except AttributeError:
-            try:
-                chain = graph.find_precedents(  # type: ignore[attr-defined]
-                    category="decision", limit=max_depth
-                )
-                return json.dumps({"causal_chain": chain, "decision_id": decision_id})
-            except Exception as exc:
-                return json.dumps({"error": str(exc), "decision_id": decision_id})
         except Exception as exc:
             logger.warning("trace_causal_chain failed: %s", exc)
-            return json.dumps({"error": str(exc), "decision_id": decision_id})
+            return json.dumps(
+                {"error": str(exc), "causal_chain": [], "decision_id": decision_id}
+            )
 
     def _analyze_impact(self, decision_id: str) -> str:
         try:
@@ -431,7 +465,14 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
         )
 
     def _eval_rule(self, rule: str, data: Dict[str, Any]) -> bool:
-        """Evaluate a simple comparison rule (``field op value``) against data."""
+        """Evaluate a simple comparison rule (``field op value``) against data.
+
+        This is a small standalone evaluator for the tool's ``check_policy``
+        action — it is intentionally independent of Semantica's policy engine
+        so agents get a bounded, side-effect-free rule check. Rules are
+        ``<field> <op> <value>`` comparisons only; there is no expression
+        evaluation (no ``eval``), so untrusted rule strings are safe to pass.
+        """
         m = re.match(r"(\w+)\s*(>=|<=|!=|==|>|<)\s*(.+)", rule.strip())
         if not m:
             raise ValueError(f"unrecognised rule format: {rule!r}")

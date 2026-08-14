@@ -75,6 +75,26 @@ class TestSemanticaDecisionToolInit(unittest.TestCase):
         self.assertEqual(tool.causal_depth, 3)
 
 
+class TestSemanticaDecisionToolSerialization(unittest.TestCase):
+    """CrewAI checkpoints serialise tools via ``model_dump(mode="json")`` — the
+    live context must not break that (regression for PydanticSerializationError
+    on arbitrary state objects)."""
+
+    def test_model_dump_json_excludes_context(self):
+        tool = SemanticaDecisionTool(context=_make_context())
+        dumped = tool.model_dump(mode="json")
+        self.assertNotIn("context", dumped)
+        self.assertEqual(dumped["max_precedents"], 5)
+        self.assertEqual(dumped["causal_depth"], 3)
+
+    def test_model_validate_restores_defaults(self):
+        tool = SemanticaDecisionTool(context=_make_context())
+        restored = SemanticaDecisionTool.model_validate(tool.model_dump(mode="json"))
+        self.assertIsNotNone(restored.context)
+        self.assertEqual(restored.max_precedents, 5)
+        self.assertEqual(restored.causal_depth, 3)
+
+
 class TestRecordDecision(unittest.TestCase):
 
     def setUp(self):
@@ -187,6 +207,23 @@ class TestRealAutoCreatedContext(unittest.TestCase):
         result = json.loads(self.tool.run(action="find_precedents", scenario="ship v2"))
         self.assertIn("precedents", result)
 
+    def test_trace_causal_chain_runs_against_real_context(self):
+        """Regression: trace_decision_causality takes ``max_depth``, not
+        ``depth`` — must not raise against a real ContextGraph."""
+        rec = json.loads(
+            self.tool.run(
+                action="record_decision",
+                scenario="ship v2",
+                reasoning="user demand",
+                confidence=0.9,
+            )
+        )
+        trace = json.loads(
+            self.tool.run(action="trace_causal_chain", decision_id=rec["decision_id"])
+        )
+        self.assertIn("causal_chain", trace)
+        self.assertEqual(trace["decision_id"], rec["decision_id"])
+
 
 class TestFindPrecedents(unittest.TestCase):
 
@@ -214,6 +251,12 @@ class TestFindPrecedents(unittest.TestCase):
         call_kwargs = self.ctx.find_precedents_advanced.call_args[1]
         self.assertEqual(call_kwargs.get("category"), "finance")
 
+    def test_limit_propagated_to_backend(self):
+        self.tool.max_precedents = 20
+        self.tool._run(action="find_precedents", scenario="scenario")
+        call_kwargs = self.ctx.find_precedents_advanced.call_args[1]
+        self.assertEqual(call_kwargs.get("limit"), 20)
+
     def test_handles_exception_gracefully(self):
         self.ctx.find_precedents_advanced.side_effect = RuntimeError("fail")
         result = json.loads(self.tool._run(action="find_precedents", scenario="broken"))
@@ -234,18 +277,26 @@ class TestTraceCausalChain(unittest.TestCase):
         self.assertIn("causal_chain", result)
         self.assertEqual(result["decision_id"], "dec-001")
 
-    def test_fallback_on_attribute_error(self):
+    def test_honest_error_when_causal_trace_unavailable(self):
+        """When the graph cannot trace causality, the tool must say so — it
+        must NOT substitute similarity-based precedents as a causal chain."""
         del self.ctx.knowledge_graph.trace_decision_causality
-        self.ctx.knowledge_graph.find_precedents = MagicMock(return_value=[])
         result = json.loads(
             self.tool._run(action="trace_causal_chain", decision_id="dec-002")
         )
-        self.assertIn("causal_chain", result)
+        self.assertEqual(result["causal_chain"], [])
+        self.assertIn("error", result)
+        self.ctx.knowledge_graph.find_precedents.assert_not_called()
+
+    def test_missing_decision_id_reports_error(self):
+        result = json.loads(self.tool._run(action="trace_causal_chain"))
+        self.assertIn("error", result)
+        self.assertEqual(result["causal_chain"], [])
 
     def test_depth_used(self):
         self.tool._run(action="trace_causal_chain", decision_id="dec-001", depth=5)
         self.ctx.knowledge_graph.trace_decision_causality.assert_called_once_with(
-            "dec-001", depth=5
+            "dec-001", max_depth=5
         )
 
 

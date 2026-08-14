@@ -134,6 +134,38 @@ class TestSemanticaKGToolInit(unittest.TestCase):
         self.assertTrue(tool.result_as_answer)
 
 
+class TestSemanticaKGToolSerialization(unittest.TestCase):
+    """CrewAI checkpoints serialise tools via ``model_dump(mode="json")`` — the
+    live graph/extractors must not break that (regression for
+    PydanticSerializationError on arbitrary state objects)."""
+
+    def setUp(self):
+        self.tool = SemanticaKGTool(
+            graph=ContextGraph(),
+            ner_extractor=_FakeNER(),
+            relation_extractor=_FakeRelExtractor(),
+        )
+
+    def test_model_dump_json_excludes_shared_state(self):
+        dumped = self.tool.model_dump(mode="json")
+        self.assertNotIn("graph", dumped)
+        self.assertNotIn("ner_extractor", dumped)
+        self.assertNotIn("relation_extractor", dumped)
+        self.assertEqual(dumped["name"], "semantica_knowledge_graph")
+
+    def test_model_validate_restores_defaults(self):
+        restored = SemanticaKGTool.model_validate(self.tool.model_dump(mode="json"))
+        self.assertIsInstance(restored.graph, ContextGraph)
+        self.assertIs(restored.args_schema, SemanticaKGToolInput)
+        self.assertEqual(restored.name, "semantica_knowledge_graph")
+
+    def test_model_validate_restored_tool_still_runs(self):
+        restored = SemanticaKGTool.model_validate(self.tool.model_dump(mode="json"))
+        restored.graph.add_node(node_id="privacy", node_type="policy")
+        result = json.loads(restored._run(action="query_graph", query="privacy"))
+        self.assertEqual(result["count"], 1)
+
+
 class TestSemanticaKGToolActions(unittest.TestCase):
 
     def setUp(self):
@@ -197,6 +229,41 @@ class TestSemanticaKGToolActions(unittest.TestCase):
         )
         self.assertEqual(result["count"], 0)
         self.assertEqual(result["results"], [])
+
+    def test_query_graph_searches_node_content(self):
+        """query_graph must match node content, not just ids/types."""
+        self.graph.add_node(
+            node_id="n1",
+            node_type="policy",
+            content="all refunds must be processed within 30 days",
+        )
+        result = json.loads(self.tool._run(action="query_graph", query="refunds"))
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["id"], "n1")
+
+    def test_query_graph_matches_type(self):
+        self.graph.add_node(node_id="n2", node_type="risk")
+        result = json.loads(self.tool._run(action="query_graph", query="risk"))
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["id"], "n2")
+
+    def test_extract_entities_skips_nameless_entities(self):
+        class _NamelessNER:
+            def extract_entities(self, text):
+                e = MagicMock()
+                e.name = None
+                e.type = "MISC"
+                e.confidence = 0.5
+                return [e]
+
+        tool = SemanticaKGTool(
+            graph=self.graph,
+            ner_extractor=_NamelessNER(),
+            relation_extractor=_FakeRelExtractor(),
+        )
+        result = json.loads(tool._run(action="extract_entities", text="text"))
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result["entities"], [])
 
     def test_find_related_multi_hop(self):
         self.graph.add_node(node_id="A", node_type="concept")

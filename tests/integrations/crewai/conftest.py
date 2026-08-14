@@ -23,7 +23,7 @@ import sys
 import types
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 def _install_crewai_stubs() -> None:
@@ -41,6 +41,22 @@ def _install_crewai_stubs() -> None:
         description: str = ""
         args_schema: Any = None
         result_as_answer: bool = False
+
+        @field_serializer("args_schema", when_used="json")
+        def _ser_args_schema(self, schema):  # noqa: D102
+            if schema is None:
+                return None
+            return {"__schema__": f"{schema.__module__}.{schema.__qualname__}"}
+
+        @field_validator("args_schema", mode="before")
+        @classmethod
+        def _restore_args_schema(cls, v):  # noqa: D102
+            if isinstance(v, dict) and "__schema__" in v:
+                import importlib
+
+                mod_name, cls_name = v["__schema__"].rsplit(".", 1)
+                return getattr(importlib.import_module(mod_name), cls_name)
+            return v
 
         def run(self, *args: Any, **kwargs: Any) -> str:  # noqa: D102
             return self._run(*args, **kwargs)

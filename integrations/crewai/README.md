@@ -97,3 +97,8 @@ crew = Crew(
 ### Compatibility note
 
 CrewAI's `BaseKnowledgeSource` contract changed between `0.80.x` and current releases (`load_content()` → `validate_content()`/`aadd()`). `SemanticaKnowledgeSource` implements both the legacy and current methods, so it works across `crewai>=0.80.0`.
+
+### Sharing state & checkpoints
+
+- Each tool/source holds whatever `graph`/`context` you pass it. When omitted, a fresh in-memory object is created and a warning is logged — instances that auto-create their own state do **not** share knowledge, so pass the same object to every agent that must share.
+- Live state (`ContextGraph`, `AgentContext`, extractors) is excluded from CrewAI's JSON serialization. After restoring from a checkpoint, re-attach the live graph/context to the restored objects.

@@ -141,6 +141,31 @@ class TestAdd(unittest.TestCase):
         self.assertTrue(summary["crewai_available"])
 
 
+class TestSemanticaKnowledgeSourceSerialization(unittest.TestCase):
+    """CrewAI checkpoints serialise their models via ``model_dump(mode="json")``
+    — the live graph must not break that (regression for
+    PydanticSerializationError on arbitrary state objects)."""
+
+    def test_model_dump_json_excludes_graph(self):
+        src = SemanticaKnowledgeSource(graph=_build_graph())
+        dumped = src.model_dump(mode="json")
+        self.assertNotIn("graph", dumped)
+        self.assertEqual(dumped["name"], "semantica_knowledge_graph")
+
+    def test_model_validate_restores_graph(self):
+        src = SemanticaKnowledgeSource(graph=_build_graph())
+        restored = SemanticaKnowledgeSource.model_validate(src.model_dump(mode="json"))
+        self.assertIsInstance(restored.graph, ContextGraph)
+
+    def test_restored_source_still_loads_content(self):
+        """A checkpoint-restored source gets a fresh graph (the live graph is
+        excluded from serialisation); once a graph is attached it works."""
+        src = SemanticaKnowledgeSource(graph=_build_graph())
+        restored = SemanticaKnowledgeSource.model_validate(src.model_dump(mode="json"))
+        restored.graph = _build_graph()
+        self.assertNotEqual(restored.load_content(), {})
+
+
 class TestManualChunker(unittest.TestCase):
 
     def test_short_text_single_chunk(self):

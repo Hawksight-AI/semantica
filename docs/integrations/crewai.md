@@ -56,10 +56,12 @@ Requires `crewai >= 0.80.0`. If `crewai` is not installed, the integration still
     | `extract_entities` | Extract named entities from `text` |
     | `extract_relations` | Extract relationships between entities in `text` |
     | `add_to_graph` | Extract entities/relations from `text` and add them to the shared graph |
-    | `query_graph` | Keyword-search the graph using `query` |
+    | `query_graph` | Keyword-search the graph by node id, type, and content using `query` |
     | `find_related` | Find concepts related to `entity` within `hops` hops |
 
     All actions return JSON so agents get parseable results.
+
+    **Sharing a graph:** the tool reads/writes whatever `graph` you pass in. When no `graph` is given, a fresh in-memory `ContextGraph()` is created (and a warning is logged) — two tool instances that each auto-create their own graph do **not** share knowledge. Pass the same `ContextGraph` to every agent that must share state.
   </Tab>
   <Tab title="SemanticaDecisionTool">
     Exposes Semantica's decision intelligence as a native CrewAI tool, backed by `AgentContext`.
@@ -78,7 +80,7 @@ Requires `crewai >= 0.80.0`. If `crewai` is not installed, the integration still
     crew = Crew(agents=[planner], tasks=[...])
     ```
 
-    When no `AgentContext` is passed, one is created in-memory with `decision_tracking=True` and its own `ContextGraph`, so decision actions work out of the box. Missing optional fields in `record_decision` fall back to `category="general"`, `reasoning="agent decision"`, and `outcome="recorded"`.
+    When no `AgentContext` is passed, one is created in-memory with `decision_tracking=True` and its own `ContextGraph`, so decision actions work out of the box (a warning is logged — pass the same `AgentContext` to every agent that must share decision state). Missing optional fields in `record_decision` fall back to `category="general"`, `reasoning="agent decision"`, and `outcome="recorded"`. `find_precedents` returns up to `max_precedents` results. If a knowledge graph cannot trace causality, `trace_causal_chain` returns an explicit error rather than substituting similarity-based results.
 
     | Tool | Description |
     | :------ | :------------- |
@@ -117,6 +119,10 @@ Requires `crewai >= 0.80.0`. If `crewai` is not installed, the integration still
     **Compatibility:** CrewAI's `BaseKnowledgeSource` contract changed between `0.80.x` and current releases (`load_content()` → `validate_content()`/`aadd()`). `SemanticaKnowledgeSource` implements both legacy and current methods, so it works across `crewai>=0.80.0`.
   </Tab>
 </Tabs>
+
+## Checkpoints & Serialization
+
+CrewAI serializes tools and knowledge sources to JSON for checkpointing/resume. Live Semantica state (`ContextGraph`, `AgentContext`, extractors) is **excluded from that serialization** — a restored tool/source comes back with a fresh in-memory `ContextGraph` and logs a warning. After resuming from a checkpoint, re-attach the live graph/context to the restored objects before continuing, so agents resume on the same shared state.
 
 ## API Reference
 
