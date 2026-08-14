@@ -1,4 +1,4 @@
-﻿"""
+"""
 Enrichment and reasoning routes.
 """
 
@@ -25,6 +25,23 @@ from ..session import GraphSession
 
 router = APIRouter(tags=["Enrichment"])
 _FACT_RE = re.compile(r"^(?P<predicate>[A-Za-z_][\w:-]*)\((?P<args>.*)\)$")
+
+# SECURITY: Cap the candidate pool loaded by link prediction to prevent a
+# single request from exhausting server memory (CWE-770).  Without a cap the
+# endpoint calls session.get_nodes(limit=999_999) and scores every node in
+# O(N^2), consuming ~1.6 GB RAM at the maximum limit (measured via
+# tracemalloc at 1.7 KB/node with 128-dim embeddings; see poc_runner.py).
+# Mirrors the SPARQL DoS fix from PR #898 (50k cap + semaphore).
+#
+# NOTE: session.get_nodes()/get_edges() (paginate_nodes/paginate_edges)
+# normalize the *entire* matching set before applying `limit` -- passing
+# limit=_LINK_PREDICTION_MAX_NODES does not bound that work. The `total`
+# they return can only be checked *after* paying that full cost. To actually
+# reject an oversized graph before doing that work, check session.get_raw_counts()
+# (O(1) collection lengths) first -- see predict_links() below.
+_LINK_PREDICTION_MAX_NODES = 10_000
+_LINK_PREDICTION_MAX_EDGES = 50_000
+_link_prediction_semaphore = asyncio.Semaphore(2)
 
 
 def _safe_dict(obj) -> dict:
@@ -200,40 +217,80 @@ async def predict_links(
     if node is None:
         raise HTTPException(status_code=404, detail=f"Node '{body.node_id}' not found")
 
-    nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=999_999)
-    edges, _ = await asyncio.to_thread(session.get_edges, skip=0, limit=999_999)
+    # SECURITY: Acquire semaphore BEFORE loading data so concurrent requests
+    # cannot pile up expensive threadpool work and memory pressure (Qodo #2).
+    async with _link_prediction_semaphore:
+        # SECURITY: Reject an oversized graph using the O(1) raw collection
+        # lengths BEFORE calling get_nodes()/get_edges(), which normalize the
+        # *entire* matching set before applying `limit` -- checking `total`
+        # only after that call still pays the full O(graph size) cost the cap
+        # is meant to avoid.
+        total_nodes, total_edges = await asyncio.to_thread(session.get_raw_counts)
+        if total_nodes > _LINK_PREDICTION_MAX_NODES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Graph has {total_nodes:,} nodes; link prediction is capped at "
+                    f"{_LINK_PREDICTION_MAX_NODES:,} nodes to prevent memory exhaustion. "
+                    "Use the graph search endpoint for large graphs."
+                ),
+            )
+        if total_edges > _LINK_PREDICTION_MAX_EDGES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Graph has {total_edges:,} edges; link prediction is capped at "
+                    f"{_LINK_PREDICTION_MAX_EDGES:,} edges to prevent memory exhaustion. "
+                    "Use the graph search endpoint for large graphs."
+                ),
+            )
 
-    existing_neighbors = {
-        edge.get("target") for edge in edges if edge.get("source") == body.node_id
-    } | {
-        edge.get("source") for edge in edges if edge.get("target") == body.node_id
-    }
+        # SECURITY: Load at most _LINK_PREDICTION_MAX_NODES candidates.
+        # The hardcoded limit in the original code consumed ~1.6 GB RAM
+        # per request and had no concurrency guard, making it trivially DoS-able.
+        nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=_LINK_PREDICTION_MAX_NODES)
 
-    def _score_all() -> list:
-        results = []
-        for candidate_node in nodes:
-            candidate_id = candidate_node.get("id")
-            if not candidate_id or candidate_id == body.node_id or candidate_id in existing_neighbors:
-                continue
-            if body.candidate_type and candidate_node.get("type") != body.candidate_type:
-                continue
-            try:
-                score = predictor.score_link(session.graph, body.node_id, candidate_id)
-            except Exception:
-                continue
-            if score >= body.min_score:
-                results.append(
-                    {
-                        "target": candidate_id,
-                        "score": score,
-                        "type": candidate_node.get("type", "entity"),
-                        "label": candidate_node.get("content", candidate_id),
-                    }
-                )
-        results.sort(key=lambda item: item["score"], reverse=True)
-        return results
+        # Load edges specific to the queried node rather than a globally
+        # truncated page — avoids missing neighbours when the node's edges
+        # fall outside the first page (Qodo #3).
+        edges_out, _ = await asyncio.to_thread(
+            session.get_edges, source=body.node_id, skip=0, limit=_LINK_PREDICTION_MAX_NODES,
+        )
+        edges_in, _ = await asyncio.to_thread(
+            session.get_edges, target=body.node_id, skip=0, limit=_LINK_PREDICTION_MAX_NODES,
+        )
 
-    scored = await asyncio.to_thread(_score_all)
+        existing_neighbors = {
+            edge.get("target") for edge in edges_out
+        } | {
+            edge.get("source") for edge in edges_in
+        }
+
+        def _score_all() -> list:
+            results = []
+            for candidate_node in nodes:
+                candidate_id = candidate_node.get("id")
+                if not candidate_id or candidate_id == body.node_id or candidate_id in existing_neighbors:
+                    continue
+                if body.candidate_type and candidate_node.get("type") != body.candidate_type:
+                    continue
+                try:
+                    score = predictor.score_link(session.graph, body.node_id, candidate_id)
+                except Exception:
+                    continue
+                if score >= body.min_score:
+                    results.append(
+                        {
+                            "target": candidate_id,
+                            "score": score,
+                            "type": candidate_node.get("type", "entity"),
+                            "label": candidate_node.get("content", candidate_id),
+                        }
+                    )
+            results.sort(key=lambda item: item["score"], reverse=True)
+            return results
+
+        scored = await asyncio.to_thread(_score_all)
     return LinkPredictionResponse(node_id=body.node_id, predictions=scored[: body.top_n])
 
 

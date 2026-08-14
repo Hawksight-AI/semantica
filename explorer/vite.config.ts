@@ -57,6 +57,13 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    // Keep dependency pre-bundling aligned with the production build target.
+    // esbuild >=0.28 no longer lowers destructuring for Vite's default target.
+    esbuildOptions: {
+      target: 'esnext',
+    },
+  },
   server: {
     proxy: {
       '/api': {

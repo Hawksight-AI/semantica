@@ -65,7 +65,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union, cast
 import concurrent.futures
 import inspect
 
@@ -824,6 +824,35 @@ class VectorStore:
         else:
             raise NotImplementedError(f"Backend store {type(self._backend_store).__name__} does not implement get_metadata")
 
+    def count(self) -> int:
+        """Return the number of vectors in the store, backend-agnostic.
+
+        The inmemory backend counts its local dict; persistent backends
+        delegate to a ``count()`` on the wrapped store when available.
+        Following the get_vector()/get_metadata() precedent (#843) and the
+        NotImplementedError-on-unsupported-capability precedent of
+        _filter_by_metadata() (#848), a persistent backend that cannot
+        report a count raises NotImplementedError so callers can tell
+        "no vectors" apart from "counting not supported" — including when
+        the wrapped backend store is missing entirely (never silently
+        report an uninitialized store as empty).
+        """
+        if self.backend == "inmemory":
+            return len(self.vectors)
+        elif self._backend_store is not None:
+            count_attr = getattr(self._backend_store, "count", None)
+            if callable(count_attr):
+                return cast(int, count_attr())
+            raise NotImplementedError(
+                f"Backend store {type(self._backend_store).__name__} does not "
+                "implement a count() method. Add a count() method to the "
+                "backend store adapter to enable vector counting for this backend."
+            )
+        raise NotImplementedError(
+            f"Backend store is not initialized; cannot count vectors for "
+            f"backend {self.backend!r}."
+        )
+
     def initialize_decision_pipeline(
         self,
         graph_store: Optional[Any] = None,
@@ -1452,21 +1481,47 @@ class VectorManager:
     def maintain_store(
         self, store: VectorStore, **options: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Maintain vector store health."""
-        # Check integrity
-        vector_count = len(store.vectors)
-        metadata_count = len(store.metadata)
+        """Maintain vector store health.
 
+        For the inmemory backend, both the vector count and the metadata
+        count are independently tracked in separate dicts and are compared
+        as an integrity check.
+
+        For persistent backends that implement ``VectorStore.count()``,
+        only the vector count is available.  Metadata is co-located with
+        each vector in the underlying store (added/deleted atomically),
+        so a separate metadata count cannot be meaningfully distinguished
+        from the vector count.  The response omits ``metadata_count`` for
+        such backends and reports ``healthy: True`` to indicate that the
+        store is reachable and operational.
+
+        If the backend does not implement ``count()``, the ``NotImplementedError``
+        propagates to the caller — it is not silenced.
+        """
+        if store.backend == "inmemory":
+            # Inmemory keeps vectors and metadata in separate dicts; compare
+            # them to detect accidental divergence (#855).
+            vector_count = len(store.vectors)
+            metadata_count = len(store.metadata)
+            return {
+                "healthy": vector_count == metadata_count,
+                "vector_count": vector_count,
+                "metadata_count": metadata_count,
+            }
+
+        # Persistent backend: delegate to count().  Metadata and vectors are
+        # stored together, so only one count is available.
+        vector_count = store.count()
         return {
-            "healthy": vector_count == metadata_count,
+            "healthy": True,
             "vector_count": vector_count,
-            "metadata_count": metadata_count,
+            "metadata_count": None,
         }
 
     def collect_statistics(self, store: VectorStore) -> Dict[str, Any]:
         """Collect vector store statistics."""
         return {
-            "total_vectors": len(store.vectors),
+            "total_vectors": store.count(),
             "dimension": store.dimension,
             "backend": store.backend,
         }

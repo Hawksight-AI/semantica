@@ -8,6 +8,16 @@ from pydantic import BaseModel
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
+# The openai SDK is an optional extra (`pip install semantica[llm-openai]`), not a
+# dev dependency. Only the tests that spec a mock against the real OpenAI class
+# need it — the rest of this module must still run without it.
+try:
+    from openai import OpenAI
+except ImportError:  # pragma: no cover - depends on the installed extras
+    OpenAI = None
+
+requires_openai = unittest.skipIf(OpenAI is None, "openai SDK not installed")
+
 
 class TestDeepSeekProviderInit(unittest.TestCase):
     """Tests for DeepSeekProvider.__init__ and _init_client after PR #482."""
@@ -171,20 +181,9 @@ class TestDeepSeekProviderGenerate(unittest.TestCase):
 class TestDeepSeekInstructorPath(unittest.TestCase):
     """Tests for generate_typed instructor path with DeepSeekProvider (OpenAI client)."""
 
-    def _make_provider(self, api_key="sk-test"):
-        from semantica.semantic_extract.providers import DeepSeekProvider
-        from unittest.mock import MagicMock
-        from openai import OpenAI
-        with patch.object(DeepSeekProvider, "_init_client", return_value=None):
-            provider = DeepSeekProvider(api_key=api_key)
-        # After PR #482, client is an OpenAI instance
-        mock_client = MagicMock(spec=OpenAI)
-        provider.client = mock_client
-        return provider
-
+    @requires_openai
     def test_generate_typed_instructor_openai_isinstance_check(self):
         """After PR #482, client is OpenAI, so instructor path must use from_openai."""
-        from openai import OpenAI
         from semantica.semantic_extract.providers import DeepSeekProvider
         with patch.object(DeepSeekProvider, "_init_client", return_value=None):
             provider = DeepSeekProvider(api_key="sk-test")
@@ -228,8 +227,8 @@ class TestVerboseModeAssignment(unittest.TestCase):
             except Exception:
                 pass  # other errors are OK — we only care NameError is gone
 
-    def test_generate_typed_verbose_true_prints(self):
-        """When verbose=True, generate_typed must print the confirmation line."""
+    def test_generate_typed_verbose_true_logs(self):
+        """When verbose=True, generate_typed must log the confirmation line."""
         provider = self._make_openai_provider()
 
         class Schema(BaseModel):
@@ -243,21 +242,21 @@ class TestVerboseModeAssignment(unittest.TestCase):
         mock_instructor.from_provider.side_effect = Exception("skip")
         mock_instructor.Mode.TOOLS = "tools"
 
-        import io
-        captured = io.StringIO()
         with patch("semantica.semantic_extract.providers.instructor", mock_instructor):
-            with patch("sys.stdout", captured):
+            with self.assertLogs(provider.logger.name, level="DEBUG") as captured:
                 try:
                     provider.generate_typed("prompt", Schema, verbose=True)
                 except Exception:
                     pass
 
-        output = captured.getvalue()
-        # verbose_mode=True should trigger the print statement
-        self.assertIn("generate_typed", output)
+        # verbose_mode=True should trigger the debug log line
+        self.assertTrue(
+            any("generate_typed" in line for line in captured.output),
+            f"expected a generate_typed debug record, got {captured.output}",
+        )
 
-    def test_generate_typed_verbose_false_no_print(self):
-        """When verbose=False (default), generate_typed must not print anything."""
+    def test_generate_typed_verbose_false_no_log(self):
+        """When verbose=False (default), generate_typed must not log the line."""
         provider = self._make_openai_provider()
 
         class Schema(BaseModel):
@@ -271,16 +270,18 @@ class TestVerboseModeAssignment(unittest.TestCase):
         mock_instructor.from_provider.side_effect = Exception("skip")
         mock_instructor.Mode.TOOLS = "tools"
 
-        import io
-        captured = io.StringIO()
         with patch("semantica.semantic_extract.providers.instructor", mock_instructor):
-            with patch("sys.stdout", captured):
+            with patch.object(provider, "logger") as mock_logger:
                 try:
                     provider.generate_typed("prompt", Schema)
                 except Exception:
                     pass
 
-        self.assertEqual(captured.getvalue(), "")
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        self.assertFalse(
+            any("generate_typed" in c for c in debug_calls),
+            f"expected no generate_typed debug record, got {debug_calls}",
+        )
 
     def test_generate_typed_verbose_from_config(self):
         """verbose_mode must also respect config-level verbose setting."""
@@ -298,25 +299,26 @@ class TestVerboseModeAssignment(unittest.TestCase):
         mock_instructor.from_provider.side_effect = Exception("skip")
         mock_instructor.Mode.TOOLS = "tools"
 
-        import io
-        captured = io.StringIO()
         with patch("semantica.semantic_extract.providers.instructor", mock_instructor):
-            with patch("sys.stdout", captured):
+            with self.assertLogs(provider.logger.name, level="DEBUG") as captured:
                 try:
                     provider.generate_typed("prompt", Schema)
                 except Exception:
                     pass
 
-        self.assertIn("generate_typed", captured.getvalue())
+        self.assertTrue(
+            any("generate_typed" in line for line in captured.output),
+            f"expected a generate_typed debug record, got {captured.output}",
+        )
 
 
 class TestDeepSeekGenerateTypedInstructorIntegration(unittest.TestCase):
     """Integration-style tests: DeepSeekProvider.generate_typed with instructor."""
 
+    @requires_openai
     def test_generate_typed_deepseek_uses_openai_client_for_instructor(self):
         """generate_typed instructor path for DeepSeek must reuse the OpenAI client."""
         from semantica.semantic_extract.providers import DeepSeekProvider
-        from openai import OpenAI
 
         with patch.object(DeepSeekProvider, "_init_client", return_value=None):
             provider = DeepSeekProvider(api_key="sk-test")
