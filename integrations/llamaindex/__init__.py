@@ -43,11 +43,6 @@ __all__ = [
 def __getattr__(name: str) -> Any:
     """Lazy, optional imports so the package works without llama-index-core."""
     if name in ("SemanticaPropertyGraphStore", "SemanticaRetriever", "semantica_kg_tools"):
-        if not LLAMAINDEX_AVAILABLE:
-            raise ImportError(
-                "llama-index-core is required for the Semantica×LlamaIndex "
-                "integration. Install with: pip install semantica[llamaindex]"
-            )
         from . import graph_store, retriever, tools
 
         return {

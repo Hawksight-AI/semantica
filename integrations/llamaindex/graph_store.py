@@ -37,7 +37,7 @@ class SemanticaPropertyGraphStore(PropertyGraphStore):  # type: ignore[misc]
     # -- PropertyGraphStore interface -------------------------------------
     def get(self, name: str, max_depth: int = 1) -> Optional[Any]:
         """Return a node by name (id), or None."""
-        nodes = self._graph.find_nodes(limit=1)
+        nodes = self._graph.find_nodes(limit=None)
         for n in nodes:
             if str(n.get("id")) == name:
                 return n
@@ -60,7 +60,8 @@ class SemanticaPropertyGraphStore(PropertyGraphStore):  # type: ignore[misc]
                 continue
             neighbors = self._graph.get_neighbors(str(nid), hops=1)
             for neighbor in neighbors:
-                rel = neighbor.get("edge_type") or "related_to"
+                # get_neighbors returns the relation under "relationship"
+                rel = neighbor.get("relationship") or neighbor.get("edge_type") or "related_to"
                 if relation_names and rel not in relation_names:
                     continue
                 triplets.append((n, rel, neighbor))

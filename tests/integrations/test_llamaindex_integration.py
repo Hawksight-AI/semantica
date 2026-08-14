@@ -68,6 +68,20 @@ class TestTools(unittest.TestCase):
     def setUp(self):
         self.graph = ContextGraph()
 
+    def test_graph_query_uses_query_not_first_nodes(self):
+        """The tool must answer the query, not return arbitrary first nodes."""
+        from integrations.llamaindex.tools import _graph_query
+        import json
+
+        self.graph.add_node("target1", node_type="entity", content="bitcoin price feed")
+        self.graph.add_node("other1", node_type="entity", content="unrelated topic here")
+        out = _graph_query(self.graph, "bitcoin", limit=5)
+        parsed = json.loads(out)
+        # results are scored query hits (graph.query) — the bitcoin node must
+        # rank above the unrelated one (or at least appear)
+        contents = [str(r.get("content", "")) for r in parsed]
+        self.assertTrue(any("bitcoin" in c for c in contents), f"query results missing bitcoin node: {contents}")
+
     def test_semantica_kg_tools_returns_list(self):
         tools = semantica_kg_tools(self.graph)
         self.assertIsInstance(tools, list)

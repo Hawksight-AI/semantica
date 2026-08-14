@@ -23,8 +23,16 @@ else:  # pragma: no cover - exercised without llama-index-core
 def _graph_query(graph: ContextGraph, query: str, limit: int = 10) -> str:
     """Search the shared context graph for entities relevant to a query."""
     try:
-        nodes = graph.find_nodes(limit=limit)
-        return json.dumps(nodes[:limit], ensure_ascii=False)
+        results = graph.query(query, limit=limit)
+        # graph.query returns [{node: {...}, score: ...}] — flatten for the tool
+        payload = []
+        for r in results:
+            node = r.get("node") if isinstance(r, dict) else r
+            if isinstance(node, dict):
+                payload.append({**node, "score": r.get("score", 0.0), "content": r.get("content", node.get("content", ""))})
+            else:
+                payload.append(r)
+        return json.dumps(payload[:limit], ensure_ascii=False)
     except Exception as exc:  # pragma: no cover - defensive
         return json.dumps({"error": str(exc)})
 
