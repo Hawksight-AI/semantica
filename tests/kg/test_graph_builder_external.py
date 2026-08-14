@@ -123,6 +123,46 @@ class TestGraphBuilderExternal(unittest.TestCase):
         self.assertIn(("2", "3"), ids)
         self.assertIn(("3", "4"), ids)
 
+    def test_relationship_endpoints_are_remapped_after_entity_resolution(self):
+        builder = GraphBuilder(merge_entities=False, resolve_conflicts=False)
+        resolver = MagicMock()
+        resolver.resolve_entities.return_value = [
+            {
+                "id": "alice:1",
+                "name": "Alice Chen",
+                "type": "Person",
+                "merged_from": ["alice:1", "alice:2"],
+            },
+            {"id": "org:1", "name": "Zyx Qqqq", "type": "Organization"},
+        ]
+
+        graph = builder.build(
+            {
+                "entities": [
+                    {"id": "alice:1", "name": "Alice Chen", "type": "Person"},
+                    {"id": "alice:2", "name": "Alice Chen", "type": "Person"},
+                    {"id": "org:1", "name": "Zyx Qqqq", "type": "Organization"},
+                ],
+                "relationships": [
+                    {
+                        "source": "alice:2",
+                        "target": "org:1",
+                        "type": "WORKS_FOR",
+                    }
+                ],
+            },
+            entity_resolver=resolver,
+        )
+
+        self.assertEqual(
+            graph["relationships"],
+            [{"source": "alice:1", "target": "org:1", "type": "WORKS_FOR"}],
+        )
+        entity_ids = {entity["id"] for entity in graph["entities"]}
+        for relationship in graph["relationships"]:
+            self.assertIn(relationship["source"], entity_ids)
+            self.assertIn(relationship["target"], entity_ids)
+
     def test_warning_when_all_relationships_dropped(self):
         builder = GraphBuilder(merge_entities=False, resolve_conflicts=False)
 
