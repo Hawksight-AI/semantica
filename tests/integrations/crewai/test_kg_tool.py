@@ -305,6 +305,38 @@ class TestSemanticaKGToolActions(unittest.TestCase):
         result = json.loads(self.tool._run(action="extract_entities", text=""))
         self.assertIn("entities", result)
 
+    def test_extract_entities_confidence_none_defaults_to_one(self):
+        """A single entity with ``confidence=None`` must not nuke the whole
+        extract result — it normalises to 1.0 instead of raising float(None)."""
+
+        class _NoneConfNER:
+            def extract_entities(self, text):
+                e = MagicMock()
+                e.name = "X"
+                e.type = "MISC"
+                e.confidence = None
+                return [e]
+
+        tool = SemanticaKGTool(
+            graph=self.graph,
+            ner_extractor=_NoneConfNER(),
+            relation_extractor=_FakeRelExtractor(),
+        )
+        result = json.loads(tool._run(action="extract_entities", text="text"))
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["entities"][0]["name"], "X")
+        self.assertEqual(result["entities"][0]["confidence"], 1.0)
+        self.assertNotIn("error", result)
+
+    def test_graph_lock_is_per_graph(self):
+        """Independent graphs must not share a batch lock."""
+        g2 = ContextGraph()
+        lock_a = self.tool._graph_lock(self.graph)
+        lock_a_again = self.tool._graph_lock(self.graph)
+        lock_b = self.tool._graph_lock(g2)
+        self.assertIs(lock_a, lock_a_again)
+        self.assertIsNot(lock_a, lock_b)
+
 
 class TestSemanticaKGToolDataclassShapes(unittest.TestCase):
     """Real Semantica ``Entity``/``Relation`` dataclasses (text/label,

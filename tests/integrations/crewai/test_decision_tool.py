@@ -299,6 +299,17 @@ class TestTraceCausalChain(unittest.TestCase):
             "dec-001", max_depth=5
         )
 
+    def test_graceful_error_when_context_has_no_knowledge_graph(self):
+        """Regression: an unguarded ``self.context.knowledge_graph`` read raised
+        AttributeError out of ``_run`` and could hard-fail a crew task. It must
+        return honest error JSON instead."""
+        del self.ctx.knowledge_graph
+        result = json.loads(
+            self.tool._run(action="trace_causal_chain", decision_id="dec-003")
+        )
+        self.assertEqual(result["causal_chain"], [])
+        self.assertIn("error", result)
+
 
 class TestAnalyzeImpact(unittest.TestCase):
 
@@ -351,6 +362,91 @@ class TestCheckPolicy(unittest.TestCase):
         )
         self.assertFalse(result["compliant"])
         self.assertEqual(len(result["violations"]), 1)
+
+    def test_bool_false_rule_is_compliant(self):
+        """Regression: ``enabled == false`` with ``enabled: false`` must be
+        compliant — bool("false") is truthy, so the old coercion inverted it."""
+        decision = json.dumps({"enabled": False, "confidence": 0.95})
+        rules = json.dumps(["enabled == false"])
+        result = json.loads(
+            self.tool._run(
+                action="check_policy", decision_data=decision, policy_rules=rules
+            )
+        )
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
+
+    def test_bool_true_rule_is_compliant(self):
+        decision = json.dumps({"enabled": True})
+        result = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=decision,
+                policy_rules=json.dumps(["enabled == true"]),
+            )
+        )
+        self.assertTrue(result["compliant"])
+
+    def test_bool_false_rule_violated_when_true(self):
+        decision = json.dumps({"enabled": True})
+        result = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=decision,
+                policy_rules=json.dumps(["enabled == false"]),
+            )
+        )
+        self.assertFalse(result["compliant"])
+        self.assertEqual(len(result["violations"]), 1)
+
+    def test_zero_one_flag_parsed_as_bool(self):
+        result = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=json.dumps({"flag": 1}),
+                policy_rules=json.dumps(["flag != 0"]),
+            )
+        )
+        self.assertTrue(result["compliant"])
+        result = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=json.dumps({"flag": 0}),
+                policy_rules=json.dumps(["flag != 0"]),
+            )
+        )
+        self.assertFalse(result["compliant"])
+
+    def test_numeric_string_value_compared_numerically(self):
+        """Regression: a string datum like "0.90" must compare numerically to
+        rule literal 0.9, not lexicographically."""
+        decision = json.dumps({"score": "0.90"})
+        result = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=decision,
+                policy_rules=json.dumps(["score == 0.9"]),
+            )
+        )
+        self.assertTrue(result["compliant"])
+
+    def test_numeric_string_ordering(self):
+        result = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=json.dumps({"pct": "0.95"}),
+                policy_rules=json.dumps(["pct >= 0.9"]),
+            )
+        )
+        self.assertTrue(result["compliant"])
+        result = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=json.dumps({"pct": "0.85"}),
+                policy_rules=json.dumps(["pct >= 0.9"]),
+            )
+        )
+        self.assertFalse(result["compliant"])
 
     def test_rule_missing_field_warns_not_silently_compliant(self):
         decision = json.dumps({"confidence": 0.95})

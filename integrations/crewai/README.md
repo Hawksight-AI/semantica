@@ -94,6 +94,8 @@ crew = Crew(
 )
 ```
 
+> **Embedder required:** storing chunks goes through CrewAI's knowledge pipeline, which needs an embedder. Set `Crew(embedder=...)` (or provide CrewAI's default credentials, e.g. `OPENAI_API_KEY`). Without a working embedder, storage fails, an ERROR is logged, and agents retrieve nothing — the crew still runs with empty knowledge queries.
+
 ### Compatibility note
 
 CrewAI's `BaseKnowledgeSource` contract changed between `0.80.x` and current releases (`load_content()` → `validate_content()`/`aadd()`). `SemanticaKnowledgeSource` implements both the legacy and current methods, so it works across `crewai>=0.80.0`.

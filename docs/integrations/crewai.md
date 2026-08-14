@@ -116,13 +116,15 @@ Requires `crewai >= 0.80.0`. If `crewai` is not installed, the integration still
 
     On kickoff the graph's nodes and edges are serialized, chunked, and stored through CrewAI's knowledge pipeline.
 
+    > **Embedder required:** storing chunks goes through CrewAI's knowledge pipeline, which needs an embedder to be configured. Set `Crew(embedder=...)` (or provide the default credentials CrewAI falls back to, e.g. `OPENAI_API_KEY`). If no working embedder is configured, storage fails, an ERROR is logged, and agents will retrieve **nothing** — the crew still runs, but its knowledge queries return empty.
+
     **Compatibility:** CrewAI's `BaseKnowledgeSource` contract changed between `0.80.x` and current releases (`load_content()` → `validate_content()`/`aadd()`). `SemanticaKnowledgeSource` implements both legacy and current methods, so it works across `crewai>=0.80.0`.
   </Tab>
 </Tabs>
 
 ## Checkpoints & Serialization
 
-CrewAI serializes tools and knowledge sources to JSON for checkpointing/resume. Live Semantica state (`ContextGraph`, `AgentContext`, extractors) is **excluded from that serialization** — a restored tool/source comes back with a fresh in-memory `ContextGraph` and logs a warning. After resuming from a checkpoint, re-attach the live graph/context to the restored objects before continuing, so agents resume on the same shared state.
+CrewAI serializes tools and knowledge sources to JSON for checkpointing/resume. Live Semantica state (`ContextGraph`, `AgentContext`, extractors) is **excluded from that serialization** — a restored tool/source comes back with a fresh in-memory `ContextGraph` and logs a warning. Until you re-attach the live graph/context, the restored objects answer queries against an **empty** graph, so re-wire them after resuming (e.g. `restored_tool.graph = live_graph`) before agents continue.
 
 ## API Reference
 

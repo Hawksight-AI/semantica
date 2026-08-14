@@ -345,8 +345,6 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
             return json.dumps({"precedents": [], "count": 0, "error": str(exc)})
 
     def _trace_causal_chain(self, decision_id: str, depth: Optional[int] = None) -> str:
-        max_depth = depth or self.causal_depth
-        graph = self.context.knowledge_graph
         if not decision_id:
             return json.dumps(
                 {
@@ -355,19 +353,32 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
                     "decision_id": "",
                 }
             )
-        trace = getattr(graph, "trace_decision_causality", None)
-        if trace is None:
-            return json.dumps(
-                {
-                    "error": (
-                        "causal tracing is not available on this knowledge graph "
-                        "(graph.trace_decision_causality is not implemented)"
-                    ),
-                    "causal_chain": [],
-                    "decision_id": decision_id,
-                }
-            )
+        max_depth = depth or self.causal_depth
         try:
+            graph = getattr(self.context, "knowledge_graph", None)
+            if graph is None:
+                return json.dumps(
+                    {
+                        "error": (
+                            "causal tracing is not available on this knowledge "
+                            "graph (the decision context has no knowledge_graph)"
+                        ),
+                        "causal_chain": [],
+                        "decision_id": decision_id,
+                    }
+                )
+            trace = getattr(graph, "trace_decision_causality", None)
+            if trace is None:
+                return json.dumps(
+                    {
+                        "error": (
+                            "causal tracing is not available on this knowledge graph "
+                            "(graph.trace_decision_causality is not implemented)"
+                        ),
+                        "causal_chain": [],
+                        "decision_id": decision_id,
+                    }
+                )
             chain = trace(decision_id, max_depth=max_depth)
             return json.dumps({"causal_chain": chain, "decision_id": decision_id})
         except Exception as exc:
@@ -472,6 +483,12 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
         so agents get a bounded, side-effect-free rule check. Rules are
         ``<field> <op> <value>`` comparisons only; there is no expression
         evaluation (no ``eval``), so untrusted rule strings are safe to pass.
+
+        Values are coerced type-aware: ``true``/``false`` (and ``1``/``0``)
+        become booleans, numeric literals become numbers, and string values
+        that parse as numbers are compared numerically, so ``score == 0.9``
+        holds for ``score: "0.90"`` and ``enabled == false`` holds for
+        ``enabled: false``.
         """
         m = re.match(r"(\w+)\s*(>=|<=|!=|==|>|<)\s*(.+)", rule.strip())
         if not m:
@@ -482,10 +499,9 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
         actual = data[field]
         if actual is None:
             raise ValueError(f"field {field!r} is null — cannot evaluate rule")
-        try:
-            val: Any = type(actual)(val_str)
-        except (ValueError, TypeError):
-            val = val_str
+        val = self._coerce_value(val_str)
+        if isinstance(actual, str):
+            actual = self._coerce_value(actual)
         ops = {
             ">=": lambda a, b: a >= b,
             "<=": lambda a, b: a <= b,
@@ -495,3 +511,22 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
             "<": lambda a, b: a < b,
         }
         return ops[op](actual, val)
+
+    @staticmethod
+    def _coerce_value(value: str) -> Any:
+        """Parse a rule literal into its most specific Python type."""
+        text = value.strip()
+        lowered = text.lower()
+        if lowered in ("true", "1"):
+            return True
+        if lowered in ("false", "0"):
+            return False
+        try:
+            return int(text)
+        except ValueError:
+            pass
+        try:
+            return float(text)
+        except ValueError:
+            pass
+        return value

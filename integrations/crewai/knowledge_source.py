@@ -276,9 +276,12 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
                     exc,
                 )
             except Exception as exc:
-                logger.warning(
-                    "SemanticaKnowledgeSource.add: storage failed (%s) — "
-                    "keeping chunks in memory",
+                logger.error(
+                    "SemanticaKnowledgeSource.add: storage save FAILED (%s) — "
+                    "chunks are only kept in memory and agents will retrieve "
+                    "nothing. Configure the Crew embedder (e.g. an OpenAI "
+                    "embedder with OPENAI_API_KEY, or a local embedder) before "
+                    "running the crew.",
                     exc,
                 )
 

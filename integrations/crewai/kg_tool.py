@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import threading
+import weakref
 from typing import Any, Dict, List, Literal, Optional, Sequence, Type
 
 from pydantic import BaseModel, Field
@@ -58,9 +59,15 @@ try:
 except ImportError as exc:
     CREWAI_IMPORT_ERROR = str(exc)
 
-# Serialises batches of node/edge writes so concurrent tool invocations sharing
-# one graph cannot double-count duplicate adds (check-then-act is not atomic).
-_add_batch_lock = threading.Lock()
+# One re-entrant lock per graph so concurrent tool invocations sharing a graph
+# cannot double-count duplicate adds (check-then-act is not atomic), while
+# independent graphs are never serialised against each other.  An RLock also
+# means an extractor callback that re-enters add_to_graph on the same graph
+# cannot deadlock.
+_graph_locks_guard = threading.Lock()
+_graph_locks: "weakref.WeakKeyDictionary[Any, threading.RLock]" = (
+    weakref.WeakKeyDictionary()
+)
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +314,27 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
         rtype = cls._first_str(r, ("type", "relation", "predicate"))
         return rtype or "related_to"
 
+    @classmethod
+    def _confidence(cls, e: Any) -> float:
+        """Normalise an entity/relation confidence value to a float."""
+        try:
+            val = getattr(e, "confidence", None)
+            if val is None:
+                return 1.0
+            return round(float(val), 4)
+        except (TypeError, ValueError):
+            return 1.0
+
+    @classmethod
+    def _graph_lock(cls, graph: Any) -> threading.RLock:
+        """Return the re-entrant lock guarding a specific graph."""
+        with _graph_locks_guard:
+            lock = _graph_locks.get(graph)
+            if lock is None:
+                lock = threading.RLock()
+                _graph_locks[graph] = lock
+            return lock
+
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
@@ -319,7 +347,7 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
                 {
                     "name": self._entity_name(e),
                     "type": self._entity_type(e),
-                    "confidence": round(float(getattr(e, "confidence", 1.0)), 4),
+                    "confidence": self._confidence(e),
                 }
                 for e in raw
                 if self._entity_name(e)
@@ -339,7 +367,7 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
                     "source": self._relation_source(r),
                     "relation": self._relation_type(r),
                     "target": self._relation_target(r),
-                    "confidence": round(float(getattr(r, "confidence", 1.0)), 4),
+                    "confidence": self._confidence(r),
                 }
                 for r in raw
             ]
@@ -360,7 +388,7 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
         nodes_added = 0
         edges_added = 0
         try:
-            with _add_batch_lock:
+            with self._graph_lock(self.graph):
                 existing_nodes = {
                     n.get("id") or n.get("node_id")
                     for n in (
