@@ -57,28 +57,36 @@ def exporter():
 def test_hop_distance_logs_warning_on_exception(exporter, caplog):
     with caplog.at_level(logging.WARNING, logger="semantica.export.distance_exporter"):
         result = exporter._hop_distance({}, "a", "b")
-    assert result is None
+    value, error = result
+    assert value is None
+    assert error == "hop_count"
     assert any("Hop distance" in rec.message for rec in caplog.records)
 
 
 def test_weighted_distance_logs_warning_on_exception(exporter, caplog):
     with caplog.at_level(logging.WARNING, logger="semantica.export.distance_exporter"):
         result = exporter._weighted_distance({}, "a", "b")
-    assert result is None
+    value, error = result
+    assert value is None
+    assert error == "weighted_distance"
     assert any("Weighted distance" in rec.message for rec in caplog.records)
 
 
 def test_semantic_similarity_logs_warning_on_exception(exporter, caplog):
     with caplog.at_level(logging.WARNING, logger="semantica.export.distance_exporter"):
         result = exporter._semantic_similarity({}, "a", "b")
-    assert result is None
+    value, error = result
+    assert value is None
+    assert error == "semantic_similarity"
     assert any("Semantic similarity" in rec.message for rec in caplog.records)
 
 
 def test_betweenness_logs_warning_on_exception(exporter, caplog):
     with caplog.at_level(logging.WARNING, logger="semantica.export.distance_exporter"):
         result = exporter._betweenness({})
-    assert result == {}
+    value, error = result
+    assert value == {}
+    assert error == "betweenness"
     assert any("Betweenness" in rec.message for rec in caplog.records)
 
 
@@ -103,5 +111,7 @@ def test_hop_distance_no_warning_when_kg_unavailable(caplog):
     exp._path_finder = None
     with caplog.at_level(logging.WARNING, logger="semantica.export.distance_exporter"):
         result = exp._hop_distance({}, "a", "b")
-    assert result is None
+    value, error = result
+    assert value is None
+    assert error is None
     assert len(caplog.records) == 0

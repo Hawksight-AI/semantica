@@ -174,6 +174,7 @@ Example Usage:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
@@ -182,6 +183,14 @@ from ..utils.logging import get_logger
 from .config import ingest_config
 from .file_ingestor import FileIngestor, FileObject
 from .registry import method_registry
+
+# SCP-like SSH remotes (user@host:path) — keep in sync with repo_ingestor
+_SCP_LIKE_REPO_URL_RE = re.compile(r"^[^@\s]+@[^:\s]+:.+$")
+
+
+def _is_scp_like_repo_source(source: str) -> bool:
+    """Return True for scp-like SSH remotes (``user@host:path``)."""
+    return bool(_SCP_LIKE_REPO_URL_RE.match(source.strip()))
 
 if TYPE_CHECKING:
     from .api_ingestor import APIData
@@ -880,7 +889,10 @@ def ingest_repository(
 
         if method == "clone" or (
             isinstance(source, str)
-            and source.startswith(("http://", "https://", "git@"))
+            and (
+                source.startswith(("http://", "https://"))
+                or _is_scp_like_repo_source(source)
+            )
         ):
             return ingestor.ingest_repository(source, **kwargs)
         elif method == "analyze":
@@ -1336,7 +1348,7 @@ def ingest(
                 ("postgresql://", "mysql://", "sqlite://", "oracle://", "mssql://")
             ):
                 source_type = "db"
-            elif source_str.startswith("git@") or source_str_lower.startswith(
+            elif _is_scp_like_repo_source(source_str) or source_str_lower.startswith(
                 ("https://github.com", "https://gitlab.com")
             ):
                 source_type = "repo"

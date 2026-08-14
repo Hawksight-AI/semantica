@@ -262,6 +262,77 @@ class GraphBuilder:
             self._extractor_cache[key] = extractor_cls(method=method, **self.config)
         return self._extractor_cache[key]
 
+    def _remap_relationship_endpoints(
+        self,
+        entities: List[Dict[str, Any]],
+        relationships: List[Dict[str, Any]],
+    ) -> int:
+        """Rewrite relationship endpoints after entity resolution.
+
+        Entity merging keeps the canonical entity ID and records the IDs of all
+        merged inputs in ``merged_from``.  Relationships are collected before
+        resolution, so without this remapping they can continue to reference an
+        entity that is no longer present in the graph.
+
+        Returns:
+            The number of relationship endpoints that were remapped.
+        """
+        endpoint_map: Dict[Any, Any] = {}
+
+        for entity in entities:
+            if not isinstance(entity, dict):
+                continue
+
+            canonical_id = entity.get("id")
+            if canonical_id is None:
+                canonical_id = entity.get("entity_id")
+            if canonical_id is None:
+                continue
+
+            # Keep canonical IDs stable and map every source ID retained by the
+            # merge operation to the surviving entity.
+            try:
+                endpoint_map[canonical_id] = canonical_id
+            except TypeError:
+                # Invalid/unhashable IDs are left for graph validation to report
+                # rather than making graph construction fail here.
+                continue
+
+            merged_from = entity.get("merged_from") or []
+            if isinstance(merged_from, (list, tuple, set)):
+                for source_id in merged_from:
+                    if source_id is not None:
+                        try:
+                            endpoint_map[source_id] = canonical_id
+                        except TypeError:
+                            # Skip invalid aliases while preserving valid ones.
+                            continue
+
+        remapped_count = 0
+        for relationship in relationships:
+            if not isinstance(relationship, dict):
+                continue
+
+            for endpoint in ("source", "target"):
+                endpoint_id = relationship.get(endpoint)
+                try:
+                    canonical_id = endpoint_map.get(endpoint_id)
+                except TypeError:
+                    # Invalid/unhashable endpoints are left for graph validation
+                    # to report rather than making graph construction fail here.
+                    continue
+
+                if canonical_id is not None and canonical_id != endpoint_id:
+                    relationship[endpoint] = canonical_id
+                    remapped_count += 1
+
+        if remapped_count:
+            self.logger.info(
+                "Remapped %d relationship endpoint(s) after entity resolution",
+                remapped_count,
+            )
+        return remapped_count
+
     def _extract_from_text(self, text: str, all_entities: List[Any], all_relationships: List[Any], **options):
         """Helper to extract knowledge from text using configured methods."""
         if not options.get("extract", True):
@@ -684,6 +755,16 @@ class GraphBuilder:
                 self.logger.info(
                     f"Entity resolution complete: {len(all_entities)} -> {len(resolved_entities)} unique entities"
                 )
+
+            # Relationships were collected before entity resolution. Rewrite
+            # endpoints only when resolution produced merged entity IDs.
+            if resolver_to_use:
+                has_merged_entities = any(
+                    isinstance(entity, dict) and entity.get("merged_from")
+                    for entity in resolved_entities
+                )
+                if has_merged_entities:
+                    self._remap_relationship_endpoints(resolved_entities, all_relationships)
 
             if input_relationships_count > 0 and len(all_relationships) == 0:
                 warning_msg = (
