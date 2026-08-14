@@ -333,6 +333,18 @@ export_yaml({"data": records}, "out.yaml")  # ValidationError
 export_yaml({"entities": [], "data": records}, "out.yaml")  # ValidationError
 ```
 
+The value under a recognized key must be a collection of records — a list or
+tuple of mappings or objects. A string, a bare mapping, or a scalar raises
+`ValidationError` naming the key, rather than being iterated into
+character-sized "records" or surfacing as a `TypeError` from inside the
+exporter. `None` is read as an absent collection, the same as `[]`.
+
+```python
+export_yaml({"entities": "abc"}, "out.yaml")         # ValidationError
+export_yaml({"entities": 42}, "out.yaml")            # ValidationError
+export_yaml({"nodes": {"id": "n1"}}, "out.yaml")     # ValidationError — wrap it in a list
+```
+
 An empty mapping is still accepted: an empty graph is a legitimate export and
 has no records to lose.
 
@@ -516,6 +528,23 @@ Pass `validate=True` to run a post-export integrity check before returning:
 
 ```python
 export_neo4j_csv(kg, "neo4j_import/", validate=True)
+```
+
+#### Accepted Input
+
+Mapping payloads are read on the same terms as the YAML exporters (see [Accepted
+Input](#accepted-input) above): `entities`/`relationships`, with `nodes`/`edges`
+accepted as aliases. A non-empty mapping that supplies neither — or that supplies
+a malformed collection value — raises `ValidationError` rather than writing
+header-only CSVs indistinguishable from a genuinely exported empty graph. The
+payload is normalized before any file is opened, so a rejected export writes
+nothing.
+
+Graph *objects* are unaffected: they are still read off `nodes`/`entities` and
+`edges`/`relationships` attributes.
+
+```python
+export_neo4j_csv({"data": [{"id": "e1"}]}, "neo4j_import/")  # ValidationError
 ```
 
 #### Importing into Neo4j

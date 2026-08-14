@@ -15,6 +15,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from dataclasses import dataclass
 
 from semantica.export import methods as export_methods
 from semantica.utils import normalize_graph_payload
@@ -93,11 +94,6 @@ class TestUnrecognizedInput(unittest.TestCase):
         self.assertIn("data", message)
         self.assertIn("entities", message)
         self.assertIn("nodes", message)
-
-    def test_unrecognized_keys_can_degrade_to_empty_when_asked(self):
-        result = normalize_graph_payload({"data": [ENTITY]}, require_recognized=False)
-        self.assertEqual(result["entities"], [])
-        self.assertEqual(result["relationships"], [])
 
     def test_empty_mapping_is_accepted(self):
         """An empty graph is legitimate and carries nothing that could be lost."""
@@ -205,12 +201,133 @@ class TestRecordsCannotBeDroppedSilently(unittest.TestCase):
 
         self.assertEqual(result["entities"], [ENTITY])
 
-    def test_degrading_callers_are_unaffected(self):
-        result = normalize_graph_payload(
-            {"entities": [], "data": [ENTITY]}, require_recognized=False
-        )
 
+class TestCollectionValuesAreValidated(unittest.TestCase):
+    """A recognized key is not proof its value is a collection of records.
+
+    Resolving on truthiness alone let ``{"entities": "abc"}`` through as three
+    single-character "records" and let ``{"entities": 42}`` surface as a raw
+    ``TypeError`` from ``list()`` inside an exporter, naming the exporter
+    rather than the payload key at fault. Both are rejected here, at the
+    boundary that owns the question.
+    """
+
+    COLLECTION_KEYS = ("entities", "nodes", "relationships", "edges", "triplets")
+
+    # Every public export path that reads its payload through the normalizer.
+    # export_json is excluded: it treats the payload as opaque records rather
+    # than resolving graph collections, so it never calls the normalizer.
+    NORMALIZING_EXPORTERS = (
+        "export_arango",
+        "export_neo4j_csv",
+        "export_lpg",
+        "export_yaml",
+    )
+
+    def test_string_value_is_not_treated_as_a_collection(self):
+        for key in self.COLLECTION_KEYS:
+            with self.subTest(key=key):
+                with self.assertRaises(ValidationError) as ctx:
+                    normalize_graph_payload({key: "abc"})
+                message = str(ctx.exception)
+                self.assertIn(f"'{key}'", message)
+                self.assertIn("str", message)
+
+    def test_bytes_value_is_not_treated_as_a_collection(self):
+        for value in (b"abc", bytearray(b"abc")):
+            with self.subTest(value=repr(value)):
+                with self.assertRaises(ValidationError):
+                    normalize_graph_payload({"entities": value})
+
+    def test_scalar_value_raises_validation_error_not_type_error(self):
+        for key in self.COLLECTION_KEYS:
+            for value in (42, 3.5, True, object()):
+                with self.subTest(key=key, value=repr(value)):
+                    with self.assertRaises(ValidationError) as ctx:
+                        normalize_graph_payload({key: value})
+                    self.assertIn(f"'{key}'", str(ctx.exception))
+
+    def test_mapping_value_is_not_treated_as_a_collection(self):
+        """``{"nodes": {"id": "n1"}}`` -- a single record, or an ID index."""
+        for payload in (
+            {"nodes": {"id": "n1"}},
+            {"entities": {"e1": ENTITY}},
+            {"edges": {"id": "r1"}},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValidationError) as ctx:
+                    normalize_graph_payload(payload)
+                self.assertIn("mapping", str(ctx.exception))
+
+    def test_non_record_elements_are_rejected(self):
+        for value in (["Acme"], [ENTITY, "Acme"], [42], [None], [[ENTITY]]):
+            with self.subTest(value=repr(value)):
+                with self.assertRaises(ValidationError) as ctx:
+                    normalize_graph_payload({"entities": value})
+                self.assertIn("'entities'", str(ctx.exception))
+
+    def test_error_names_the_offending_index(self):
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload({"entities": [ENTITY, ENTITY, "Acme"]})
+        self.assertIn("index 2", str(ctx.exception))
+
+    def test_object_records_are_accepted(self):
+        """Neo4jCSVExporter reads records off attributes as well as keys."""
+
+        class Node:
+            def __init__(self):
+                self.id = "e1"
+                self.name = "Acme"
+
+        node = Node()
+        result = normalize_graph_payload({"entities": [node]})
+        self.assertEqual(result["entities"], [node])
+
+    def test_dataclass_records_are_accepted(self):
+        @dataclass
+        class Node:
+            id: str
+
+        node = Node(id="e1")
+        result = normalize_graph_payload({"entities": [node]})
+        self.assertEqual(result["entities"], [node])
+
+    def test_tuple_collections_are_accepted_and_materialized(self):
+        result = normalize_graph_payload({"entities": (ENTITY,)})
+        self.assertEqual(result["entities"], [ENTITY])
+
+    def test_none_is_read_as_an_absent_collection(self):
+        """JSON round-trips an absent collection to null."""
+        result = normalize_graph_payload(
+            {"entities": None, "relationships": [RELATIONSHIP]}
+        )
         self.assertEqual(result["entities"], [])
+        self.assertEqual(result["relationships"], [RELATIONSHIP])
+
+    def test_null_collection_still_cannot_hide_dropped_records(self):
+        with self.assertRaises(ValidationError):
+            normalize_graph_payload({"entities": None, "data": [ENTITY]})
+
+    def test_every_spelling_is_validated_not_just_the_winner(self):
+        """A malformed alias is a defect even when the canonical key resolves."""
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload({"entities": [ENTITY], "nodes": "abc"})
+        self.assertIn("'nodes'", str(ctx.exception))
+
+    def test_malformed_value_reaches_no_exporter(self):
+        """The end-to-end half: no exporter sees a TypeError from list()."""
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+
+        for name in self.NORMALIZING_EXPORTERS:
+            for value in ("abc", 42, {"id": "n1"}):
+                with self.subTest(exporter=name, value=repr(value)):
+                    outdir = os.path.join(tmpdir, f"{name}_{type(value).__name__}")
+                    os.makedirs(outdir, exist_ok=True)
+                    with self.assertRaises(ValidationError):
+                        getattr(export_methods, name)(
+                            {"entities": value}, os.path.join(outdir, "out")
+                        )
 
 
 if __name__ == "__main__":

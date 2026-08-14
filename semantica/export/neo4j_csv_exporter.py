@@ -173,6 +173,19 @@ class Neo4jCSVExporter:
 
         Returns:
             Mapping with ``"nodes"`` and ``"relationships"`` output paths.
+
+        Raises:
+            ValidationError: if a mapping payload carries no recognized graph
+                key, resolves to nothing while an unread key still holds
+                records, or holds something other than records under one --
+                see
+                :func:`~semantica.utils.helpers.normalize_graph_payload`.
+                Each would otherwise be written out as header-only CSVs
+                indistinguishable from a genuinely empty graph. The payload is
+                normalized before any file is opened, so a rejected export
+                writes nothing.
+            ProcessingError: if a non-mapping payload exposes none of the
+                graph attributes.
         """
         output_dir = Path(output_dir)
         ensure_directory(output_dir)
@@ -495,10 +508,12 @@ class Neo4jCSVExporter:
 
     def _normalize_graph(self, graph: Any) -> Dict[str, List[Dict[str, Any]]]:
         if isinstance(graph, dict):
-            # Mapping payloads go through the shared resolver so this backend
-            # cannot drift from the others; the attribute path below stays
-            # local, since objects are not mappings.
-            resolved = normalize_graph_payload(graph, require_recognized=False)
+            # Mapping payloads go through the shared resolver on its default
+            # terms, so this backend cannot drift from the others: an
+            # unrecognized mapping raises here rather than writing header-only
+            # CSVs that read as a successful export of an empty graph. The
+            # attribute path below stays local, since objects are not mappings.
+            resolved = normalize_graph_payload(graph)
             nodes = resolved["entities"]
             relationships = resolved["relationships"]
         else:

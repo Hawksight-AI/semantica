@@ -63,7 +63,9 @@ import importlib
 import json
 import os
 import re
+from collections.abc import Iterable as IterableABC
 from collections.abc import Mapping
+from dataclasses import is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
@@ -687,6 +689,83 @@ def _require_nothing_dropped(
     )
 
 
+def _is_record(value: Any) -> bool:
+    """Report whether a value can stand in for a graph record.
+
+    Consumers read records either as mappings (``entity.get("type")`` in the
+    LPG and Arango exporters) or as objects with attributes
+    (``Neo4jCSVExporter._record_to_dict`` accepts dataclasses and anything
+    carrying a ``__dict__``). Both are legitimate, so both are accepted here;
+    strings, numbers, and nested sequences are not records under either
+    reading.
+    """
+    return (
+        isinstance(value, Mapping) or is_dataclass(value) or hasattr(value, "__dict__")
+    )
+
+
+def _coerce_records(key: str, value: Any) -> List[Any]:
+    """Validate one collection value and materialize it as a list of records.
+
+    This runs before any truthiness or ``list()`` call, because both mislead
+    on malformed input: ``list("abc")`` quietly turns a string into three
+    single-character "records", and ``list(42)`` raises a bare ``TypeError``
+    from deep inside the exporter that named the exporter rather than the
+    offending payload key. Neither reaches the caller as an actionable
+    message, so the shapes that produce them are rejected by name instead.
+
+    ``None`` is deliberately not rejected: JSON round-trips an absent
+    collection to null, and treating that as "no records under this key" is
+    the same answer an explicit ``[]`` gets. It is not silent data loss --
+    a null collection alongside records under an unread key is still caught
+    by :func:`_require_nothing_dropped`.
+
+    Args:
+        key: Payload key the value came from, for the error message.
+        value: The raw value stored under ``key``.
+
+    Returns:
+        The records as a new list, so the result never aliases the input.
+
+    Raises:
+        ValidationError: if ``value`` is a string, bytes, a mapping, or any
+            non-iterable scalar; or if any element is not a record.
+    """
+    if value is None:
+        return []
+
+    if isinstance(value, (str, bytes, bytearray)):
+        raise ValidationError(
+            f"Graph payload key '{key}' holds a {type(value).__name__}, not a "
+            f"collection of records. Iterating it would yield characters, not "
+            f"records. Supply a list of records."
+        )
+
+    if isinstance(value, Mapping):
+        raise ValidationError(
+            f"Graph payload key '{key}' holds a mapping, not a collection of "
+            f"records. If it is a single record, wrap it in a list; if it is "
+            f"keyed by ID, supply its values as a list."
+        )
+
+    if not isinstance(value, IterableABC):
+        raise ValidationError(
+            f"Graph payload key '{key}' holds a "
+            f"{type(value).__name__}, not a collection of records. Supply a "
+            f"list of records."
+        )
+
+    records = list(value)
+    for index, record in enumerate(records):
+        if not _is_record(record):
+            raise ValidationError(
+                f"Graph payload key '{key}' holds a "
+                f"{type(record).__name__} at index {index}, not a record. "
+                f"Records must be mappings or objects with attributes."
+            )
+    return records
+
+
 def _resolve_collection(
     payload: Dict[str, Any], keys: Tuple[str, ...]
 ) -> List[Dict[str, Any]]:
@@ -700,6 +779,11 @@ def _resolve_collection(
     basis for preferring either, and picking one would silently discard the
     other -- so that is refused rather than guessed at.
 
+    Every spelling present is validated, not just the one that wins: a
+    malformed 'nodes' alongside a well-formed 'entities' is a payload the
+    caller should hear about, and validating only the winner would let it
+    through on the strength of the other key.
+
     Args:
         payload: Mapping to read from.
         keys: Accepted spellings, most canonical first.
@@ -708,10 +792,13 @@ def _resolve_collection(
         The resolved collection, or an empty list if no spelling is present.
 
     Raises:
-        ValidationError: if two spellings are both present, both non-empty,
+        ValidationError: if a spelling holds something other than a collection
+            of records; or if two spellings are both present, both non-empty,
             and not equal.
     """
-    present = {key: payload[key] for key in keys if key in payload}
+    present = {
+        key: _coerce_records(key, payload[key]) for key in keys if key in payload
+    }
     populated = {key: value for key, value in present.items() if value}
 
     if len(populated) > 1:
@@ -727,7 +814,9 @@ def _resolve_collection(
     for key in keys:
         value = present.get(key)
         if value:
-            return list(value)
+            # Already a fresh list from _coerce_records, so the result cannot
+            # alias the caller's collection.
+            return value
 
     # Every spelling present is empty (or none is): an explicit empty
     # collection is a legitimate answer, distinct from "unrecognized".
@@ -735,7 +824,7 @@ def _resolve_collection(
 
 
 def normalize_graph_payload(
-    payload: Dict[str, Any], *, require_recognized: bool = True
+    payload: Dict[str, Any],
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Reduce a graph payload to one canonical vocabulary.
 
@@ -743,23 +832,25 @@ def normalize_graph_payload(
     and returns the canonical spelling, so consumers read one shape instead of
     reimplementing the reconciliation.
 
+    This is the validation boundary for graph payloads: it either returns
+    collections of records or raises. Nothing that reaches an exporter through
+    it needs re-checking, and nothing malformed passes through it as a
+    valid-looking empty graph.
+
     Args:
         payload: Graph payload mapping.
-        require_recognized: When True (default), a payload whose records this
-            function cannot see raises rather than returning empty
-            collections -- returning empty would hand the caller a
-            valid-looking result with their records silently dropped. Pass
-            False when an unrecognized payload should degrade to empty.
 
     Returns:
         ``{"entities": [...], "relationships": [...], "triplets": [...]}``.
 
     Raises:
-        ValidationError: if ``payload`` is not a mapping; if two spellings of
-            the same collection are both non-empty and differ; or, when
-            ``require_recognized`` is True, if a non-empty mapping contains no
-            recognized key, or resolves to nothing while an unread key still
-            holds records.
+        ValidationError: if ``payload`` is not a mapping; if a recognized key
+            holds something other than a collection of records; if two
+            spellings of the same collection are both non-empty and differ; if
+            a non-empty mapping contains no recognized key; or if it resolves
+            to nothing while an unread key still holds records. The last two
+            would otherwise hand the caller a valid-looking result with their
+            records silently dropped.
 
     Example:
         >>> normalize_graph_payload({"nodes": [{"id": "n1"}], "edges": []})
@@ -772,8 +863,7 @@ def normalize_graph_payload(
         )
 
     recognized = _ENTITY_KEYS + _RELATIONSHIP_KEYS + _TRIPLET_KEYS
-    if require_recognized:
-        _require_recognized_keys(payload, recognized, what="Graph payload")
+    _require_recognized_keys(payload, recognized, what="Graph payload")
 
     resolved = {
         "entities": _resolve_collection(payload, _ENTITY_KEYS),
@@ -781,9 +871,8 @@ def normalize_graph_payload(
         "triplets": _resolve_collection(payload, _TRIPLET_KEYS),
     }
 
-    if require_recognized:
-        _require_nothing_dropped(
-            payload, recognized, resolved.values(), what="Graph payload"
-        )
+    _require_nothing_dropped(
+        payload, recognized, resolved.values(), what="Graph payload"
+    )
 
     return resolved

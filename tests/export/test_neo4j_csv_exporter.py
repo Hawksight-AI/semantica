@@ -301,3 +301,60 @@ def test_nested_properties_are_json_serialized(tmp_path):
     by_id = {row[0]: row for row in rows[1:]}
     assert by_id["node1"][2] == '{"k":"v"}'
     assert by_id["node1"][3] == "[1,2,3]"
+
+
+def test_unrecognized_mapping_is_refused_rather_than_exported_empty(tmp_path):
+    """The Neo4j path reads mappings on the shared normalizer's default terms.
+
+    An ``export_json`` envelope names no graph key, so it resolves to nothing.
+    Written out, that is a pair of header-only CSVs indistinguishable from a
+    genuinely empty graph -- the silent-empty export the shared contract
+    exists to prevent.
+    """
+    exporter = Neo4jCSVExporter()
+
+    with pytest.raises(ValidationError) as excinfo:
+        exporter.export({"data": [{"id": "e1"}]}, tmp_path)
+
+    message = str(excinfo.value)
+    assert "data" in message
+    assert "entities" in message
+
+    assert not (tmp_path / "nodes.csv").exists()
+    assert not (tmp_path / "relationships.csv").exists()
+
+
+def test_records_under_an_unread_key_are_not_dropped_silently(tmp_path):
+    """Naming a recognized key is not enough if nothing resolves from it."""
+    exporter = Neo4jCSVExporter()
+
+    with pytest.raises(ValidationError):
+        exporter.export({"nodes": [], "data": [{"id": "e1"}]}, tmp_path)
+
+    assert not (tmp_path / "nodes.csv").exists()
+
+
+def test_malformed_collection_value_is_refused(tmp_path):
+    """``list("abc")`` would otherwise export one node per character."""
+    exporter = Neo4jCSVExporter()
+
+    for value in ("abc", 42, {"id": "n1"}):
+        with pytest.raises(ValidationError) as excinfo:
+            exporter.export({"nodes": value}, tmp_path)
+        assert "nodes" in str(excinfo.value)
+
+    assert not (tmp_path / "nodes.csv").exists()
+
+
+def test_graph_objects_still_use_the_attribute_path(tmp_path):
+    """Only mappings changed; objects are not mappings and are unaffected."""
+
+    class Graph:
+        def __init__(self):
+            self.nodes = [{"id": "e1", "type": "Person", "name": "Acme"}]
+            self.edges = []
+
+    exporter = Neo4jCSVExporter()
+    exporter.export(Graph(), tmp_path)
+
+    assert "Acme" in (tmp_path / "nodes.csv").read_text(encoding="utf-8")
