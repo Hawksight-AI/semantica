@@ -1914,6 +1914,13 @@ class AgentMemory:
 
         flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
+            # On POSIX, O_NOFOLLOW makes os.open() fail with ELOOP if the
+            # final path component is a symlink, atomically closing the TOCTOU
+            # window between the is_symlink() check above and the open call.
+            # On Windows, O_NOFOLLOW is not available; the is_symlink() pre-check
+            # above is the only symlink defense and remains vulnerable to a narrow
+            # race.  The fstat()/S_ISREG guard below still rejects special files
+            # (FIFOs, devices) on both platforms.
             flags |= os.O_NOFOLLOW
 
         try:

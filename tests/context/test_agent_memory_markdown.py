@@ -740,7 +740,102 @@ def test_markdown_import_file_open_security_rejects_symlink(tmp_path):
     target = tmp_path / "secret.txt"
     target.write_text("secret content", encoding="utf-8")
     symlink_file = tmp_path / "memory.md"
-    symlink_file.symlink_to(target)
+    try:
+        symlink_file.symlink_to(target)
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
+            pytest.skip("Windows symlink creation requires an unavailable privilege")
+        raise
 
     with pytest.raises(ValueError, match="Symlink Markdown import paths are rejected"):
         memory._read_markdown_file_content(symlink_file)
+
+def test_markdown_import_public_api_rejects_symlink(tmp_path):
+    """
+    import_data(..., format="markdown") must propagate the symlink rejection
+    through the full call chain: import_data → _import_markdown_payload →
+    _read_markdown_path → _read_markdown_file_content.
+
+    This complements test_markdown_import_file_open_security_rejects_symlink,
+    which only tests the private helper.  A future refactor that bypasses
+    _read_markdown_file_content would silently stop being protected; this test
+    catches that.
+    """
+    target = tmp_path / "secret.txt"
+    target.write_text("secret content", encoding="utf-8")
+    symlink_file = tmp_path / "memory.md"
+    try:
+        symlink_file.symlink_to(target)
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
+            pytest.skip("Windows symlink creation requires an unavailable privilege")
+        raise
+
+    memory = AgentMemory()
+    with pytest.raises(ValueError, match="Symlink Markdown import paths are rejected"):
+        memory.import_data(symlink_file, format="markdown")
+
+
+def test_markdown_import_directory_silently_skips_symlinked_entries(tmp_path):
+    """
+    When importing a directory, symlink entries must be silently excluded.
+    Only real regular files must be read.
+
+    This tests the filter in _read_markdown_path:
+        not file_path.is_symlink()
+    which was added by PR #932.
+    """
+    # Write a real Markdown file in the directory
+    real_md = tmp_path / "real.md"
+    real_md.write_text(
+        markdown_document(required_frontmatter(memory_id="dir-real"), "Real content"),
+        encoding="utf-8",
+    )
+    # Write the symlink target outside the directory
+    target = tmp_path.parent / "outside.txt"
+    target.write_text("must not be read", encoding="utf-8")
+    link_md = tmp_path / "evil.md"
+    try:
+        link_md.symlink_to(target)
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
+            pytest.skip("Windows symlink creation requires an unavailable privilege")
+        raise
+
+    memory = AgentMemory()
+    # Must succeed, returning only the real file
+    results = memory._read_markdown_path(tmp_path)
+    assert len(results) == 1, (
+        f"Expected 1 result (real.md only), got {len(results)}: "
+        f"{[r[0] for r in results]}"
+    )
+    assert "Real content" in results[0][1]
+
+
+def test_markdown_import_rejects_non_regular_file(tmp_path):
+    """
+    _read_markdown_file_content must raise ValueError when the opened file
+    descriptor does not refer to a regular file (S_ISREG fails).
+
+    This tests the fstat()/S_ISREG guard, which is the defense-in-depth layer
+    that catches special files (FIFOs, character devices) even when the
+    is_symlink() pre-check passes.  The test works on both POSIX and Windows
+    because it mocks os.fstat rather than relying on platform-specific
+    filesystem objects.
+    """
+    import stat as stat_module
+
+    real_file = tmp_path / "not_really_regular.md"
+    real_file.write_text("some data", encoding="utf-8")
+
+    # Build a mock stat result whose st_mode describes a FIFO (S_IFIFO).
+    fake_stat = MagicMock()
+    fake_stat.st_mode = stat_module.S_IFIFO | 0o600  # FIFO with rw permissions
+
+    memory = AgentMemory()
+    with patch("semantica.context.agent_memory.os.fstat", return_value=fake_stat):
+        with pytest.raises(ValueError, match="not a regular file"):
+            memory._read_markdown_file_content(real_file)
