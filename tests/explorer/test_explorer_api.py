@@ -444,26 +444,34 @@ class TestDecisions:
         assert violation_response.status_code == 200
         assert violation_response.json()["compliant"] is False
 
-    def test_recorded_decision_timestamp_is_iso(self, client):
+    def test_recorded_decision_timestamp_is_iso(self):
         """Regression for #884: record_decision stores a float epoch timestamp,
         which must be serialized as ISO-8601 instead of failing validation."""
-        graph = client.app.state.session.graph
-        graph.record_decision(
-            category="tech",
-            scenario="Recorded decision regression",
-            reasoning="Regression test for #884",
-            outcome="approved",
-            confidence=0.9,
-            entities=["ml"],
-        )
-        response = client.get("/api/decisions")
-        assert response.status_code == 200
-        recorded = [d for d in response.json() if d["scenario"] == "Recorded decision regression"]
-        assert len(recorded) == 1
-        timestamp = recorded[0]["timestamp"]
-        assert timestamp is not None
-        parsed = datetime.fromisoformat(timestamp)
-        assert parsed.tzinfo is not None
+        # Use a fresh function-scoped graph instead of the module-scoped
+        # `client` fixture, so the recorded decision does not leak into
+        # other tests (order-dependent failures).
+        session = GraphSession(_build_sample_graph())
+        app = create_app(session=session)
+        with TestClient(app) as test_client:
+            graph = test_client.app.state.session.graph
+            graph.record_decision(
+                category="tech",
+                scenario="Recorded decision regression",
+                reasoning="Regression test for #884",
+                outcome="approved",
+                confidence=0.9,
+                entities=["ml"],
+            )
+            response = test_client.get("/api/decisions")
+            assert response.status_code == 200
+            recorded = [
+                d for d in response.json() if d["scenario"] == "Recorded decision regression"
+            ]
+            assert len(recorded) == 1
+            timestamp = recorded[0]["timestamp"]
+            assert timestamp is not None
+            parsed = datetime.fromisoformat(timestamp)
+            assert parsed.tzinfo is not None
 
 
 class TestTemporal:

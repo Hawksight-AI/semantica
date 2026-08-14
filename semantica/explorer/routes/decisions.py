@@ -19,8 +19,14 @@ def _coerce_timestamp(value) -> Optional[str]:
     """Coerce a stored decision timestamp (float epoch or ISO string) to ISO-8601."""
     if value is None:
         return None
-    if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+    # bool is a subclass of int — don't interpret True/False as epoch seconds.
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            # Out-of-range/negative epochs and other malformed values must not
+            # 500 the endpoint; fall back to the raw string representation.
+            return str(value)
     return str(value)
 
 
