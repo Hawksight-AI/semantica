@@ -33,7 +33,7 @@ find_related       — Find concepts related to a given entity within ``hops``
 from __future__ import annotations
 
 import json
-from typing import Any, List, Literal, Optional, Type
+from typing import Any, List, Literal, Optional, Sequence, Type
 
 from pydantic import BaseModel, Field
 
@@ -234,6 +234,57 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
         )
 
     # ------------------------------------------------------------------
+    # Entity/relation field access (handles both Semantica dataclasses and
+    # third-party shapes like MagicMock/plain dicts in stubs)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _first_str(obj: Any, attrs: Sequence[str]) -> str:
+        """Return the first attribute value that is a non-empty string."""
+        for attr in attrs:
+            value = getattr(obj, attr, None)
+            if isinstance(value, str) and value:
+                return value
+        if isinstance(obj, dict):
+            for key in attrs:
+                value = obj.get(key)
+                if isinstance(value, str) and value:
+                    return value
+        return ""
+
+    @classmethod
+    def _entity_name(cls, e: Any) -> str:
+        """Best-effort name for an entity-like object."""
+        return cls._first_str(e, ("name", "text", "label", "node_id", "id")) or str(e)
+
+    @classmethod
+    def _entity_type(cls, e: Any) -> str:
+        """Best-effort type/label for an entity-like object."""
+        return cls._first_str(e, ("type", "label")) or "Entity"
+
+    @classmethod
+    def _relation_source(cls, r: Any) -> str:
+        """Best-effort source of a relation-like object."""
+        src = cls._first_str(r, ("source",))
+        if not src:
+            src = cls._entity_name(getattr(r, "subject", None))
+        return src
+
+    @classmethod
+    def _relation_target(cls, r: Any) -> str:
+        """Best-effort target of a relation-like object."""
+        tgt = cls._first_str(r, ("target",))
+        if not tgt:
+            tgt = cls._entity_name(getattr(r, "object", None))
+        return tgt
+
+    @classmethod
+    def _relation_type(cls, r: Any) -> str:
+        """Best-effort relation type of a relation-like object."""
+        rtype = cls._first_str(r, ("type", "relation", "predicate"))
+        return rtype or "related_to"
+
+    # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
 
@@ -243,8 +294,8 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             raw = self.ner_extractor.extract_entities(text) or []
             entities = [
                 {
-                    "name": getattr(e, "name", str(e)),
-                    "type": getattr(e, "type", ""),
+                    "name": self._entity_name(e),
+                    "type": self._entity_type(e),
                     "confidence": round(float(getattr(e, "confidence", 1.0)), 4),
                 }
                 for e in raw
@@ -261,9 +312,9 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             raw = self.relation_extractor.extract_relations(text) or []
             relations = [
                 {
-                    "source": getattr(r, "source", ""),
-                    "relation": getattr(r, "type", getattr(r, "relation", "")),
-                    "target": getattr(r, "target", ""),
+                    "source": self._relation_source(r),
+                    "relation": self._relation_type(r),
+                    "target": self._relation_target(r),
                     "confidence": round(float(getattr(r, "confidence", 1.0)), 4),
                 }
                 for r in raw
@@ -297,15 +348,15 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             }
 
             raw_entities = self.ner_extractor.extract_entities(text) or []
-            names: List[str] = []
+            entities: List[Any] = []
             seen: set = set()
             for e in raw_entities:
-                name = getattr(e, "name", str(e))
-                ntype = getattr(e, "type", "Entity") or "Entity"
+                name = self._entity_name(e)
+                ntype = self._entity_type(e)
                 if not name or name in seen:
                     continue
                 seen.add(name)
-                names.append(name)
+                entities.append(e)
                 if name in existing_nodes:
                     continue
                 try:
@@ -316,13 +367,12 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
                     pass
 
             raw_relations = (
-                self.relation_extractor.extract_relations(text, entities=names) or []
+                self.relation_extractor.extract_relations(text, entities=entities) or []
             )
             for r in raw_relations:
-                src = getattr(r, "source", "")
-                tgt = getattr(r, "target", "")
-                rtype = getattr(r, "type", getattr(r, "relation", "related_to"))
-                rtype = rtype or "related_to"
+                src = self._relation_source(r)
+                tgt = self._relation_target(r)
+                rtype = self._relation_type(r)
                 if not src or not tgt:
                     continue
                 key = (src, rtype, tgt)

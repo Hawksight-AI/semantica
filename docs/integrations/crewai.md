@@ -78,7 +78,7 @@ Requires `crewai >= 0.80.0`. If `crewai` is not installed, the integration still
     crew = Crew(agents=[planner], tasks=[...])
     ```
 
-    When no `AgentContext` is passed, one is created in-memory with `decision_tracking=True`.
+    When no `AgentContext` is passed, one is created in-memory with `decision_tracking=True` and its own `ContextGraph`, so decision actions work out of the box. Missing optional fields in `record_decision` fall back to `category="general"`, `reasoning="agent decision"`, and `outcome="recorded"`.
 
     | Tool | Description |
     | :------ | :------------- |

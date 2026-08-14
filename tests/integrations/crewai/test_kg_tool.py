@@ -52,6 +52,39 @@ class _FakeRelExtractor:
         return [_fake_relation()]
 
 
+class _DataclassNER:
+    """Returns Semantica's real ``Entity`` dataclass shape (text/label, no name)."""
+
+    def extract_entities(self, text):
+        from semantica.semantic_extract.types import Entity
+
+        return [
+            Entity(text="Tesla", label="ORG", start_char=0, end_char=5),
+            Entity(text="Elon Musk", label="PERSON", start_char=17, end_char=26),
+        ]
+
+
+class _DataclassRelExtractor:
+    """Returns Semantica's real ``Relation`` dataclass shape (subject/object)."""
+
+    def __init__(self):
+        self.received_entities = None
+
+    def extract_relations(self, text, entities=None):
+        from semantica.semantic_extract.types import Entity, Relation
+
+        self.received_entities = entities
+        return [
+            Relation(
+                subject=Entity(text="Tesla", label="ORG", start_char=0, end_char=5),
+                predicate="FOUNDED_BY",
+                object=Entity(
+                    text="Elon Musk", label="PERSON", start_char=17, end_char=26
+                ),
+            )
+        ]
+
+
 class TestSemanticaKGToolInit(unittest.TestCase):
 
     def test_crewai_available_via_stub(self):
@@ -191,6 +224,59 @@ class TestSemanticaKGToolActions(unittest.TestCase):
     def test_extract_entities_empty_text_is_graceful(self):
         result = json.loads(self.tool._run(action="extract_entities", text=""))
         self.assertIn("entities", result)
+
+
+class TestSemanticaKGToolDataclassShapes(unittest.TestCase):
+    """Real Semantica ``Entity``/``Relation`` dataclasses (text/label,
+    subject/object) instead of MagicMock-shaped fakes."""
+
+    def setUp(self):
+        self.ner = _DataclassNER()
+        self.rel = _DataclassRelExtractor()
+        self.graph = ContextGraph()
+        self.tool = SemanticaKGTool(
+            graph=self.graph, ner_extractor=self.ner, relation_extractor=self.rel
+        )
+
+    def test_extract_entities_reads_text_label(self):
+        result = json.loads(
+            self.tool._run(action="extract_entities", text="Tesla founded by Elon Musk")
+        )
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["entities"][0]["name"], "Tesla")
+        self.assertEqual(result["entities"][0]["type"], "ORG")
+        self.assertEqual(result["entities"][1]["name"], "Elon Musk")
+        self.assertEqual(result["entities"][1]["type"], "PERSON")
+
+    def test_extract_relations_reads_subject_object(self):
+        result = json.loads(
+            self.tool._run(
+                action="extract_relations", text="Tesla founded by Elon Musk"
+            )
+        )
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["relations"][0]["source"], "Tesla")
+        self.assertEqual(result["relations"][0]["relation"], "FOUNDED_BY")
+        self.assertEqual(result["relations"][0]["target"], "Elon Musk")
+
+    def test_add_to_graph_passes_entity_objects_to_relation_extractor(self):
+        result = json.loads(
+            self.tool._run(action="add_to_graph", text="Tesla founded by Elon Musk")
+        )
+        self.assertEqual(result["nodes_added"], 2)
+        self.assertEqual(result["edges_added"], 1)
+        from semantica.semantic_extract.types import Entity
+
+        self.assertIsNotNone(self.rel.received_entities)
+        for e in self.rel.received_entities:
+            self.assertIsInstance(e, Entity)
+        node_ids = {n["id"] for n in self.graph.find_nodes()}
+        self.assertIn("Tesla", node_ids)
+        self.assertIn("Elon Musk", node_ids)
+        edge_keys = {
+            (e["source"], e["type"], e["target"]) for e in self.graph.find_edges()
+        }
+        self.assertIn(("Tesla", "FOUNDED_BY", "Elon Musk"), edge_keys)
 
 
 class TestSemanticaKGToolCrewAIEntrypoints(unittest.TestCase):

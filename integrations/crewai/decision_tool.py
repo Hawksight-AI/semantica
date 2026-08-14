@@ -190,12 +190,13 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
         self.causal_depth = causal_depth
 
         if self.context is None:
-            from semantica.context import AgentContext
+            from semantica.context import AgentContext, ContextGraph
             from semantica.vector_store import VectorStore
 
             self.context = AgentContext(
                 vector_store=VectorStore(backend="faiss"),
                 decision_tracking=True,
+                knowledge_graph=ContextGraph(),
             )
 
         logger.info("SemanticaDecisionTool initialised (crewai=%s)", CREWAI_AVAILABLE)
@@ -236,10 +237,10 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
 
         if action == "record_decision":
             return self._record_decision(
-                category=category or "",
-                scenario=scenario or "",
-                reasoning=reasoning or "",
-                outcome=outcome or "",
+                category=category or "general",
+                scenario=scenario or "decision recorded",
+                reasoning=reasoning or "agent decision",
+                outcome=outcome or "recorded",
                 confidence=float(confidence),
                 entities=entities,
             )

@@ -145,6 +145,48 @@ class TestRecordDecision(unittest.TestCase):
         call_kwargs = self.ctx.record_decision.call_args[1]
         self.assertEqual(call_kwargs["confidence"], 0.8)
 
+    def test_missing_fields_get_sane_defaults(self):
+        """record_decision must not hard-fail when the agent omits optional
+        fields — category/reasoning/outcome get defaults."""
+        result = json.loads(self.tool._run(action="record_decision"))
+        self.assertEqual(result["status"], "recorded")
+        call_kwargs = self.ctx.record_decision.call_args[1]
+        self.assertEqual(call_kwargs["category"], "general")
+        self.assertEqual(call_kwargs["scenario"], "decision recorded")
+        self.assertEqual(call_kwargs["reasoning"], "agent decision")
+        self.assertEqual(call_kwargs["outcome"], "recorded")
+
+
+class TestRealAutoCreatedContext(unittest.TestCase):
+    """The no-context path builds a real AgentContext with a knowledge graph so
+    decision tracking is actually enabled (regression for the live
+    'Decision tracking is not enabled' failure)."""
+
+    def setUp(self):
+        self.tool = SemanticaDecisionTool()
+
+    def test_context_is_real_agent_context(self):
+        from semantica.context import AgentContext
+
+        self.assertIsInstance(self.tool.context, AgentContext)
+        self.assertIsNotNone(self.tool.context.knowledge_graph)
+
+    def test_record_decision_actually_records(self):
+        result = json.loads(
+            self.tool.run(
+                action="record_decision",
+                scenario="ship v2",
+                reasoning="user demand",
+                confidence=0.9,
+            )
+        )
+        self.assertEqual(result["status"], "recorded")
+        self.assertTrue(result["decision_id"])
+
+    def test_find_precedents_runs_against_real_context(self):
+        result = json.loads(self.tool.run(action="find_precedents", scenario="ship v2"))
+        self.assertIn("precedents", result)
+
 
 class TestFindPrecedents(unittest.TestCase):
 
