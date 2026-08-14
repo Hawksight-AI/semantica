@@ -177,31 +177,29 @@ async def extract_entities(
 ):
     try:
         from ...semantic_extract import NamedEntityRecognizer, RelationExtractor
-
-        recognizer = NamedEntityRecognizer(confidence_threshold=0.7)
-        extractor = RelationExtractor(confidence_threshold=0.6)
-
-        entities = await asyncio.to_thread(recognizer.extract_entities, body.text)
-
-        ent_list = entities if isinstance(entities, list) else getattr(entities, "entities", [])
-
-        relations = await asyncio.to_thread(
-            extractor.extract_relations, body.text, ent_list
-        )
-
-        rel_list = relations if isinstance(relations, list) else getattr(relations, "relations", [])
-
-        return EnrichExtractResponse(
-            entities=[_safe_dict(entity) for entity in ent_list],
-            relations=[_safe_dict(relation) for relation in rel_list],
-        )
     except ImportError:
         raise HTTPException(
             status_code=503,
             detail="semantic_extract module not available. Ensure spacy and transformers are installed.",
         )
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Extraction failed: {exc}")
+
+    recognizer = NamedEntityRecognizer(confidence_threshold=0.7)
+    extractor = RelationExtractor(confidence_threshold=0.6)
+
+    entities = await asyncio.to_thread(recognizer.extract_entities, body.text)
+
+    ent_list = entities if isinstance(entities, list) else getattr(entities, "entities", [])
+
+    relations = await asyncio.to_thread(
+        extractor.extract_relations, body.text, ent_list
+    )
+
+    rel_list = relations if isinstance(relations, list) else getattr(relations, "relations", [])
+
+    return EnrichExtractResponse(
+        entities=[_safe_dict(entity) for entity in ent_list],
+        relations=[_safe_dict(relation) for relation in rel_list],
+    )
 
 
 @router.post("/api/enrich/links", response_model=LinkPredictionResponse)

@@ -159,8 +159,16 @@ class DecisionResponse(BaseModel):
         if isinstance(value, datetime):
             return value.isoformat()
         if isinstance(value, (int, float)):
+            import math
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"timestamp must be a finite number, got {value!r}"
+                )
             return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
-        return str(value)
+        raise ValueError(
+            f"timestamp must be None, a string, a datetime, or a numeric epoch; "
+            f"got {type(value).__name__!r}"
+        )
 
 
 class CausalChainResponse(BaseModel):
@@ -192,7 +200,9 @@ class TemporalPatternResponse(BaseModel):
 
 
 class EnrichExtractRequest(BaseModel):
-    text: str
+    # 10 000 characters is sufficient for a substantial document paragraph while
+    # preventing unbounded spaCy NLP processing on arbitrarily large payloads.
+    text: str = Field(..., max_length=10_000)
 
 
 class EnrichExtractResponse(BaseModel):
