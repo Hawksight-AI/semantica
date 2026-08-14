@@ -9,6 +9,8 @@ import yaml
 
 from semantica.context.agent_memory import AgentMemory
 
+_ERROR_PRIVILEGE_NOT_HELD = 1314
+
 
 class TrackingVectorStore:
     def __init__(self):
@@ -647,7 +649,8 @@ def test_markdown_export_rejects_symlink_without_touching_target(tmp_path):
     try:
         output_path.symlink_to(outside)
     except OSError as error:
-        if sys.platform == "win32" and error.winerror == 1314:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
             pytest.skip("Windows symlink creation requires an unavailable privilege")
         raise
 
