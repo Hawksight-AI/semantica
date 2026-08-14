@@ -1,4 +1,5 @@
 import errno
+import sys
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -7,6 +8,8 @@ import pytest
 import yaml
 
 from semantica.context.agent_memory import AgentMemory
+
+_ERROR_PRIVILEGE_NOT_HELD = 1314
 
 
 class TrackingVectorStore:
@@ -643,7 +646,13 @@ def test_markdown_export_rejects_symlink_without_touching_target(tmp_path):
     outside = tmp_path / "outside.md"
     outside.write_text("do not overwrite", encoding="utf-8")
     output_path = destination / memory._memory_markdown_filename("mem_symlink")
-    output_path.symlink_to(outside)
+    try:
+        output_path.symlink_to(outside)
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
+            pytest.skip("Windows symlink creation requires an unavailable privilege")
+        raise
 
     with pytest.raises(ValueError, match="symbolic link"):
         memory.export(format="markdown", destination=destination)
