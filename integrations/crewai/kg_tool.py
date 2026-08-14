@@ -150,6 +150,8 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
     graph: Any = Field(default=None, exclude=True)
     ner_extractor: Any = Field(default=None, exclude=True)
     relation_extractor: Any = Field(default=None, exclude=True)
+    had_live_state: bool = False
+    reconstructed_state: bool = Field(default=False, exclude=True)
 
     def __init__(
         self,
@@ -192,10 +194,20 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             from semantica.context import ContextGraph
 
             self.graph = ContextGraph()
-            logger.warning(
-                "SemanticaKGTool created a fresh in-memory ContextGraph — "
-                "agents sharing this tool's graph must be wired explicitly"
-            )
+            if self.had_live_state:
+                self.reconstructed_state = True
+                logger.warning(
+                    "SemanticaKGTool: the live graph was lost during "
+                    "serialization/checkpoint restore — an EMPTY graph was "
+                    "reconstructed; re-attach the original graph before "
+                    "continuing"
+                )
+            else:
+                logger.warning(
+                    "SemanticaKGTool created a fresh in-memory ContextGraph — "
+                    "agents sharing this tool's graph must be wired explicitly"
+                )
+        self.had_live_state = True
         if self.ner_extractor is None:
             from semantica.semantic_extract import NERExtractor
 
@@ -481,15 +493,27 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
                     if isinstance(n, dict):
                         nid = n.get("id", "") or n.get("node_id", "")
                         ntype = n.get("type", "") or n.get("node_type", "")
+                        content = str(
+                            n.get("content")
+                            or (n.get("properties") or {}).get("content", "")
+                            or ""
+                        )
                     else:
                         nid = getattr(n, "id", getattr(n, "label", ""))
                         ntype = getattr(n, "node_type", "")
+                        content = str(getattr(n, "content", "") or "")
                     if not nid or nid in seen:
                         continue
                     if q in str(nid).lower() or q in str(ntype).lower():
                         seen.add(nid)
                         out.append(
-                            {"id": nid, "type": ntype, "label": nid, "content": ""}
+                            {
+                                "id": nid,
+                                "type": ntype,
+                                "label": nid,
+                                "content": content[:500],
+                                "score": 1.0,
+                            }
                         )
             return json.dumps({"results": out, "count": len(out)})
         except Exception as exc:

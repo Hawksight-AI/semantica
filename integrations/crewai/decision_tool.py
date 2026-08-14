@@ -172,6 +172,8 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
     context: Any = Field(default=None, exclude=True)
     max_precedents: int = 5
     causal_depth: int = 3
+    had_live_state: bool = False
+    reconstructed_state: bool = Field(default=False, exclude=True)
 
     def __init__(
         self,
@@ -218,10 +220,21 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
                 decision_tracking=True,
                 knowledge_graph=ContextGraph(),
             )
-            logger.warning(
-                "SemanticaDecisionTool created a fresh in-memory AgentContext — "
-                "agents sharing decision state must be wired to the same context"
-            )
+            if self.had_live_state:
+                self.reconstructed_state = True
+                logger.warning(
+                    "SemanticaDecisionTool: the live decision context was lost "
+                    "during serialization/checkpoint restore — an EMPTY "
+                    "context was reconstructed; re-attach the original context "
+                    "before continuing"
+                )
+            else:
+                logger.warning(
+                    "SemanticaDecisionTool created a fresh in-memory "
+                    "AgentContext — agents sharing decision state must be "
+                    "wired to the same context"
+                )
+        self.had_live_state = True
 
     # ------------------------------------------------------------------
     # CrewAI entry points
@@ -488,9 +501,11 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
         become booleans, numeric literals become numbers, and string values
         that parse as numbers are compared numerically, so ``score == 0.9``
         holds for ``score: "0.90"`` and ``enabled == false`` holds for
-        ``enabled: false``.
+        ``enabled: false``. Field names may contain hyphens, dots and spaces
+        (e.g. ``risk-score >= 0.9``); they are matched against ``data`` keys
+        as-is.
         """
-        m = re.match(r"(\w+)\s*(>=|<=|!=|==|>|<)\s*(.+)", rule.strip())
+        m = re.match(r"(.+?)\s*(>=|<=|!=|==|>|<)\s*(.+)$", rule.strip())
         if not m:
             raise ValueError(f"unrecognised rule format: {rule!r}")
         field, op, val_str = m.group(1), m.group(2), m.group(3).strip().strip("\"'")

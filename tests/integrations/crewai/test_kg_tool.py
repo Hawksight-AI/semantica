@@ -165,6 +165,16 @@ class TestSemanticaKGToolSerialization(unittest.TestCase):
         result = json.loads(restored._run(action="query_graph", query="privacy"))
         self.assertEqual(result["count"], 1)
 
+    def test_restore_flags_lost_live_state(self):
+        """A tool restored from a checkpoint must signal that its live graph
+        was excluded and an empty one reconstructed (``reconstructed_state``)."""
+        dumped = self.tool.model_dump(mode="json")
+        self.assertTrue(dumped["had_live_state"])
+        self.assertNotIn("reconstructed_state", dumped)
+        restored = SemanticaKGTool.model_validate(dumped)
+        self.assertTrue(restored.reconstructed_state)
+        self.assertFalse(SemanticaKGTool().reconstructed_state)
+
 
 class TestSemanticaKGToolActions(unittest.TestCase):
 
@@ -246,6 +256,27 @@ class TestSemanticaKGToolActions(unittest.TestCase):
         result = json.loads(self.tool._run(action="query_graph", query="risk"))
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["id"], "n2")
+
+    def test_query_graph_result_shape_is_consistent(self):
+        """Every result — content match or id/type match — must carry the same
+        keys (id, type, label, content, score) so agents get one schema."""
+        self.graph.add_node(
+            node_id="n1",
+            node_type="policy",
+            content="all refunds within 30 days",
+        )
+        by_content = json.loads(self.tool._run(action="query_graph", query="refunds"))[
+            "results"
+        ][0]
+        expected_keys = {"id", "type", "label", "content", "score"}
+        self.assertEqual(set(by_content.keys()), expected_keys)
+
+        by_id = json.loads(self.tool._run(action="query_graph", query="n1"))["results"][
+            0
+        ]
+        self.assertEqual(set(by_id.keys()), expected_keys)
+        self.assertEqual(by_id["content"], "all refunds within 30 days")
+        self.assertEqual(by_id["score"], 1.0)
 
     def test_extract_entities_skips_nameless_entities(self):
         class _NamelessNER:

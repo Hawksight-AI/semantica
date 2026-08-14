@@ -101,6 +101,8 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
     graph: Any = Field(default=None, exclude=True)
     chunk_size: int = 4000
     chunk_overlap: int = 200
+    had_live_state: bool = False
+    reconstructed_state: bool = Field(default=False, exclude=True)
 
     def __init__(
         self,
@@ -110,12 +112,11 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
         chunk_overlap: int = 200,
         **kwargs: Any,
     ) -> None:
-        if graph is None:
-            from semantica.context import ContextGraph
-
-            graph = ContextGraph()
-
         if CREWAI_AVAILABLE:
+            # Do NOT eagerly build a graph here: pydantic calls this ``__init__``
+            # during ``model_validate`` (checkpoint restore), and the eager
+            # build would hide that a live graph was lost. ``model_post_init``
+            # rebuilds defaults and flags ``reconstructed_state`` instead.
             super().__init__(
                 graph=graph,
                 name=name or "semantica_knowledge_graph",
@@ -124,6 +125,10 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
                 **kwargs,
             )
         else:
+            if graph is None:
+                from semantica.context import ContextGraph
+
+                graph = ContextGraph()
             super().__init__()
             self.graph = graph
             self.name = name or "semantica_knowledge_graph"
@@ -135,6 +140,7 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
             CREWAI_AVAILABLE,
             self.chunk_size,
         )
+        self.had_live_state = True
 
     def model_post_init(self, __context: Any) -> None:
         """Re-create default state after validation/deserialisation.
@@ -147,6 +153,21 @@ class SemanticaKnowledgeSource(_BaseKnowledgeSource):  # type: ignore[misc]
             from semantica.context import ContextGraph
 
             self.graph = ContextGraph()
+            if self.had_live_state:
+                self.reconstructed_state = True
+                logger.warning(
+                    "SemanticaKnowledgeSource: the live graph was lost during "
+                    "serialization/checkpoint restore — an EMPTY graph was "
+                    "reconstructed; re-attach the original graph before "
+                    "continuing"
+                )
+            else:
+                logger.warning(
+                    "SemanticaKnowledgeSource created a fresh in-memory "
+                    "ContextGraph — sources sharing knowledge must be wired to "
+                    "the same graph explicitly"
+                )
+        self.had_live_state = True
         super().model_post_init(__context)
 
     # ------------------------------------------------------------------

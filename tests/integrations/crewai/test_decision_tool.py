@@ -94,6 +94,17 @@ class TestSemanticaDecisionToolSerialization(unittest.TestCase):
         self.assertEqual(restored.max_precedents, 5)
         self.assertEqual(restored.causal_depth, 3)
 
+    def test_restore_flags_lost_live_state(self):
+        """A tool restored from a checkpoint must signal that its live context
+        was excluded and an empty one reconstructed (``reconstructed_state``)."""
+        tool = SemanticaDecisionTool(context=_make_context())
+        dumped = tool.model_dump(mode="json")
+        self.assertTrue(dumped["had_live_state"])
+        self.assertNotIn("reconstructed_state", dumped)
+        restored = SemanticaDecisionTool.model_validate(dumped)
+        self.assertTrue(restored.reconstructed_state)
+        self.assertFalse(SemanticaDecisionTool().reconstructed_state)
+
 
 class TestRecordDecision(unittest.TestCase):
 
@@ -447,6 +458,31 @@ class TestCheckPolicy(unittest.TestCase):
             )
         )
         self.assertFalse(result["compliant"])
+
+    def test_field_names_with_hyphens_dots_spaces(self):
+        """Rule field names are not limited to ``\\w+`` — hyphenated/dotted
+        (and space-containing) JSON keys must be addressable."""
+        decision = json.dumps({"risk-score": 0.95, "max.risk": 0.2, "min score": 0.4})
+        compliant = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=decision,
+                policy_rules=json.dumps(
+                    ["risk-score >= 0.9", "max.risk <= 0.5", "min score >= 0.3"]
+                ),
+            )
+        )
+        self.assertTrue(compliant["compliant"])
+        self.assertEqual(compliant["violations"], [])
+        violated = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=decision,
+                policy_rules=json.dumps(["max.risk >= 0.5"]),
+            )
+        )
+        self.assertFalse(violated["compliant"])
+        self.assertEqual(len(violated["violations"]), 1)
 
     def test_rule_missing_field_warns_not_silently_compliant(self):
         decision = json.dumps({"confidence": 0.95})

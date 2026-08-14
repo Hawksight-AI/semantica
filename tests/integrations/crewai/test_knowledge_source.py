@@ -191,6 +191,19 @@ class TestSemanticaKnowledgeSourceSerialization(unittest.TestCase):
         restored.graph = _build_graph()
         self.assertNotEqual(restored.load_content(), {})
 
+    def test_restore_flags_lost_live_state(self):
+        """A source restored from a checkpoint must signal that its live graph
+        was excluded and an empty one reconstructed (``reconstructed_state``).
+        Regression: an eager graph build in ``__init__`` used to hide this."""
+        src = SemanticaKnowledgeSource(graph=_build_graph())
+        dumped = src.model_dump(mode="json")
+        self.assertTrue(dumped["had_live_state"])
+        self.assertNotIn("reconstructed_state", dumped)
+        restored = SemanticaKnowledgeSource.model_validate(dumped)
+        self.assertTrue(restored.reconstructed_state)
+        self.assertFalse(SemanticaKnowledgeSource().reconstructed_state)
+        self.assertIsInstance(SemanticaKnowledgeSource().graph, ContextGraph)
+
 
 class TestManualChunker(unittest.TestCase):
 
