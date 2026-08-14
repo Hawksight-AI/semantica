@@ -539,3 +539,17 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             return json.dumps(
                 {"entity": entity, "related": [], "count": 0, "error": str(exc)}
             )
+
+    # When crewai is absent there is no BaseTool to provide the public
+    # ``run``/``arun`` entry points, so expose them directly.  With crewai
+    # installed these are left untouched so crewai's own implementations
+    # (usage tracking, ``result_as_answer``) win.
+    if not CREWAI_AVAILABLE:
+
+        def run(self, *args: Any, **kwargs: Any) -> str:
+            """Run the tool synchronously (degraded mode, no crewai)."""
+            return self._run(*args, **kwargs)
+
+        async def arun(self, *args: Any, **kwargs: Any) -> str:
+            """Run the tool asynchronously (degraded mode, no crewai)."""
+            return self._run(*args, **kwargs)

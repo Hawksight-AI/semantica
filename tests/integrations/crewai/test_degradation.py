@@ -52,6 +52,13 @@ assert res["count"] == 1, res
 res = json.loads(tool._run(action="find_related", entity="ghost", hops=1))
 assert res["count"] == 0, res
 
+# The public run()/arun() entry points must exist without crewai too.
+res = json.loads(tool.run(action="query_graph", query="privacy"))
+assert res["count"] == 1, res
+import asyncio
+res = json.loads(asyncio.run(tool.arun(action="query_graph", query="privacy")))
+assert res["count"] == 1, res
+
 # --- SemanticaKnowledgeSource: importable + functional without crewai --------
 src = SemanticaKnowledgeSource(graph=graph, chunk_size=40, chunk_overlap=5)
 assert src.load_content() != {}
@@ -62,6 +69,10 @@ assert len(src.chunks) > 0
 # --- SemanticaDecisionTool: importable, builds its own context --------------
 dt = SemanticaDecisionTool()
 assert dt.name == "semantica_decision"
+res = json.loads(dt.run(action="find_precedents", scenario="x"))
+assert "precedents" in res, res
+res = json.loads(asyncio.run(dt.arun(action="find_precedents", scenario="x")))
+assert "precedents" in res, res
 
 print("DEGRADATION_OK")
 """
