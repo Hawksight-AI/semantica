@@ -201,6 +201,7 @@ gpu = [
 
 # ---- Agentic Framework Integrations ----
 agno = ["agno>=1.0.0"]
+crewai = ["crewai>=0.80.0", "crewai-tools>=0.17.0"]
 
 # ---- File Watching ----
 watch = ["watchdog>=6.0.0"]
@@ -244,7 +245,7 @@ explorer-lite = [
 # Everything (cross-platform — gpu excluded; install semantica[gpu] separately on Linux)
 all = [
   "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,explorer]",
-  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno]"
+  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno,crewai]"
 ]
 
 # ---------------- ENTRYPOINTS ----------------

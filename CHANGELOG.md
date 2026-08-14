@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **First-class CrewAI integration** (#962)
+  - New `pip install semantica[crewai]` extra (`crewai>=0.80.0`, `crewai-tools>=0.17.0`) and inclusion in the `all` extras bundle
+  - `integrations/crewai/SemanticaKGTool` — a CrewAI `BaseTool` exposing 5 KG actions (`extract_entities`, `extract_relations`, `add_to_graph`, `query_graph`, `find_related`) backed by `NERExtractor` / `RelationExtractor` / `ContextGraph`; supports both sync `run()` and async `arun()`
+  - `integrations/crewai/SemanticaDecisionTool` — a CrewAI `BaseTool` wrapping `AgentContext` with 5 decision-intelligence actions (`record_decision`, `find_precedents`, `trace_causal_chain`, `analyze_impact`, `check_policy`)
+  - `integrations/crewai/SemanticaKnowledgeSource` — a CrewAI `BaseKnowledgeSource` that serializes a `ContextGraph` into crew knowledge storage; implements both the legacy `load_content()` and current `validate_content()`/`aadd()` contracts so it works across `crewai>=0.80.0`
+  - All three classes degrade gracefully when `crewai` is not installed (still importable, full Semantica API available)
+  - New `tests/integrations/crewai/`: 70 tests covering stub-based present-case behavior (Pydantic/BaseTool subclassing, every action, knowledge-source chunking/storage) plus a subprocess isolation test for the crewai-absent degradation path
+  - Docs: `docs/integrations/crewai.md` page, `docs.json` Integrations nav entry, and README integration-matrix/install updates
+
 - **`DistanceExporter.compute_pairs()` gains an opt-in `metric_errors` column to distinguish legitimate `None` results from computation failures** (#960, follow-up to #879) by @Karunasagar12
   - Previously, a `None` in `hop_count`/`weighted_distance`/`semantic_similarity`/betweenness could mean either "no path exists" or "the underlying computation raised" — logged as a warning per #879, but not otherwise surfaced, so the two cases were indistinguishable in exported CSV/JSONL/DataFrame data. `include=["metric_errors"]` now adds a `metric_errors` field per row: `""` when all requested metrics succeeded, or a comma-separated list of metric names that raised (e.g. `"hop_count,weighted_distance"`)
   - Opt-in only — default `compute_pairs()`/`to_csv()`/`to_dataframe()`/`to_jsonl()` schema is unchanged unless `"metric_errors"` is explicitly requested
