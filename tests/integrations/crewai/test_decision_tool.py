@@ -176,6 +176,26 @@ class TestRecordDecision(unittest.TestCase):
         call_kwargs = self.ctx.record_decision.call_args[1]
         self.assertEqual(call_kwargs["confidence"], 0.8)
 
+    def test_malformed_confidence_returns_error_json(self):
+        """A non-numeric confidence must not crash the tool — it is coerced
+        inside ``_record_decision``'s error handling and reported as JSON."""
+        for bad in ("high", None, "0.9"):
+            result = json.loads(
+                self.tool._run(
+                    action="record_decision",
+                    category="x",
+                    scenario="y",
+                    reasoning="z",
+                    outcome="failed",
+                    confidence=bad,
+                )
+            )
+            if bad == "0.9":
+                self.assertEqual(result["status"], "recorded")
+            else:
+                self.assertEqual(result["status"], "failed")
+                self.assertIn("error", result)
+
     def test_missing_fields_get_sane_defaults(self):
         """record_decision must not hard-fail when the agent omits optional
         fields — category/reasoning/outcome get defaults."""
@@ -397,6 +417,20 @@ class TestCheckPolicy(unittest.TestCase):
             )
         )
         self.assertTrue(result["compliant"])
+
+    def test_whitespace_padded_strings_are_trimmed(self):
+        """Regression: ``_coerce_value`` must return the *stripped* string for
+        non-numeric literals, or padded decision_data fields never match."""
+        decision = json.dumps({"status": "  approved  "})
+        result = json.loads(
+            self.tool._run(
+                action="check_policy",
+                decision_data=decision,
+                policy_rules=json.dumps(["status == approved"]),
+            )
+        )
+        self.assertTrue(result["compliant"])
+        self.assertEqual(result["violations"], [])
 
     def test_bool_false_rule_violated_when_true(self):
         decision = json.dumps({"enabled": True})

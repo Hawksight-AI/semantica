@@ -39,23 +39,17 @@ from pydantic import BaseModel, Field
 
 from semantica.utils.logging import get_logger
 
+from ._availability import CREWAI_AVAILABLE
+
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional: CrewAI BaseTool base class
 # ---------------------------------------------------------------------------
-CREWAI_AVAILABLE = False
-CREWAI_IMPORT_ERROR: Optional[str] = None
-
 _BaseTool: Any = object
 
-try:
-    from crewai.tools import BaseTool as _CrewAIBaseTool  # type: ignore
-
-    _BaseTool = _CrewAIBaseTool
-    CREWAI_AVAILABLE = True
-except ImportError as exc:
-    CREWAI_IMPORT_ERROR = str(exc)
+if CREWAI_AVAILABLE:
+    from crewai.tools import BaseTool as _BaseTool  # type: ignore
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +270,7 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
                 scenario=scenario or "decision recorded",
                 reasoning=reasoning or "agent decision",
                 outcome=outcome or "recorded",
-                confidence=float(confidence),
+                confidence=confidence,
                 entities=entities,
             )
         if action == "find_precedents":
@@ -544,7 +538,7 @@ class SemanticaDecisionTool(_BaseTool):  # type: ignore[misc]
             return float(text)
         except ValueError:
             pass
-        return value
+        return text
 
     # When crewai is absent there is no BaseTool to provide the public
     # ``run``/``arun`` entry points, so expose them directly.  With crewai

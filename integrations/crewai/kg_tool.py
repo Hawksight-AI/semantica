@@ -41,23 +41,17 @@ from pydantic import BaseModel, Field
 
 from semantica.utils.logging import get_logger
 
+from ._availability import CREWAI_AVAILABLE, CREWAI_IMPORT_ERROR  # noqa: F401
+
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional: CrewAI BaseTool base class
 # ---------------------------------------------------------------------------
-CREWAI_AVAILABLE = False
-CREWAI_IMPORT_ERROR: Optional[str] = None
-
 _BaseTool: Any = object
 
-try:
-    from crewai.tools import BaseTool as _CrewAIBaseTool  # type: ignore
-
-    _BaseTool = _CrewAIBaseTool
-    CREWAI_AVAILABLE = True
-except ImportError as exc:
-    CREWAI_IMPORT_ERROR = str(exc)
+if CREWAI_AVAILABLE:
+    from crewai.tools import BaseTool as _BaseTool  # type: ignore
 
 # One re-entrant lock per graph so concurrent tool invocations sharing a graph
 # cannot double-count duplicate adds (check-then-act is not atomic), while

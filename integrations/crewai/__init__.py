@@ -28,7 +28,8 @@ Requires ``crewai >= 0.80.0``.  All three classes degrade gracefully when
 Semantica API, but cannot be passed to ``Crew`` / ``Agent`` constructors.
 """
 
-from .decision_tool import CREWAI_AVAILABLE, SemanticaDecisionTool
+from ._availability import CREWAI_AVAILABLE, CREWAI_IMPORT_ERROR
+from .decision_tool import SemanticaDecisionTool
 from .kg_tool import SemanticaKGTool
 from .knowledge_source import SemanticaKnowledgeSource
 
@@ -37,6 +38,7 @@ __all__ = [
     "SemanticaDecisionTool",
     "SemanticaKnowledgeSource",
     "CREWAI_AVAILABLE",
+    "CREWAI_IMPORT_ERROR",
 ]
 
 __version__ = "0.1.0"

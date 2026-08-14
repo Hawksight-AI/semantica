@@ -41,25 +41,19 @@ from pydantic import Field
 
 from semantica.utils.logging import get_logger
 
+from ._availability import CREWAI_AVAILABLE
+
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional: CrewAI BaseKnowledgeSource base class
 # ---------------------------------------------------------------------------
-CREWAI_AVAILABLE = False
-CREWAI_IMPORT_ERROR: Optional[str] = None
-
 _BaseKnowledgeSource: Any = object
 
-try:
+if CREWAI_AVAILABLE:
     from crewai.knowledge.source.base_knowledge_source import (
-        BaseKnowledgeSource as _CrewAIBaseKnowledgeSource,  # type: ignore
+        BaseKnowledgeSource as _BaseKnowledgeSource,  # type: ignore
     )
-
-    _BaseKnowledgeSource = _CrewAIBaseKnowledgeSource
-    CREWAI_AVAILABLE = True
-except ImportError as exc:
-    CREWAI_IMPORT_ERROR = str(exc)
 
 
 def _chunk_text_manual(text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
