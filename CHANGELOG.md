@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Markdown import hardened against TOCTOU symlink races during file reads** (#932, closes #856) by @lakshanmuruganandam, with fixes by @Sameer6305
+  - `AgentMemory._read_markdown_path` read files via `Path.read_text()` after a `Path.is_symlink()` pre-check, leaving a time-of-check/time-of-use window: a path validated as a regular file could be swapped for a symlink before the actual read, causing the importer to follow the link and read an unintended target
+  - Reads now go through a new `_read_markdown_file_content()` helper: the path is opened via low-level `os.open()` with `os.O_NOFOLLOW` on platforms that support it (POSIX), so a symlink substituted after validation fails atomically with `ELOOP` instead of being followed; the resulting file descriptor is then verified with `os.fstat()`/`stat.S_ISREG()` to reject non-regular files (FIFOs, devices) even after a successful open
+  - Directory imports now also exclude symlinked entries from the file listing (`not file_path.is_symlink()`), consistent with the single-file path already rejecting them
+  - **Known limitation**: Windows has no `os.O_NOFOLLOW`, so on that platform the only defense is the earlier `is_symlink()` pre-check, leaving a narrow TOCTOU window; documented inline rather than implying a stronger cross-platform guarantee than the implementation provides
+  - New `tests/context/test_agent_memory_markdown.py` coverage: rejecting a symlinked path at both the private helper and the public `import_data()` API, silently excluding symlinked entries during directory import, and the `fstat()`/`S_ISREG` guard against non-regular files (mocked FIFO)
+  - `pytest tests/context/test_agent_memory_markdown.py`: 46 passed, 4 skipped (symlink-creation tests skip on Windows without `SeCreateSymbolicLinkPrivilege`)
+
 - **`VectorManager.maintain_store()`/`collect_statistics()` crashed with `AttributeError` on persistent `VectorStore` backends** (#914, closes #855) by @yunaremaia, with fixes by @Sameer6305
   - Both methods accessed `store.vectors`/`store.metadata` directly, which are only initialized for the `inmemory` backend — any persistent backend (FAISS, Qdrant, Pinecone, Milvus, SQLite, PgVector, Weaviate) crashed immediately. Same root cause as the #839/#843/#845/#848 cluster, but `VectorManager` operates on a `VectorStore` instance from the outside, so the fix needed a public accessor rather than another internal guard
   - Added a backend-agnostic `VectorStore.count()`: the `inmemory` backend counts its local dict; persistent backends delegate to a `count()` on the wrapped backend store when one exists, or raise `NotImplementedError` — following the `get_vector()`/`get_metadata()` precedent from #843, a missing/uninitialized backend store is never silently reported as an empty, healthy store
