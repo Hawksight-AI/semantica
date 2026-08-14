@@ -1225,11 +1225,27 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     }));
   }, []);
 
-  const { data: summary, isLoading, isFetching } = useLoadGraph({
+  const {
+    data: summary,
+    isLoading,
+    isFetching,
+    isError: isGraphLoadError,
+    error: graphLoadError,
+    refetch: refetchGraph,
+  } = useLoadGraph({
     enabled: true,
     onGraphReady: applyGraphReadySummary,
     onProgress: handleLoadProgress,
   });
+
+  const graphLoadErrorMessage = isGraphLoadError
+    ? (graphLoadError instanceof Error ? graphLoadError.message : "Unknown error while loading the graph.")
+    : null;
+
+  const handleRetryGraphLoad = useCallback(() => {
+    setLoadingProgress(null);
+    void refetchGraph();
+  }, [refetchGraph]);
 
   useEffect(() => {
     if (isLayoutRunning) {
@@ -1901,7 +1917,7 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     viewMode,
   ]);
 
-  const showLoadingOverlay = !graphReady && (isLoading || isFetching || Boolean(loadingProgress));
+  const showLoadingOverlay = !graphReady && (isLoading || isFetching || Boolean(loadingProgress) || isGraphLoadError);
   const showSettlingStatus = graphReady && loadingProgress?.phase === "stabilizing_layout";
   const hasGraphContent = Boolean(summary?.nodeCount);
   const activePath = pathResult?.path ?? EMPTY_PATH;
@@ -2946,6 +2962,8 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
                     progress={loadingProgress}
                     visible={showLoadingOverlay}
                     showGraphBehind={hasGraphContent || Boolean(loadingProgress?.showGraphBehind)}
+                    error={graphLoadErrorMessage}
+                    onRetry={handleRetryGraphLoad}
                   />
                 </div>
               </div>
