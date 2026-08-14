@@ -2,20 +2,44 @@
 
 Thank you for your interest in contributing! Every contribution, no matter how small, is valuable. 🎉
 
-⭐ **Give us a Star** • 🍴 **[Fork Semantica](https://github.com/Hawksight-AI/semantica/fork)** • 💬 **Join our [Discord](https://discord.gg/sV34vps5hH)**
+⭐ **Give us a Star** • 🍴 **[Fork Semantica](https://github.com/semantica-agi/semantica/fork)** • 💬 **Join our [Discord](https://discord.gg/sV34vps5hH)**
 
-> **New to contributing?** Start with a [`good first issue`](https://github.com/Hawksight-AI/semantica/labels/good%20first%20issue) or join our [Discord](https://discord.gg/sV34vps5hH) community.
+> **New to contributing?** Start with a [`good first issue`](https://github.com/semantica-agi/semantica/labels/good%20first%20issue) or join our [Discord](https://discord.gg/sV34vps5hH) community.
 
 ---
 
 ## 🚀 Quick Start
 
-1. Find a [`good first issue`](https://github.com/Hawksight-AI/semantica/labels/good%20first%20issue)
-2. [Fork Semantica](https://github.com/Hawksight-AI/semantica/fork) & clone the repository
+1. Find a [`good first issue`](https://github.com/semantica-agi/semantica/labels/good%20first%20issue)
+2. [Fork Semantica](https://github.com/semantica-agi/semantica/fork) & clone the repository
 3. Make your changes
 4. Submit a pull request!
 
-**Need help?** Join [Discord](https://discord.gg/sV34vps5hH) or [GitHub Discussions](https://github.com/Hawksight-AI/semantica/discussions)
+**Need help?** Join [Discord](https://discord.gg/sV34vps5hH) or [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions)
+
+---
+
+## 🗂️ Working on an Existing Issue
+
+If you want to work on an open GitHub issue, please follow these steps to keep things coordinated and avoid duplicate effort:
+
+1. **Check the issue.** Look at the issue's assignees and recent comments. If someone is already actively working on it, consider a different issue or ask in the comments whether help is welcome.
+
+2. **Comment before you start.** Leave a comment on the issue saying you'd like to work on it — something like *"I'd like to take this on"* is enough. This gives maintainers the context they need to assign the issue appropriately.
+
+3. **Wait for assignment.** A maintainer will review the request and assign the issue when appropriate. Please wait for this before investing significant time in implementation, as priorities and approaches can shift.
+
+4. **Create a branch and implement.** Once assigned, fork the repository (if you haven't already), create a dedicated branch, and begin your work.
+
+   ```bash
+   git checkout -b fix/short-description   # or feature/short-description
+   ```
+
+5. **Open a focused PR and link the issue.** When you're ready, open a pull request and reference the issue in the description (e.g., `Closes #123`). Keep the PR scoped to the work described in the issue.
+
+> **Why this matters:** Commenting before opening a PR helps maintainers track who is working on what, assign issues correctly, and prevent two contributors from solving the same problem independently. It also gives you a chance to align on the expected approach before writing code.
+
+Not sure where to start? Try a [`good first issue`](https://github.com/semantica-agi/semantica/labels/good%20first%20issue) or ask in [Discord](https://discord.gg/sV34vps5hH).
 
 ---
 
@@ -78,7 +102,7 @@ Thank you for your interest in contributing! Every contribution, no matter how s
 
 **What:** Report bugs you find
 
-**How:** Use the [bug report template](https://github.com/Hawksight-AI/semantica/issues/new?template=bug_report.md)
+**How:** Use the [bug report template](https://github.com/semantica-agi/semantica/issues/new?template=bug_report.md)
 
 **Include:** Description, steps to reproduce, expected vs actual behavior, environment details
 
@@ -88,7 +112,7 @@ Thank you for your interest in contributing! Every contribution, no matter how s
 
 **What:** Suggest new features or improvements
 
-**How:** Use the [feature request template](https://github.com/Hawksight-AI/semantica/issues/new?template=feature_request.md)
+**How:** Use the [feature request template](https://github.com/semantica-agi/semantica/issues/new?template=feature_request.md)
 
 **Include:** Problem statement, proposed solution, use cases
 
@@ -108,7 +132,7 @@ Thank you for your interest in contributing! Every contribution, no matter how s
 
 **What:** Help others in the community
 
-**Where:** [Discord](https://discord.gg/sV34vps5hH), [GitHub Discussions](https://github.com/Hawksight-AI/semantica/discussions)
+**Where:** [Discord](https://discord.gg/sV34vps5hH), [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions)
 
 **Examples:** Answer questions, review PRs, share your projects
 
@@ -135,12 +159,12 @@ Thank you for your interest in contributing! Every contribution, no matter how s
 
 ### 1. Fork & Clone
 
-First, [fork Semantica](https://github.com/Hawksight-AI/semantica/fork) on GitHub, then:
+First, [fork Semantica](https://github.com/semantica-agi/semantica/fork) on GitHub, then:
 
 ```bash
 git clone https://github.com/your-username/semantica.git
 cd semantica
-git remote add upstream https://github.com/Hawksight-AI/semantica.git
+git remote add upstream https://github.com/semantica-agi/semantica.git
 ```
 
 ### 2. Set Up Environment
@@ -327,8 +351,8 @@ result = instance.method()
 ## 🆘 Getting Help
 
 - 💬 [Discord](https://discord.gg/sV34vps5hH) - Real-time chat
-- 💭 [GitHub Discussions](https://github.com/Hawksight-AI/semantica/discussions) - Q&A
-- 🐛 [GitHub Issues](https://github.com/Hawksight-AI/semantica/issues) - Bug reports
+- 💭 [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions) - Q&A
+- 🐛 [GitHub Issues](https://github.com/semantica-agi/semantica/issues) - Bug reports
 
 **Before asking:** Check existing documentation, search issues/discussions, review cookbook examples
 
@@ -363,4 +387,4 @@ This project follows a [Code of Conduct](CODE_OF_CONDUCT.md). Be respectful and 
 
 Every contribution matters - whether it's a single line of code, a typo fix, a helpful answer, or a bug report. We appreciate you! 🙏
 
-⭐ **Give us a Star** • 🍴 **[Fork Semantica](https://github.com/Hawksight-AI/semantica/fork)** • 💬 **Join our [Discord](https://discord.gg/sV34vps5hH)**
+⭐ **Give us a Star** • 🍴 **[Fork Semantica](https://github.com/semantica-agi/semantica/fork)** • 💬 **Join our [Discord](https://discord.gg/sV34vps5hH)**

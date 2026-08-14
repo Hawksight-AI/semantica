@@ -17,6 +17,7 @@ import logging
 import sys
 from typing import Any
 
+from mcp import __version__
 from mcp.resources import RESOURCE_DEFINITIONS, handle_resource_read
 from mcp.tools import TOOL_DEFINITIONS
 
@@ -63,7 +64,7 @@ def _handle_initialize(req_id: Any, params: dict) -> dict:
         },
         "serverInfo": {
             "name": "semantica-mcp",
-            "version": "0.4.0",
+            "version": __version__,
         },
     })
 

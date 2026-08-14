@@ -65,7 +65,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union, cast
 import concurrent.futures
 import inspect
 
@@ -573,8 +573,8 @@ class VectorStore:
         Args:
             path: Directory path to save to
         """
+        import json
         import os
-        import pickle
         
         os.makedirs(path, exist_ok=True)
 
@@ -586,17 +586,20 @@ class VectorStore:
         elif self._backend_store is not None and hasattr(self._backend_store, "save_index"):
             self._backend_store.save_index(os.path.join(path, "index.bin"))
 
-        # Save Python-level data
+        # Save Python-level data using JSON (safe serialization).
+        # pickle is intentionally avoided to prevent arbitrary code execution
+        # if a malicious .pkl file is placed in the store directory.
         data = {
-            "vectors": getattr(self, "vectors", {}),
+            "vectors": {k: v.tolist() if hasattr(v, "tolist") else list(v)
+                    for k, v in getattr(self, "vectors", {}).items()},
             "metadata": getattr(self, "metadata", {}),
             "config": self.config,
             "backend": self.backend,
             "dimension": self.dimension
         }
         
-        with open(os.path.join(path, "store_data.pkl"), "wb") as f:
-            pickle.dump(data, f)
+        with open(os.path.join(path, "store_data.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
             
         self.logger.info(f"Saved vector store to {path}")
 
@@ -606,17 +609,33 @@ class VectorStore:
         
         Args:
             path: Directory path to load from
+            
+        Raises:
+            RuntimeError: If only a legacy pickle file is found (security risk).
         """
+        import json
         import os
-        import pickle
         
-        data_path = os.path.join(path, "store_data.pkl")
-        if not os.path.exists(data_path):
-            self.logger.warning(f"Store data not found: {data_path}")
+        json_path = os.path.join(path, "store_data.json")
+        legacy_pkl_path = os.path.join(path, "store_data.pkl")
+        
+        if os.path.exists(json_path):
+            data_path = json_path
+        elif os.path.exists(legacy_pkl_path):
+            # Refuse to load pickle files to prevent arbitrary code execution.
+            # A crafted .pkl file can execute arbitrary Python when deserialized.
+            raise RuntimeError(
+                f"Legacy pickle file found at {legacy_pkl_path}. "
+                "Pickle deserialization is disabled for security (arbitrary code "
+                "execution risk). Please re-save the vector store to migrate "
+                "to the safe JSON format: vs.save(path)"
+            )
+        else:
+            self.logger.warning(f"Store data not found in: {path}")
             return
             
-        with open(data_path, "rb") as f:
-            data = pickle.load(f)
+        with open(data_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
             
         self.vectors = data.get("vectors", {})
         self.metadata = data.get("metadata", {})
@@ -804,6 +823,35 @@ class VectorStore:
             return self._backend_store.get_metadata(vector_id)
         else:
             raise NotImplementedError(f"Backend store {type(self._backend_store).__name__} does not implement get_metadata")
+
+    def count(self) -> int:
+        """Return the number of vectors in the store, backend-agnostic.
+
+        The inmemory backend counts its local dict; persistent backends
+        delegate to a ``count()`` on the wrapped store when available.
+        Following the get_vector()/get_metadata() precedent (#843) and the
+        NotImplementedError-on-unsupported-capability precedent of
+        _filter_by_metadata() (#848), a persistent backend that cannot
+        report a count raises NotImplementedError so callers can tell
+        "no vectors" apart from "counting not supported" — including when
+        the wrapped backend store is missing entirely (never silently
+        report an uninitialized store as empty).
+        """
+        if self.backend == "inmemory":
+            return len(self.vectors)
+        elif self._backend_store is not None:
+            count_attr = getattr(self._backend_store, "count", None)
+            if callable(count_attr):
+                return cast(int, count_attr())
+            raise NotImplementedError(
+                f"Backend store {type(self._backend_store).__name__} does not "
+                "implement a count() method. Add a count() method to the "
+                "backend store adapter to enable vector counting for this backend."
+            )
+        raise NotImplementedError(
+            f"Backend store is not initialized; cannot count vectors for "
+            f"backend {self.backend!r}."
+        )
 
     def initialize_decision_pipeline(
         self,
@@ -1166,81 +1214,72 @@ class VectorStore:
             from datetime import datetime, timedelta
             cutoff = datetime.now() - timedelta(days=7)
             filters["timestamp"] = {"min": cutoff.isoformat()}
-        
         return filters
 
     def _filter_by_metadata(self, filters: Dict[str, Any], limit: int) -> List[Dict[str, Any]]:
         """Filter decisions by metadata only."""
         if self._backend_store is not None:
-            # No real backend wrapper implements filter_by_metadata; the only
-            # codebase hit is HybridSearch.filter_by_metadata which has a
-            # completely different signature (results, MetadataFilter) and is
-            # never stored in _backend_store.  Silently returning [] here would
-            # be wrong — the caller (filter_decisions) would report zero matches
-            # for a query that simply isn't supported, indistinguishable from a
-            # genuine empty result.  This is the same situation as get_vector()
-            # and get_metadata() (#843 fix): when a backend exists but cannot
-            # fulfil the request, raise NotImplementedError so the caller knows
-            # the backend lacks this capability rather than assuming no data.
             if hasattr(self._backend_store, "filter_by_metadata"):
-                return self._backend_store.filter_by_metadata(filters, limit)
+                return self._backend_store.filter_by_metadata(filters=filters, limit=limit)
             raise NotImplementedError(
                 f"Backend store {type(self._backend_store).__name__} does not "
                 "implement filter_by_metadata. Metadata-only filtering via "
-                "filter_decisions(query=None, ...) is only supported for the "
-                "inmemory backend. Pass a query string to use search_decisions() "
+                "filter_decisions(query=None, ...) is only supported for backends "
+                "that implement filter_by_metadata. Pass a query string to use search_decisions() "
                 "instead, which is supported by all backends."
             )
 
         results = []
         
         for vector_id, metadata in self.metadata.items():
-            match = True
-            
-            for key, value in filters.items():
-                if key not in metadata:
-                    match = False
-                    break
-                
-                if isinstance(value, dict):
-                    # Handle range filters
-                    metadata_value = metadata[key]
-                    if "min" in value and metadata_value < value["min"]:
-                        match = False
-                        break
-                    if "max" in value and metadata_value > value["max"]:
-                        match = False
-                        break
-                elif isinstance(value, list):
-                    # Handle list membership
-                    metadata_value = metadata[key]
-                    if isinstance(metadata_value, list):
-                        # Both are lists - check for intersection
-                        if not set(metadata_value) & set(value):
-                            match = False
-                            break
-                    else:
-                        # Metadata value is scalar, check if it's in the filter list
-                        if metadata_value not in value:
-                            match = False
-                            break
-                else:
-                    # Handle exact match
-                    if metadata[key] != value:
-                        match = False
-                        break
-            
-            if match:
+            if _matches_filter(metadata, filters):
                 results.append({
                     "id": vector_id,
                     "metadata": metadata,
-                    "vector": self.get_vector(vector_id)
+                    "vector": self.vectors.get(vector_id)
                 })
                 
                 if len(results) >= limit:
                     break
         
         return results
+
+
+def _matches_filter(metadata: Dict[str, Any], filters: Dict[str, Any]) -> bool:
+    """Check if metadata dictionary matches filter criteria."""
+    if not filters:
+        return True
+    if metadata is None:
+        return False
+
+    for key, value in filters.items():
+        if key not in metadata:
+            return False
+
+        metadata_value = metadata[key]
+
+        if isinstance(value, dict):
+            # Handle range filters
+            if "min" in value and value["min"] is not None:
+                if metadata_value is None or metadata_value < value["min"]:
+                    return False
+            if "max" in value and value["max"] is not None:
+                if metadata_value is None or metadata_value > value["max"]:
+                    return False
+        elif isinstance(value, list):
+            # Handle list membership
+            if isinstance(metadata_value, list):
+                if not (set(metadata_value) & set(value)):
+                    return False
+            else:
+                if metadata_value not in value:
+                    return False
+        else:
+            # Handle exact match
+            if metadata_value != value:
+                return False
+
+    return True
 
 
 class VectorIndexer:
@@ -1442,21 +1481,47 @@ class VectorManager:
     def maintain_store(
         self, store: VectorStore, **options: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Maintain vector store health."""
-        # Check integrity
-        vector_count = len(store.vectors)
-        metadata_count = len(store.metadata)
+        """Maintain vector store health.
 
+        For the inmemory backend, both the vector count and the metadata
+        count are independently tracked in separate dicts and are compared
+        as an integrity check.
+
+        For persistent backends that implement ``VectorStore.count()``,
+        only the vector count is available.  Metadata is co-located with
+        each vector in the underlying store (added/deleted atomically),
+        so a separate metadata count cannot be meaningfully distinguished
+        from the vector count.  The response omits ``metadata_count`` for
+        such backends and reports ``healthy: True`` to indicate that the
+        store is reachable and operational.
+
+        If the backend does not implement ``count()``, the ``NotImplementedError``
+        propagates to the caller — it is not silenced.
+        """
+        if store.backend == "inmemory":
+            # Inmemory keeps vectors and metadata in separate dicts; compare
+            # them to detect accidental divergence (#855).
+            vector_count = len(store.vectors)
+            metadata_count = len(store.metadata)
+            return {
+                "healthy": vector_count == metadata_count,
+                "vector_count": vector_count,
+                "metadata_count": metadata_count,
+            }
+
+        # Persistent backend: delegate to count().  Metadata and vectors are
+        # stored together, so only one count is available.
+        vector_count = store.count()
         return {
-            "healthy": vector_count == metadata_count,
+            "healthy": True,
             "vector_count": vector_count,
-            "metadata_count": metadata_count,
+            "metadata_count": None,
         }
 
     def collect_statistics(self, store: VectorStore) -> Dict[str, Any]:
         """Collect vector store statistics."""
         return {
-            "total_vectors": len(store.vectors),
+            "total_vectors": store.count(),
             "dimension": store.dimension,
             "backend": store.backend,
         }
