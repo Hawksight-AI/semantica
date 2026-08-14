@@ -524,31 +524,30 @@ class TestRepoHostResolveCacheThreadSafety:
                 "semantica.ingest.repo_ingestor.socket.getaddrinfo",
                 side_effect=fake_getaddrinfo,
             ):
-                # daemon=True so a hung worker (see the is_alive check below)
-                # cannot also block the test process from exiting.
+                # daemon=True so a hung worker cannot also block the test
+                # process from exiting once it's reported below.
                 threads = [
                     threading.Thread(target=worker, args=(n,), daemon=True)
                     for n in range(32)
                 ]
                 for t in threads:
                     t.start()
+                # Assert right after each join, not after the whole loop:
+                # join(timeout=30) alone does not fail the test if a thread
+                # hangs, and checking only once every thread has been
+                # joined means a mass hang costs up to 32*30s = 16 minutes
+                # before the test even reaches the check -- the exact
+                # CI-reliability problem this guards against. Failing on
+                # the first hung thread caps the worst case at ~30s.
                 for t in threads:
                     t.join(timeout=30)
+                    assert not t.is_alive(), (
+                        f"worker thread {t.name} did not finish within "
+                        f"the 30s join timeout (still running)"
+                    )
         finally:
             repo_ingestor_mod._REPO_HOST_RESOLVE_CACHE_TTL_SECONDS = orig_ttl
             repo_ingestor_mod._REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES = orig_max
-
-        # join(timeout=30) alone does not fail the test if a thread hangs; it
-        # just returns after the timeout with the thread still running, and
-        # the test would fall through to the `errors` check below, which
-        # would trivially pass since a hung thread never got far enough to
-        # append one. Assert every thread actually finished so a deadlock
-        # fails loudly here instead of masquerading as a clean pass.
-        still_alive = [t for t in threads if t.is_alive()]
-        assert not still_alive, (
-            f"{len(still_alive)} of {len(threads)} worker thread(s) did not "
-            f"finish within the 30s join timeout (still running)"
-        )
 
         assert not errors, (
             f"Concurrent host resolution raised {len(errors)} error(s); "
