@@ -1,6 +1,7 @@
 """Security-focused tests for RepoIngestor (issue #868)."""
 
 import socket
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -480,3 +481,61 @@ class TestLocalPathSupport:
                 assert not isinstance(exc, ValidationError), (
                     f"Local path must not raise ValidationError; got: {exc}"
                 )
+
+
+class TestRepoHostResolveCacheThreadSafety:
+    """Regression test: _REPO_HOST_RESOLVE_CACHE must survive concurrent use.
+
+    _REPO_HOST_RESOLVE_CACHE is a module-level OrderedDict shared across every
+    RepoIngestor instance and thread. Before the fix, _resolve_repo_host_ips
+    and _prune_repo_host_resolve_cache read, wrote, and iterated the dict with
+    no lock. Under concurrent host validation (e.g. multiple
+    ingest_repository() calls running in a thread pool), one thread's
+    insert/evict during another thread's iteration reliably raised
+    RuntimeError: OrderedDict mutated during iteration.
+    """
+
+    def test_concurrent_resolve_repo_host_ips_does_not_raise(self):
+        def fake_getaddrinfo(host, *args, **kwargs):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0))]
+
+        orig_ttl = repo_ingestor_mod._REPO_HOST_RESOLVE_CACHE_TTL_SECONDS
+        orig_max = repo_ingestor_mod._REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES
+        # Small TTL/cap so eviction and pruning happen on nearly every call,
+        # keeping the dict under constant mutation without needing an
+        # unreasonably large iteration count.
+        repo_ingestor_mod._REPO_HOST_RESOLVE_CACHE_TTL_SECONDS = 0.001
+        repo_ingestor_mod._REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES = 8
+
+        errors = []
+        errors_lock = threading.Lock()
+
+        def worker(worker_id):
+            for i in range(500):
+                host = f"race-host-{worker_id}-{i}.example.com"
+                try:
+                    repo_ingestor_mod.RepoIngestor._resolve_repo_host_ips(host)
+                except Exception as exc:  # pragma: no cover - failure path
+                    with errors_lock:
+                        errors.append(exc)
+
+        try:
+            with patch(
+                "semantica.ingest.repo_ingestor.socket.getaddrinfo",
+                side_effect=fake_getaddrinfo,
+            ):
+                threads = [
+                    threading.Thread(target=worker, args=(n,)) for n in range(32)
+                ]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=30)
+        finally:
+            repo_ingestor_mod._REPO_HOST_RESOLVE_CACHE_TTL_SECONDS = orig_ttl
+            repo_ingestor_mod._REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES = orig_max
+
+        assert not errors, (
+            f"Concurrent host resolution raised {len(errors)} error(s); "
+            f"first: {errors[0]!r}"
+        )
