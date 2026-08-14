@@ -216,6 +216,19 @@ class TestSemanticaKGToolActions(unittest.TestCase):
         self.assertEqual(result["count"], 0)
         self.assertEqual(result["related"], [])
 
+    def test_find_related_honors_incoming_edges(self):
+        """find_related must be undirected: a node whose only edge is
+        incoming (A -> B) is still related to A."""
+        self.graph.add_node(node_id="OpenAI", node_type="ORG")
+        self.graph.add_node(node_id="Google", node_type="ORG")
+        self.graph.add_edge(
+            source_id="OpenAI", target_id="Google", edge_type="related_to"
+        )
+        result = json.loads(self.tool._run(action="find_related", entity="Google"))
+        self.assertEqual(result["related"], ["OpenAI"])
+        result_out = json.loads(self.tool._run(action="find_related", entity="OpenAI"))
+        self.assertEqual(result_out["related"], ["Google"])
+
     def test_unknown_action_returns_error(self):
         result = json.loads(self.tool._run(action="do_something_else"))
         self.assertIn("error", result)

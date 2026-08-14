@@ -33,7 +33,7 @@ find_related       — Find concepts related to a given entity within ``hops``
 from __future__ import annotations
 
 import json
-from typing import Any, List, Literal, Optional, Sequence, Type
+from typing import Any, Dict, List, Literal, Optional, Sequence, Type
 
 from pydantic import BaseModel, Field
 
@@ -413,32 +413,37 @@ class SemanticaKGTool(_BaseTool):  # type: ignore[misc]
             return json.dumps({"results": [], "count": 0, "error": str(exc)})
 
     def _find_related(self, entity: str, hops: int = 1) -> str:
-        """Find concepts related to ``entity`` within ``hops`` graph hops."""
+        """Find concepts related to ``entity`` within ``hops`` graph hops.
+
+        Traversal is undirected — an edge counts as related regardless of
+        direction, so both outgoing and incoming edges are honored.
+        """
         try:
+            adjacency: Dict[str, List[str]] = {}
+            for edge in self.graph.find_edges() or []:  # type: ignore[attr-defined]
+                if isinstance(edge, dict):
+                    src = edge.get("source")
+                    tgt = edge.get("target")
+                else:
+                    src = getattr(edge, "source", None)
+                    tgt = getattr(edge, "target", None)
+                if not src or not tgt:
+                    continue
+                adjacency.setdefault(src, []).append(tgt)
+                adjacency.setdefault(tgt, []).append(src)
+
             related: List[str] = []
             frontier = [entity]
             visited = {entity}
-
-            g = self.graph
             for _ in range(max(1, hops)):
                 next_frontier: List[str] = []
                 for e in frontier:
-                    try:
-                        neighbours = g.get_neighbors(  # type: ignore[attr-defined]
-                            node_id=e,
-                            hops=1,
-                        )
-                        for n in neighbours or []:
-                            if isinstance(n, dict):
-                                label = n.get("node_id", "") or n.get("id", "")
-                            else:
-                                label = getattr(n, "label", str(n))
-                            if label and label not in visited:
-                                visited.add(label)
-                                next_frontier.append(label)
-                                related.append(label)
-                    except Exception:
-                        pass
+                    for n in adjacency.get(e, []):
+                        if n in visited:
+                            continue
+                        visited.add(n)
+                        next_frontier.append(n)
+                        related.append(n)
                 frontier = next_frontier
 
             logger.debug("find_related('%s', hops=%d) → %d", entity, hops, len(related))
