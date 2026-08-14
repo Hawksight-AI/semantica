@@ -399,12 +399,16 @@ response = llm.generate("What is artificial intelligence?")
 
 ```python
 from semantica.pipeline.pipeline_provenance import PipelineWithProvenance
+from semantica.pipeline import PipelineBuilder
 
-# Create pipeline with provenance
-pipeline = PipelineWithProvenance(provenance=True)
+builder = PipelineBuilder()
+builder.add_step("ingest", "file_ingest")
+pipeline = builder.build("my_pipeline")
+
+runner = PipelineWithProvenance(pipeline, provenance=True)
 
 # Run pipeline - all steps tracked
-result = pipeline.run(
+result = runner.run(
     data=input_data,
     source="input_file.json"
 )

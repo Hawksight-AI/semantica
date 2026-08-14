@@ -410,6 +410,15 @@ class ContextEdge:
         return d
 
 
+_ATTRS_MISSING = object()
+
+#: Edge types that represent an explicitly recorded causal relationship between
+#: two decisions. These are authoritative: they are what the caller asserted via
+#: add_causal_relationship(), as opposed to relationships inferred from shared
+#: entities and timestamps.
+_CAUSAL_EDGE_TYPES = ("CAUSED", "INFLUENCED", "PRECEDENT_FOR")
+
+
 class ContextGraph:
     """
     Easy-to-Use Context Graph with All Advanced Features.
@@ -708,18 +717,71 @@ class ContextGraph:
                     })
         return result
 
-    def get_node_property(self, node_id: str, property_name: str) -> Any:
-        with self._lock:
-            node = self.nodes.get(node_id)
-            if not node:
-                return None
-            return node.properties.get(property_name)
+    def get_node_property(
+        self,
+        node_id: str,
+        property_name: str,
+        default: Any = None,
+    ) -> Any:
+        """Return the value of *property_name* on *node_id*.
 
-    def get_node_attributes(self, node_id: str) -> Dict[str, Any]:
+        Returns *default* when the node does not exist or when the property is
+        not set on the node.  Both failure modes return the same *default*, so
+        a sentinel can identify *any not-found result* as distinct from a
+        property whose value is legitimately ``None``::
+
+            _MISSING = object()
+            val = graph.get_node_property(node_id, "score", default=_MISSING)
+            if val is _MISSING:
+                ...  # node absent or property not set
+
+        To distinguish a missing node from a missing property specifically,
+        call ``find_node()`` first to check node existence.
+
+        Args:
+            node_id: ID of the node to look up.
+            property_name: Name of the property to retrieve.
+            default: Value returned when the node or property is absent.
+                Defaults to ``None`` (backward-compatible).
+
+        Returns:
+            The property value, or *default* if not found.
+        """
         with self._lock:
             node = self.nodes.get(node_id)
-            if not node:
-                return {}
+            if node is None:
+                return default
+            return node.properties.get(property_name, default)
+
+    def get_node_attributes(
+        self,
+        node_id: str,
+        default: Any = _ATTRS_MISSING,
+    ) -> Any:
+        """Return a copy of all properties on *node_id*.
+
+        Returns *default* when the node does not exist.  The historical
+        default is ``{}`` (an empty dict), preserved for backward
+        compatibility.  Pass a private sentinel as *default* to detect a
+        missing node unambiguously::
+
+            _MISSING = object()
+            attrs = graph.get_node_attributes(node_id, default=_MISSING)
+            if attrs is _MISSING:
+                ...  # node does not exist
+
+        Args:
+            node_id: ID of the node to look up.
+            default: Value returned when the node is absent.
+                Defaults to ``{}`` (backward-compatible).
+
+        Returns:
+            A shallow copy of the node's properties dict, or *default*.
+        """
+        with self._lock:
+            node = self.nodes.get(node_id)
+            if node is None:
+                return {} if default is _ATTRS_MISSING else default
             return node.properties.copy()
 
     def add_node_attribute(self, node_id: str, attributes: Dict[str, Any]) -> None:
@@ -730,13 +792,28 @@ class ContextGraph:
             node.properties.update(attributes)
             node.metadata.update(attributes)
 
-
         if getattr(self, "mutation_callback", None) and not getattr(
             self, "_suspend_mutation_callback", False
         ):
-            self.mutation_callback("UPDATE_NODE", node_id, node.to_dict())
+            try:
+                self.mutation_callback("UPDATE_NODE", node_id, node.to_dict())
+            except Exception as e:
+                self.logger.warning(f"Audit trail callback failed for node {node_id}: {e}")
 
     def get_edge_data(self, source_id: str, target_id: str) -> Dict[str, Any]:
+        """Return metadata for the edge between *source_id* and *target_id*.
+
+        Returns an empty dict ``{}`` when no edge exists between the two nodes
+        or when either node is absent.
+
+        Args:
+            source_id: ID of the source node.
+            target_id: ID of the target node.
+
+        Returns:
+            A dict containing edge metadata (``id``, ``familyId``, ``type``,
+            ``weight``, plus any custom metadata), or ``{}`` if not found.
+        """
         with self._lock:
             for edge in self._adjacency.get(source_id, []):
                 if edge.target_id == target_id:
@@ -1080,7 +1157,17 @@ class ContextGraph:
         self.logger.info(f"Loaded context graph from {path}")
 
     def find_node(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """Find a node by ID."""
+        """Return a dict representation of the node identified by *node_id*.
+
+        Returns ``None`` when the node does not exist.
+
+        Args:
+            node_id: ID of the node to look up.
+
+        Returns:
+            A dict with keys ``id``, ``type``, ``content``, and ``metadata``,
+            or ``None`` if the node is not found.
+        """
         with self._lock:
             node = self.nodes.get(node_id)
             if node:
@@ -1769,47 +1856,48 @@ class ContextGraph:
 
     def to_dict(self) -> Dict[str, Any]:
         """Export graph to dictionary format."""
-        nodes_out = []
-        for n in self.nodes.values():
-            entry: Dict[str, Any] = {
-                "id": n.node_id,
-                "type": n.node_type,
-                "content": n.content,
-                "properties": n.properties,
-                "metadata": n.metadata,
-            }
-            if n.valid_from is not None:
-                entry["valid_from"] = n.valid_from
-            if n.valid_until is not None:
-                entry["valid_until"] = n.valid_until
-            nodes_out.append(entry)
+        with self._lock:
+            nodes_out = []
+            for n in self.nodes.values():
+                entry: Dict[str, Any] = {
+                    "id": n.node_id,
+                    "type": n.node_type,
+                    "content": n.content,
+                    "properties": n.properties,
+                    "metadata": n.metadata,
+                }
+                if n.valid_from is not None:
+                    entry["valid_from"] = n.valid_from
+                if n.valid_until is not None:
+                    entry["valid_until"] = n.valid_until
+                nodes_out.append(entry)
 
-        edges_out = []
-        for e in self.edges:
-            entry = {
-                "id": e.edge_id,
-                "familyId": e.family_id or e.edge_id,
-                "source": e.source_id,
-                "target": e.target_id,
-                "type": e.edge_type,
-                "weight": e.weight,
-            }
-            if e.metadata:
-                entry["metadata"] = e.metadata
-            if e.valid_from is not None:
-                entry["valid_from"] = e.valid_from
-            if e.valid_until is not None:
-                entry["valid_until"] = e.valid_until
-            edges_out.append(entry)
+            edges_out = []
+            for e in self.edges:
+                entry = {
+                    "id": e.edge_id,
+                    "familyId": e.family_id or e.edge_id,
+                    "source": e.source_id,
+                    "target": e.target_id,
+                    "type": e.edge_type,
+                    "weight": e.weight,
+                }
+                if e.metadata:
+                    entry["metadata"] = e.metadata
+                if e.valid_from is not None:
+                    entry["valid_from"] = e.valid_from
+                if e.valid_until is not None:
+                    entry["valid_until"] = e.valid_until
+                edges_out.append(entry)
 
-        return {
-            "nodes": nodes_out,
-            "edges": edges_out,
-            "statistics": {
-                "node_count": len(self.nodes),
-                "edge_count": len(self.edges),
-            },
-        }
+            return {
+                "nodes": nodes_out,
+                "edges": edges_out,
+                "statistics": {
+                    "node_count": len(self.nodes),
+                    "edge_count": len(self.edges),
+                },
+            }
 
     def from_dict(self, graph_dict: Dict[str, Any]) -> None:
         """Load graph from dictionary format."""
@@ -2698,11 +2786,20 @@ class ContextGraph:
         direct_influence.discard(decision_id)
         direct_influence.update(self._decision_index.get(decision["category"], set()))
         direct_influence.discard(decision_id)
+
+        # Explicit causal relationships recorded via add_causal_relationship() are
+        # ground truth and always count as direct influence, in either direction.
+        for edge_type in _CAUSAL_EDGE_TYPES:
+            for edge in self.edge_type_index.get(edge_type, []):
+                if edge.source_id == decision_id and edge.target_id in self._decisions:
+                    direct_influence.add(edge.target_id)
+                elif edge.target_id == decision_id and edge.source_id in self._decisions:
+                    direct_influence.add(edge.source_id)
         
         # Indirect influence (through graph relationships)
         indirect_influence = set()
         if include_indirect and self.config.get("advanced_analytics"):
-            indirect_influence = self._find_indirect_decision_influence(decision_id, max_depth)
+            indirect_influence = self._find_indirect_decision_influence(decision_id, max_depth) - direct_influence
         
         # Calculate influence scores
         influence_scores = {}
@@ -2806,42 +2903,106 @@ class ContextGraph:
     def trace_decision_causality(
         self,
         decision_id: str,
-        max_depth: int = 5
+        max_depth: int = 5,
+        max_chains: Optional[int] = 10000
     ) -> List[Dict[str, Any]]:
         """
         Trace causal chain for a decision.
-        
+
         Args:
             decision_id: Decision to trace
             max_depth: Maximum depth for causal analysis
-            
+            max_chains: Maximum number of chains to return. Densely connected
+                graphs can contain a combinatorial number of distinct causal
+                paths, so the traversal stops once this many chains have been
+                collected and appends a ``{"truncated": True, ...}`` marker so
+                callers can tell the trace is incomplete. Pass None for no limit.
+
         Returns:
             Causal chain as list of decision relationships
         """
         if not hasattr(self, '_decisions') or decision_id not in self._decisions:
             raise ValueError(f"Decision {decision_id} not found")
-        
+
         try:
             # Use graph traversal to find causal relationships
             causal_chain = []
-            visited = set()
-            
-            def trace_recursive(current_id, depth, path):
-                if depth >= max_depth or current_id in visited:
+            chain_limit = float("inf") if max_chains is None else max_chains
+            truncated = False
+
+            # Reverse index of explicit causal edges, built once per call so the
+            # traversal does not rescan the edge list at every visited node.
+            # Edges may reference decision nodes that were never recorded through
+            # record_decision() (e.g. a graph restored via from_dict), so only
+            # causes with a known decision record are kept.
+            incoming_causal_edges = defaultdict(list)
+            for edge_type in _CAUSAL_EDGE_TYPES:
+                for edge in self.edge_type_index.get(edge_type, []):
+                    if edge.source_id in self._decisions:
+                        incoming_causal_edges[edge.target_id].append(edge)
+
+            def record_chain(cause_path):
+                """Record one chain. Returns False once the cap is reached."""
+                nonlocal truncated
+                if len(causal_chain) >= chain_limit:
+                    truncated = True
+                    return False
+                causal_chain.append(
+                    self._build_causal_chain_report(list(reversed(cause_path)))
+                )
+                return True
+
+            def trace_recursive(current_id, depth, path, path_ids):
+                # Cycle detection is per-path rather than global: a decision reached
+                # through one branch must stay traversable through another, otherwise
+                # branching graphs silently lose valid chains. max_depth bounds the
+                # traversal.
+                if truncated or depth >= max_depth or current_id in path_ids:
                     return
-                
-                visited.add(current_id)
+
+                path_ids = path_ids | {current_id}
                 current_decision = self._decisions[current_id]
-                
-                # Find potential causes (decisions that influenced this one)
+
+                # Explicit causal relationships recorded via add_causal_relationship()
+                # take precedence - they are the ground truth the caller recorded.
+                # Every edge is traced, so parallel relationships between the same
+                # pair of decisions are all reported rather than overwriting.
+                explicit_causes = incoming_causal_edges.get(current_id, [])
+                explicit_cause_ids = {edge.source_id for edge in explicit_causes}
+
+                for edge in explicit_causes:
+                    cause_id = edge.source_id
+                    cause_dec = self._decisions[cause_id]
+                    weight = getattr(edge, "weight", None)
+                    # A stored weight of 0.0 is meaningful and must not be coerced
+                    # to the 1.0 default.
+                    edge_weight = 1.0 if weight is None else float(weight)
+                    hop = {
+                        "from": cause_id,
+                        "from_scenario": cause_dec.get("scenario", ""),
+                        "to": current_id,
+                        "to_scenario": current_decision.get("scenario", ""),
+                        "type": edge.edge_type,
+                        "edge_weight": edge_weight,
+                    }
+                    cause_path = path + [hop]
+                    if not record_chain(cause_path):
+                        return
+                    trace_recursive(cause_id, depth + 1, cause_path, path_ids)
+                    if truncated:
+                        return
+
+                # Find potential causes (decisions that influenced this one) via
+                # shared entities/timestamps - additive heuristic, skipping anything
+                # already covered by an explicit relationship above.
                 potential_causes = []
                 for entity in current_decision["entities"]:
                     for other_decision_id in self._entity_index.get(entity, set()):
-                        if other_decision_id != current_id:
+                        if other_decision_id != current_id and other_decision_id not in explicit_cause_ids:
                             other_decision = self._decisions[other_decision_id]
                             if other_decision["timestamp"] < current_decision["timestamp"]:
                                 potential_causes.append(other_decision_id)
-                
+
                 for cause_id in potential_causes:
                     cause_dec = self._decisions.get(cause_id, {})
                     edge_weight = float(cause_dec.get("confidence", 1.0))
@@ -2854,10 +3015,32 @@ class ContextGraph:
                         "edge_weight": edge_weight,
                     }
                     cause_path = path + [hop]
-                    causal_chain.append(self._build_causal_chain_report(list(reversed(cause_path))))
-                    trace_recursive(cause_id, depth + 1, cause_path)
-            
-            trace_recursive(decision_id, 0, [])
+                    if not record_chain(cause_path):
+                        return
+                    trace_recursive(cause_id, depth + 1, cause_path, path_ids)
+                    if truncated:
+                        return
+
+            trace_recursive(decision_id, 0, [], frozenset())
+
+            if truncated:
+                # Never drop chains silently: the caller is told the trace is partial.
+                self.logger.warning(
+                    "Causal trace for %s truncated at %s chains; "
+                    "raise max_chains or lower max_depth for a complete trace.",
+                    decision_id,
+                    max_chains,
+                )
+                causal_chain.append({
+                    "truncated": True,
+                    "max_chains": max_chains,
+                    "message": (
+                        f"Causal trace truncated at {max_chains} chains. "
+                        "The result is incomplete; raise max_chains or lower "
+                        "max_depth for a complete trace."
+                    ),
+                })
+
             return causal_chain
             
         except Exception as e:
@@ -3326,21 +3509,25 @@ class ContextGraph:
     def trace_decision_chain(
         self,
         decision_id: str,
-        max_steps: int = 5
+        max_steps: int = 5,
+        max_chains: Optional[int] = 10000
     ) -> List[Dict[str, Any]]:
         """
         Easy way to trace how decisions are connected.
-        
+
         Args:
             decision_id: Starting decision
             max_steps: Maximum steps to trace
-            
+            max_chains: Maximum number of chains to return; see
+                trace_decision_causality(). Pass None for no limit.
+
         Returns:
             Decision chain connections
         """
         return self.trace_decision_causality(
             decision_id=decision_id,
-            max_depth=max_steps
+            max_depth=max_steps,
+            max_chains=max_chains
         )
     
     def check_decision_rules(

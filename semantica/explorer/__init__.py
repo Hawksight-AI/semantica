@@ -83,12 +83,22 @@ def main(argv=None):
 
     _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
     if args.host not in _LOOPBACK_HOSTS:
-        _err.print(
-            f"[bold yellow]Warning:[/bold yellow] Binding to "
-            f"[cyan]{args.host}[/cyan] exposes the Explorer to the network. "
-            "The API has no authentication — all graph data will be readable "
-            "and writable by any host that can reach this port."
-        )
+        import os as _os
+        if _os.environ.get("SEMANTICA_ALLOW_ANONYMOUS", "").strip().lower() == "true":
+            _err.print(
+                f"[bold yellow]Warning:[/bold yellow] Binding to "
+                f"[cyan]{args.host}[/cyan] with SEMANTICA_ALLOW_ANONYMOUS=true "
+                "exposes the Explorer to the network with no authentication — "
+                "all graph data will be readable and writable by any host that "
+                "can reach this port."
+            )
+        elif not _os.environ.get("SEMANTICA_API_KEY"):
+            _err.print(
+                f"[bold yellow]Warning:[/bold yellow] Binding to "
+                f"[cyan]{args.host}[/cyan] but SEMANTICA_API_KEY is not set — "
+                "protected routes will refuse all requests (503) until it is "
+                "configured."
+            )
 
     if not args.no_browser:
         import threading

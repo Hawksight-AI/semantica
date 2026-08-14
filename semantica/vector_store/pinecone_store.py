@@ -75,7 +75,7 @@ class PineconeClient:
 
         try:
             # Default to serverless spec if not provided
-            if spec is None:
+            if spec is None and ServerlessSpec is not None:
                 spec = ServerlessSpec(cloud="aws", region="us-east-1")
 
             # Map metric names
@@ -327,6 +327,7 @@ class PineconeStore:
 
         self.api_key = api_key or config.get("api_key")
         self.environment = environment or config.get("environment")
+        self.dimension: Optional[int] = config.get("dimension")
 
         self.client: Optional[PineconeClient] = None
         self.index: Optional[PineconeIndex] = None
@@ -395,7 +396,7 @@ class PineconeStore:
 
         try:
             # Create index spec if not provided
-            if spec is None:
+            if spec is None and ServerlessSpec is not None:
                 spec = ServerlessSpec(cloud="aws", region="us-east-1")
 
             self.client.create_index(index_name, dimension, metric, spec, **kwargs)
@@ -404,6 +405,7 @@ class PineconeStore:
             pinecone_index = self.client.get_index(index_name)
             self.index = PineconeIndex(pinecone_index)
             self.search_engine = PineconeSearch(self.index)
+            self.dimension = dimension
 
             self.logger.info(f"Created Pinecone index: {index_name}")
             return self.index
@@ -431,6 +433,13 @@ class PineconeStore:
             pinecone_index = self.client.get_index(index_name)
             self.index = PineconeIndex(pinecone_index)
             self.search_engine = PineconeSearch(self.index)
+            if self.dimension is None:
+                try:
+                    stats = self.index.describe_index_stats()
+                    if stats and isinstance(stats, dict) and stats.get("dimension"):
+                        self.dimension = int(stats["dimension"])
+                except Exception as e:
+                    self.logger.warning(f"Could not determine index dimension for '{index_name}': {e}")
             return self.index
         except Exception as e:
             raise ProcessingError(f"Failed to get index: {str(e)}")
@@ -516,6 +525,9 @@ class PineconeStore:
                 else:
                     vector_list.append(list(vector))
 
+            if self.dimension is None and vector_list:
+                self.dimension = len(vector_list[0])
+
             self.progress_tracker.update_tracking(
                 tracking_id, message="Upserting vectors to index..."
             )
@@ -582,6 +594,9 @@ class PineconeStore:
             else:
                 query_vector = list(query_vector)
 
+            if self.dimension is None and query_vector:
+                self.dimension = len(query_vector)
+
             results = self.search_engine.similarity_search(
                 np.array(query_vector), k, filter, namespace, **options
             )
@@ -640,6 +655,85 @@ class PineconeStore:
         except Exception as e:
             self.logger.warning(f"Failed to get metadata for {vector_id}: {e}")
             return None
+
+    def filter_by_metadata(
+        self, filters: Dict[str, Any], limit: int = 10, namespace: str = ""
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter vectors by metadata using Pinecone metadata filters.
+
+        Args:
+            filters: Metadata filter criteria
+            limit: Maximum number of results
+            namespace: Namespace to search in
+
+        Returns:
+            List of matching result dicts with 'id', 'metadata', and 'vector'
+        """
+        if self.index is None or not PINECONE_AVAILABLE:
+            return []
+
+        dimension = self.dimension
+        if dimension is None:
+            try:
+                stats = self.index.describe_index_stats()
+                if stats and isinstance(stats, dict) and stats.get("dimension"):
+                    dimension = int(stats["dimension"])
+                    self.dimension = dimension
+            except Exception:
+                pass
+
+        if not dimension:
+            raise ProcessingError(
+                "Index dimension is unknown. Please specify 'dimension' when initializing PineconeStore "
+                "or call create_index()/get_index() first."
+            )
+
+        pinecone_filter = {}
+        if filters:
+            for key, value in filters.items():
+                if isinstance(value, dict):
+                    cond = {}
+                    if "min" in value and value["min"] is not None:
+                        cond["$gte"] = value["min"]
+                    if "max" in value and value["max"] is not None:
+                        cond["$lte"] = value["max"]
+                    if cond:
+                        pinecone_filter[key] = cond
+                elif isinstance(value, list):
+                    pinecone_filter[key] = {"$in": value}
+                else:
+                    pinecone_filter[key] = value
+
+        # A literal zero vector is rejected by Pinecone for cosine-metric indexes
+        # ("Query vector must not be the zero vector"). Use a unit vector instead so
+        # this works regardless of the index's distance metric; since this call only
+        # cares about which vectors match `filter`, not similarity ranking, any
+        # fixed non-zero query vector is an equally valid probe.
+        dummy_vector = [1.0 / (dimension ** 0.5)] * dimension
+
+        try:
+            response = self.index.index.query(
+                vector=dummy_vector,
+                top_k=limit,
+                filter=pinecone_filter if pinecone_filter else None,
+                namespace=namespace,
+                include_metadata=True,
+                include_values=True,
+            )
+            results = []
+            for match in response.matches:
+                results.append(
+                    {
+                        "id": match.id,
+                        "metadata": match.metadata or {},
+                        "vector": np.array(match.values) if match.values else None,
+                    }
+                )
+            return results
+        except Exception as e:
+            self.logger.warning(f"Failed to filter Pinecone vectors by metadata: {e}")
+            return []
 
     def fetch_vectors(
         self, vector_ids: List[str], namespace: str = "", **options
