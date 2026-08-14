@@ -146,6 +146,102 @@ def test_influence_is_not_double_counted_as_direct_and_indirect():
     assert not direct_ids & indirect_ids
 
 
+def test_explicit_edge_weight_of_zero_is_preserved():
+    """``add_edge()`` is public and can create causal edges with any weight.
+
+    A stored 0.0 must not be coerced to the 1.0 default, which would inflate
+    ``confidence_decay`` in the causal-chain report.
+    """
+    graph = ContextGraph(advanced_analytics=True)
+    cause = graph.record_decision(
+        category="a", scenario="upstream", reasoning="r",
+        outcome="approved", confidence=0.9,
+    )
+    effect = graph.record_decision(
+        category="b", scenario="downstream", reasoning="r",
+        outcome="approved", confidence=0.9,
+    )
+    graph.add_edge(cause, effect, "CAUSED", weight=0.0)
+
+    chains = graph.trace_decision_chain(effect)
+
+    assert [hop["edge_weight"] for chain in chains for hop in chain["hops"]] == [0.0]
+    assert [chain["confidence_decay"] for chain in chains] == [0.0]
+
+
+def test_parallel_causal_edges_are_all_traced():
+    """Multiple causal edges between the same pair must not overwrite each other."""
+    graph = ContextGraph(advanced_analytics=True)
+    cause = graph.record_decision(
+        category="a", scenario="upstream", reasoning="r",
+        outcome="approved", confidence=0.9,
+    )
+    effect = graph.record_decision(
+        category="b", scenario="downstream", reasoning="r",
+        outcome="approved", confidence=0.9,
+    )
+    graph.add_edge(cause, effect, "CAUSED", weight=0.8)
+    graph.add_edge(cause, effect, "INFLUENCED", weight=0.3)
+
+    hops = [hop for chain in graph.trace_decision_chain(effect) for hop in chain["hops"]]
+
+    assert sorted(hop["type"] for hop in hops) == ["CAUSED", "INFLUENCED"]
+    assert sorted(hop["edge_weight"] for hop in hops) == [0.3, 0.8]
+
+
+def test_branching_graph_does_not_drop_alternative_chains():
+    """Diamond graph: both routes through the shared ancestor must be reported.
+
+    Cycle detection is per-path, so visiting ``S`` via one branch must not
+    prevent reaching it again through the other.
+    """
+    graph = ContextGraph(advanced_analytics=True)
+    ids = {
+        name: graph.record_decision(
+            category="ops", scenario=name, reasoning="r",
+            outcome="approved", confidence=0.9,
+        )
+        for name in ("R", "S", "A", "B", "D")
+    }
+    names = {decision_id: name for name, decision_id in ids.items()}
+    for source, target in [("R", "S"), ("S", "A"), ("S", "B"), ("A", "D"), ("B", "D")]:
+        graph.add_causal_relationship(ids[source], ids[target], relationship_type="CAUSED")
+
+    chains = graph.trace_decision_chain(ids["D"], max_steps=10)
+    paths = {
+        " -> ".join(
+            [names[hop["from"]] for hop in chain["hops"]]
+            + [names[chain["hops"][-1]["to"]]]
+        )
+        for chain in chains
+    }
+
+    assert "R -> S -> A -> D" in paths
+    assert "R -> S -> B -> D" in paths
+
+
+def test_cyclic_causal_edges_terminate():
+    """A causal cycle must not recurse forever once cycle detection is per-path."""
+    graph = ContextGraph(advanced_analytics=True)
+    first = graph.record_decision(
+        category="a", scenario="A", reasoning="r", outcome="approved", confidence=0.9,
+    )
+    second = graph.record_decision(
+        category="b", scenario="B", reasoning="r", outcome="approved", confidence=0.9,
+    )
+    third = graph.record_decision(
+        category="c", scenario="C", reasoning="r", outcome="approved", confidence=0.9,
+    )
+    graph.add_causal_relationship(first, second, relationship_type="CAUSED")
+    graph.add_causal_relationship(second, third, relationship_type="CAUSED")
+    graph.add_causal_relationship(third, first, relationship_type="CAUSED")
+
+    chains = graph.trace_decision_chain(first, max_steps=5)
+
+    assert chains
+    assert not any("error" in chain for chain in chains)
+
+
 def test_entity_based_inference_still_applies_without_explicit_edges():
     """The entity heuristic remains as a fallback; it must not be regressed."""
     graph = ContextGraph(advanced_analytics=True)

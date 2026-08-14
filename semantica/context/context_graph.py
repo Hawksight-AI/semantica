@@ -412,6 +412,12 @@ class ContextEdge:
 
 _ATTRS_MISSING = object()
 
+#: Edge types that represent an explicitly recorded causal relationship between
+#: two decisions. These are authoritative: they are what the caller asserted via
+#: add_causal_relationship(), as opposed to relationships inferred from shared
+#: entities and timestamps.
+_CAUSAL_EDGE_TYPES = ("CAUSED", "INFLUENCED", "PRECEDENT_FOR")
+
 
 class ContextGraph:
     """
@@ -2783,14 +2789,12 @@ class ContextGraph:
 
         # Explicit causal relationships recorded via add_causal_relationship() are
         # ground truth and always count as direct influence, in either direction.
-        causal_edge_types = {"CAUSED", "INFLUENCED", "PRECEDENT_FOR"}
-        for edge in self.edges:
-            if edge.edge_type not in causal_edge_types:
-                continue
-            if edge.source_id == decision_id and edge.target_id in self._decisions:
-                direct_influence.add(edge.target_id)
-            elif edge.target_id == decision_id and edge.source_id in self._decisions:
-                direct_influence.add(edge.source_id)
+        for edge_type in _CAUSAL_EDGE_TYPES:
+            for edge in self.edge_type_index.get(edge_type, []):
+                if edge.source_id == decision_id and edge.target_id in self._decisions:
+                    direct_influence.add(edge.target_id)
+                elif edge.target_id == decision_id and edge.source_id in self._decisions:
+                    direct_influence.add(edge.source_id)
         
         # Indirect influence (through graph relationships)
         indirect_influence = set()
@@ -2917,32 +2921,43 @@ class ContextGraph:
         try:
             # Use graph traversal to find causal relationships
             causal_chain = []
-            visited = set()
-            
-            causal_edge_types = {"CAUSED", "INFLUENCED", "PRECEDENT_FOR"}
 
-            def trace_recursive(current_id, depth, path):
-                if depth >= max_depth or current_id in visited:
+            # Reverse index of explicit causal edges, built once per call so the
+            # traversal does not rescan the edge list at every visited node.
+            # Edges may reference decision nodes that were never recorded through
+            # record_decision() (e.g. a graph restored via from_dict), so only
+            # causes with a known decision record are kept.
+            incoming_causal_edges = defaultdict(list)
+            for edge_type in _CAUSAL_EDGE_TYPES:
+                for edge in self.edge_type_index.get(edge_type, []):
+                    if edge.source_id in self._decisions:
+                        incoming_causal_edges[edge.target_id].append(edge)
+
+            def trace_recursive(current_id, depth, path, path_ids):
+                # Cycle detection is per-path rather than global: a decision reached
+                # through one branch must stay traversable through another, otherwise
+                # branching graphs silently lose valid chains. max_depth bounds the
+                # traversal.
+                if depth >= max_depth or current_id in path_ids:
                     return
 
-                visited.add(current_id)
+                path_ids = path_ids | {current_id}
                 current_decision = self._decisions[current_id]
 
                 # Explicit causal relationships recorded via add_causal_relationship()
                 # take precedence - they are the ground truth the caller recorded.
-                # Edges may reference decision nodes that were never recorded through
-                # record_decision() (e.g. a graph restored via from_dict), so only
-                # traverse causes that have a known decision record.
-                explicit_causes = {}
-                for edge in self.edges:
-                    if (edge.target_id == current_id
-                            and edge.edge_type in causal_edge_types
-                            and edge.source_id in self._decisions):
-                        explicit_causes[edge.source_id] = edge
+                # Every edge is traced, so parallel relationships between the same
+                # pair of decisions are all reported rather than overwriting.
+                explicit_causes = incoming_causal_edges.get(current_id, [])
+                explicit_cause_ids = {edge.source_id for edge in explicit_causes}
 
-                for cause_id, edge in explicit_causes.items():
+                for edge in explicit_causes:
+                    cause_id = edge.source_id
                     cause_dec = self._decisions[cause_id]
-                    edge_weight = float(getattr(edge, "weight", 1.0) or 1.0)
+                    weight = getattr(edge, "weight", None)
+                    # A stored weight of 0.0 is meaningful and must not be coerced
+                    # to the 1.0 default.
+                    edge_weight = 1.0 if weight is None else float(weight)
                     hop = {
                         "from": cause_id,
                         "from_scenario": cause_dec.get("scenario", ""),
@@ -2953,7 +2968,7 @@ class ContextGraph:
                     }
                     cause_path = path + [hop]
                     causal_chain.append(self._build_causal_chain_report(list(reversed(cause_path))))
-                    trace_recursive(cause_id, depth + 1, cause_path)
+                    trace_recursive(cause_id, depth + 1, cause_path, path_ids)
 
                 # Find potential causes (decisions that influenced this one) via
                 # shared entities/timestamps - additive heuristic, skipping anything
@@ -2961,7 +2976,7 @@ class ContextGraph:
                 potential_causes = []
                 for entity in current_decision["entities"]:
                     for other_decision_id in self._entity_index.get(entity, set()):
-                        if other_decision_id != current_id and other_decision_id not in explicit_causes:
+                        if other_decision_id != current_id and other_decision_id not in explicit_cause_ids:
                             other_decision = self._decisions[other_decision_id]
                             if other_decision["timestamp"] < current_decision["timestamp"]:
                                 potential_causes.append(other_decision_id)
@@ -2979,9 +2994,9 @@ class ContextGraph:
                     }
                     cause_path = path + [hop]
                     causal_chain.append(self._build_causal_chain_report(list(reversed(cause_path))))
-                    trace_recursive(cause_id, depth + 1, cause_path)
-            
-            trace_recursive(decision_id, 0, [])
+                    trace_recursive(cause_id, depth + 1, cause_path, path_ids)
+
+            trace_recursive(decision_id, 0, [], frozenset())
             return causal_chain
             
         except Exception as e:
