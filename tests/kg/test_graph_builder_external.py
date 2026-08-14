@@ -163,6 +163,56 @@ class TestGraphBuilderExternal(unittest.TestCase):
             self.assertIn(relationship["source"], entity_ids)
             self.assertIn(relationship["target"], entity_ids)
 
+    def test_unhashable_entity_ids_do_not_crash_remapping(self):
+        builder = GraphBuilder(merge_entities=False, resolve_conflicts=False)
+        resolver = MagicMock()
+        resolver.resolve_entities.return_value = [
+            {
+                "id": ["invalid-canonical-id"],
+                "name": "Invalid ID",
+                "type": "Person",
+                "merged_from": ["invalid-canonical-id"],
+            },
+            {
+                "id": "alice:1",
+                "name": "Alice Chen",
+                "type": "Person",
+                "merged_from": [["invalid-source-id"]],
+            },
+        ]
+
+        graph = builder.build(
+            {
+                "entities": [{"id": "alice:1", "name": "Alice Chen", "type": "Person"}],
+                "relationships": [],
+            },
+            entity_resolver=resolver,
+        )
+
+        self.assertEqual(len(graph["entities"]), 2)
+
+    def test_relationship_remapping_skips_unmerged_entities(self):
+        builder = GraphBuilder(merge_entities=False, resolve_conflicts=False)
+        resolver = MagicMock()
+        resolver.resolve_entities.return_value = [
+            {"id": "alice:1", "name": "Alice Chen", "type": "Person"},
+            {"id": "org:1", "name": "Zyx Qqqq", "type": "Organization"},
+        ]
+
+        with patch.object(builder, "_remap_relationship_endpoints") as remap:
+            builder.build(
+                {
+                    "entities": [
+                        {"id": "alice:1", "name": "Alice Chen", "type": "Person"},
+                        {"id": "org:1", "name": "Zyx Qqqq", "type": "Organization"},
+                    ],
+                    "relationships": [],
+                },
+                entity_resolver=resolver,
+            )
+
+        remap.assert_not_called()
+
     def test_warning_when_all_relationships_dropped(self):
         builder = GraphBuilder(merge_entities=False, resolve_conflicts=False)
 

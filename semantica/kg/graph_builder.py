@@ -283,18 +283,30 @@ class GraphBuilder:
             if not isinstance(entity, dict):
                 continue
 
-            canonical_id = entity.get("id") or entity.get("entity_id")
+            canonical_id = entity.get("id")
+            if canonical_id is None:
+                canonical_id = entity.get("entity_id")
             if canonical_id is None:
                 continue
 
             # Keep canonical IDs stable and map every source ID retained by the
             # merge operation to the surviving entity.
-            endpoint_map[canonical_id] = canonical_id
+            try:
+                endpoint_map[canonical_id] = canonical_id
+            except TypeError:
+                # Invalid/unhashable IDs are left for graph validation to report
+                # rather than making graph construction fail here.
+                continue
+
             merged_from = entity.get("merged_from") or []
             if isinstance(merged_from, (list, tuple, set)):
                 for source_id in merged_from:
                     if source_id is not None:
-                        endpoint_map[source_id] = canonical_id
+                        try:
+                            endpoint_map[source_id] = canonical_id
+                        except TypeError:
+                            # Skip invalid aliases while preserving valid ones.
+                            continue
 
         remapped_count = 0
         for relationship in relationships:
@@ -745,8 +757,14 @@ class GraphBuilder:
                 )
 
             # Relationships were collected before entity resolution. Rewrite
-            # endpoints so merged-away IDs point at their canonical entity.
-            self._remap_relationship_endpoints(resolved_entities, all_relationships)
+            # endpoints only when resolution produced merged entity IDs.
+            if resolver_to_use:
+                has_merged_entities = any(
+                    isinstance(entity, dict) and entity.get("merged_from")
+                    for entity in resolved_entities
+                )
+                if has_merged_entities:
+                    self._remap_relationship_endpoints(resolved_entities, all_relationships)
 
             if input_relationships_count > 0 and len(all_relationships) == 0:
                 warning_msg = (
