@@ -33,10 +33,14 @@ class TestDBIngestorQueryExecution(unittest.TestCase):
     """Both query paths must survive the call that needed sqlalchemy.text -- see #1015."""
 
     def setUp(self):
+        # Register each cleanup as soon as the resource exists: tearDown is not
+        # called when setUp raises partway through, but addCleanup callbacks are.
         self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
         self.db_path = os.path.join(self._tmpdir.name, "test.db")
         self.connection_string = f"sqlite:///{self.db_path}"
         self.engine = create_engine(self.connection_string)
+        self.addCleanup(self.engine.dispose)
 
         with self.engine.begin() as conn:
             conn.execute(text("CREATE TABLE widgets (id INTEGER, name TEXT)"))
@@ -45,10 +49,6 @@ class TestDBIngestorQueryExecution(unittest.TestCase):
                     text("INSERT INTO widgets VALUES (:id, :name)"),
                     {"id": row_id, "name": name},
                 )
-
-    def tearDown(self):
-        self.engine.dispose()
-        self._tmpdir.cleanup()
 
     def test_execute_query_returns_rows(self):
         """DBIngestor.execute_query -- the text() call that raised NameError."""
