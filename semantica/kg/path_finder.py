@@ -127,66 +127,98 @@ class PathFinder:
         try:
             self.logger.info(f"Finding Dijkstra shortest path from {source} to {target}")
 
-            # Validate nodes exist
-            if not self._node_exists(graph, source):
-                raise ValueError(f"Source node {source} not found")
-            if not self._node_exists(graph, target):
-                raise ValueError(f"Target node {target} not found")
-
-            traversal_graph = graph if directed else self._make_undirected_view(graph)
-
-            # Dijkstra's algorithm
-            distances = {source: 0.0}
-            previous = {}
-            priority_queue = [(0.0, source)]
-            visited = set()
-
-            while priority_queue:
-                current_distance, current_node = heapq.heappop(priority_queue)
-
-                if current_node in visited:
-                    continue
-
-                visited.add(current_node)
-
-                if current_node == target:
-                    break
-
-                # Explore neighbors
-                for neighbor, edge_data in self._get_neighbors(traversal_graph, current_node):
-                    if neighbor in visited:
-                        continue
-                    
-                    # Get edge weight
-                    weight = self._get_edge_weight(edge_data, weight_attribute, default_weight)
-                    distance = current_distance + weight
-                    
-                    if neighbor not in distances or distance < distances[neighbor]:
-                        distances[neighbor] = distance
-                        previous[neighbor] = current_node
-                        heapq.heappush(priority_queue, (distance, neighbor))
-            
-            # Reconstruct path
-            if target not in previous and source != target:
-                return []  # No path found
-            
-            path = []
-            current = target
-            while current is not None:
-                path.append(current)
-                current = previous.get(current)
-            
-            path.reverse()
-            
+            path = self._dijkstra_shortest_path(
+                graph,
+                source,
+                target,
+                weight_attribute,
+                default_weight,
+                directed,
+            )
             self.logger.info(f"Found path of length {len(path)}")
             return path
-            
+
         except ValueError:
             # Re-raise ValueError for invalid nodes
             raise
         except Exception as e:
             self.logger.error(f"Dijkstra path finding failed: {str(e)}")
             raise RuntimeError(f"Path finding failed: {str(e)}")
+
+    def _dijkstra_shortest_path(
+        self,
+        graph: Any,
+        source: str,
+        target: str,
+        weight_attribute: str = "weight",
+        default_weight: float = 1.0,
+        directed: bool = True,
+        excluded_nodes: Optional[Set[str]] = None,
+        excluded_edges: Optional[Set[Tuple[str, str]]] = None,
+    ) -> List[str]:
+        """Find a shortest path without mutating the graph.
+
+        ``excluded_nodes`` and ``excluded_edges`` are used internally by
+        Yen's algorithm to model its temporary graph modifications.
+        """
+        excluded_nodes = excluded_nodes or set()
+        excluded_edges = excluded_edges or set()
+
+        # Validate nodes exist before applying the temporary exclusions.
+        if not self._node_exists(graph, source):
+            raise ValueError(f"Source node {source} not found")
+        if not self._node_exists(graph, target):
+            raise ValueError(f"Target node {target} not found")
+        if source in excluded_nodes or target in excluded_nodes:
+            return []
+
+        traversal_graph = graph if directed else self._make_undirected_view(graph)
+
+        # Dijkstra's algorithm
+        distances = {source: 0.0}
+        previous = {}
+        priority_queue = [(0.0, source)]
+        visited = set()
+
+        while priority_queue:
+            current_distance, current_node = heapq.heappop(priority_queue)
+
+            if current_node in visited or current_node in excluded_nodes:
+                continue
+
+            visited.add(current_node)
+
+            if current_node == target:
+                break
+
+            # Explore neighbors
+            for neighbor, edge_data in self._get_neighbors(traversal_graph, current_node):
+                if neighbor in visited or neighbor in excluded_nodes:
+                    continue
+                if self._edge_is_excluded(graph, current_node, neighbor, excluded_edges):
+                    continue
+
+                # Get edge weight
+                weight = self._get_edge_weight(edge_data, weight_attribute, default_weight)
+                distance = current_distance + weight
+
+                if neighbor not in distances or distance < distances[neighbor]:
+                    distances[neighbor] = distance
+                    previous[neighbor] = current_node
+                    heapq.heappush(priority_queue, (distance, neighbor))
+
+        # Reconstruct path
+        if target not in previous and source != target:
+            return []  # No path found
+
+        path = []
+        current = target
+        while current is not None:
+            path.append(current)
+            current = previous.get(current)
+
+        path.reverse()
+        return path
     
     def a_star_search(
         self,
@@ -493,69 +525,89 @@ class PathFinder:
             raise ValueError("k must be positive")
         
         # Find first shortest path
-        first_path = self.dijkstra_shortest_path(graph, source, target, weight_attribute, default_weight)
+        first_path = self.dijkstra_shortest_path(
+            graph, source, target, weight_attribute, default_weight
+        )
         if not first_path:
             return []
         
         paths = [first_path]
         candidates = []
-        
-        for i in range(1, k):
-            # Generate candidate paths
-            for j in range(len(paths[-1]) - 1):
-                spur_node = paths[-1][j]
-                root_path = paths[-1][:j + 1]
-                
-                # Temporarily remove edges
-                removed_edges = []
+        candidate_paths = {tuple(first_path)}
+        candidate_order = 0
+
+        while len(paths) < k:
+            previous_path = paths[-1]
+
+            # Generate candidate paths from every spur node in the last path.
+            for j in range(len(previous_path) - 1):
+                spur_node = previous_path[j]
+                root_path = previous_path[:j + 1]
+
+                # Block the next edge of every accepted path sharing this root.
+                excluded_edges = set()
                 for path in paths:
-                    if len(path) > j and path[:j + 1] == root_path:
-                        if j + 1 < len(path):
-                            edge_data = self._get_edge_data(graph, path[j], path[j + 1])
-                            if edge_data is not None:
-                                removed_edges.append((path[j], path[j + 1], edge_data))
-                                self._remove_edge(graph, path[j], path[j + 1])
-                
-                # Temporarily remove nodes (except spur node and nodes that don't exist)
-                removed_nodes = []
-                for node in root_path[:-1]:
-                    if node != spur_node and node != source and self._node_exists(graph, node):
-                        removed_nodes.append(node)
-                        self._remove_node(graph, node)
-                
-                # Find spur path
-                spur_path = self.dijkstra_shortest_path(graph, spur_node, target, weight_attribute, default_weight)
-                
-                # Restore graph
-                for node in removed_nodes:
-                    self._restore_node(graph, node)
-                for u, v, data in removed_edges:
-                    self._restore_edge(graph, u, v, data)
-                
-                # Combine root and spur paths
-                if spur_path:
-                    candidate_path = root_path[:-1] + spur_path
-                    if candidate_path not in candidates and candidate_path not in paths:
-                        candidates.append(candidate_path)
-        
-        # Calculate path lengths and sort
-        candidates_with_lengths = []
-        for path in candidates:
-            try:
-                length = self.path_length(graph, path, weight_attribute, default_weight)
-                candidates_with_lengths.append((path, length))
-            except ValueError:
-                # Skip invalid paths
-                continue
-        
-        candidates_with_lengths.sort(key=lambda x: x[1])
-        
-        # Add shortest unique paths
-        for path, length in candidates_with_lengths:
-            if len(paths) < k and path not in paths:
-                paths.append(path)
-        
+                    if len(path) > j + 1 and path[:j + 1] == root_path:
+                        excluded_edges.add((path[j], path[j + 1]))
+
+                # Block root nodes so the combined path remains loopless.
+                excluded_nodes = set(root_path[:-1])
+                spur_path = self._dijkstra_shortest_path(
+                    graph,
+                    spur_node,
+                    target,
+                    weight_attribute,
+                    default_weight,
+                    excluded_nodes=excluded_nodes,
+                    excluded_edges=excluded_edges,
+                )
+
+                if not spur_path:
+                    continue
+
+                candidate_path = root_path[:-1] + spur_path
+                if len(candidate_path) != len(set(candidate_path)):
+                    continue
+
+                candidate_key = tuple(candidate_path)
+                if candidate_key in candidate_paths:
+                    continue
+
+                try:
+                    length = self.path_length(
+                        graph, candidate_path, weight_attribute, default_weight
+                    )
+                except ValueError:
+                    continue
+
+                candidate_paths.add(candidate_key)
+                heapq.heappush(candidates, (length, candidate_order, candidate_path))
+                candidate_order += 1
+
+            if not candidates:
+                break
+
+            _, _, next_path = heapq.heappop(candidates)
+            paths.append(next_path)
+
         return paths
+
+    def _edge_is_excluded(
+        self,
+        graph: Any,
+        source: str,
+        target: str,
+        excluded_edges: Set[Tuple[str, str]],
+    ) -> bool:
+        """Check whether an edge is excluded for the current traversal."""
+        if (source, target) in excluded_edges:
+            return True
+
+        is_directed = getattr(graph, "is_directed", None)
+        if callable(is_directed) and not is_directed():
+            return (target, source) in excluded_edges
+
+        return False
     
     def _node_exists(self, graph: Any, node: str) -> bool:
         """Check if node exists in graph."""
@@ -613,27 +665,6 @@ class PathFinder:
         if isinstance(edge_data, dict):
             return edge_data.get(weight_attribute, default_weight)
         return default_weight
-    
-    def _remove_edge(self, graph: Any, u: str, v: str) -> None:
-        """Remove edge from graph."""
-        if hasattr(graph, 'remove_edge'):
-            graph.remove_edge(u, v)
-    
-    def _restore_edge(self, graph: Any, u: str, v: str, data: Any) -> None:
-        """Restore edge to graph."""
-        if hasattr(graph, 'add_edge'):
-            graph.add_edge(u, v, **data)
-    
-    def _remove_node(self, graph: Any, node: str) -> None:
-        """Remove node from graph."""
-        if hasattr(graph, 'remove_node'):
-            graph.remove_node(node)
-    
-    def _restore_node(self, graph: Any, node: str) -> None:
-        """Restore node to graph (implementation depends on graph type)."""
-        # This is a simplified implementation
-        # In practice, you'd need to restore the node and its connections
-        pass
     
     def _reconstruct_all_paths(
         self,
