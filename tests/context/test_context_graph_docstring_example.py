@@ -65,7 +65,8 @@ class TestDocstringExampleIsRunnable:
 
     def test_documented_calls_execute(self):
         # Run the docstring text itself so this test cannot drift from the docs.
-        graph = _run_example()["graph"]
+        ns = _run_example()
+        graph = ns["graph"]
 
         assert "Python" in graph.nodes
         assert "Programming" in graph.nodes
@@ -74,6 +75,11 @@ class TestDocstringExampleIsRunnable:
 
         neighbors = graph.get_neighbors("Python", hops=1)
         assert any(n["id"] == "Programming" for n in neighbors)
+
+        # record_decision must return a non-empty string ID.
+        assert isinstance(ns["decision_id"], str) and ns["decision_id"]
+        # find_precedents must be called with that ID and return a list.
+        assert isinstance(ns["precedents"], list)
 
     def test_node_properties_are_stored_flat(self):
         """``popularity`` must land as a top-level property, not nested.

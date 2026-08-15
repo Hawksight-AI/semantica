@@ -88,7 +88,7 @@ Example Usage:
     ...     confidence=0.95,
     ...     entities=["customer_123", "property_456"]
     ... )
-    >>> precedents = graph.find_precedents("loan_approval", limit=5)
+    >>> precedents = graph.find_precedents(decision_id, limit=5)
     >>> influence = graph.analyze_decision_influence(decision_id)
     >>> insights = graph.get_decision_insights()
     >>> causality = graph.trace_decision_causality(decision_id)
