@@ -23,7 +23,7 @@ import unittest
 from datetime import datetime
 
 from semantica.change_management import TemporalVersionManager
-from semantica.context import ContextGraph
+from semantica.context import ContextEdge, ContextGraph
 
 BEFORE = "2025-06-01T00:00:00Z"
 BETWEEN = "2025-09-01T00:00:00Z"
@@ -304,16 +304,33 @@ class TestIdKeyspaces(unittest.TestCase):
 
 
 class TestDuplicateEdgeId(unittest.TestCase):
-    """``edge_id`` is content-derived and not guaranteed unique (#922): two
-    identical ``add_edge`` calls produce two edge objects sharing one id.
+    """``edge_id`` is content-derived; before #926, two identical ``add_edge``
+    calls produced two edge objects sharing one id. #926 stops *new*
+    duplicates through ``add_edge``/``add_edges``, but a graph can still carry
+    one from a save made before that fix, or from any other path that builds
+    a ``ContextEdge`` directly -- so retraction/purge must still handle it.
     Every duplicate must be reached, or a retraction/tombstone record can
     claim an edge is gone/inactive while a live copy remains in the graph.
     """
 
     def _duplicated(self):
+        """A graph with two distinct ``ContextEdge`` objects sharing one
+        edge_id, reproducing pre-#926 (or any hand-built) duplicate state
+        without going through the now-deduping ``add_edge``.
+        """
         graph = _graph()
-        graph.add_edge("alice", "acme", "works_at")  # same content -> same edge_id
-        edge_id = graph.edges[0].edge_id
+        original = graph.edges[0]
+        duplicate = ContextEdge(
+            source_id=original.source_id,
+            target_id=original.target_id,
+            edge_type=original.edge_type,
+            weight=original.weight,
+        )
+        self.assertEqual(duplicate.edge_id, original.edge_id)
+        graph.edges.append(duplicate)
+        graph.edge_type_index[duplicate.edge_type].append(duplicate)
+        graph._adjacency[duplicate.source_id].append(duplicate)
+        edge_id = original.edge_id
         self.assertEqual({e.edge_id for e in graph.edges}, {edge_id})
         self.assertEqual(len(graph.edges), 2)
         return graph, edge_id

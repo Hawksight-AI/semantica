@@ -36,8 +36,16 @@ jobs:
         run: |
           npm ci
           npm run build
+      # Install the pinned dependency set (with hashes) so the sdist/wheel
+      # build runs against the same versions CI tests against.
+      - name: Install pinned build dependencies
+        run: pip install -r requirements-ci.txt
       - run: pip install build
-      - run: python -m build
+      # wheel is build-time only (not in requirements-ci.txt) — install the
+      # same pinned version [build-system] declares so --no-isolation works.
+      - run: pip install wheel==0.48.0
+      - name: Build package (no isolation — pinned deps)
+        run: python -m build --no-isolation
       - name: Verify Explorer frontend is packaged
         run: |
           python - <<'PY'

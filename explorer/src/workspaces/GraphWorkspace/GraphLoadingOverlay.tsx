@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 import { GRAPH_THEME, withAlpha } from "./graphTheme";
 import { GRAPH_LOAD_STAGE_SEQUENCE, createGraphLoadProgress, getGraphLoadStageLabel } from "./graphLoading";
@@ -121,6 +122,58 @@ const LOADING_OVERLAY_CSS = `
     0% { transform: translateX(-120%); }
     100% { transform: translateX(360%); }
   }
+  .graph-stage-loader-card[data-error="true"] {
+    pointer-events: auto;
+    border-color: rgba(255, 123, 114, 0.32);
+    background:
+      radial-gradient(circle at top left, rgba(255, 123, 114, 0.12), transparent 32%),
+      linear-gradient(145deg, rgba(7, 17, 31, 0.96), rgba(24, 14, 18, 0.86));
+  }
+  .graph-stage-loader-error-mark {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    color: #ff9e97;
+    background: rgba(255, 123, 114, 0.12);
+    border: 1px solid rgba(255, 123, 114, 0.28);
+  }
+  .graph-stage-loader-error-detail {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.32);
+    border: 1px solid rgba(255, 123, 114, 0.18);
+    color: #ffb4ae;
+    font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    word-break: break-word;
+  }
+  .graph-stage-loader-retry {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid rgba(127, 208, 255, 0.4);
+    background: linear-gradient(135deg, rgba(74, 163, 255, 0.28), rgba(56, 210, 160, 0.16));
+    color: #e8f6ff;
+    transition: 160ms ease;
+  }
+  .graph-stage-loader-retry:hover {
+    border-color: rgba(127, 208, 255, 0.62);
+    background: linear-gradient(135deg, rgba(74, 163, 255, 0.4), rgba(56, 210, 160, 0.24));
+    transform: translateY(-1px);
+  }
+  .graph-stage-loader-retry:focus-visible {
+    outline: 2px solid #7fd0ff;
+    outline-offset: 2px;
+  }
 `;
 
 function formatLayoutSource(source: GraphLoadProgress["layoutSource"]) {
@@ -170,10 +223,14 @@ export function GraphLoadingOverlay({
   progress,
   visible,
   showGraphBehind,
+  error = null,
+  onRetry,
 }: {
   progress: GraphLoadProgress | null;
   visible: boolean;
   showGraphBehind: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }) {
   const [renderVisible, setRenderVisible] = useState(visible);
   const [exiting, setExiting] = useState(false);
@@ -224,6 +281,44 @@ export function GraphLoadingOverlay({
 
   if (!renderVisible) {
     return null;
+  }
+
+  if (error) {
+    return (
+      <div
+        className="graph-stage-loader"
+        data-exiting={exiting}
+        style={{ background: "linear-gradient(180deg, rgba(1,4,9,0.22), rgba(1,4,9,0.5))" }}
+      >
+        <style>{LOADING_OVERLAY_CSS}</style>
+        <div className="graph-stage-loader-card" data-error="true" role="alert">
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 14 }}>
+            <div className="graph-stage-loader-error-mark" aria-hidden="true">
+              <AlertTriangle size={18} strokeWidth={2.2} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: "#ffffff", fontSize: 20, fontWeight: 700, letterSpacing: "-0.03em", marginBottom: 6 }}>
+                Could not load the graph
+              </div>
+              <div style={{ color: "#8fa8c6", fontSize: 13, lineHeight: 1.5 }}>
+                The Explorer API did not return graph data. Check that the backend is running and reachable, then try again.
+              </div>
+            </div>
+          </div>
+
+          <div className="graph-stage-loader-error-detail">{error}</div>
+
+          {onRetry ? (
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button type="button" className="graph-stage-loader-retry" onClick={onRetry}>
+                <RefreshCw size={14} strokeWidth={2.2} aria-hidden />
+                Retry
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
   }
 
   const activeProgress = progress ?? displayProgress;

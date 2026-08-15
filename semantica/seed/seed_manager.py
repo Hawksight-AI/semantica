@@ -43,6 +43,7 @@ from ..utils.helpers import read_json_file, write_json_file
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from ..utils.types import EntityDict, RelationshipDict
+from ..ingest.ssrf import parse_bool, request_with_ssrf_guard
 
 
 @dataclass
@@ -453,6 +454,13 @@ class SeedDataManager:
         'entities', 'data', 'results', 'items' keys). Automatically adds
         entity_type, relationship_type, and source metadata if provided.
 
+        SSRF protection is enabled by default: URLs resolving to private,
+        loopback, link-local (including cloud metadata endpoints such as
+        169.254.169.254), or other blocked addresses are rejected, and every
+        redirect hop is re-validated before being followed. For trusted
+        internal deployments, pass ``allow_private_ips=True`` in the manager
+        config to opt in (documented for internal use only).
+
         Args:
             api_url: Base API URL
             endpoint: Optional API endpoint path (appended to api_url)
@@ -491,8 +499,20 @@ class SeedDataManager:
             if api_key:
                 request_headers["Authorization"] = f"Bearer {api_key}"
 
-            # Make API request
-            response = requests.get(full_url, headers=request_headers, timeout=30)
+            # SSRF guard: reject private/loopback/link-local targets by default.
+            # Trusted internal deployments can opt in via config
+            # (allow_private_ips=True) — see issue #943.
+            allow_private = parse_bool(self.config.get("allow_private_ips", False))
+
+            # Make API request (request_with_ssrf_guard validates the URL and
+            # every redirect before each hop)
+            response = request_with_ssrf_guard(
+                "GET",
+                full_url,
+                headers=request_headers,
+                timeout=30,
+                allow_private_ips=allow_private,
+            )
             response.raise_for_status()
 
             # Parse response
