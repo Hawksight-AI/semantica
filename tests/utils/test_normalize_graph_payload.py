@@ -330,5 +330,80 @@ class TestCollectionValuesAreValidated(unittest.TestCase):
                         )
 
 
+class TestIsRecordBoundary(unittest.TestCase):
+    """_is_record gates the validation boundary introduced by this PR.
+
+    Modules and class/type objects carry ``__dict__`` but are not graph
+    records.  Passing them through previously produced ``AttributeError``
+    inside exporters rather than a ``ValidationError`` at the boundary.
+    """
+
+    def test_python_module_in_entities_raises_validation_error(self):
+        """import math; {"entities": [math]} must be rejected at the boundary."""
+        import math
+
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload({"entities": [math]})
+        self.assertIn("'entities'", str(ctx.exception))
+
+    def test_class_object_in_entities_raises_validation_error(self):
+        """A class (type object) is not a graph record."""
+
+        class MyNode:
+            pass
+
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload({"entities": [MyNode]})
+        self.assertIn("'entities'", str(ctx.exception))
+
+    def test_user_defined_instance_with_attributes_is_accepted(self):
+        """Attribute-bearing instances are the legitimate use-case."""
+
+        class Node:
+            def __init__(self):
+                self.id = "n1"
+                self.name = "Alice"
+
+        node = Node()
+        result = normalize_graph_payload({"entities": [node]})
+        self.assertEqual(result["entities"], [node])
+
+    def test_dataclass_instance_is_accepted(self):
+        """Dataclasses are a common record type used by Neo4jCSVExporter."""
+        node = dataclass_node()
+        result = normalize_graph_payload({"entities": [node]})
+        self.assertEqual(result["entities"], [node])
+
+    def test_mapping_record_is_accepted(self):
+        """Plain dicts are the canonical record shape."""
+        result = normalize_graph_payload({"entities": [ENTITY]})
+        self.assertEqual(result["entities"], [ENTITY])
+
+    def test_module_rejected_through_normalizing_exporter(self):
+        """End-to-end: a module element must not reach an exporter's internals."""
+        import math
+
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+
+        for name in ("export_arango", "export_neo4j_csv", "export_lpg"):
+            with self.subTest(exporter=name):
+                outdir = os.path.join(tmpdir, name)
+                os.makedirs(outdir, exist_ok=True)
+                with self.assertRaises(ValidationError):
+                    getattr(export_methods, name)(
+                        {"entities": [math]}, os.path.join(outdir, "out")
+                    )
+
+
+@dataclass
+class _DataclassNode:
+    id: str
+
+
+def dataclass_node():
+    return _DataclassNode(id="dc1")
+
+
 if __name__ == "__main__":
     unittest.main()

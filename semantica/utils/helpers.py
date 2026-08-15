@@ -698,9 +698,18 @@ def _is_record(value: Any) -> bool:
     carrying a ``__dict__``). Both are legitimate, so both are accepted here;
     strings, numbers, and nested sequences are not records under either
     reading.
+
+    Modules and class/type objects are excluded even though they carry
+    ``__dict__``: they are not graph records under any supported reading, and
+    passing them through the boundary would produce ``AttributeError`` inside
+    exporters rather than a ``ValidationError`` at the boundary where the
+    problem is visible.
     """
-    return (
-        isinstance(value, Mapping) or is_dataclass(value) or hasattr(value, "__dict__")
+    import types as _types
+
+    return isinstance(value, Mapping) or is_dataclass(value) or (
+        hasattr(value, "__dict__")
+        and not isinstance(value, (_types.ModuleType, type))
     )
 
 

@@ -298,6 +298,52 @@ class TestSchemaKeyRecognition:
         assert written["properties"] == payload.get("properties", [])
         assert written["ontology"]["uri"] == payload.get("uri", "")
 
+    # ── Fix regression: scalar recognized keys must not short-circuit the ──
+    # ── dropped-records check (version, uri, title, description). ──────────
+
+    @pytest.mark.parametrize(
+        "scalar_key, scalar_value",
+        [
+            ("version", "1.0"),
+            ("uri", "http://example.org/ontology"),
+            ("title", "My Ontology"),
+            ("description", "A test ontology"),
+        ],
+        ids=["version", "uri", "title", "description"],
+    )
+    def test_scalar_recognized_key_does_not_excuse_records_under_unread_key(
+        self, scalar_key, scalar_value
+    ):
+        """A truthy scalar such as version='1.0' must not silence the dropped-
+        records check.  Before the fix, any truthy value from _SCHEMA_KEYS
+        would make _require_nothing_dropped believe something resolved and
+        return early, silently discarding a list under an unread key.
+        """
+        exporter = YAMLSchemaExporter()
+        with pytest.raises(ValidationError) as excinfo:
+            exporter.export_ontology_schema(
+                {scalar_key: scalar_value, "nodes": [{"id": "c1"}]}
+            )
+        assert "holds records" in str(excinfo.value), str(excinfo.value)
+
+    def test_valid_classes_with_scalar_metadata_is_accepted(self):
+        """classes/properties populated alongside version/uri must still work."""
+        exporter = YAMLSchemaExporter()
+        written = yaml.safe_load(
+            exporter.export_ontology_schema(
+                {
+                    "classes": [{"id": "Person"}],
+                    "properties": [{"id": "name"}],
+                    "version": "2.0",
+                    "uri": "http://example.org/o",
+                }
+            )
+        )
+        assert written["classes"] == [{"id": "Person"}]
+        assert written["properties"] == [{"id": "name"}]
+        assert written["ontology"]["version"] == "2.0"
+        assert written["ontology"]["uri"] == "http://example.org/o"
+
 
 class TestFailureIsObservable:
     """The complaint in #953 was that the logs affirmatively reported success."""

@@ -105,10 +105,23 @@ def _require_usable_schema(ontology: Mapping) -> None:
             or resolves to nothing while an unread key still holds records.
     """
     _require_recognized_keys(ontology, _SCHEMA_KEYS, what="Ontology schema")
+    # Only non-empty list/tuple values from recognized schema keys count as
+    # evidence that records survived export.  Scalar metadata fields such as
+    # 'uri', 'title', 'description', and 'version' are truthy strings, but
+    # their presence does not mean the caller's record collections were
+    # exported -- passing them as ``resolved`` would let any scalar value
+    # short-circuit the dropped-records check and silently discard a list
+    # under an unread key alongside e.g. {"version": "1.0", "nodes": [...]}.
+    resolved = [
+        v
+        for key in _SCHEMA_KEYS
+        for v in (ontology.get(key),)
+        if isinstance(v, (list, tuple)) and v
+    ]
     _require_nothing_dropped(
         ontology,
         _SCHEMA_KEYS,
-        [ontology.get(key) for key in _SCHEMA_KEYS],
+        resolved,
         what="Ontology schema",
     )
 
