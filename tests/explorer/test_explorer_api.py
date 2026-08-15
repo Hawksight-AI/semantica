@@ -1312,6 +1312,28 @@ class TestDecisionResponseTimestampValidator:
         with pytest.raises(ValidationError):
             DecisionResponse(decision_id="x", timestamp=[1723600000])
 
+    def test_bool_raises_validation_error(self):
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=True)
+
+    def test_oserror_range_epoch_raises_validation_error(self):
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        # Milliseconds mistakenly stored where seconds were expected.
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=1723600000000)
+
+    def test_overflow_range_epoch_raises_validation_error(self):
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=1e20)
+
 
 # ---------------------------------------------------------------------------
 # /api/enrich/extract input-size and import-boundary tests

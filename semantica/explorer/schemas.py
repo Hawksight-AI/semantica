@@ -158,13 +158,18 @@ class DecisionResponse(BaseModel):
             return value
         if isinstance(value, datetime):
             return value.isoformat()
-        if isinstance(value, (int, float)):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             import math
             if not math.isfinite(value):
                 raise ValueError(
                     f"timestamp must be a finite number, got {value!r}"
                 )
-            return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+            try:
+                return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+            except (OverflowError, OSError) as exc:
+                raise ValueError(
+                    f"timestamp {value!r} is out of the representable epoch range"
+                ) from exc
         raise ValueError(
             f"timestamp must be None, a string, a datetime, or a numeric epoch; "
             f"got {type(value).__name__!r}"
