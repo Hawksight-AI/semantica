@@ -49,8 +49,10 @@ try:
         Distance,
         FieldCondition,
         Filter,
+        MatchAny,
         MatchValue,
         PointStruct,
+        Range,
         VectorParams,
     )
 
@@ -63,7 +65,9 @@ except (ImportError, OSError):
     PointStruct = None
     Filter = None
     FieldCondition = None
+    MatchAny = None
     MatchValue = None
+    Range = None
     CollectionStatus = None
 
 
@@ -537,6 +541,68 @@ class QdrantStore:
         except Exception as e:
             self.logger.warning(f"Failed to get metadata for {vector_id}: {e}")
             return None
+
+    def filter_by_metadata(
+        self, filters: Dict[str, Any], limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter vectors by metadata using Qdrant payload filtering.
+
+        Args:
+            filters: Metadata filter criteria
+            limit: Maximum number of results
+
+        Returns:
+            List of matching result dicts with 'id', 'metadata', and 'vector'
+        """
+        if self.collection is None or self.client is None or not QDRANT_AVAILABLE:
+            return []
+
+        conditions = []
+        if filters:
+            for key, value in filters.items():
+                if isinstance(value, dict):
+                    cond_kwargs = {}
+                    if "min" in value and value["min"] is not None:
+                        cond_kwargs["gte"] = value["min"]
+                    if "max" in value and value["max"] is not None:
+                        cond_kwargs["lte"] = value["max"]
+                    if cond_kwargs:
+                        conditions.append(
+                            FieldCondition(key=key, range=Range(**cond_kwargs))
+                        )
+                elif isinstance(value, list):
+                    conditions.append(
+                        FieldCondition(key=key, match=MatchAny(any=value))
+                    )
+                else:
+                    conditions.append(
+                        FieldCondition(key=key, match=MatchValue(value=value))
+                    )
+
+        query_filter = Filter(must=conditions) if conditions else None
+
+        try:
+            records, _ = self.client.scroll(
+                collection_name=self.collection.collection_name,
+                scroll_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=True,
+            )
+            results = []
+            for rec in records:
+                results.append(
+                    {
+                        "id": str(rec.id),
+                        "metadata": rec.payload or {},
+                        "vector": np.array(rec.vector) if rec.vector is not None else None,
+                    }
+                )
+            return results
+        except Exception as e:
+            self.logger.warning(f"Failed to scroll Qdrant points by metadata filter: {e}")
+            return []
 
     def delete_vectors(
         self, point_ids: List[Union[str, int]], **options

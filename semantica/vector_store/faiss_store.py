@@ -490,6 +490,42 @@ class FAISSStore:
             return self.index.get_metadata(vector_id)
         return None
 
+    def filter_by_metadata(
+        self, filters: Dict[str, Any], limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter stored vectors by metadata.
+
+        Args:
+            filters: Metadata filter criteria
+            limit: Maximum number of results
+
+        Returns:
+            List of matching result dicts with 'id', 'metadata', and 'vector'
+        """
+        if self.index is None or not hasattr(self.index, "metadata"):
+            return []
+
+        from .vector_store import _matches_filter
+
+        if limit <= 0:
+            return []
+
+        results = []
+        for vector_id, metadata in self.index.metadata.items():
+            if _matches_filter(metadata, filters):
+                results.append(
+                    {
+                        "id": vector_id,
+                        "metadata": metadata,
+                        "vector": self.get_vector(vector_id),
+                    }
+                )
+                if len(results) >= limit:
+                    break
+
+        return results
+
     def get_stats(self) -> Dict[str, Any]:
         """Get index statistics."""
         if self.index is None:
@@ -501,3 +537,15 @@ class FAISSStore:
             "vector_count": len(self.index.vector_ids),
             "faiss_available": FAISS_AVAILABLE,
         }
+
+    def count(self) -> int:
+        """Return the number of vectors currently tracked in this store.
+
+        Returns the length of the ``vector_ids`` list maintained by
+        ``FAISSIndex``.  FAISSStore does not implement vector deletion, so
+        this list is strictly append-only and is always consistent with the
+        underlying FAISS index (``index.ntotal``).
+        """
+        if self.index is None:
+            return 0
+        return len(self.index.vector_ids)
