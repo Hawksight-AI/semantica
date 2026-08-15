@@ -181,6 +181,39 @@ pip install -e ".[dev]"
 pre-commit install
 ```
 
+### Pinned CI dependencies
+
+`requirements-ci.txt` pins every transitive dependency at exact versions so CI,
+security scans, and release builds install the same packages every run (the
+Python equivalent of `explorer/package-lock.json` + `npm ci`). It is a
+**separate build environment**: every package carries a SHA-256 hash
+(`--generate-hashes`), so installs are reproducible and supply-chain safe —
+never install into your local dev environment from it.
+
+Regenerate it after changing `pyproject.toml` dependencies:
+
+```bash
+pip install uv==0.12.1
+uv pip compile pyproject.toml --python-version 3.11 --extra all --generate-hashes -o requirements-ci.txt
+```
+
+The `all` extra is the repo's cross-platform dependency set (GPU extras like
+`faiss-gpu`/`cupy` are excluded and installed separately on Linux — see
+`pyproject.toml`). Keep the pinned `uv` version in sync with CI so regeneration
+is deterministic.
+
+CI's staleness check re-resolves with the committed lockfile as a constraint
+and compares version lines only: upstream package releases never fail CI —
+the lockfile changes only when `pyproject.toml` changes intentionally.
+
+CI fails if `requirements-ci.txt` is stale relative to `pyproject.toml`
+(the version-line comparison detects new/removed/changed dependencies).
+
+Build-system pins: `[build-system].requires` is pinned to exact versions
+(`setuptools==84.0.0`, `wheel==0.48.0`) and release builds run
+`python -m build --no-isolation` against the lockfile — no unpinned
+build-time isolation anywhere.
+
 ### 3. Create Branch
 
 ```bash
