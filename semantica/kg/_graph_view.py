@@ -174,9 +174,13 @@ def _edge_endpoints(edge: Any) -> Optional[Tuple[Any, Any]]:
 
 def _node_id(value: Any) -> Any:
     if isinstance(value, dict):
-        value = _first_value(value, "id", "node_id", "entity_id", "key")
+        value = _first_value(
+            value, "id", "node_id", "entity_id", "key", "name", "text"
+        )
     elif not isinstance(value, (str, int, float, bool, bytes, tuple)):
-        value = _first_attribute(value, "node_id", "id", "entity_id", "key")
+        value = _first_attribute(
+            value, "node_id", "id", "entity_id", "key", "name", "text"
+        )
 
     if value is None:
         return None

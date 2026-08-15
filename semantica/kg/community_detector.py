@@ -52,6 +52,15 @@ from ..utils.progress_tracker import get_progress_tracker
 from ._graph_view import build_adjacency, build_graph_view
 
 
+def _is_hashable(value: Any) -> bool:
+    """Return whether a community identifier can be used in a set."""
+    try:
+        hash(value)
+    except TypeError:
+        return False
+    return True
+
+
 class CommunityDetector:
     """
     Community detection engine.
@@ -430,7 +439,18 @@ class CommunityDetector:
             assignments = communities.get("node_assignments")
             if isinstance(assignments, dict):
                 return assignments
-            return communities
+
+            detected_communities = communities.get("communities")
+            if isinstance(detected_communities, (list, tuple)):
+                communities = detected_communities
+            elif "communities" in communities:
+                raise ValueError("Community results must contain a list of communities")
+            elif not all(_is_hashable(value) for value in communities.values()):
+                raise ValueError(
+                    "Community assignments must map nodes to hashable community IDs"
+                )
+            else:
+                return communities
 
         node_assignments: Dict[Any, Any] = {}
         for community_id, community in enumerate(communities or []):

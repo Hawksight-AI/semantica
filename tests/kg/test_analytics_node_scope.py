@@ -84,3 +84,29 @@ def test_nodes_edges_payload_keeps_declared_isolated_nodes():
 
     assert result["total_nodes"] == 3
     assert result["centrality"]["C"] == 0.0
+
+
+def test_name_and_text_nodes_are_kept_when_ids_are_missing():
+    graph = {
+        "entities": [{"name": "Alice"}, {"text": "Bob"}],
+        "relationships": [],
+    }
+
+    result = CentralityCalculator().calculate_degree_centrality(graph)
+
+    assert result["total_nodes"] == 2
+    assert set(result["centrality"]) == {"Alice", "Bob"}
+
+
+def test_community_metrics_accepts_communities_payload():
+    detector = CommunityDetector()
+    graph = {
+        "entities": [{"id": "A"}, {"id": "B"}, {"id": "C"}],
+        "relationships": [{"source": "A", "target": "B"}],
+    }
+    result = {"communities": [["A", "B"], ["C"]]}
+
+    metrics = detector.calculate_community_metrics(graph, result)
+
+    assert metrics["num_communities"] == 2
+    assert metrics["community_sizes"] == {0: 2, 1: 1}
