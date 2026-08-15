@@ -537,3 +537,15 @@ class FAISSStore:
             "vector_count": len(self.index.vector_ids),
             "faiss_available": FAISS_AVAILABLE,
         }
+
+    def count(self) -> int:
+        """Return the number of vectors currently tracked in this store.
+
+        Returns the length of the ``vector_ids`` list maintained by
+        ``FAISSIndex``.  FAISSStore does not implement vector deletion, so
+        this list is strictly append-only and is always consistent with the
+        underlying FAISS index (``index.ntotal``).
+        """
+        if self.index is None:
+            return 0
+        return len(self.index.vector_ids)

@@ -950,6 +950,15 @@ class PgVectorStore:
             except Exception as e:
                 raise ProcessingError("Failed to get stats") from e
 
+    def count(self) -> int:
+        """Return the exact number of vectors stored in this PostgreSQL table.
+
+        Executes ``SELECT COUNT(*) FROM <table>`` — always reflects the
+        committed state of the table, including any deletes or updates.
+        """
+        stats = self.get_stats()
+        return int(stats["vector_count"])
+
     def close(self):
         """Close the connection pool."""
         if self._pool:

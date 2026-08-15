@@ -1,5 +1,6 @@
 """Integration tests for the explorer API."""
 
+from datetime import datetime
 import json
 from pathlib import Path
 import uuid
@@ -444,6 +445,63 @@ class TestDecisions:
         assert violation_response.json()["compliant"] is False
 
 
+@pytest.fixture(scope="module")
+def recorded_client():
+    """Client over a graph whose decisions were written by record_decision()."""
+    graph = ContextGraph(advanced_analytics=False)
+    entities = ["applicant_A7291"]
+    graph.record_decision(
+        category="credit_application",
+        scenario="Personal loan, $85k income, 31% DTI",
+        reasoning="Income meets threshold; employment stable",
+        outcome="proceed_to_underwriting",
+        confidence=0.88,
+        entities=entities,
+    )
+    graph.record_decision(
+        category="loan_underwriting",
+        scenario="Underwriting review for A-7291",
+        reasoning="DTI within policy; clean 36-month credit history",
+        outcome="approved",
+        confidence=0.94,
+        entities=entities,
+    )
+    with TestClient(create_app(session=GraphSession(graph))) as test_client:
+        yield test_client
+
+
+class TestRecordedDecisions:
+    """Decisions written by record_decision(), not hand-built decision nodes.
+
+    record_decision() stores ``timestamp`` as a float epoch. The fixtures above
+    set no timestamp at all, so these routes were only ever exercised against
+    decision nodes that could not trigger the float/str mismatch.
+    """
+
+    def test_list_decisions_serializes_float_timestamp(self, recorded_client):
+        response = recorded_client.get("/api/decisions")
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 2
+        for item in payload:
+            assert isinstance(item["timestamp"], str)
+            datetime.fromisoformat(item["timestamp"])
+
+    def test_get_decision(self, recorded_client):
+        listed = recorded_client.get("/api/decisions").json()
+        decision_id = listed[0]["decision_id"]
+        response = recorded_client.get(f"/api/decisions/{decision_id}")
+        assert response.status_code == 200
+        assert response.json()["decision_id"] == decision_id
+
+    def test_filter_by_category(self, recorded_client):
+        response = recorded_client.get("/api/decisions?category=loan_underwriting")
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 1
+        assert payload[0]["outcome"] == "approved"
+
+
 class TestTemporal:
     def test_snapshot_now(self, client):
         response = client.get("/api/temporal/snapshot")
@@ -602,7 +660,20 @@ class TestEnrichment:
 
     def test_extract(self, client):
         response = client.post("/api/enrich/extract", json={"text": "Alice works at Acme Corp."})
-        assert response.status_code in (200, 422, 503)
+        # 503 is reserved for a genuinely absent semantic_extract module; it must
+        # not be reachable on an install where the module imports cleanly.
+        # Runtime errors from the extraction stack surface as 500, not 422.
+        assert response.status_code in (200, 422, 500)
+
+    def test_extract_returns_entities(self, client):
+        response = client.post(
+            "/api/enrich/extract",
+            json={"text": "Apple CEO Tim Cook announced record earnings in Cupertino."},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["entities"], "extraction returned no entities"
+        assert any("Tim Cook" in str(entity) for entity in payload["entities"])
 
     def test_link_prediction(self, client):
         response = client.post("/api/enrich/links", json={"node_id": "python", "top_n": 5})
@@ -1157,3 +1228,155 @@ class TestClassifyDistance:
 
     def test_large_hop_count_is_distant(self):
         assert classify_path_distance(20) == "distant"
+
+
+# ---------------------------------------------------------------------------
+# Timestamp validator unit tests (no HTTP server needed)
+# ---------------------------------------------------------------------------
+
+class TestDecisionResponseTimestampValidator:
+    """Unit tests for DecisionResponse._normalize_timestamp.
+
+    These run directly against the Pydantic model, not through the HTTP stack,
+    so they are fast and isolated from the rest of the Explorer infrastructure.
+    """
+
+    def _make(self, ts):
+        from semantica.explorer.schemas import DecisionResponse
+        import pytest as _pytest
+        return DecisionResponse(decision_id="x", timestamp=ts)
+
+    def test_none_passes_through(self):
+        from semantica.explorer.schemas import DecisionResponse
+        dr = DecisionResponse(decision_id="x", timestamp=None)
+        assert dr.timestamp is None
+
+    def test_string_passes_through_unchanged(self):
+        from semantica.explorer.schemas import DecisionResponse
+        iso = "2024-08-14T10:23:45+00:00"
+        dr = DecisionResponse(decision_id="x", timestamp=iso)
+        assert dr.timestamp == iso
+
+    def test_float_epoch_becomes_iso_string(self):
+        from datetime import datetime, timezone
+        from semantica.explorer.schemas import DecisionResponse
+        epoch = 1723600000.5
+        dr = DecisionResponse(decision_id="x", timestamp=epoch)
+        assert isinstance(dr.timestamp, str)
+        parsed = datetime.fromisoformat(dr.timestamp)
+        assert abs(parsed.timestamp() - epoch) < 1.0
+
+    def test_int_epoch_becomes_iso_string(self):
+        from datetime import datetime
+        from semantica.explorer.schemas import DecisionResponse
+        epoch = 1723600000
+        dr = DecisionResponse(decision_id="x", timestamp=epoch)
+        assert isinstance(dr.timestamp, str)
+        datetime.fromisoformat(dr.timestamp)
+
+    def test_nan_raises_validation_error(self):
+        import math
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=math.nan)
+
+    def test_positive_inf_raises_validation_error(self):
+        import math
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=math.inf)
+
+    def test_negative_inf_raises_validation_error(self):
+        import math
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=-math.inf)
+
+    def test_dict_raises_validation_error(self):
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp={"$date": 1723600000})
+
+    def test_list_raises_validation_error(self):
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=[1723600000])
+
+    def test_bool_raises_validation_error(self):
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=True)
+
+    def test_oserror_range_epoch_raises_validation_error(self):
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        # Milliseconds mistakenly stored where seconds were expected.
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=1723600000000)
+
+    def test_overflow_range_epoch_raises_validation_error(self):
+        import pytest
+        from pydantic import ValidationError
+        from semantica.explorer.schemas import DecisionResponse
+        with pytest.raises(ValidationError):
+            DecisionResponse(decision_id="x", timestamp=1e20)
+
+
+# ---------------------------------------------------------------------------
+# /api/enrich/extract input-size and import-boundary tests
+# ---------------------------------------------------------------------------
+
+class TestEnrichExtractValidation:
+    """Tests for the input constraints and exception handling added to
+    POST /api/enrich/extract."""
+
+    def test_oversized_input_rejected_before_nlp(self, client):
+        """A payload exceeding the 10 000-character limit must be rejected with
+        422 before any NLP work is attempted."""
+        oversized = "a " * 5_001  # 10 002 characters
+        response = client.post("/api/enrich/extract", json={"text": oversized})
+        assert response.status_code == 422
+
+    def test_input_at_limit_is_accepted(self, client):
+        """A payload at exactly the maximum length must not be rejected by the
+        schema validator (NLP may still fail, but the schema must accept it)."""
+        at_limit = "a" * 10_000
+        response = client.post("/api/enrich/extract", json={"text": at_limit})
+        # 503 = module missing, 500 = runtime error from the extraction stack,
+        # 200 = success. What must NOT happen is a schema rejection (422 from
+        # Pydantic due to max_length), since this input is exactly at the limit.
+        assert response.status_code in (200, 500, 503)
+
+    def test_import_failure_returns_503_not_422(self, client, monkeypatch):
+        """A genuine ImportError on the semantic_extract import must produce 503
+        (dependency unavailable), NOT 422 (extraction failed)."""
+        import semantica.explorer.routes.enrich as enrich_module
+
+        def _failing_import(name, *args, **kwargs):
+            if "semantic_extract" in name:
+                raise ImportError("semantic_extract not installed")
+            return original_import(name, *args, **kwargs)
+
+        import builtins
+        original_import = builtins.__import__
+
+        monkeypatch.setattr(builtins, "__import__", _failing_import)
+        response = client.post(
+            "/api/enrich/extract",
+            json={"text": "Apple was founded by Steve Jobs."},
+        )
+        assert response.status_code == 503
+        assert "semantic_extract" in response.json()["detail"].lower()

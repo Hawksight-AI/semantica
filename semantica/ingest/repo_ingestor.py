@@ -29,20 +29,53 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import ipaddress
 import os
 import re
 import shutil
+import socket
 import tempfile
+import threading
+import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from urllib.parse import urlparse
 
 import git
 
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
+# Safe subset of GitPython clone_from kwargs. Broader kwargs (multi_options,
+# upload_pack, template, config, env, …) have been used in denylist-bypass
+# attacks against older GitPython releases — keep them out of the call surface.
+ALLOWED_CLONE_OPTIONS: Set[str] = {"depth", "branch", "single_branch", "no_tags"}
+ALLOWED_REPO_URL_SCHEMES = frozenset({"https", "http", "git", "ssh"})
+# SCP-like SSH remotes: user@host:path/to/repo.git (no scheme)
+_SCP_LIKE_REPO_URL_RE = re.compile(r"^[^@\s]+@[^:\s]+:.+$")
+_ENV_VAR_TOKEN_RE = re.compile(
+    r"\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)"
+)
+# Short-lived DNS cache for host validation. This reduces repeated lookups but
+# does not eliminate DNS-rebinding / TOCTOU races between validate and clone —
+# network egress controls remain recommended.
+_REPO_HOST_RESOLVE_CACHE: "OrderedDict[str, Tuple[float, Tuple[str, ...]]]" = (
+    OrderedDict()
+)
+_REPO_HOST_RESOLVE_CACHE_TTL_SECONDS = 60.0
+_REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES = 1024
+# Guards all reads/writes/prunes of _REPO_HOST_RESOLVE_CACHE. The cache is a
+# module-level OrderedDict shared by every RepoIngestor instance and every
+# thread; without a lock, concurrent ingest_repository() calls can mutate the
+# dict while another thread is iterating it (e.g. during pruning), raising
+# "RuntimeError: OrderedDict mutated during iteration". The blocking
+# socket.getaddrinfo() call is intentionally kept outside this lock so a slow
+# DNS lookup for one host cannot stall cache access for other hosts.
+_REPO_HOST_RESOLVE_CACHE_LOCK = threading.Lock()
 
 
 @dataclass
@@ -509,6 +542,287 @@ class RepoIngestor:
 
         self.logger.debug("Repo ingestor initialized")
 
+    @staticmethod
+    def _is_scp_like_repo_url(repo_url: str) -> bool:
+        """Return True for scp-like SSH remotes (``user@host:path``)."""
+        url = repo_url.strip()
+        # Avoid treating scheme URLs with userinfo as scp-like (e.g. https://u@h/...)
+        if "://" in url:
+            return False
+        return bool(_SCP_LIKE_REPO_URL_RE.match(url))
+
+    @staticmethod
+    def _scp_like_host(repo_url: str) -> str:
+        """Extract the hostname from an scp-like remote (``user@host:path``)."""
+        _, rest = repo_url.strip().split("@", 1)
+        host, _ = rest.split(":", 1)
+        return host
+
+    @staticmethod
+    def _normalize_repo_url(repo_url: str) -> str:
+        """Normalize scp-like remotes to ``ssh://`` URLs; leave others unchanged.
+
+        ``git@host:org/repo.git`` → ``ssh://git@host/org/repo.git``
+        """
+        url = repo_url.strip()
+        if not RepoIngestor._is_scp_like_repo_url(url):
+            return url
+        user_host, path = url.split(":", 1)
+        if not path.startswith("/"):
+            path = f"/{path}"
+        return f"ssh://{user_host}{path}"
+
+    @staticmethod
+    def _is_blocked_ip(
+        ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address],
+    ) -> bool:
+        """Return True if *ip* is an SSRF-sensitive address.
+
+        Blocks private (RFC1918/ULA), loopback, link-local (including
+        169.254.x.x / fe80::/10 cloud-metadata ranges), and unspecified
+        addresses.
+
+        Intentionally does **not** use ``ip.is_reserved``: Python's
+        ``ipaddress`` module marks the NAT64 Well-Known Prefix
+        (64:ff9b::/96, RFC 6052) as reserved, which causes false positives
+        on IPv6-only and dual-stack networks that use NAT64 for public
+        Internet access (e.g., github.com resolves to 64:ff9b::… on such
+        networks). Those addresses are not SSRF-sensitive.
+        """
+        return bool(
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_unspecified
+        )
+
+    @staticmethod
+    def _resolve_repo_host_ips(host: str) -> Tuple[str, ...]:
+        """Resolve *host* to IP strings via ``socket.getaddrinfo``, with TTL cache.
+
+        Note: caching and pre-clone resolution mitigate repeated lookups but
+        cannot fully prevent DNS rebinding between validation and clone.
+        Prefer network-layer egress controls for defense in depth.
+        """
+        cache_key = host.lower().rstrip(".")
+        now = time.monotonic()
+        with _REPO_HOST_RESOLVE_CACHE_LOCK:
+            RepoIngestor._prune_repo_host_resolve_cache_locked(now)
+            cached = _REPO_HOST_RESOLVE_CACHE.get(cache_key)
+            if cached is not None:
+                expires_at, ips = cached
+                if now < expires_at:
+                    _REPO_HOST_RESOLVE_CACHE.move_to_end(cache_key)
+                    return ips
+                _REPO_HOST_RESOLVE_CACHE.pop(cache_key, None)
+
+        # DNS resolution is blocking I/O; keep it outside the lock so a slow
+        # or hanging lookup for one host cannot stall cache access for
+        # concurrent lookups of other hosts.
+        try:
+            addrinfos = socket.getaddrinfo(
+                host, None, type=socket.SOCK_STREAM
+            )
+        except socket.gaierror as exc:
+            raise ValidationError(
+                f"Cannot resolve repository host {host!r}: {exc}"
+            ) from exc
+
+        ips: List[str] = []
+        seen: Set[str] = set()
+        for _family, _type, _proto, _canonname, sockaddr in addrinfos:
+            addr = sockaddr[0]
+            if addr not in seen:
+                seen.add(addr)
+                ips.append(addr)
+
+        if not ips:
+            raise ValidationError(
+                f"Cannot resolve repository host {host!r}: no addresses"
+            )
+
+        result = tuple(ips)
+        with _REPO_HOST_RESOLVE_CACHE_LOCK:
+            now = time.monotonic()
+            _REPO_HOST_RESOLVE_CACHE[cache_key] = (
+                now + _REPO_HOST_RESOLVE_CACHE_TTL_SECONDS,
+                result,
+            )
+            _REPO_HOST_RESOLVE_CACHE.move_to_end(cache_key)
+            RepoIngestor._prune_repo_host_resolve_cache_locked(now)
+        return result
+
+    @staticmethod
+    def _prune_repo_host_resolve_cache(now: Optional[float] = None) -> None:
+        """Remove expired host entries and enforce a hard cache size cap.
+
+        Acquires ``_REPO_HOST_RESOLVE_CACHE_LOCK``. Callers that already hold
+        the lock must use ``_prune_repo_host_resolve_cache_locked`` instead to
+        avoid deadlocking on the (non-reentrant) lock.
+        """
+        if now is None:
+            now = time.monotonic()
+        with _REPO_HOST_RESOLVE_CACHE_LOCK:
+            RepoIngestor._prune_repo_host_resolve_cache_locked(now)
+
+    @staticmethod
+    def _prune_repo_host_resolve_cache_locked(now: Optional[float] = None) -> None:
+        """Prune implementation; caller must already hold the cache lock."""
+        if now is None:
+            now = time.monotonic()
+
+        expired_keys = [
+            cache_key
+            for cache_key, (expires_at, _ips) in _REPO_HOST_RESOLVE_CACHE.items()
+            if expires_at <= now
+        ]
+        for cache_key in expired_keys:
+            _REPO_HOST_RESOLVE_CACHE.pop(cache_key, None)
+
+        while len(_REPO_HOST_RESOLVE_CACHE) > _REPO_HOST_RESOLVE_CACHE_MAX_ENTRIES:
+            _REPO_HOST_RESOLVE_CACHE.popitem(last=False)
+
+    @staticmethod
+    def _validate_repo_host(host: str) -> None:
+        """Reject localhost names and hosts resolving to blocked addresses.
+
+        Literal IPs are checked directly. Hostnames are resolved with
+        ``socket.getaddrinfo`` and **every** returned address is screened.
+        """
+        if not host:
+            raise ValidationError("Repository URL must include a host")
+
+        lowered = host.lower().rstrip(".")
+        if lowered == "localhost" or lowered.endswith(".localhost"):
+            raise ValidationError(f"Repository host is not allowed: {host}")
+
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            # Hostname: resolve and validate all returned addresses
+            for addr in RepoIngestor._resolve_repo_host_ips(host):
+                try:
+                    resolved = ipaddress.ip_address(addr)
+                except ValueError:
+                    continue
+                if RepoIngestor._is_blocked_ip(resolved):
+                    raise ValidationError(
+                        f"Repository host resolves to a blocked address: "
+                        f"{host} -> {addr}"
+                    )
+            return
+
+        if RepoIngestor._is_blocked_ip(ip):
+            raise ValidationError(
+                f"Repository host resolves to a blocked address: {host}"
+            )
+
+    @staticmethod
+    def _is_local_repo_path(repo_url: str) -> bool:
+        """Return True if *repo_url* looks like a local filesystem path.
+
+        Matches absolute paths (``/…``, ``C:\\…``), relative paths
+        (``./…``, ``../…``), and bare names without a scheme or ``@host:``
+        pattern that would be interpreted as a local path by git.
+        """
+        url = repo_url.strip()
+        if "://" in url:
+            return False
+        if RepoIngestor._is_scp_like_repo_url(url):
+            return False
+        # Absolute POSIX or Windows paths, or relative paths
+        p = Path(url)
+        if p.is_absolute():
+            return True
+        # ./  or ../
+        if url.startswith(("./", "../", ".\\", "..\\")):
+            return True
+        # Existing local directory (best-effort; may not exist yet during tests)
+        if p.exists():
+            return True
+        return False
+
+    @staticmethod
+    def _validate_repo_url(repo_url: str) -> None:
+        """Validate a repository URL before cloning.
+
+        Accepts http(s)/git/ssh URLs, scp-like SSH remotes
+        (``user@host:path``), and local filesystem paths.  Rejects empty
+        values, unsupported schemes, missing hosts, environment variable
+        expansion tokens (``$VAR`` / ``${VAR}``), and hosts that are or
+        resolve to private / loopback / link-local addresses.
+
+        Local filesystem paths bypass network validation because
+        ``git clone /path/to/local/repo`` makes no network requests and
+        carries no SSRF risk.
+
+        DNS resolution is TOCTOU-sensitive (rebinding); pair with egress
+        controls in production deployments.
+        """
+        if not isinstance(repo_url, str) or not repo_url.strip():
+            raise ValidationError("Repository URL must be a non-empty string")
+
+        # Defense-in-depth against GitPython env-var expansion in clone URLs
+        # (GHSA-2f96-g7mh-g2hx / related). Prefer rejecting before clone_from.
+        if _ENV_VAR_TOKEN_RE.search(repo_url):
+            raise ValidationError(
+                "Repository URL must not contain environment variable "
+                "references ($VAR / ${VAR})"
+            )
+
+        url = repo_url.strip()
+
+        # Local filesystem paths: no network, no SSRF risk — skip host checks.
+        if RepoIngestor._is_local_repo_path(url):
+            return
+
+        # scp-like syntax has no URL scheme; validate host then accept.
+        if RepoIngestor._is_scp_like_repo_url(url):
+            RepoIngestor._validate_repo_host(RepoIngestor._scp_like_host(url))
+            return
+
+        try:
+            parsed = urlparse(url)
+            # ``hostname`` can raise ValueError for malformed netloc (e.g. bad IPv6)
+            host = parsed.hostname
+        except ValueError as e:
+            raise ValidationError(f"Invalid repository URL: {e}") from e
+
+        scheme = (parsed.scheme or "").lower()
+        if scheme not in ALLOWED_REPO_URL_SCHEMES:
+            raise ValidationError(
+                f"Unsupported repository URL scheme {scheme!r}. "
+                f"Allowed schemes: {sorted(ALLOWED_REPO_URL_SCHEMES)}"
+            )
+        if not parsed.netloc or not host:
+            raise ValidationError(
+                f"Repository URL must include a host: {repo_url}"
+            )
+
+        RepoIngestor._validate_repo_host(host)
+
+    @staticmethod
+    def _filter_clone_options(options: Dict[str, Any]) -> Dict[str, Any]:
+        """Return only allowlisted git clone kwargs; reject anything else."""
+        # Semantica processing options — never forwarded to clone_from
+        non_git_options = {
+            "include_history",
+            "file_filters",
+            "commit_filters",
+            "include_extensions",
+            "max_depth",
+        }
+        candidate = {
+            k: v for k, v in options.items() if k not in non_git_options
+        }
+        unsafe = set(candidate) - ALLOWED_CLONE_OPTIONS
+        if unsafe:
+            raise ValidationError(
+                f"Clone option(s) not permitted: {sorted(unsafe)}. "
+                f"Allowed options: {sorted(ALLOWED_CLONE_OPTIONS)}"
+            )
+        return candidate
+
     def ingest_repository(self, repo_url: str, **options) -> Dict[str, Any]:
         """
         Ingest and process a Git repository.
@@ -518,6 +832,8 @@ class RepoIngestor:
             **options: Processing options:
                 - branch: Specific branch to checkout
                 - depth: Clone depth (for shallow clones)
+                - single_branch: Clone only a single branch
+                - no_tags: Skip cloning tags
                 - include_history: Whether to include commit history
                 - include_extensions: List of file extensions to include (e.g., ["py", "md"])
 
@@ -533,27 +849,19 @@ class RepoIngestor:
         )
 
         try:
+            # Validate repository URL before any clone attempt
+            self._validate_repo_url(repo_url)
+            clone_url = self._normalize_repo_url(repo_url)
+
             # Handle option aliases and filters
             if "max_depth" in options and "depth" not in options:
                 options["depth"] = options["max_depth"]
 
-            # Separate git clone options from processing options
-            # We filter out known non-git options to avoid passing invalid flags to git clone
-            non_git_options = {
-                "include_history",
-                "file_filters",
-                "commit_filters",
-                "include_extensions",
-                "max_depth",
-            }
-            clone_options = {
-                k: v for k, v in options.items() if k not in non_git_options
-            }
+            clone_options = self._filter_clone_options(options)
 
-            # Validate repository URL
             try:
                 parsed = git.Repo.clone_from(
-                    repo_url, self._get_temp_dir(), **clone_options
+                    clone_url, self._get_temp_dir(), **clone_options
                 )
             except Exception as e:
                 self.progress_tracker.update_tracking(
@@ -627,6 +935,12 @@ class RepoIngestor:
                 "temp_path": str(repo_path),
             }
 
+        except ValidationError as e:
+            # Keep validation failures typed for callers; do not wrap as ProcessingError
+            self.progress_tracker.update_tracking(
+                tracking_id, status="failed", message=str(e)
+            )
+            raise
         except Exception as e:
             self.progress_tracker.update_tracking(
                 tracking_id, status="failed", message=str(e)
