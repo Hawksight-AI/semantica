@@ -1732,6 +1732,53 @@ def embed(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
+def _write_embeddings_output(out_path: Path, result) -> None:
+    """Serialize ``embed generate`` output in the format ``embed index`` reads.
+
+    #994: this used to write ``json.dumps(result, default=str)`` regardless of
+    the file extension, so ``--output embeddings.parquet`` produced a plain
+    text file holding the repr of a numpy array and ``embed index`` then failed
+    on the Parquet magic bytes. The writer now mirrors the reader
+    (``pd.read_parquet`` / ``pd.read_json(lines=...)`` with a vector column of
+    lists) and rejects extensions it cannot write correctly.
+    """
+    import numpy as np
+
+    vectors = np.asarray(result)
+    if vectors.ndim == 1:
+        vectors = vectors.reshape(1, -1)
+    if vectors.ndim != 2:
+        raise click.ClickException(
+            f"Unexpected embeddings result shape {vectors.shape!r}; "
+            "expected a 1-D or 2-D array"
+        )
+    rows = [v.tolist() for v in vectors]
+    suffix = out_path.suffix.lower()
+    if suffix not in (".parquet", ".json", ".jsonl"):
+        raise click.ClickException(
+            f"Unsupported embeddings output format '{suffix}'. "
+            "Use .parquet, .json, or .jsonl"
+        )
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise click.ClickException(
+            f"Embeddings output requires pandas: {exc}"
+        ) from exc
+    if suffix == ".parquet":
+        try:
+            pd.DataFrame({"embedding": rows}).to_parquet(out_path)
+        except ImportError as exc:
+            raise click.ClickException(
+                f"Writing Parquet requires pyarrow: {exc}. "
+                "Install it (e.g. pip install pyarrow) or use --output <file>.json."
+            ) from exc
+    else:
+        pd.DataFrame({"embedding": rows}).to_json(
+            out_path, orient="records", lines=(suffix == ".jsonl")
+        )
+
+
 @embed.command("generate")
 @click.argument("input_path")
 @click.option("--model",
@@ -2032,7 +2079,7 @@ def deduplicate(
         except ImportError as exc:
             raise click.ClickException(f"Deduplication module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            _write_embeddings_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
@@ -3156,7 +3203,7 @@ def ontology_align(cli_ctx: CLIContext, source: str, target: str, strategy: str,
         except ImportError as exc:
             raise click.ClickException(f"Ontology module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            _write_embeddings_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"alignments": str(result)})
