@@ -139,12 +139,15 @@ class NERExtractor:
         if not self.progress_tracker.enabled:
             self.progress_tracker.enabled = True
 
-        # Initialize spaCy model if ML method is used
+        # Initialize spaCy model if ML method is used. Route through the
+        # process-wide cache (#997): every NERExtractor instance used to pay
+        # spacy.load() on construction, and spaCy model loads are 1-3s each.
         self.nlp = None
         self._ml_runtime_usable = True
         if "ml" in self.method and SPACY_AVAILABLE:
             try:
-                self.nlp = spacy.load(self.model_name)
+                from .methods import load_spacy_model
+                self.nlp = load_spacy_model(self.model_name)
             except OSError:
                 self.logger.warning(
                     f"spaCy model {self.model_name} not found. ML method will fallback."

@@ -79,7 +79,9 @@ class SemanticChunker:
         if SPACY_AVAILABLE:
             model_name = config.get("model", "en_core_web_sm")
             try:
-                self.nlp = spacy.load(model_name)
+                # Route through the process-wide cache (#997/#998).
+                from ..semantic_extract.methods import load_spacy_model
+                self.nlp = load_spacy_model(model_name)
             except OSError:
                 self.logger.warning(
                     f"spaCy model {model_name} not found. Using fallback chunking."

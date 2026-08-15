@@ -333,10 +333,12 @@ def split_by_sentences(
     Returns:
         List of chunks
     """
-    # Try spaCy first
+    # Try spaCy first. Route through the process-wide cache (#997/#998):
+    # every split call used to pay spacy.load(), which is 1-3s per load.
     if SPACY_AVAILABLE and kwargs.get("use_spacy", True):
         try:
-            nlp = spacy.load("en_core_web_sm")
+            from ..semantic_extract.methods import load_spacy_model
+            nlp = load_spacy_model("en_core_web_sm")
             doc = nlp(text)
             sentences = [sent.text for sent in doc.sents]
         except Exception:
