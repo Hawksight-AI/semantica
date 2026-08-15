@@ -63,14 +63,16 @@ import importlib
 import json
 import os
 import re
+import types
+from collections import Counter
 from collections.abc import Iterable as IterableABC
 from collections.abc import Mapping
-from dataclasses import is_dataclass
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
 
-from .exceptions import ValidationError
+from .exceptions import ProcessingError, ValidationError
 
 
 def format_data(data: Any, format_type: str = "json") -> str:
@@ -705,12 +707,32 @@ def _is_record(value: Any) -> bool:
     exporters rather than a ``ValidationError`` at the boundary where the
     problem is visible.
     """
-    import types as _types
-
     return isinstance(value, Mapping) or is_dataclass(value) or (
         hasattr(value, "__dict__")
-        and not isinstance(value, (_types.ModuleType, type))
+        and not isinstance(value, (types.ModuleType, type))
     )
+
+
+def _record_to_dict(record: Any) -> Dict[str, Any]:
+    """Convert an accepted record to a plain dict.
+
+    :func:`_is_record` accepts mappings, dataclasses, and objects carrying
+    ``__dict__`` as legitimate record shapes, but consumers of
+    :func:`normalize_graph_payload` -- YAML serialization, ``entity.get(...)``
+    in the LPG and Arango exporters -- read records as dicts. Converting here,
+    at the boundary, means every exporter gets the same shape regardless of
+    which reading the caller used; previously only ``Neo4jCSVExporter``
+    converted object-shaped records locally, so a dataclass record passed
+    validation for the other exporters only to crash with a raw
+    ``AttributeError`` once used.
+    """
+    if isinstance(record, Mapping):
+        return dict(record)
+    if is_dataclass(record):
+        return asdict(record)
+    return {
+        key: value for key, value in vars(record).items() if not key.startswith("_")
+    }
 
 
 def _coerce_records(key: str, value: Any) -> List[Any]:
@@ -772,7 +794,22 @@ def _coerce_records(key: str, value: Any) -> List[Any]:
                 f"{type(record).__name__} at index {index}, not a record. "
                 f"Records must be mappings or objects with attributes."
             )
-    return records
+    return [_record_to_dict(record) for record in records]
+
+
+def _canonical_record_multiset(records: List[Dict[str, Any]]) -> "Counter[str]":
+    """Represent records as an order-independent multiset for equality checks.
+
+    Two spellings of the same collection (``entities`` and ``nodes``) can
+    legitimately list identical records in a different order -- a caller
+    round-tripping through a dict-keyed cache or a set has no reason to
+    preserve list order. Comparing with plain list equality would treat that
+    as a conflict and reject a payload that carries no real data loss, so
+    records are compared as a multiset of their canonical JSON form instead.
+    """
+    return Counter(
+        json.dumps(record, sort_keys=True, default=str) for record in records
+    )
 
 
 def _resolve_collection(
@@ -803,7 +840,7 @@ def _resolve_collection(
     Raises:
         ValidationError: if a spelling holds something other than a collection
             of records; or if two spellings are both present, both non-empty,
-            and not equal.
+            and hold different records, order ignored.
     """
     present = {
         key: _coerce_records(key, payload[key]) for key in keys if key in payload
@@ -812,7 +849,8 @@ def _resolve_collection(
 
     if len(populated) > 1:
         values = list(populated.values())
-        if any(value != values[0] for value in values[1:]):
+        canonical = [_canonical_record_multiset(value) for value in values]
+        if any(entry != canonical[0] for entry in canonical[1:]):
             named = " and ".join(f"'{key}'" for key in populated)
             raise ValidationError(
                 f"Graph payload carries {named} with different contents; "
@@ -830,6 +868,38 @@ def _resolve_collection(
     # Every spelling present is empty (or none is): an explicit empty
     # collection is a legitimate answer, distinct from "unrecognized".
     return []
+
+
+def _require_mapping(data: Any, expected_keys: Sequence[str]) -> None:
+    """Reject non-mapping export input with an actionable error.
+
+    Shared by every consumer of :func:`normalize_graph_payload` so that a
+    wrong *type* fails the same way everywhere. Handed a sequence (or any
+    other non-mapping), every downstream key lookup would fail with a bare
+    ``AttributeError: 'list' object has no attribute 'get'``, which tells the
+    caller nothing about the shape expected -- and ``normalize_graph_payload``
+    itself raises ``ValidationError`` for this case, which would leave
+    exporters that skip this guard raising a different exception type than
+    the ones that call it, for the identical mistake.
+
+    A list is rejected rather than wrapped: these formats distinguish
+    entities from relationships from triplets (or nodes/edges), so inferring
+    which one a bare list represents would silently mislabel the records.
+
+    Args:
+        data: Candidate export payload.
+        expected_keys: Key names the caller reads, named in the error so the
+            caller learns the expected shape.
+
+    Raises:
+        ProcessingError: if ``data`` is not a mapping.
+    """
+    if not isinstance(data, Mapping):
+        keys = "/".join(f"'{key}'" for key in expected_keys)
+        raise ProcessingError(
+            f"Cannot export object of type '{type(data).__name__}': "
+            f"expected a dict with {keys}."
+        )
 
 
 def normalize_graph_payload(

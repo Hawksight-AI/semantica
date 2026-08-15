@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory, normalize_graph_payload
+from ..utils.helpers import _require_mapping, ensure_directory, normalize_graph_payload
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
@@ -153,6 +153,14 @@ class LPGExporter:
             List of Cypher query strings
         """
         queries = []
+
+        # A non-mapping payload cannot reach normalize_graph_payload(): it
+        # raises ValidationError for that case, which would leave this
+        # exporter alone in raising a different exception type than the YAML
+        # and Neo4j exporters raise for the identical mistake.
+        _require_mapping(
+            knowledge_graph, ("entities", "relationships", "nodes", "edges")
+        )
 
         # Accept either vocabulary. Reading 'nodes' with 'entities' as the
         # default dropped every entity when 'nodes' was present but empty --

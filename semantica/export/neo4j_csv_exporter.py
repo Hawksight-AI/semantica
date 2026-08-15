@@ -32,6 +32,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
@@ -507,12 +508,16 @@ class Neo4jCSVExporter:
         return prepared
 
     def _normalize_graph(self, graph: Any) -> Dict[str, List[Dict[str, Any]]]:
-        if isinstance(graph, dict):
+        if isinstance(graph, Mapping):
             # Mapping payloads go through the shared resolver on its default
             # terms, so this backend cannot drift from the others: an
             # unrecognized mapping raises here rather than writing header-only
-            # CSVs that read as a successful export of an empty graph. The
-            # attribute path below stays local, since objects are not mappings.
+            # CSVs that read as a successful export of an empty graph. Checked
+            # against Mapping rather than dict, so a non-dict Mapping (a
+            # MappingProxyType, a ChainMap) takes this path too, instead of
+            # falling through to the attribute branch below and being rejected
+            # as an unrecognized object -- the LPG, Arango, and YAML exporters
+            # already accept such payloads via the same resolver.
             resolved = normalize_graph_payload(graph)
             nodes = resolved["entities"]
             relationships = resolved["relationships"]

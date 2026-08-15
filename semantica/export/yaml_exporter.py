@@ -24,10 +24,11 @@ License: MIT
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Union
 
-from ..utils.exceptions import ProcessingError, ValidationError
+from ..utils.exceptions import ValidationError
 from ..utils.helpers import (
+    _require_mapping,
     _require_nothing_dropped,
     _require_recognized_keys,
     ensure_directory,
@@ -48,34 +49,6 @@ _SCHEMA_KEYS = (
     "description",
     "version",
 )
-
-
-def _require_mapping(data: Any, expected_keys: Sequence[str]) -> None:
-    """Reject non-mapping export input with an actionable error.
-
-    Both YAML exporters read their payload by key. Handed a sequence (or any
-    other non-mapping), every lookup would fail with a bare
-    ``AttributeError: 'list' object has no attribute 'get'`` from deep inside
-    the exporter, which tells the caller nothing about the shape expected.
-
-    A list is rejected rather than wrapped: these formats distinguish
-    entities from relationships from triplets, so inferring which one a bare
-    list represents would silently mislabel the records.
-
-    Args:
-        data: Candidate export payload.
-        expected_keys: Key names this exporter reads, named in the error so
-            the caller learns the expected shape.
-
-    Raises:
-        ProcessingError: if ``data`` is not a mapping.
-    """
-    if not isinstance(data, Mapping):
-        keys = "/".join(f"'{key}'" for key in expected_keys)
-        raise ProcessingError(
-            f"Cannot export object of type '{type(data).__name__}': "
-            f"expected a dict with {keys}."
-        )
 
 
 def _require_usable_schema(ontology: Mapping) -> None:
