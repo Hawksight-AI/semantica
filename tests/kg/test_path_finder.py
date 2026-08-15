@@ -271,6 +271,21 @@ class TestPathFinder:
         assert paths == [["A", "C", "B"], ["A", "D", "B"]]
         assert all(len(path) == len(set(path)) for path in paths)
 
+    def test_dijkstra_exclusion_respects_undirected_traversal(self):
+        """Test exclusions apply in both directions for undirected traversal."""
+        graph = nx.DiGraph()
+        graph.add_edge("A", "B")
+
+        path = self.finder._dijkstra_shortest_path(
+            graph,
+            "B",
+            "A",
+            directed=False,
+            excluded_edges={("A", "B")},
+        )
+
+        assert path == []
+
     def test_find_k_shortest_paths_no_path(self):
         """Test finding k shortest paths with no path available."""
         paths = self.finder.find_k_shortest_paths(self.disconnected_graph, "A", "D", k=3)

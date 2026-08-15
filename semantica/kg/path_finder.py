@@ -195,7 +195,9 @@ class PathFinder:
             for neighbor, edge_data in self._get_neighbors(traversal_graph, current_node):
                 if neighbor in visited or neighbor in excluded_nodes:
                     continue
-                if self._edge_is_excluded(graph, current_node, neighbor, excluded_edges):
+                if self._edge_is_excluded(
+                    traversal_graph, current_node, neighbor, excluded_edges
+                ):
                     continue
 
                 # Get edge weight
