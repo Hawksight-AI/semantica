@@ -10,6 +10,8 @@ pip install semantica[crewai]
 
 Requires `crewai >= 0.80.0`. If `crewai` is not installed, the integration still imports (classes degrade gracefully), but you can't pass the objects to a `Crew`.
 
+> **⚠️ Security note:** crewai hard-requires `chromadb~=1.1.0`, which is currently affected by the unpatched pre-authentication code-injection advisory **CVE-2026-45829** (no fixed release — even the latest chromadb 1.5.9 is affected). Installing `semantica[crewai]` pulls that dependency into your environment. The `crewai` extra is intentionally **not** part of `semantica[all]` for this reason — only install it where you actually use CrewAI, and follow chromadb for a patched release.
+
 ## 1. SemanticaKGTool
 
 A `BaseTool` that lets agents **build and query** a shared `ContextGraph` mid-reasoning:

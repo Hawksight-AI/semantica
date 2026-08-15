@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **First-class CrewAI integration** (#962)
-  - New `pip install semantica[crewai]` extra (`crewai>=0.80.0`, `crewai-tools>=0.17.0`) and inclusion in the `all` extras bundle
+  - New `pip install semantica[crewai]` extra (`crewai>=0.80.0`) — crewai core provides `BaseTool`/`BaseKnowledgeSource`, so `crewai-tools` is intentionally not included, and the extra is intentionally **not** part of the `all` bundle: crewai hard-requires `chromadb~=1.1.0`, which is affected by the unpatched pre-auth code-injection CVE-2026-45829 (see `integrations/crewai/README.md`)
   - `integrations/crewai/SemanticaKGTool` — a CrewAI `BaseTool` exposing 5 KG actions (`extract_entities`, `extract_relations`, `add_to_graph`, `query_graph`, `find_related`) backed by `NERExtractor` / `RelationExtractor` / `ContextGraph`; supports both sync `run()` and async `arun()`
   - `integrations/crewai/SemanticaDecisionTool` — a CrewAI `BaseTool` wrapping `AgentContext` with 5 decision-intelligence actions (`record_decision`, `find_precedents`, `trace_causal_chain`, `analyze_impact`, `check_policy`)
   - `integrations/crewai/SemanticaKnowledgeSource` — a CrewAI `BaseKnowledgeSource` that serializes a `ContextGraph` into crew knowledge storage; implements both the legacy `load_content()` and current `validate_content()`/`aadd()` contracts so it works across `crewai>=0.80.0`
