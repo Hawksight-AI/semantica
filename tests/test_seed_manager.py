@@ -126,7 +126,11 @@ def test_load_from_database(mock_db_ingestor_cls, seed_manager):
     assert len(records) == 1
     assert records[0]["id"] == 1
     assert records[0]["entity_type"] == "User"
-    mock_db_ingestor.execute_query.assert_called_once_with("SELECT * FROM users")
+    # Regression for #973: the ingestor methods receive the connection
+    # string as their first argument — the constructor config is not enough.
+    mock_db_ingestor.execute_query.assert_called_once_with(
+        "sqlite:///:memory:", "SELECT * FROM users"
+    )
 
     # Mock export_table result
     mock_table_data = MagicMock()
@@ -139,6 +143,23 @@ def test_load_from_database(mock_db_ingestor_cls, seed_manager):
     )
     assert len(records) == 1
     assert records[0]["id"] == 2
+    mock_db_ingestor.export_table.assert_called_once_with("sqlite:///:memory:", "users")
+
+def test_load_from_database_os_error_not_misreported(seed_manager):
+    # Regression for #973: a real OSError from the ingestor must surface as a
+    # database failure with the cause chained, not as a missing module.
+    import semantica.ingest.db_ingestor as dbi
+
+    with patch.object(
+        dbi.DBIngestor, "execute_query", side_effect=OSError(111, "Connection refused")
+    ):
+        with pytest.raises(ProcessingError) as excinfo:
+            seed_manager.load_from_database(
+                "postgresql://u:p@10.0.0.9/db", query="SELECT 1"
+            )
+        assert "Failed to load from database" in str(excinfo.value)
+        assert "module not available" not in str(excinfo.value)
+        assert isinstance(excinfo.value.__cause__, OSError)
 
 def test_load_from_database_import_error(seed_manager):
     with patch.dict("sys.modules", {"semantica.ingest.db_ingestor": None}):

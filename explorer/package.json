@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:graph-store": "node --test tests/graphStore.multi-edge.test.mjs",
-    "test:graph-workspace": "node --import tsx --test tests/graphSceneState.display.test.ts",
+    "test:graph-workspace": "node --import tsx --test tests/graphSceneState.display.test.ts tests/temporalLifecycle.test.ts",
     "test:plugin-registry": "node --import tsx --test tests/pluginRegistry.temporal.test.mjs"
   },
   "dependencies": {
