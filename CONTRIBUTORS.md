@@ -101,7 +101,7 @@ When using the all-contributors bot, use these codes:
 - `infra` - Infrastructure
 - `maintenance` - Maintenance
 
-See [all-contributors specification](https://allcontributors.org/docs/en/emoji-key) for complete list.
+See [all-contributors specification](https://github.com/all-contributors/all-contributors#emoji-key) for complete list.
 
 ---
 
