@@ -40,6 +40,7 @@ import {
   type GraphPluginToolbarItem,
 } from "./plugins";
 import { explorationEffectsShouldLoad, neighborhoodPanelShouldLoad, temporalOverlayShouldLoad } from "./pluginRegistryPredicates";
+import { shouldFetchTemporalBounds, shouldFetchTemporalSnapshot } from "./temporalLifecyclePredicates";
 import type { LinkPrediction, PathResponse } from "./GraphInspectorPanel";
 import type { GraphSceneHandle, GraphSceneRuntime } from "./scene";
 import type {
@@ -1440,7 +1441,18 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     applyGraphReadySummary(summary);
   }, [applyGraphReadySummary, graphReady, summary]);
 
+  const canFetchTemporalBounds = shouldFetchTemporalBounds(summary);
+  const canFetchTemporalSnapshot = shouldFetchTemporalSnapshot({
+    debouncedTime,
+    isLoading,
+    summary,
+  });
+
   useEffect(() => {
+    if (!canFetchTemporalBounds) {
+      return;
+    }
+
     let cancelled = false;
     const loadBounds = async () => {
       try {
@@ -1460,10 +1472,21 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     return () => {
       cancelled = true;
     };
-  }, [summary?.nodeCount, summary?.edgeCount]);
+  }, [
+    canFetchTemporalBounds,
+    summary?.nodeCount,
+    summary?.edgeCount,
+  ]);
 
   useEffect(() => {
-    if (!debouncedTime || isLoading) return;
+    if (!canFetchTemporalSnapshot) {
+      return;
+    }
+
+    if (!debouncedTime) {
+      return;
+    }
+
     let cancelled = false;
 
     const applySnapshot = async () => {
@@ -1505,7 +1528,10 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     return () => {
       cancelled = true;
     };
-  }, [debouncedTime, isLoading]);
+  }, [
+    canFetchTemporalSnapshot,
+    debouncedTime,
+  ]);
 
   const resolveNodeIdForFocusedMode = useCallback((
     nodeId: string,
