@@ -303,6 +303,53 @@ class TestIdKeyspaces(unittest.TestCase):
             _graph().get_retraction("alice", "vertex")
 
 
+class TestDuplicateEdgeId(unittest.TestCase):
+    """``edge_id`` is content-derived and not guaranteed unique (#922): two
+    identical ``add_edge`` calls produce two edge objects sharing one id.
+    Every duplicate must be reached, or a retraction/tombstone record can
+    claim an edge is gone/inactive while a live copy remains in the graph.
+    """
+
+    def _duplicated(self):
+        graph = _graph()
+        graph.add_edge("alice", "acme", "works_at")  # same content -> same edge_id
+        edge_id = graph.edges[0].edge_id
+        self.assertEqual({e.edge_id for e in graph.edges}, {edge_id})
+        self.assertEqual(len(graph.edges), 2)
+        return graph, edge_id
+
+    def test_retract_edge_closes_every_duplicate(self):
+        graph, edge_id = self._duplicated()
+        self.assertTrue(graph.retract_edge(edge_id, reason="dup", at=CUTOFF))
+        for edge in graph.edges:
+            self.assertEqual(edge.valid_until, "2026-01-01T00:00:00")
+            self.assertFalse(edge.is_active(datetime(2026, 6, 1)))
+
+    def test_retract_node_cascade_closes_every_duplicate(self):
+        graph, edge_id = self._duplicated()
+        self.assertTrue(graph.retract_node("alice", at=CUTOFF))
+        for edge in graph.edges:
+            self.assertEqual(edge.valid_until, "2026-01-01T00:00:00")
+
+    def test_purge_edge_removes_every_duplicate(self):
+        graph, edge_id = self._duplicated()
+        self.assertTrue(graph.purge_edge(edge_id, reason="dup"))
+        self.assertFalse(any(e.edge_id == edge_id for e in graph.edges))
+
+    def test_purge_node_cascade_removes_every_duplicate(self):
+        graph, edge_id = self._duplicated()
+        self.assertTrue(graph.purge_node("alice"))
+        self.assertFalse(any(e.edge_id == edge_id for e in graph.edges))
+
+    def test_repeat_purge_edge_does_not_overwrite_the_tombstone(self):
+        """Once every duplicate is gone, a second call must no-op, not
+        silently 'complete' the purge again and clobber the original record."""
+        graph, edge_id = self._duplicated()
+        self.assertTrue(graph.purge_edge(edge_id, reason="first"))
+        self.assertFalse(graph.purge_edge(edge_id, reason="second"))
+        self.assertEqual(graph.get_tombstone(edge_id)["reason"], "first")
+
+
 class TestPurgeCrossGraphLinks(unittest.TestCase):
     """link_graph() registers a link, a marker node and a bridge edge."""
 

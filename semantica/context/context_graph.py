@@ -1528,8 +1528,17 @@ class ContextGraph:
 
             cascaded: List[Tuple[str, Dict[str, Any]]] = []
             if cascade:
+                # Snapshotted once, before the loop: edge_id is content-derived
+                # and not guaranteed unique (#922), so two distinct edge objects
+                # can share one id. Checking the live _retractions dict inside
+                # the loop would let the first duplicate's record block the
+                # second from ever being closed, leaving it active indefinitely
+                # while its retraction record claimed otherwise.
+                already_retracted_edge_ids = {
+                    key[1] for key in self._retractions if key[0] == "edge"
+                }
                 for edge in self._incident_edges(node_id):
-                    if ("edge", edge.edge_id) in self._retractions:
+                    if edge.edge_id in already_retracted_edge_ids:
                         continue
                     edge.valid_until = _closing_valid_until(edge.valid_until, at_iso)
                     edge_record = {
@@ -1580,17 +1589,23 @@ class ContextGraph:
         Returns:
             True if the edge was retracted; False if it does not exist or was
             already retracted.
+
+        Note:
+            ``edge_id`` is content-derived and not guaranteed unique (#922):
+            two distinct edge objects can share one id. Every edge matching
+            ``edge_id`` is closed under a single retraction record, so a
+            duplicate can never be left silently active while the record
+            claims it was retracted.
         """
         at_iso = _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
         with self._lock:
-            edge = next((e for e in self.edges if e.edge_id == edge_id), None)
-            if edge is None:
+            edges = [e for e in self.edges if e.edge_id == edge_id]
+            if not edges:
                 self.logger.warning("Cannot retract unknown edge: %r", edge_id)
                 return False
             if ("edge", edge_id) in self._retractions:
                 return False
 
-            edge.valid_until = _closing_valid_until(edge.valid_until, at_iso)
             record = {
                 "entity_id": edge_id,
                 "entity_kind": "edge",
@@ -1598,10 +1613,17 @@ class ContextGraph:
                 "reason": reason,
             }
             self._retractions[("edge", edge_id)] = record
-            payload = {**edge.to_dict(), "retraction": dict(record)}
+            for edge in edges:
+                edge.valid_until = _closing_valid_until(edge.valid_until, at_iso)
+            payload = {**edges[0].to_dict(), "retraction": dict(record)}
 
         self._emit_mutation("UPDATE_EDGE", edge_id, payload)
-        self.logger.info("Retracted edge %r at %s", edge_id, at_iso)
+        self.logger.info(
+            "Retracted edge %r at %s (%d underlying record(s))",
+            edge_id,
+            at_iso,
+            len(edges),
+        )
         return True
 
     def purge_node(
@@ -1729,20 +1751,28 @@ class ContextGraph:
 
         Returns:
             True if the edge was purged; False if it does not exist.
+
+        Note:
+            ``edge_id`` is content-derived and not guaranteed unique (#922):
+            two distinct edge objects can share one id. Every edge matching
+            ``edge_id`` is dropped under a single tombstone, so a duplicate
+            can never be left live in the graph while the tombstone claims
+            the edge is gone.
         """
         purged_at = (
             _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
         )
         with self._lock:
-            edge = next((e for e in self.edges if e.edge_id == edge_id), None)
-            if edge is None:
+            edges = [e for e in self.edges if e.edge_id == edge_id]
+            if not edges:
                 self.logger.warning("Cannot purge unknown edge: %r", edge_id)
                 return False
-            self._drop_edge_from_indexes(edge)
-            link_id = (edge.metadata or {}).get("link_id")
-            if (edge.metadata or {}).get("cross_graph") and link_id:
-                self._linked_graphs.pop(link_id, None)
-                self._unresolved_links.pop(link_id, None)
+            for edge in edges:
+                self._drop_edge_from_indexes(edge)
+                link_id = (edge.metadata or {}).get("link_id")
+                if (edge.metadata or {}).get("cross_graph") and link_id:
+                    self._linked_graphs.pop(link_id, None)
+                    self._unresolved_links.pop(link_id, None)
             self._retractions.pop(("edge", edge_id), None)
             record = {
                 "entity_id": edge_id,
@@ -1754,7 +1784,9 @@ class ContextGraph:
             payload = dict(record)
 
         self._emit_mutation("REMOVE_EDGE", edge_id, payload)
-        self.logger.info("Purged edge %r", edge_id)
+        self.logger.info(
+            "Purged edge %r (%d underlying record(s))", edge_id, len(edges)
+        )
         return True
 
     def get_retraction(
