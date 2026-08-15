@@ -21,7 +21,11 @@ Configure in Claude Desktop, Windsurf, Cline, Continue, VS Code:
     }
 """
 
+# `semantica.__version__` is the authoritative package version — see
+# semantica/mcp_server/__init__.py for why it is used directly rather than
+# importlib.metadata.version("semantica").
+from semantica import __version__
+
 from .server import SemanticaMCPServer, main
 
-__all__ = ["SemanticaMCPServer", "main"]
-__version__ = "0.4.0"
+__all__ = ["SemanticaMCPServer", "main", "__version__"]

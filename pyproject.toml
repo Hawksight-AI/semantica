@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -60,7 +60,7 @@ dependencies = [
   "plotly>=6.8.0",
   "ipywidgets>=8.0.0",
   "requests>=2.34.2",
-  "GitPython>=3.1.50",
+  "GitPython>=3.1.58",
   "chardet>=7.4.3",
   "protobuf>=5.29.1,<8.0",
   "grpcio>=1.81.1",
@@ -230,10 +230,10 @@ dev = [
 
 # Explorer Dashboard
 explorer = [
-  "fastapi>=0.100.0",
+  "fastapi>=0.109.2",
   "uvicorn[standard]>=0.22.0",
   "websockets>=15.0.1",
-  "python-multipart>=0.0.6",
+  "python-multipart>=0.0.7",
   "defusedxml>=0.7.1"
 ]
 explorer-lite = [
