@@ -22,7 +22,7 @@ License: MIT
 
 from typing import Any, Dict, List, Optional
 
-from ..deduplication.duplicate_detector import DuplicateDetector
+from ..deduplication.duplicate_detector import DuplicateDetector, DuplicateGroup
 from ..deduplication.entity_merger import EntityMerger
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
@@ -138,9 +138,7 @@ class EntityResolver:
             self.logger.debug(
                 f"Detecting duplicate groups with threshold {self.similarity_threshold}"
             )
-            duplicate_groups = self.duplicate_detector.detect_duplicate_groups(
-                entities, threshold=self.similarity_threshold
-            )
+            duplicate_groups = self._detect_duplicate_groups(entities)
 
             self.logger.debug(f"Found {len(duplicate_groups)} duplicate group(s)")
 
@@ -157,9 +155,16 @@ class EntityResolver:
                     continue
 
                 # Merge the duplicate group into a single canonical entity
-                merge_operations = self.entity_merger.merge_duplicates(
-                    group.entities, **self.config
-                )
+                if self.resolution_strategy == "exact":
+                    merge_operations = [
+                        self.entity_merger.merge_entity_group(
+                            group.entities, **self.config
+                        )
+                    ]
+                else:
+                    merge_operations = self.entity_merger.merge_duplicates(
+                        group.entities, **self.config
+                    )
 
                 # Process each merge operation
                 for operation in merge_operations:
@@ -212,6 +217,34 @@ class EntityResolver:
                 tracking_id, status="failed", message=str(e)
             )
             raise
+
+    def _detect_duplicate_groups(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[DuplicateGroup]:
+        """Detect duplicate groups according to the configured strategy."""
+        if self.resolution_strategy != "exact":
+            return self.duplicate_detector.detect_duplicate_groups(
+                entities, threshold=self.similarity_threshold
+            )
+
+        groups = {}
+        for entity in entities:
+            name = self._get_entity_name(entity)
+            if name:
+                groups.setdefault(str(name).strip().casefold(), []).append(entity)
+
+        return [
+            DuplicateGroup(entities=group, confidence=1.0)
+            for group in groups.values()
+            if len(group) > 1
+        ]
+
+    @staticmethod
+    def _get_entity_name(entity: Any) -> Optional[str]:
+        """Return an entity name, falling back to text-based entity input."""
+        if isinstance(entity, dict):
+            return entity.get("name") or entity.get("text")
+        return getattr(entity, "name", None) or getattr(entity, "text", None)
 
     def merge_duplicates(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
