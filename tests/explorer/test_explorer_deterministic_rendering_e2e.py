@@ -180,3 +180,40 @@ class TestExplorerDeterministicRenderingE2E:
                 ("bob", "alice", "KNOWS"),
                 ("acme", "new_york", "LOCATED_IN"),
             }
+
+    def test_deterministic_graph_auth_enforcement(self, tmp_path: Path, monkeypatch):
+        graph = _build_deterministic_graph()
+        output_file = tmp_path / "explorer_deterministic_graph.json"
+        graph.save_to_file(str(output_file))
+
+        session = GraphSession.from_file(str(output_file))
+        app = create_app(session=session)
+
+        with TestClient(app) as client:
+            # 1. Unconfigured auth (no SEMANTICA_ALLOW_ANONYMOUS, no SEMANTICA_API_KEY) -> 503
+            monkeypatch.delenv("SEMANTICA_ALLOW_ANONYMOUS", raising=False)
+            monkeypatch.delenv("SEMANTICA_API_KEY", raising=False)
+            unconfigured_res = client.get("/api/graph/stats")
+            assert unconfigured_res.status_code == 503
+
+            # 2. Configured SEMANTICA_API_KEY without header -> 401
+            test_key = "secret-test-key-1037"
+            monkeypatch.setenv("SEMANTICA_API_KEY", test_key)
+            unauthorized_res = client.get("/api/graph/nodes")
+            assert unauthorized_res.status_code == 401
+
+            # 3. Configured SEMANTICA_API_KEY with valid X-API-Key header -> 200
+            authorized_res = client.get(
+                "/api/graph/nodes",
+                headers={"X-API-Key": test_key},
+            )
+            assert authorized_res.status_code == 200
+            assert authorized_res.json()["total"] == 4
+
+            # 4. Explicit local development opt-in: SEMANTICA_ALLOW_ANONYMOUS=true -> 200 without header
+            monkeypatch.setenv("SEMANTICA_ALLOW_ANONYMOUS", "true")
+            monkeypatch.delenv("SEMANTICA_API_KEY", raising=False)
+            anon_res = client.get("/api/graph/edges")
+            assert anon_res.status_code == 200
+            assert anon_res.json()["total"] == 3
+
