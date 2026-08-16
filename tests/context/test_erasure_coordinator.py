@@ -17,6 +17,8 @@ the real backends cannot delete at all.
 
 import unittest
 
+import numpy as np
+
 from semantica.context import AgentMemory, ContextGraph
 from semantica.context.erasure import (
     STATUS_ERASED,
@@ -27,6 +29,7 @@ from semantica.context.erasure import (
     ErasureCoordinator,
     ErasureReceipt,
 )
+from semantica.vector_store import VectorStore
 
 
 def _graph():
@@ -397,6 +400,82 @@ class TestReceipt(unittest.TestCase):
 
         self.assertEqual(sorted(receipt.incomplete_stores), ["memory", "vectors"])
         self.assertFalse(receipt.complete)
+
+
+class TestRealVectorStoreBackend(unittest.TestCase):
+    """The fakes above assert the shapes the coordinator expects; these assert
+    that a real backend actually has one of them.
+
+    This repo's recurring failure is a change verified only against the default
+    that reaches for internals and breaks on every other backend, so the fake
+    stores are worth exactly as much as the assumption that a real store looks
+    like them. ``VectorStore(backend="inmemory")`` is the one backend that runs
+    without external services, so it is the one that can hold that assumption
+    to account here.
+    """
+
+    def _store(self):
+        return VectorStore(backend="inmemory", dimension=8)
+
+    def test_real_backend_erases_the_vector_ids_it_is_given(self):
+        store = self._store()
+        vector_ids = store.store_vectors(
+            vectors=[np.ones(8), np.zeros(8)], metadata=[{}, {}]
+        )
+        self.assertEqual(store.count(), 2)
+
+        receipt = ErasureCoordinator(vector_store=store).erase_entity(
+            "customer-4471", vector_ids=vector_ids
+        )
+
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_ERASED)
+        self.assertEqual(receipt.stores["vectors"]["backend"], "inmemory")
+        self.assertEqual(store.count(), 0)
+
+    def test_the_full_cascade_removes_a_real_memory_bound_embedding(self):
+        """The end-to-end case the receipt actually attests to.
+
+        Real ``ContextGraph``, real ``AgentMemory``, real ``VectorStore`` --
+        the embedding is written by ``AgentMemory.store()`` and has to be gone
+        afterwards, which exercises the memory leg's own ``delete_memory()``
+        vector cascade rather than the coordinator's model of it.
+        """
+        store, graph = self._store(), _graph()
+        memory = AgentMemory(vector_store=store)
+        memory.store(
+            "note about customer-4471",
+            entities=[{"id": "customer-4471", "name": "customer-4471"}],
+            skip_graph=True,
+        )
+        self.assertEqual(store.count(), 1)
+
+        receipt = ErasureCoordinator(graph=graph, memory=memory).erase_entity(
+            "customer-4471", reason="GDPR Art. 17 request #882"
+        )
+
+        self.assertTrue(receipt.complete)
+        self.assertEqual(receipt.stores["memory"]["status"], STATUS_ERASED)
+        self.assertEqual(receipt.stores["graph"]["status"], STATUS_ERASED)
+        self.assertEqual(store.count(), 0)
+        self.assertFalse(graph.has_node("customer-4471"))
+        self.assertEqual(memory.find_by_entity("customer-4471", limit=500), [])
+
+    def test_erased_means_the_store_accepted_the_delete_not_that_data_existed(self):
+        """Pins a limit of the receipt worth knowing before trusting it.
+
+        The in-memory backend pops the ids and returns ``True`` whether or not
+        they were there, and no backend offers a portable "did this id exist"
+        check, so the vectors leg reports how many ids the store accepted --
+        not how many embeddings were really removed. ``erased`` on this leg is
+        therefore weaker than on the memory leg, which re-queries to confirm.
+        """
+        store = self._store()
+
+        receipt = ErasureCoordinator(vector_store=store).erase_entity("never-embedded")
+
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_ERASED)
+        self.assertEqual(receipt.stores["vectors"]["vector_ids"], 1)
+        self.assertEqual(store.count(), 0)
 
 
 class TestConstruction(unittest.TestCase):

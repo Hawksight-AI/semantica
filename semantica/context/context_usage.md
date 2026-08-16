@@ -271,7 +271,7 @@ the data is gone**. Each store reports one of five statuses:
 
 | Status | Meaning |
 |---|---|
-| `erased` | Reached, data removed |
+| `erased` | Reached, data removed (on the vectors leg: the store accepted the delete for the ids given) |
 | `not_found` | Reached, held nothing for this entity |
 | `not_configured` | No such store was bound — normal, not a failure |
 | `unsupported` | The store cannot delete at all; retrying will not help |

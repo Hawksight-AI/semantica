@@ -687,7 +687,7 @@ At least one store is required; a store that is not supplied reports
 
 | Status | Meaning |
 | :--- | :--- |
-| `erased` | Reached, data removed |
+| `erased` | Reached, data removed. On the vectors leg this means the store accepted the delete for the ids given — backends offer no portable existence check, so it is not a count of embeddings that were really there |
 | `not_found` | Reached, held nothing for this entity |
 | `not_configured` | No such store was bound — normal, not a failure |
 | `unsupported` | The store cannot delete at all; retrying will not help |

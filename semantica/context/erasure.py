@@ -51,7 +51,11 @@ __all__ = [
     "STATUS_FAILED",
 ]
 
-#: The store was reached and the entity's data removed from it.
+#: The store was reached and the entity's data removed from it. On the vectors
+#: leg this means the store accepted the delete for the ids it was given: no
+#: backend offers a portable "does this id exist" check, so it is not a count of
+#: embeddings that were really there. The memory leg re-queries to confirm and
+#: so is the stronger claim of the two.
 STATUS_ERASED = "erased"
 #: The store was reached and held nothing for this entity.
 STATUS_NOT_FOUND = "not_found"
@@ -253,7 +257,13 @@ class ErasureCoordinator:
     def _erase_vectors(
         self, entity_id: str, vector_ids: Optional[Sequence[str]]
     ) -> Dict[str, Any]:
-        """Remove entity-keyed embeddings from the bound vector store."""
+        """Remove entity-keyed embeddings from the bound vector store.
+
+        ``vector_ids`` in the result is the number of ids the store accepted,
+        not the number of embeddings that existed: backends delete by id and
+        report success either way, with no portable way to ask what was
+        actually there. See :data:`STATUS_ERASED`.
+        """
         if self.vector_store is None:
             return {"status": STATUS_NOT_CONFIGURED}
 
