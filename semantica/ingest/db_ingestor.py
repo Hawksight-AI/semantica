@@ -269,7 +269,12 @@ class DataExporter:
             ProcessingError: If table export fails
         """
         try:
-            from sqlalchemy import inspect
+            # #1015: `text` is imported function-locally in connect() and
+            # test_connection(), but those bindings do not leak to module
+            # scope. The call sites below (conn.execute(text(...))) call
+            # text() without importing it, so this method raises NameError
+            # on every call — masked as ProcessingError by the catch below.
+            from sqlalchemy import inspect, text
             inspector = inspect(connection)
 
             # Get column information
@@ -708,9 +713,12 @@ class DBIngestor:
         engine = connector.connect(connection_string)
 
         try:
+            # #1015: `text` was never imported in this method's scope — the
+            # function-local import in connect() does not leak here.
+            from sqlalchemy import text as sa_text
             with engine.connect() as conn:
                 # Execute query with parameters (parameterized queries for safety)
-                result = conn.execute(text(query), params)
+                result = conn.execute(sa_text(query), params)
 
                 # Convert results to list of dictionaries
                 rows = []
