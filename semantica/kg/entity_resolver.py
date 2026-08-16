@@ -148,6 +148,7 @@ class EntityResolver:
             # Step 2: Merge duplicates in each group
             merged_entities = []
             processed_entity_ids = set()  # Track which entities have been merged
+            processed_entity_objects = set()
 
             for group in duplicate_groups:
                 # Skip groups with less than 2 entities (not duplicates)
@@ -173,30 +174,26 @@ class EntityResolver:
 
                     # Mark all source entities as processed
                     for source_entity in operation.source_entities:
-                        entity_id = (
-                            source_entity.get("id")
-                            if isinstance(source_entity, dict)
-                            else getattr(source_entity, "id", None)
-                        ) or (
-                            source_entity.get("entity_id")
-                            if isinstance(source_entity, dict)
-                            else getattr(source_entity, "entity_id", None)
-                        )
-                        if entity_id:
+                        entity_id = self._get_entity_id(source_entity)
+                        if entity_id is None:
+                            processed_entity_objects.add(id(source_entity))
+                            continue
+                        try:
                             processed_entity_ids.add(entity_id)
+                        except TypeError:
+                            processed_entity_objects.add(id(source_entity))
 
             # Step 3: Add non-duplicate entities (entities not in any duplicate group)
             for entity in entities:
-                entity_id = (
-                    entity.get("id")
-                    if isinstance(entity, dict)
-                    else getattr(entity, "id", None)
-                ) or (
-                    entity.get("entity_id")
-                    if isinstance(entity, dict)
-                    else getattr(entity, "entity_id", None)
-                )
-                if entity_id and entity_id not in processed_entity_ids:
+                entity_id = self._get_entity_id(entity)
+                if entity_id is None:
+                    is_unprocessed = id(entity) not in processed_entity_objects
+                else:
+                    try:
+                        is_unprocessed = entity_id not in processed_entity_ids
+                    except TypeError:
+                        is_unprocessed = id(entity) not in processed_entity_objects
+                if is_unprocessed:
                     # This entity was not merged, add it as-is
                     merged_entities.append(entity)
 
@@ -238,6 +235,13 @@ class EntityResolver:
             for group in groups.values()
             if len(group) > 1
         ]
+
+    @staticmethod
+    def _get_entity_id(entity: Any) -> Any:
+        """Return an entity ID while supporting dictionary and object inputs."""
+        if isinstance(entity, dict):
+            return entity.get("id") or entity.get("entity_id")
+        return getattr(entity, "id", None) or getattr(entity, "entity_id", None)
 
     @staticmethod
     def _get_entity_name(entity: Any) -> Optional[str]:

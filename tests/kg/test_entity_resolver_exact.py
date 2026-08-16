@@ -21,3 +21,14 @@ def test_exact_resolution_merges_case_and_whitespace_variants():
     resolved = EntityResolver(strategy="exact").resolve_entities(entities)
 
     assert len(resolved) == 1
+
+
+def test_resolution_preserves_non_duplicate_entities_without_ids():
+    entities = [
+        {"name": "Alice"},
+        {"name": "Bob"},
+    ]
+
+    resolved = EntityResolver(strategy="exact").resolve_entities(entities)
+
+    assert resolved == entities
