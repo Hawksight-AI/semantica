@@ -227,8 +227,9 @@ class EntityResolver:
         groups = {}
         for entity in entities:
             name = self._get_entity_name(entity)
-            if name:
-                groups.setdefault(str(name).strip().casefold(), []).append(entity)
+            normalized = str(name).strip() if name is not None else ""
+            if normalized:
+                groups.setdefault(normalized.casefold(), []).append(entity)
 
         return [
             DuplicateGroup(entities=group, confidence=1.0)
@@ -247,8 +248,16 @@ class EntityResolver:
     def _get_entity_name(entity: Any) -> Optional[str]:
         """Return an entity name, falling back to text-based entity input."""
         if isinstance(entity, dict):
-            return entity.get("name") or entity.get("text")
-        return getattr(entity, "name", None) or getattr(entity, "text", None)
+            name = entity.get("name")
+            return (
+                name if name is not None and str(name).strip() else entity.get("text")
+            )
+        name = getattr(entity, "name", None)
+        return (
+            name
+            if name is not None and str(name).strip()
+            else getattr(entity, "text", None)
+        )
 
     def merge_duplicates(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

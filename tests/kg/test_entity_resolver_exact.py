@@ -32,3 +32,25 @@ def test_resolution_preserves_non_duplicate_entities_without_ids():
     resolved = EntityResolver(strategy="exact").resolve_entities(entities)
 
     assert resolved == entities
+
+
+def test_exact_resolution_does_not_merge_whitespace_only_names():
+    entities = [
+        {"id": "1", "name": "   "},
+        {"id": "2", "name": "\t"},
+    ]
+
+    resolved = EntityResolver(strategy="exact").resolve_entities(entities)
+
+    assert {entity["id"] for entity in resolved} == {"1", "2"}
+
+
+def test_exact_resolution_falls_back_to_text_when_name_is_blank():
+    entities = [
+        {"id": "1", "name": " ", "text": "Alice"},
+        {"id": "2", "name": "Alice"},
+    ]
+
+    resolved = EntityResolver(strategy="exact").resolve_entities(entities)
+
+    assert len(resolved) == 1
