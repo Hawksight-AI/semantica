@@ -148,10 +148,27 @@ class PDFParser:
                         status="completed",
                         message=f"Parsed {len(pages)} pages",
                     )
+                    full_text = "\n\n".join(page.text for page in pages)
+
+                    # Scanned/image-only PDFs have no text layer; warn so the
+                    # failure surfaces at parse time instead of downstream
+                    if (
+                        options.get("extract_text", True)
+                        and pages
+                        and not full_text.strip()
+                    ):
+                        self.logger.warning(
+                            f"PDF {file_path.name}: parsed {len(pages)} pages but "
+                            f"extracted no text. This is likely a scanned "
+                            f"(image-only) PDF. Retry with "
+                            f"parse_pdf(..., method='docling', enable_ocr=True) "
+                            f"for OCR-based extraction."
+                        )
+
                     return {
                         "metadata": metadata.__dict__,
                         "pages": [page.__dict__ for page in pages],
-                        "full_text": "\n\n".join(page.text for page in pages),
+                        "full_text": full_text,
                         "total_pages": len(pdf.pages),
                     }
 
