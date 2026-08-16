@@ -25,9 +25,9 @@ If you want to work on an open GitHub issue, please follow these steps to keep t
 
 1. **Check the issue.** Look at the issue's assignees and recent comments. If someone is already actively working on it, consider a different issue or ask in the comments whether help is welcome.
 
-2. **Comment before you start.** Leave a comment on the issue saying you'd like to work on it — something like *"I'd like to take this on"* is enough. This gives maintainers the context they need to assign the issue appropriately.
+2. **Comment if you'd like the issue reserved.** Leaving a comment like *"I'd like to take this on"* is the fastest way to get assigned, but it isn't required — maintainers can also assign an issue directly to a contributor (e.g., based on recent activity in the repo) without waiting for a comment first.
 
-3. **Wait for assignment.** A maintainer will review the request and assign the issue when appropriate. Please wait for this before investing significant time in implementation, as priorities and approaches can shift.
+3. **Wait for assignment.** A maintainer will assign the issue when appropriate, whether or not a comment was left. Please wait for this before investing significant time in implementation, as priorities and approaches can shift.
 
 4. **Create a branch and implement.** Once assigned, fork the repository (if you haven't already), create a dedicated branch, and begin your work.
 
@@ -37,9 +37,23 @@ If you want to work on an open GitHub issue, please follow these steps to keep t
 
 5. **Open a focused PR and link the issue.** When you're ready, open a pull request and reference the issue in the description (e.g., `Closes #123`). Keep the PR scoped to the work described in the issue.
 
-> **Why this matters:** Commenting before opening a PR helps maintainers track who is working on what, assign issues correctly, and prevent two contributors from solving the same problem independently. It also gives you a chance to align on the expected approach before writing code.
+> **Why this matters:** Assignment (with or without a comment) helps maintainers track who is working on what and prevent two contributors from solving the same problem independently. It also gives you a chance to align on the expected approach before writing code.
 
 Not sure where to start? Try a [`good first issue`](https://github.com/semantica-agi/semantica/labels/good%20first%20issue) or ask in [Discord](https://discord.gg/sV34vps5hH).
+
+---
+
+## 🔀 Duplicate PRs & Issue Priority
+
+When more than one pull request targets the same issue, maintainers triage using this order of priority:
+
+1. **Contributor-raised issue with an existing PR.** If the person who opened the issue has also opened a PR for it, that PR is prioritized.
+2. **Maintainer-raised issue with a claim comment.** If we opened the issue and someone has commented asking to work on it, we assign it to them and check their PR before picking up any other PR for the same issue.
+3. **No prior assignment or comment.** If multiple PRs exist and no one was assigned or claimed the issue first, priority goes to whichever contributor has been most consistently active in the repo recently.
+4. **Late duplicate PRs.** If a PR is opened after another contributor has already been assigned to the issue, we close the duplicate early rather than let it sit open, and point the author to another open issue (or ask them to check `main` for newly opened ones). This avoids contributors spending time updating a PR that won't be merged.
+5. **Overlapping scope.** If a PR covers multiple issues, or there's genuine overlap between competing PRs, maintainers discuss it on [Discord](https://discord.gg/sV34vps5hH) before deciding rather than resolving it unilaterally.
+
+**Why this matters:** it keeps triage predictable, avoids wasted contributor effort on PRs that won't merge, and helps retain active contributors.
 
 ---
 
