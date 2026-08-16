@@ -52,6 +52,8 @@ Most AI agents act without a trail. They store embeddings, not meaning: context 
 
 Semantica sits underneath your LLM, vector store, and agent framework as a deterministic infrastructure layer: no LLM required for graph construction, reasoning, or provenance.
 
+> ⚠️ **System-level explainability, not foundation-model explainability.** Semantica does not expose or reconstruct what happens *inside* the LLM — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. Semantica explains what's *outside* the model: the context and data fed in, the decision produced, its provenance, relevant relationships, applied policies, and the full execution trail.
+
 **Who it's for:**
 
 - **AI/ML platform teams** shipping agents that make consequential decisions and need structured, queryable context built from fragmented raw data, not just a vector index
