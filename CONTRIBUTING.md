@@ -45,11 +45,11 @@ Not sure where to start? Try a [`good first issue`](https://github.com/semantica
 
 ## 🔀 Duplicate PRs & Issue Priority
 
-When more than one pull request targets the same issue, maintainers triage using this order of priority:
+When more than one pull request targets the same issue, maintainers triage using this order of priority. These rules decide between PRs that are otherwise following the [assignment workflow above](#-working-on-an-existing-issue) — opening a PR before being assigned doesn't grant priority on its own, and an unassigned PR can still be closed as a duplicate once someone else is assigned to the issue.
 
-1. **Contributor-raised issue with an existing PR.** If the person who opened the issue has also opened a PR for it, that PR is prioritized.
+1. **Contributor-raised issue with an existing PR.** If the person who opened the issue has also opened a PR for it, that PR is prioritized (they still need to be assigned before it's merged).
 2. **Maintainer-raised issue with a claim comment.** If we opened the issue and someone has commented asking to work on it, we assign it to them and check their PR before picking up any other PR for the same issue.
-3. **No prior assignment or comment.** If multiple PRs exist and no one was assigned or claimed the issue first, priority goes to whichever contributor has been most consistently active in the repo recently.
+3. **No prior assignment or comment.** If multiple PRs exist and no one was assigned or claimed the issue first, priority goes to whichever contributor has the most consistent activity in the repo over the last 60 days (e.g., merged PRs, substantive reviews, or issue triage participation) — not just PR volume.
 4. **Late duplicate PRs.** If a PR is opened after another contributor has already been assigned to the issue, we close the duplicate early rather than let it sit open, and point the author to another open issue (or ask them to check `main` for newly opened ones). This avoids contributors spending time updating a PR that won't be merged.
 5. **Overlapping scope.** If a PR covers multiple issues, or there's genuine overlap between competing PRs, maintainers discuss it on [Discord](https://discord.gg/sV34vps5hH) before deciding rather than resolving it unilaterally.
 
