@@ -52,6 +52,16 @@ Semantica works alongside these frameworks, not against them.
 
 </Accordion>
 
+<Accordion title="Does Semantica explain an LLM's internal reasoning or chain-of-thought?" icon="triangle-exclamation">
+
+No. This is **system-level explainability, not foundation-model explainability**. Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system.
+
+What Semantica explains is *outside* the model: what context and data were used, what decision was produced, the provenance behind it, the relevant relationships, the policies applied, and the resulting decision trail.
+
+In short: Semantica explains and audits *what the AI system did* — not the foundation model's private internal reasoning.
+
+</Accordion>
+
 <Accordion title="Is Semantica free?" icon="tag">
 
 Yes: MIT licensed, no vendor lock-in, no paywalled features. Some capabilities require third-party API keys (e.g., OpenAI embeddings, Groq inference), but Semantica itself is always free and open source.
