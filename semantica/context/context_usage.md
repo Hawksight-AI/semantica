@@ -282,7 +282,7 @@ receipt.to_dict()
 # {
 #   "entity_id": "customer-4471",
 #   "reason": "GDPR Art. 17 request #882",
-#   "erased_at": "2026-08-16T09:03:36+00:00",
+#   "erased_at": "2026-08-16T09:03:36.813220",
 #   "complete": False,
 #   "stores": {
 #     "vectors": {"status": "unsupported", "backend": "faiss",

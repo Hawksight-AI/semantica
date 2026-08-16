@@ -158,10 +158,14 @@ class ErasureCoordinator:
         memory: Optional[Any] = None,
         vector_store: Optional[Any] = None,
     ):
-        if graph is None and memory is None and not vector_store:
+        # `is None` / `is False` rather than truthiness: a real store that
+        # defines __bool__ or __len__ (an empty one, say) is falsey while being
+        # a perfectly valid store to erase from.
+        vector_store_given = vector_store is not None and vector_store is not False
+        if graph is None and memory is None and not vector_store_given:
             raise ValueError(
-                "ErasureCoordinator needs at least one store to erase from; "
-                "got graph=None, memory=None, vector_store=None"
+                "ErasureCoordinator needs at least one store to erase from; got "
+                f"graph=None, memory=None, vector_store={vector_store!r}"
             )
 
         self.graph = graph
@@ -179,7 +183,7 @@ class ErasureCoordinator:
         self,
         entity_id: str,
         reason: Optional[str] = None,
-        at: Optional[Union[str, datetime]] = None,
+        at: Optional[Union[str, int, float, datetime]] = None,
         vector_ids: Optional[Sequence[str]] = None,
     ) -> ErasureReceipt:
         """Erase one entity from every bound store and return a receipt.
@@ -194,9 +198,11 @@ class ErasureCoordinator:
                 ``entities[].id`` in memory items, and a vector id.
             reason: Why it was erased, e.g. an erasure-request reference.
                 Recorded in the receipt and in the graph tombstone.
-            at: When the erasure takes effect, passed through to
-                ``purge_node`` and used as the receipt's ``erased_at``.
-                Defaults to now, UTC.
+            at: When the erasure takes effect, used as the receipt's
+                ``erased_at`` and passed to ``purge_node`` so both records
+                carry the same instant. Accepts anything ``ContextGraph``
+                accepts -- an ISO string, a ``datetime``, or epoch seconds --
+                and defaults to now, UTC.
             vector_ids: Explicit vector ids to remove. Defaults to
                 ``[entity_id]``, which covers entity-keyed embeddings written
                 by something other than ``AgentMemory``; vectors owned by
@@ -206,13 +212,17 @@ class ErasureCoordinator:
             An :class:`ErasureReceipt`. Check :attr:`ErasureReceipt.complete`
             before treating the erasure as done.
         """
+        # Resolve the timestamp once and hand the *resolved* value to the graph.
+        # Passing the caller's `at` through instead would let purge_node take its
+        # own now() when `at` is None, so the receipt and the tombstone it
+        # attests to would disagree by however long the cascade took.
         erased_at = _normalize_timestamp(at)
         stores: Dict[str, Dict[str, Any]] = {}
 
         # Outward-in: vectors, then memory, then the graph last.
         stores["vectors"] = self._erase_vectors(entity_id, vector_ids)
         stores["memory"] = self._erase_memory(entity_id)
-        stores["graph"] = self._erase_graph(entity_id, reason, at)
+        stores["graph"] = self._erase_graph(entity_id, reason, erased_at)
 
         receipt = ErasureReceipt(
             entity_id=entity_id,
@@ -240,7 +250,7 @@ class ErasureCoordinator:
         self,
         entity_ids: Iterable[str],
         reason: Optional[str] = None,
-        at: Optional[Union[str, datetime]] = None,
+        at: Optional[Union[str, int, float, datetime]] = None,
     ) -> List[ErasureReceipt]:
         """Erase several entities, returning one receipt per entity.
 
@@ -326,23 +336,28 @@ class ErasureCoordinator:
                 "detail": f"{type(exc).__name__}: {exc}",
             }
 
-        if deleted is False:
-            self.logger.warning(
-                "Vector backend %r reported no deletion for %r", backend, entity_id
-            )
-            return {
-                "status": STATUS_FAILED,
-                "backend": backend,
-                "vector_ids": len(ids),
-                "detail": "store reported the ids were not deleted",
-            }
-
-        return {
-            "status": STATUS_ERASED,
+        accepted, detail = _interpret_delete_result(deleted)
+        result: Dict[str, Any] = {
+            "status": STATUS_ERASED if accepted else STATUS_FAILED,
             "backend": backend,
             "vector_ids": len(ids),
             "via": method_name,
         }
+        # Keep whatever the backend said. Qdrant returns {"status": ...} and
+        # Pinecone {"deleted": True}, and that detail is the only account of
+        # the delete anyone gets -- dropping it on the floor would leave the
+        # receipt less informative than the call it is attesting to.
+        if detail is not None:
+            result["backend_result"] = detail
+        if not accepted:
+            self.logger.warning(
+                "Vector backend %r reported no deletion for %r: %s",
+                backend,
+                entity_id,
+                detail,
+            )
+            result["detail"] = "store reported the ids were not deleted"
+        return result
 
     def _erase_memory(self, entity_id: str) -> Dict[str, Any]:
         """Delete every memory item referencing the entity."""
@@ -436,7 +451,7 @@ class ErasureCoordinator:
         self,
         entity_id: str,
         reason: Optional[str],
-        at: Optional[Union[str, datetime]],
+        at: Optional[Union[str, int, float, datetime]],
     ) -> Dict[str, Any]:
         """Purge the node, and with it every edge that touches it."""
         if self.graph is None:
@@ -463,7 +478,7 @@ class ErasureCoordinator:
 # Helpers
 
 
-def _normalize_timestamp(at: Optional[Union[str, datetime]]) -> str:
+def _normalize_timestamp(at: Optional[Union[str, int, float, datetime]]) -> str:
     """Render ``at`` exactly as the graph tombstone will record it.
 
     Reuses ``ContextGraph``'s own normalizer rather than formatting the value
@@ -472,10 +487,14 @@ def _normalize_timestamp(at: Optional[Union[str, datetime]]) -> str:
     tombstone it attests to is worse than no record. Normalizing up front also
     rejects an unparseable ``at`` before any store is touched, instead of half
     way through the cascade.
+
+    ``None`` resolves to now here rather than being passed along, so the
+    default path gets one timestamp for both records instead of two ``now()``
+    calls separated by the length of the cascade.
     """
-    if at is None:
-        return datetime.now(timezone.utc).isoformat()
-    return _normalize_temporal_input(at)
+    return _normalize_temporal_input(
+        at if at is not None else datetime.now(timezone.utc)
+    )
 
 
 def _memory_item_id(item: Any) -> Optional[str]:
@@ -484,6 +503,73 @@ def _memory_item_id(item: Any) -> Optional[str]:
         return None
     memory_id = item.get("memory_id") or item.get("id")
     return str(memory_id) if memory_id else None
+
+
+#: Dict keys a backend uses to report whether a delete succeeded, and the
+#: values that mean it did not. Qdrant returns ``{"status": <UpdateStatus>}``
+#: and Pinecone ``{"deleted": True}``; neither is a bool, so a bare
+#: ``result is False`` check would call every dict a success.
+_DELETE_FAILURE_MARKERS = {
+    "deleted": (False,),
+    "success": (False,),
+    "ok": (False,),
+    "acknowledged": (False,),
+    "status": ("failed", "error", "failure"),
+}
+
+
+def _interpret_delete_result(result: Any) -> Tuple[bool, Optional[str]]:
+    """Decide whether a backend's delete return value reports success.
+
+    Returns ``(accepted, detail)``, where ``detail`` is a serializable
+    rendering of the backend's own response to keep in the receipt (``None``
+    when there was nothing worth recording).
+
+    ``None`` counts as accepted: a delete implemented as a void method returns
+    it on success, and reporting ``failed`` there would be a false alarm --
+    the opposite of the honesty this module is for, in the other direction.
+    """
+    if result is None:
+        return True, None
+    if isinstance(result, bool):
+        return result, None
+    if isinstance(result, dict):
+        rendered = {key: _stringify(value) for key, value in result.items()}
+        for key, failure_values in _DELETE_FAILURE_MARKERS.items():
+            if key in result and _is_failure_value(result[key], failure_values):
+                return False, rendered
+        return True, rendered
+    # Anything else (a count, a client response object) is taken at face value;
+    # there is no cross-backend contract to interpret it against.
+    return True, _stringify(result)
+
+
+def _is_failure_value(value: Any, failure_values: Tuple[Any, ...]) -> bool:
+    """True when a backend's marker value says the delete did not happen.
+
+    Bools are matched by identity so a ``0`` count is not read as ``False``.
+    String markers are matched as substrings of the rendered value, because a
+    backend may return an enum whose ``str()`` is ``"UpdateStatus.FAILED"``
+    rather than a bare ``"failed"``.
+    """
+    for failure in failure_values:
+        if isinstance(failure, bool):
+            if value is failure:
+                return True
+        elif failure in str(value).lower():
+            return True
+    return False
+
+
+def _stringify(value: Any) -> Any:
+    """Render a backend payload value so the receipt stays serializable.
+
+    Qdrant's status is an enum, which would make ``to_dict()`` output
+    unserializable as the audit record it is meant to be.
+    """
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 def _vector_delete_capability(store: Any) -> Tuple[Optional[str], Any]:

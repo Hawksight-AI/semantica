@@ -15,6 +15,7 @@ is backend shape -- ``delete_vectors`` vs ``delete`` vs neither -- and three of
 the real backends cannot delete at all.
 """
 
+import json
 import unittest
 
 import numpy as np
@@ -377,6 +378,30 @@ class TestReceipt(unittest.TestCase):
         self.assertEqual(tombstone["purged_at"], "2026-08-16T00:00:00")
         self.assertEqual(receipt.erased_at, tombstone["purged_at"])
 
+    def test_receipt_and_tombstone_agree_when_no_at_is_given(self):
+        """The default path, where the drift actually happens.
+
+        With `at=None` the coordinator and `purge_node()` would each take their
+        own `now()`, so the receipt attested to a different instant than the
+        tombstone it points at. Passing an explicit `at` hides this, which is
+        why the test above passed while the common case was wrong.
+        """
+        graph = _graph()
+        receipt = ErasureCoordinator(graph=graph).erase_entity("customer-4471")
+
+        tombstone = graph.get_tombstone("customer-4471", "node")
+        self.assertEqual(receipt.erased_at, tombstone["purged_at"])
+
+    def test_epoch_seconds_are_accepted_like_the_graph_accepts_them(self):
+        graph = _graph()
+        receipt = ErasureCoordinator(graph=graph).erase_entity(
+            "customer-4471", at=1755302400
+        )
+
+        tombstone = graph.get_tombstone("customer-4471", "node")
+        self.assertEqual(receipt.erased_at, tombstone["purged_at"])
+        self.assertTrue(receipt.erased_at.startswith("2025-"))
+
     def test_an_unparseable_at_is_rejected_before_any_store_is_touched(self):
         graph, memory = _graph(), _memory_with("customer-4471", 2)
 
@@ -487,6 +512,91 @@ class TestConstruction(unittest.TestCase):
         self.assertIsNotNone(ErasureCoordinator(graph=_graph()))
         self.assertIsNotNone(ErasureCoordinator(memory=AgentMemory()))
         self.assertIsNotNone(ErasureCoordinator(vector_store=_DeleteStore()))
+
+    def test_a_falsey_vector_store_is_still_a_store(self):
+        """An empty store defining __len__ is falsey but perfectly valid."""
+
+        class _EmptyButReal(_DeleteVectorsStore):
+            def __len__(self):
+                return 0
+
+        store = _EmptyButReal()
+        coordinator = ErasureCoordinator(vector_store=store)
+
+        self.assertIs(coordinator.vector_store, store)
+        receipt = coordinator.erase_entity("customer-4471")
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_ERASED)
+
+
+class TestBackendDeleteResults(unittest.TestCase):
+    """Backends report deletes as dicts, not bools.
+
+    Qdrant returns ``{"status": <UpdateStatus>}`` and Pinecone
+    ``{"deleted": True}``, so a bare ``result is False`` check calls every dict
+    a success and throws away the only account of the delete the caller gets.
+    """
+
+    def _store_returning(self, value):
+        store = _DeleteVectorsStore(result=value)
+        return store, ErasureCoordinator(vector_store=store)
+
+    def test_qdrant_shaped_success_dict_is_erased_and_kept(self):
+        _, coordinator = self._store_returning({"status": "completed"})
+
+        vectors = coordinator.erase_entity("e1").stores["vectors"]
+
+        self.assertEqual(vectors["status"], STATUS_ERASED)
+        self.assertEqual(vectors["backend_result"], {"status": "completed"})
+
+    def test_pinecone_shaped_success_dict_is_erased(self):
+        _, coordinator = self._store_returning({"deleted": True})
+
+        self.assertEqual(
+            coordinator.erase_entity("e1").stores["vectors"]["status"], STATUS_ERASED
+        )
+
+    def test_explicit_failure_marker_in_a_dict_is_failed(self):
+        for payload in ({"deleted": False}, {"success": False}, {"status": "failed"}):
+            with self.subTest(payload=payload):
+                _, coordinator = self._store_returning(payload)
+
+                receipt = coordinator.erase_entity("e1")
+
+                self.assertEqual(receipt.stores["vectors"]["status"], STATUS_FAILED)
+                self.assertFalse(receipt.complete)
+
+    def test_an_enum_like_failure_status_is_not_read_as_success(self):
+        class _UpdateStatus:
+            def __str__(self):
+                return "UpdateStatus.FAILED"
+
+        _, coordinator = self._store_returning({"status": _UpdateStatus()})
+
+        receipt = coordinator.erase_entity("e1")
+
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_FAILED)
+        # Rendered as a string so the receipt stays serializable as an audit record.
+        self.assertEqual(
+            receipt.stores["vectors"]["backend_result"],
+            {"status": "UpdateStatus.FAILED"},
+        )
+        json.dumps(receipt.to_dict())
+
+    def test_a_zero_count_return_is_not_mistaken_for_False(self):
+        """`0 == False` in Python; a store reporting "0 rows" is not a failure."""
+        _, coordinator = self._store_returning({"deleted": 0})
+
+        self.assertEqual(
+            coordinator.erase_entity("e1").stores["vectors"]["status"], STATUS_ERASED
+        )
+
+    def test_a_void_delete_returning_None_is_accepted(self):
+        """Reporting `failed` for a void method would be a false alarm."""
+        _, coordinator = self._store_returning(None)
+
+        self.assertEqual(
+            coordinator.erase_entity("e1").stores["vectors"]["status"], STATUS_ERASED
+        )
 
 
 if __name__ == "__main__":
