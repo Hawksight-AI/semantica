@@ -45,6 +45,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for minimal installs
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from .api_ingestor import APIData, RESTIngestor
+from .ssrf import request_with_ssrf_guard
 
 AUTH_HEADER_NAMES = {
     "authorization",
@@ -363,12 +364,18 @@ class PublicAPIIngestor(RESTIngestor):
 
         try:
             self._wait_if_needed(rate_limit_delay=rate_limit_delay)
-            response = self.session.request(
-                method=method,
-                url=endpoint,
+            # Route through the SSRF guard so that:
+            #   * redirects to private/loopback IPs are blocked, and
+            #   * Authorization / Proxy-Authorization are stripped on
+            #     cross-origin redirects (issue #947).
+            response = request_with_ssrf_guard(
+                method,
+                endpoint,
+                session=self.session,
                 headers=request_headers,
                 params=params,
                 timeout=timeout,
+                allow_private_ips=self.allow_private_ips,
                 **request_options,
             )
         except requests.exceptions.RequestException as exc:
@@ -444,14 +451,21 @@ class PublicAPIIngestor(RESTIngestor):
 
         try:
             self._wait_if_needed(rate_limit_delay=rate_limit_delay)
-            response = self.session.request(
-                method=method,
-                url=endpoint,
+            # Route through the SSRF guard so that:
+            #   * redirects to private/loopback IPs are blocked, and
+            #   * Authorization / Proxy-Authorization are stripped on
+            #     cross-origin redirects even when validate_no_auth=False
+            #     (issue #947).
+            response = request_with_ssrf_guard(
+                method,
+                endpoint,
+                session=self.session,
                 headers=request_headers,
                 params=params,
                 data=data,
                 json=json_data,
                 timeout=timeout,
+                allow_private_ips=self.allow_private_ips,
                 **request_options,
             )
 

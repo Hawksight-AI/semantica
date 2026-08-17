@@ -501,8 +501,11 @@ class SeedDataManager:
             else:
                 full_url = api_url
 
-            # Prepare headers
-            request_headers = headers or {}
+            # Prepare headers — copy the caller's dict so we never mutate it in-place.
+            # Without the copy, adding "Authorization" here would silently modify the
+            # caller's original dict and potentially leak the key to subsequent calls
+            # that reuse the same dict without expecting it to contain credentials.
+            request_headers = dict(headers) if headers else {}
             if api_key:
                 request_headers["Authorization"] = f"Bearer {api_key}"
 

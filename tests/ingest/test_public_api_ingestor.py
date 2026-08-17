@@ -198,9 +198,13 @@ def test_public_api_detection_reports_auth_required() -> None:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-        detection = PublicAPIIngestor(rate_limit_delay=0).detect_public_api(
-            "https://api.example.com/private"
-        )
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            detection = PublicAPIIngestor(rate_limit_delay=0).detect_public_api(
+                "https://api.example.com/private"
+            )
 
     assert detection.is_public is False
     assert detection.requires_auth is True
@@ -238,10 +242,14 @@ def test_public_api_ingestor_parses_string_boolean_config() -> None:
             config={"validate_no_auth": "false"},
             rate_limit_delay=0,
         )
-        result = ingestor.ingest_public_api(
-            "https://api.example.com/data",
-            headers={"Authorization": "Bearer token"},
-        )
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            result = ingestor.ingest_public_api(
+                "https://api.example.com/data",
+                headers={"Authorization": "Bearer token"},
+            )
 
     assert ingestor.validate_no_auth is False
     assert result.data == payload

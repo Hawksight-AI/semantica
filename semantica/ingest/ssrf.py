@@ -277,6 +277,29 @@ def request_with_ssrf_guard(
     public URL to bounce into private/loopback/link-local space. This helper
     disables automatic redirects and re-validates each ``Location`` target
     before issuing the next hop.
+
+    Authorization / credential-header handling (issue #947)
+    --------------------------------------------------------
+    Sensitive headers are stripped from **both** ``kwargs["headers"]`` (the
+    per-request dict) **and** ``session.headers`` (the session-level dict that
+    ``requests`` merges automatically) whenever ``_should_strip_auth`` returns
+    True.  Stripping only ``kwargs["headers"]`` is insufficient: if a caller
+    stored the credential in ``session.headers`` (e.g. via
+    ``RESTIngestor(config={"headers": {"Authorization": "…"}})``), ``requests``
+    would re-inject it on the next hop despite the per-request strip.
+
+    Session headers that were removed are unconditionally restored in a
+    ``finally`` block so the session is left in its original state after
+    ``request_with_ssrf_guard`` returns — regardless of whether the call
+    succeeded, raised, or hit the redirect cap.  The loop is sequential and
+    single-threaded within one call, so the mutation is safe as long as the
+    caller does not share the session object across concurrent threads (the
+    standard Semantica pattern: one session per ingestor instance).
+
+    Once credentials have been stripped for a cross-origin hop they are NOT
+    re-added for subsequent hops in the same chain, even if a later hop
+    happens to point back to the original host.  This prevents credential
+    resurrection via crafted multi-hop redirect chains.
     """
     kwargs = dict(kwargs)
     kwargs.pop("allow_redirects", None)
@@ -288,56 +311,100 @@ def request_with_ssrf_guard(
     current_method = method.upper()
     redirects_followed = 0
 
-    while True:
-        response = requester(
-            current_method,
-            current_url,
-            allow_redirects=False,
-            **kwargs,
-        )
+    # -- issue #947: snapshot session-level sensitive headers so we can
+    #    restore them unconditionally when this call exits.
+    _SENSITIVE = ("Authorization", "Proxy-Authorization")
+    _session_auth_backup: dict = {}
+    if session is not None:
+        for _h in _SENSITIVE:
+            # requests stores session headers in a case-insensitive dict;
+            # look up by canonical casing — .get() on CaseInsensitiveDict
+            # matches regardless of casing used at insertion time.
+            _val = session.headers.get(_h)
+            if _val is not None:
+                _session_auth_backup[_h] = _val
 
-        if response.status_code not in _REDIRECT_STATUS_CODES:
-            return response
+    # Track whether credentials have been stripped for this redirect chain.
+    # Once stripped they must not reappear on any subsequent hop.
+    _auth_stripped = False
 
-        if redirects_followed >= max_redirects:
-            response.close()
-            raise ValidationError(
-                f"Exceeded maximum redirects ({max_redirects}) while "
-                f"fetching '{url}'"
+    try:
+        while True:
+            response = requester(
+                current_method,
+                current_url,
+                allow_redirects=False,
+                **kwargs,
             )
 
-        location = response.headers.get("Location")
-        if not location or not str(location).strip():
+            if response.status_code not in _REDIRECT_STATUS_CODES:
+                return response
+
+            if redirects_followed >= max_redirects:
+                response.close()
+                raise ValidationError(
+                    f"Exceeded maximum redirects ({max_redirects}) while "
+                    f"fetching '{url}'"
+                )
+
+            location = response.headers.get("Location")
+            if not location or not str(location).strip():
+                response.close()
+                raise ValidationError(
+                    f"Redirect from '{current_url}' is missing a Location header"
+                )
+
+            next_url = urljoin(current_url, str(location).strip())
+            validate_url_for_request(next_url, allow_private_ips=allow_private_ips)
+
+            # Do not leak sensitive headers to a different origin on redirects:
+            # reuse the caller's headers only while host, port, and scheme keep
+            # the credential safe, mirroring requests' should_strip_auth.
+            #
+            # Once stripped (_auth_stripped=True), credentials stay absent for
+            # the remainder of the chain — even if a later hop targets the
+            # original host — to prevent credential resurrection.
+            if _auth_stripped or _should_strip_auth(current_url, next_url):
+                _auth_stripped = True
+
+                # Strip from per-request kwargs headers.
+                kwargs = dict(kwargs)
+                headers = dict(kwargs.get("headers") or {})
+                for sensitive in _SENSITIVE:
+                    headers.pop(sensitive, None)
+                    # Also remove any case variant the caller may have used
+                    # (e.g. "authorization" or "AUTHORIZATION").
+                    for key in list(headers):
+                        if key.lower() == sensitive.lower():
+                            del headers[key]
+                kwargs["headers"] = headers
+
+                # Strip from session-level headers so requests cannot re-inject
+                # them when merging session + per-request headers for this hop.
+                if session is not None:
+                    for sensitive in _SENSITIVE:
+                        # CaseInsensitiveDict.pop(key, None) handles any casing.
+                        session.headers.pop(sensitive, None)
+
+            # Match requests' historical method rewriting for 301/302/303.
+            if (
+                response.status_code in _STRIP_BODY_ON_REDIRECT
+                and current_method not in {"GET", "HEAD"}
+            ):
+                current_method = "GET"
+                for key in ("data", "json", "files"):
+                    kwargs.pop(key, None)
+
+            # Params apply to the original request URL only; Location is authoritative.
+            kwargs.pop("params", None)
+
             response.close()
-            raise ValidationError(
-                f"Redirect from '{current_url}' is missing a Location header"
-            )
+            current_url = next_url
+            redirects_followed += 1
 
-        next_url = urljoin(current_url, str(location).strip())
-        validate_url_for_request(next_url, allow_private_ips=allow_private_ips)
-
-        # Do not leak sensitive headers to a different origin on redirects:
-        # reuse the caller's headers only while host, port, and scheme keep
-        # the credential safe, mirroring requests' should_strip_auth.
-        if _should_strip_auth(current_url, next_url):
-            kwargs = dict(kwargs)
-            headers = dict(kwargs.get("headers") or {})
-            for sensitive in ("Authorization", "Proxy-Authorization"):
-                headers.pop(sensitive, None)
-            kwargs["headers"] = headers
-
-        # Match requests' historical method rewriting for 301/302/303.
-        if (
-            response.status_code in _STRIP_BODY_ON_REDIRECT
-            and current_method not in {"GET", "HEAD"}
-        ):
-            current_method = "GET"
-            for key in ("data", "json", "files"):
-                kwargs.pop(key, None)
-
-        # Params apply to the original request URL only; Location is authoritative.
-        kwargs.pop("params", None)
-
-        response.close()
-        current_url = next_url
-        redirects_followed += 1
+    finally:
+        # Unconditionally restore any session headers we removed, so the
+        # session is in its original state after this call returns or raises.
+        if session is not None and _session_auth_backup:
+            for _h, _v in _session_auth_backup.items():
+                session.headers[_h] = _v
