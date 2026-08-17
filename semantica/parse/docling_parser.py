@@ -491,8 +491,8 @@ class DoclingParser:
                                 elif hasattr(item, 'export_to_markdown'):
                                     try:
                                         page_text_parts.append(item.export_to_markdown(doc=doc))
-                                    except:
-                                        pass
+                                    except Exception:
+                                        pass  # export failure degrades to skipping this text item
                                 
                                 # Extract tables on this page
                                 from docling_core.types.doc import TableItem
