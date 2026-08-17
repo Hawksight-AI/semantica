@@ -6,8 +6,9 @@ chunk tracking, source tracking, and lineage tracing.
 """
 
 import pytest
+import warnings
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from semantica.provenance import ProvenanceManager, SourceReference, ProvenanceEntry
 from semantica.provenance.storage import InMemoryStorage, SQLiteStorage
 
@@ -733,8 +734,8 @@ class TestProvenanceManager:
             entity_type="entity",
             activity_id="test",
             source_document="doc_1",
-            first_seen=datetime.utcnow().isoformat(),
-            last_updated=datetime.utcnow().isoformat(),
+            first_seen=datetime.now(timezone.utc).isoformat(),
+            last_updated=datetime.now(timezone.utc).isoformat(),
         )
         with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")), \
              patch.object(prov_mgr.logger, "error") as mock_log_error:
@@ -1672,3 +1673,66 @@ class TestActivityTimingAcrossWrappers:
         assert entry["activity_ended_at_time"] is not None
 
 
+class TestTimezoneAwareUtcTimestamps:
+    """Issue #946 — timezone-aware UTC stamps without datetime.utcnow()."""
+
+    def test_track_entity_stamps_timezone_aware_utc(self):
+        before = datetime.now(timezone.utc) - timedelta(seconds=1)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            prov_mgr = ProvenanceManager()
+            entry = prov_mgr.track_entity("utc_entity", source="doc_1")
+        after = datetime.now(timezone.utc) + timedelta(seconds=1)
+
+        utcnow_warnings = [
+            w
+            for w in caught
+            if issubclass(w.category, DeprecationWarning)
+            and "utcnow" in str(w.message).lower()
+        ]
+        assert utcnow_warnings == []
+
+        for field in ("timestamp", "first_seen", "last_updated"):
+            value = getattr(entry, field)
+            parsed = datetime.fromisoformat(value)
+            assert parsed.tzinfo is not None, f"{field}={value!r} is naive"
+            assert parsed.utcoffset() == timedelta(0), f"{field}={value!r} is not UTC"
+            assert before <= parsed <= after
+
+        stored = prov_mgr.get_provenance("utc_entity")
+        assert stored is not None
+        assert stored["source_document"] == "doc_1"
+        assert stored["last_updated"] == entry.last_updated
+
+    def test_invalidate_stamps_timezone_aware_utc(self):
+        prov_mgr = ProvenanceManager()
+        prov_mgr.track_entity("utc_invalidate", source="doc_1")
+        result = prov_mgr.invalidate(
+            "utc_invalidate", agent_id="reviewer", reason="test"
+        )
+        parsed = datetime.fromisoformat(result.invalidated_at_time)
+        assert parsed.tzinfo is not None
+        assert parsed.utcoffset() == timedelta(0)
+
+    def test_graph_builder_activity_times_are_timezone_aware_utc(self):
+        from semantica.kg.kg_provenance import GraphBuilderWithProvenance
+
+        builder = GraphBuilderWithProvenance(provenance=True, agent_id="builder_svc")
+        result = builder.build_single_source({
+            "entities": [{"id": "person1", "type": "Person", "name": "Ada"}],
+            "relationships": [],
+        })
+        assert result["entities"][0]["id"] == "person1"
+
+        person = builder._prov_manager.get_provenance("person1")
+        assert person is not None
+        assert person["metadata"]["operation"] == "build_entity"
+        for field in ("activity_started_at_time", "activity_ended_at_time"):
+            parsed = datetime.fromisoformat(person[field])
+            assert parsed.tzinfo is not None, (
+                f"{field}={person[field]!r} is naive"
+            )
+            assert parsed.utcoffset() == timedelta(0)
+        started = datetime.fromisoformat(person["activity_started_at_time"])
+        ended = datetime.fromisoformat(person["activity_ended_at_time"])
+        assert started <= ended

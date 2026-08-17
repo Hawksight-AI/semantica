@@ -28,7 +28,7 @@ License: MIT
 
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -91,7 +91,9 @@ class ProvenanceEntry:
     source_quote: Optional[str] = None
 
     # Temporal tracking (from kg.ProvenanceTracker)
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
     first_seen: Optional[str] = None
     last_updated: Optional[str] = None
 

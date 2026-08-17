@@ -26,7 +26,7 @@ License: MIT
 
 from typing import Optional, List, Dict, Any, Union
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import contextmanager
 import copy
 import inspect
@@ -363,8 +363,12 @@ class ProvenanceManager:
                     source_quote=kwargs.get("source_quote"),
                     confidence=kwargs.get("confidence", 1.0),
                     metadata=metadata or {},
-                    first_seen=existing.first_seen if existing else datetime.utcnow().isoformat(),
-                    last_updated=datetime.utcnow().isoformat(),
+                    first_seen=(
+                        existing.first_seen
+                        if existing
+                        else datetime.now(timezone.utc).isoformat()
+                    ),
+                    last_updated=datetime.now(timezone.utc).isoformat(),
                     parent_entity_id=parent_id,
                     used_entities=list(kwargs.get("used_entities", [])),
                     activity_started_at_time=activity_info["activity_started_at_time"],
@@ -455,8 +459,8 @@ class ProvenanceManager:
             source_location=kwargs.get("source_location"),
             confidence=kwargs.get("confidence", 1.0),
             metadata=metadata or {},
-            first_seen=datetime.utcnow().isoformat(),
-            last_updated=datetime.utcnow().isoformat(),
+            first_seen=datetime.now(timezone.utc).isoformat(),
+            last_updated=datetime.now(timezone.utc).isoformat(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
             acted_on_behalf_of=kwargs.get("acted_on_behalf_of"),
@@ -534,7 +538,7 @@ class ProvenanceManager:
             # split (issue #825, Part A item 4).
             derived_from_id=parent_chunk_id,
             metadata=metadata,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
         )
@@ -604,7 +608,7 @@ class ProvenanceManager:
                 **metadata,
                 **source.metadata
             },
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
         )
@@ -1071,7 +1075,7 @@ class ProvenanceManager:
 
             entry = copy.deepcopy(existing)
             entry.invalidated = True
-            entry.invalidated_at_time = datetime.utcnow().isoformat()
+            entry.invalidated_at_time = datetime.now(timezone.utc).isoformat()
             entry.invalidated_by = agent_id
             entry.invalidation_reason = reason
             entry.previous_version_id = history_id

@@ -62,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Provenance timestamps used deprecated `datetime.utcnow()`, and KG workflow tests asserted IDs without reading stored records** (#946, closes #946) by @pravit-amp
+  - `ProvenanceManager`, `ProvenanceEntry`, `BridgeAxiom`, and `GraphBuilderWithProvenance` now stamp UTC with `datetime.now(timezone.utc).isoformat()`, matching `PipelineWithProvenance`
+  - Workflow and integration tests read provenance back through `get_provenance()` and assert algorithm metadata, so an ID generator that never writes can no longer pass; calls to non-existent `track_layer_analysis` / `track_centrality_score` helpers were replaced with the methods that actually persist records
+
 - **`export_yaml` raised a raw `AttributeError` on list input, silently wrote empty exports for unrecognized dict keys, and graph payloads were reconciled differently by every exporter** (#958, closes #956, #952, #953) by @pravit-amp, reviewed by @Sameer6305
   - Graph payloads circulate under two vocabularies, `entities`/`relationships` and `nodes`/`edges`, and each exporter reconciled them locally with a different idiom — `LPGExporter` in particular dropped every entity whenever `nodes` was present but empty, the exact shape `JSONExporter` emits. A new `normalize_graph_payload()` in `utils/helpers.py` centralizes that decision once, adopted by `LPGExporter`, `ArangoAQLExporter`, `Neo4jCSVExporter`, and both YAML exporters; `ContextGraph.to_dict()` now round-trips through YAML correctly as a result
   - `export_yaml(records, path)` on a bare list previously failed with `AttributeError` from inside the exporter; it and the other YAML methods now reject non-mapping input with an actionable `ProcessingError` naming the expected keys, since these formats distinguish entities/relationships/triplets and guessing which one a list represents would mislabel the records
