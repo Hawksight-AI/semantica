@@ -369,11 +369,16 @@ class NERExtractor:
                     if method_name == "huggingface":
                         # Prioritize runtime options over config/defaults
                         method_options["model"] = (
-                            options.get("huggingface_model") 
-                            or options.get("model") 
+                            options.get("huggingface_model")
+                            or options.get("model")
                             or self.huggingface_model
                         )
                         method_options["device"] = all_options.get("device")
+                        # #1060: NER-level configuration must not leak into the
+                        # HuggingFace model loader as arbitrary kwargs. The
+                        # loader only supports model / device / aggregation_strategy /
+                        # tokenizer — huggingface_model is a NERExtractor option.
+                        method_options.pop("huggingface_model", None)
                     elif method_name == "llm":
                         method_options["provider"] = all_options.get(
                             "provider", "openai"
@@ -529,101 +534,6 @@ class NERExtractor:
             processed.append(entity)
 
         return processed
-
-    def _extract_with_spacy(
-        self, text: str, min_confidence: float, entity_types: Optional[List[str]]
-    ) -> List[Entity]:
-        """Extract entities using spaCy."""
-        entities = []
-
-        doc = self.nlp(text)
-
-        for ent in doc.ents:
-            # Filter by entity types if specified
-            if entity_types and ent.label_ not in entity_types:
-                continue
-
-            # Get confidence if available
-            confidence = 1.0
-            if hasattr(ent, "confidence"):
-                confidence = ent.confidence
-            elif hasattr(ent, "score"):
-                confidence = ent.score
-
-            if confidence >= min_confidence:
-                entities.append(
-                    Entity(
-                        text=ent.text,
-                        label=ent.label_,
-                        start_char=ent.start_char,
-                        end_char=ent.end_char,
-                        confidence=confidence,
-                        metadata={
-                            "lemma": ent.lemma_ if hasattr(ent, "lemma_") else ent.text
-                        },
-                    )
-                )
-
-        return entities
-
-    def _extract_fallback(self, text: str) -> List[Entity]:
-        """Fallback entity extraction using simple patterns."""
-        entities = []
-        import re
-
-        # Simple patterns for common entity types
-        patterns = {
-            "PERSON": r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b",
-            "ORG": r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:Inc|Corp|LLC|Ltd|Company))\b",
-            "GPE": r"\b([A-Z][a-z]+\s*(?:City|State|Country|Nation))\b",
-            "DATE": r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4})\b",
-        }
-
-        # Track covered ranges to avoid overlaps
-        covered_ranges = set()
-
-        for label, pattern in patterns.items():
-            for match in re.finditer(pattern, text):
-                start, end = match.start(), match.end()
-                # Check overlap
-                is_overlap = any(r_start < end and r_end > start for r_start, r_end in covered_ranges)
-                if not is_overlap:
-                    # Use group 1 if available, else group 0
-                    text_val = match.group(1) if match.lastindex and match.lastindex >= 1 else match.group(0)
-                    
-                    entities.append(
-                        Entity(
-                            text=text_val,
-                            label=label,
-                            start_char=start,
-                            end_char=end,
-                            confidence=0.7,  # Lower confidence for pattern-based
-                            metadata={"extraction_method": "pattern"},
-                        )
-                    )
-                    covered_ranges.add((start, end))
-
-        # Last Resort: If no entities found, try single capitalized words as generic entities
-        if not entities:
-            # Match any capitalized word of length > 2
-            cap_pattern = r"\b[A-Z][a-z]{2,}\b"
-            for match in re.finditer(cap_pattern, text):
-                start, end = match.start(), match.end()
-                is_overlap = any(r_start < end and r_end > start for r_start, r_end in covered_ranges)
-                if not is_overlap:
-                    entities.append(
-                        Entity(
-                            text=match.group(0),
-                            label="UNKNOWN",
-                            start_char=start,
-                            end_char=end,
-                            confidence=0.5,
-                            metadata={"extraction_method": "last_resort_pattern"},
-                        )
-                    )
-                    covered_ranges.add((start, end))
-
-        return entities
 
     def extract_entities_batch(self, texts: List[str], **options) -> List[List[Entity]]:
         """
