@@ -1779,6 +1779,39 @@ def _write_embeddings_output(out_path: Path, result) -> None:
         )
 
 
+def _write_result_output(out_path: Path, result) -> None:
+    """Serialize a structured CLI result (dict or list) for ``--output``.
+
+    Domain commands like ``deduplicate`` and ``ontology align`` produce dicts
+    and lists, not numeric matrices — routing them through the embeddings
+    writer rejected their shapes and extensions (.csv is documented for
+    deduplicate). JSON-family formats serialize anything; CSV serializes a
+    list of dicts (or a single dict as one row).
+    """
+    import json as _json
+
+    suffix = out_path.suffix.lower()
+    if suffix in (".json", ".jsonl", ".txt", ""):
+        out_path = out_path if suffix else out_path.with_suffix(".json")
+        if suffix == ".jsonl" and isinstance(result, list):
+            with open(out_path, "w", encoding="utf-8") as fh:
+                for item in result:
+                    fh.write(_json.dumps(item, default=str) + "\n")
+        else:
+            with open(out_path, "w", encoding="utf-8") as fh:
+                _json.dump(result, fh, indent=2, default=str)
+        return
+    if suffix == ".csv":
+        import pandas as pd
+
+        rows = result if isinstance(result, list) else [result]
+        pd.DataFrame(rows).to_csv(out_path, index=False)
+        return
+    raise click.ClickException(
+        f"Unsupported output format '{suffix}'. Use .json, .jsonl, or .csv"
+    )
+
+
 @embed.command("generate")
 @click.argument("input_path")
 @click.option("--model",
@@ -2079,7 +2112,7 @@ def deduplicate(
         except ImportError as exc:
             raise click.ClickException(f"Deduplication module not available: {exc}") from exc
         if output:
-            _write_embeddings_output(Path(output), result)
+            _write_result_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
@@ -3203,7 +3236,7 @@ def ontology_align(cli_ctx: CLIContext, source: str, target: str, strategy: str,
         except ImportError as exc:
             raise click.ClickException(f"Ontology module not available: {exc}") from exc
         if output:
-            _write_embeddings_output(Path(output), result)
+            _write_result_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"alignments": str(result)})
