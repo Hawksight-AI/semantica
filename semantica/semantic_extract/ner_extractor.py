@@ -374,11 +374,14 @@ class NERExtractor:
                     if method_name == "huggingface":
                         # Prioritize runtime options over config/defaults
                         method_options["model"] = (
-                            options.get("huggingface_model") 
-                            or options.get("model") 
+                            options.get("huggingface_model")
+                            or options.get("model")
                             or self.huggingface_model
                         )
                         method_options["device"] = all_options.get("device")
+                        # Remove huggingface_model to prevent it leaking
+                        # as an unexpected kwarg into load_ner_model()
+                        method_options.pop("huggingface_model", None)
                     elif method_name == "llm":
                         method_options["provider"] = all_options.get(
                             "provider", "openai"
