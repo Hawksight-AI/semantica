@@ -1000,16 +1000,16 @@ class TestParquetExportRealData:
         }
 
     def test_parquet_exporter_importable(self):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError as e:
-            pytest.skip(f"ParquetExporter not available: {e}")
+        from semantica.export.parquet_exporter import PARQUET_AVAILABLE
+        if not PARQUET_AVAILABLE:
+            pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
 
     def test_parquet_export_entities_to_file(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
+        from semantica.export.parquet_exporter import PARQUET_AVAILABLE
+        if not PARQUET_AVAILABLE:
             pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
 
         exporter = ParquetExporter(compression="snappy")
         out_path = tmp_path / "github_entities.parquet"
@@ -1018,10 +1018,10 @@ class TestParquetExportRealData:
         assert out_path.stat().st_size > 0
 
     def test_parquet_export_relationships_to_file(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
+        from semantica.export.parquet_exporter import PARQUET_AVAILABLE
+        if not PARQUET_AVAILABLE:
             pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
 
         exporter = ParquetExporter(compression="gzip")
         out_path = tmp_path / "github_relationships.parquet"
@@ -1030,10 +1030,10 @@ class TestParquetExportRealData:
         assert out_path.stat().st_size > 0
 
     def test_parquet_export_knowledge_graph(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
+        from semantica.export.parquet_exporter import PARQUET_AVAILABLE
+        if not PARQUET_AVAILABLE:
             pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
 
         exporter = ParquetExporter(compression="snappy")
         base_path = tmp_path / "github_kg"
@@ -1043,20 +1043,20 @@ class TestParquetExportRealData:
         assert len(files) >= 1
 
     def test_parquet_export_snappy_compression(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
+        from semantica.export.parquet_exporter import PARQUET_AVAILABLE
+        if not PARQUET_AVAILABLE:
             pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
         exporter = ParquetExporter(compression="snappy")
         out_path = tmp_path / "snappy_test.parquet"
         exporter.export_entities(kg_data["entities"], str(out_path))
         assert out_path.exists()
 
     def test_parquet_export_none_compression(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
+        from semantica.export.parquet_exporter import PARQUET_AVAILABLE
+        if not PARQUET_AVAILABLE:
             pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
         exporter = ParquetExporter(compression="none")
         out_path = tmp_path / "uncompressed_test.parquet"
         exporter.export_entities(kg_data["entities"], str(out_path))
