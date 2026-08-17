@@ -369,11 +369,16 @@ class NERExtractor:
                     if method_name == "huggingface":
                         # Prioritize runtime options over config/defaults
                         method_options["model"] = (
-                            options.get("huggingface_model") 
-                            or options.get("model") 
+                            options.get("huggingface_model")
+                            or options.get("model")
                             or self.huggingface_model
                         )
                         method_options["device"] = all_options.get("device")
+                        # #1060: NER-level configuration must not leak into the
+                        # HuggingFace model loader as arbitrary kwargs. The
+                        # loader only supports model / device / aggregation_strategy /
+                        # tokenizer — huggingface_model is a NERExtractor option.
+                        method_options.pop("huggingface_model", None)
                     elif method_name == "llm":
                         method_options["provider"] = all_options.get(
                             "provider", "openai"
