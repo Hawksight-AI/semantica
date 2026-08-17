@@ -222,8 +222,7 @@ class TestMCPClient:
             client = MCPClient(url="http://localhost:8000")
             client.connect()
 
-            result = client.call_tool("my_tool", {"arg": "val"})
-            pass
+            client.call_tool("my_tool", {"arg": "val"})
 
     def test_call_tool_mock_check(self):
         # Redo with the corrected patch target.

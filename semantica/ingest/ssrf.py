@@ -280,21 +280,32 @@ def request_with_ssrf_guard(
 
     Authorization / credential-header handling (issue #947)
     --------------------------------------------------------
-    Sensitive headers are stripped from **both** ``kwargs["headers"]`` (the
-    per-request dict) **and** ``session.headers`` (the session-level dict that
-    ``requests`` merges automatically) whenever ``_should_strip_auth`` returns
-    True.  Stripping only ``kwargs["headers"]`` is insufficient: if a caller
-    stored the credential in ``session.headers`` (e.g. via
-    ``RESTIngestor(config={"headers": {"Authorization": "…"}})``), ``requests``
-    would re-inject it on the next hop despite the per-request strip.
+    Credentials are stripped from **all** sources that ``requests`` can use to
+    attach an ``Authorization`` header whenever a redirect changes origin:
 
-    Session headers that were removed are unconditionally restored in a
-    ``finally`` block so the session is left in its original state after
-    ``request_with_ssrf_guard`` returns — regardless of whether the call
-    succeeded, raised, or hit the redirect cap.  The loop is sequential and
-    single-threaded within one call, so the mutation is safe as long as the
-    caller does not share the session object across concurrent threads (the
-    standard Semantica pattern: one session per ingestor instance).
+    1. ``kwargs["headers"]`` — per-request header dict (already handled).
+    2. ``session.headers`` — session-level headers that ``requests`` merges
+       automatically; cleared for the hop and restored via ``finally``.
+    3. ``kwargs["auth"]`` — per-request auth tuple/callable; removed from
+       ``kwargs`` when stripping is required and restored in ``finally``.
+    4. ``session.auth`` — session-level auth handler that ``requests`` merges
+       via ``merge_setting(auth, self.auth)`` inside ``prepare_request``;
+       cleared for the hop and restored via ``finally``.
+    5. ``session.trust_env`` — when ``True``, ``requests`` reads ``~/.netrc``
+       for the *redirect target* host and calls ``prepare_auth()`` with those
+       credentials even after sources 3 and 4 are cleared; disabled for
+       cross-origin hops and restored via ``finally``.
+
+    Leaving any one of these intact allows ``requests`` to re-attach
+    credentials on the hop to the foreign origin, defeating the header-level
+    strip.
+
+    Session state that was removed is unconditionally restored in a ``finally``
+    block so the session is left in its original state after this call returns,
+    regardless of how it exits (normal return, exception, redirect cap).  The
+    loop is sequential and single-threaded within one call, so the mutation is
+    safe as long as the caller does not share the session across concurrent
+    threads (the standard Semantica pattern: one session per ingestor instance).
 
     Once credentials have been stripped for a cross-origin hop they are NOT
     re-added for subsequent hops in the same chain, even if a later hop
@@ -311,18 +322,24 @@ def request_with_ssrf_guard(
     current_method = method.upper()
     redirects_followed = 0
 
-    # -- issue #947: snapshot session-level sensitive headers so we can
+    # -- issue #947: snapshot every session-level credential source so we can
     #    restore them unconditionally when this call exits.
     _SENSITIVE = ("Authorization", "Proxy-Authorization")
     _session_auth_backup: dict = {}
+    _session_auth_handler_backup: Any = None  # session.auth backup
+    _session_trust_env_backup: bool = True    # session.trust_env backup
+
     if session is not None:
         for _h in _SENSITIVE:
             # requests stores session headers in a case-insensitive dict;
-            # look up by canonical casing — .get() on CaseInsensitiveDict
-            # matches regardless of casing used at insertion time.
+            # .get() matches regardless of the casing used at insertion time.
             _val = session.headers.get(_h)
             if _val is not None:
                 _session_auth_backup[_h] = _val
+        # Snapshot session.auth (HTTPBasicAuth, tuple, callable, or None).
+        _session_auth_handler_backup = session.auth
+        # Snapshot session.trust_env (controls .netrc / env proxy lookup).
+        _session_trust_env_backup = session.trust_env
 
     # Track whether credentials have been stripped for this redirect chain.
     # Once stripped they must not reappear on any subsequent hop.
@@ -357,9 +374,12 @@ def request_with_ssrf_guard(
             next_url = urljoin(current_url, str(location).strip())
             validate_url_for_request(next_url, allow_private_ips=allow_private_ips)
 
-            # Do not leak sensitive headers to a different origin on redirects:
-            # reuse the caller's headers only while host, port, and scheme keep
-            # the credential safe, mirroring requests' should_strip_auth.
+            # Do not leak sensitive headers or auth handlers to a different
+            # origin on redirects.  All four credential sources are cleared:
+            #   • kwargs["headers"]   — per-request header dict
+            #   • session.headers     — session-level header dict
+            #   • kwargs["auth"]      — per-request auth tuple/callable
+            #   • session.auth        — session-level auth handler
             #
             # Once stripped (_auth_stripped=True), credentials stay absent for
             # the remainder of the chain — even if a later hop targets the
@@ -367,7 +387,7 @@ def request_with_ssrf_guard(
             if _auth_stripped or _should_strip_auth(current_url, next_url):
                 _auth_stripped = True
 
-                # Strip from per-request kwargs headers.
+                # 1. Strip from per-request kwargs headers.
                 kwargs = dict(kwargs)
                 headers = dict(kwargs.get("headers") or {})
                 for sensitive in _SENSITIVE:
@@ -379,12 +399,26 @@ def request_with_ssrf_guard(
                             del headers[key]
                 kwargs["headers"] = headers
 
-                # Strip from session-level headers so requests cannot re-inject
-                # them when merging session + per-request headers for this hop.
+                # 2. Strip per-request auth kwarg so requests cannot call
+                #    prepare_auth() with the caller's credential on this hop.
+                kwargs.pop("auth", None)
+
+                # 3. Strip session-level headers so requests cannot re-inject
+                #    them when merging session + per-request headers for this hop.
                 if session is not None:
                     for sensitive in _SENSITIVE:
                         # CaseInsensitiveDict.pop(key, None) handles any casing.
                         session.headers.pop(sensitive, None)
+
+                    # 4. Clear session.auth so prepare_request's merge_setting()
+                    #    cannot fall back to the session-level auth handler and
+                    #    reattach credentials on the foreign-origin hop.
+                    session.auth = None
+
+                    # 5. Disable .netrc / environment-proxy credential lookup so
+                    #    requests cannot inject credentials from ~/.netrc for the
+                    #    redirect target host on this hop.
+                    session.trust_env = False
 
             # Match requests' historical method rewriting for 301/302/303.
             if (
@@ -403,8 +437,13 @@ def request_with_ssrf_guard(
             redirects_followed += 1
 
     finally:
-        # Unconditionally restore any session headers we removed, so the
-        # session is in its original state after this call returns or raises.
-        if session is not None and _session_auth_backup:
-            for _h, _v in _session_auth_backup.items():
-                session.headers[_h] = _v
+        # Unconditionally restore every session credential source we touched,
+        # so the session is in its original state after this call returns or raises.
+        if session is not None:
+            if _session_auth_backup:
+                for _h, _v in _session_auth_backup.items():
+                    session.headers[_h] = _v
+            # Restore session.auth to whatever it was before this call.
+            session.auth = _session_auth_handler_backup
+            # Restore session.trust_env (.netrc / env-proxy lookup flag).
+            session.trust_env = _session_trust_env_backup

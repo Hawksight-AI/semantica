@@ -10,7 +10,7 @@ regression immediately pinpoints the broken invariant.
 from __future__ import annotations
 
 import socket
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -100,8 +100,6 @@ class TestSessionHeadersStripping:
 
         snapshots: list = []
 
-        original_request = sess.request.__func__ if hasattr(sess.request, "__func__") else None
-
         def capturing_side_effect(*args, **kwargs):
             # Snapshot what session.headers contain at the exact moment of this call.
             snapshots.append(dict(sess.headers))
@@ -141,8 +139,6 @@ class TestSessionHeadersStripping:
             request_with_ssrf_guard("GET", "https://example.com/start", session=sess)
 
         assert mock_req.call_count == 2
-        # The second call's kwargs["headers"] should still carry the credential.
-        second_headers = mock_req.call_args_list[1].kwargs.get("headers", {})
         # When no stripping occurred, kwargs["headers"] is unchanged from
         # the caller (no headers kwarg was passed here, so it may be absent
         # or empty — what matters is that the session header was NOT cleared).
@@ -227,6 +223,284 @@ class TestSessionHeadersStripping:
         # Restored after call.
         assert sess.headers.get("Authorization") == "Bearer tok"
         assert sess.headers.get("Proxy-Authorization") == "Basic abc"
+
+
+# ===========================================================================
+# Section 1b – request_with_ssrf_guard: auth= kwarg and session.auth stripping
+# ===========================================================================
+
+
+class TestAuthHandlerStripping:
+    """kwargs['auth'] and session.auth must not reach a foreign origin.
+
+    requests uses two additional credential channels beyond header dicts:
+      • auth= kwarg  → passed to PreparedRequest.prepare_auth() directly
+      • session.auth → merged by Session.prepare_request() via merge_setting()
+                       and then calls prepare_auth() — so even if headers are
+                       stripped, a live session.auth re-attaches Authorization.
+
+    Both must be cleared on cross-origin redirect.
+    """
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_kwargs_auth_stripped_on_cross_origin_redirect(self, _):
+        """auth= kwarg must not be forwarded to the second hop on a different host.
+
+        Verifies that the second call to the underlying requester does NOT
+        receive an 'auth' kwarg, so requests cannot call prepare_auth() and
+        regenerate an Authorization header for the foreign origin.
+        """
+        redirect = _mock_redirect("https://other.example/final")
+        final = _mock_final()
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request",
+            side_effect=[redirect, final],
+        ) as mock_req:
+            request_with_ssrf_guard(
+                "GET",
+                "https://example.com/start",
+                auth=("user", "secret-password"),
+            )
+
+        assert mock_req.call_count == 2
+
+        # First hop: auth= kwarg is present (same origin, no strip yet).
+        first_auth = mock_req.call_args_list[0].kwargs.get("auth")
+        assert first_auth == ("user", "secret-password"), (
+            "auth= kwarg must be forwarded on the first (same-origin) hop"
+        )
+
+        # Second hop: auth= kwarg must be absent (cross-origin — stripped).
+        second_auth = mock_req.call_args_list[1].kwargs.get("auth")
+        assert second_auth is None, (
+            "auth= kwarg must be removed before the cross-origin hop so "
+            "requests cannot call prepare_auth() and reattach Authorization"
+        )
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_kwargs_auth_preserved_on_same_origin_redirect(self, _):
+        """auth= kwarg must survive a same-host redirect unchanged."""
+        redirect = _mock_redirect("https://example.com/new-path")
+        final = _mock_final()
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request",
+            side_effect=[redirect, final],
+        ) as mock_req:
+            request_with_ssrf_guard(
+                "GET",
+                "https://example.com/start",
+                auth=("user", "secret-password"),
+            )
+
+        assert mock_req.call_count == 2
+        second_auth = mock_req.call_args_list[1].kwargs.get("auth")
+        assert second_auth == ("user", "secret-password"), (
+            "auth= kwarg must be kept for same-origin redirects"
+        )
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_session_auth_cleared_before_cross_origin_hop(self, _):
+        """session.auth must be None AT CALL TIME of the cross-origin hop.
+
+        This test uses the same snapshot-at-invocation technique as the
+        session.headers equivalent: capture session.auth at the exact moment
+        each call is issued, so we can prove the handler was absent before
+        requests' merge_setting() could reattach it.
+        """
+        sess = requests.Session()
+        sess.auth = ("user", "secret-password")
+        redirect = _mock_redirect("https://other.example/final")
+        final = _mock_final()
+
+        auth_snapshots: list = []
+
+        def capturing_side_effect(*args, **kwargs):
+            # Snapshot session.auth at the exact moment of this call.
+            auth_snapshots.append(sess.auth)
+            return [redirect, final][len(auth_snapshots) - 1]
+
+        with patch.object(sess, "request", side_effect=capturing_side_effect):
+            request_with_ssrf_guard("GET", "https://example.com/start", session=sess)
+
+        assert len(auth_snapshots) == 2
+
+        # Hop 1 (same origin): session.auth is PRESENT.
+        assert auth_snapshots[0] == ("user", "secret-password"), (
+            "session.auth must be intact for the first (same-origin) call"
+        )
+
+        # Hop 2 (cross-origin): session.auth must be ABSENT (None).
+        assert auth_snapshots[1] is None, (
+            "session.auth must have been cleared BEFORE the cross-origin call "
+            "so requests' merge_setting() cannot reattach the credential"
+        )
+
+        # After the guard returns, session.auth must be fully restored.
+        assert sess.auth == ("user", "secret-password"), (
+            "session.auth must be restored after the guard returns"
+        )
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_session_auth_preserved_on_same_origin_redirect(self, _):
+        """session.auth must not be touched for same-host redirects."""
+        sess = requests.Session()
+        sess.auth = ("user", "secret-password")
+        redirect = _mock_redirect("https://example.com/page2")
+        final = _mock_final()
+
+        auth_snapshots: list = []
+
+        def capturing_side_effect(*args, **kwargs):
+            auth_snapshots.append(sess.auth)
+            return [redirect, final][len(auth_snapshots) - 1]
+
+        with patch.object(sess, "request", side_effect=capturing_side_effect):
+            request_with_ssrf_guard("GET", "https://example.com/start", session=sess)
+
+        assert len(auth_snapshots) == 2
+        # Both hops see session.auth intact.
+        assert auth_snapshots[0] == ("user", "secret-password")
+        assert auth_snapshots[1] == ("user", "secret-password")
+        assert sess.auth == ("user", "secret-password")
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_session_auth_restored_after_successful_request(self, _):
+        """session.auth must be restored to its original value after the call."""
+        sess = requests.Session()
+        sess.auth = ("user", "secret-password")
+        redirect = _mock_redirect("https://other.example/final")
+        final = _mock_final()
+
+        with patch.object(sess, "request", side_effect=[redirect, final]):
+            request_with_ssrf_guard("GET", "https://example.com/start", session=sess)
+
+        assert sess.auth == ("user", "secret-password")
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_session_auth_restored_after_ssrf_exception(self, _):
+        """session.auth must be restored even when the guard raises."""
+        sess = requests.Session()
+        sess.auth = ("user", "secret-password")
+        # Redirect to loopback — guard raises ValidationError.
+        redirect = _mock_redirect("http://127.0.0.1/secret")
+
+        with patch.object(sess, "request", return_value=redirect):
+            with pytest.raises(ValidationError):
+                request_with_ssrf_guard(
+                    "GET", "https://example.com/start", session=sess
+                )
+
+        assert sess.auth == ("user", "secret-password")
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_session_auth_none_by_default_remains_none(self, _):
+        """When session.auth is None (default), the finally block must not set it
+        to something unexpected — restoring None is a no-op, not a corruption."""
+        sess = requests.Session()
+        assert sess.auth is None
+        redirect = _mock_redirect("https://other.example/final")
+        final = _mock_final()
+
+        with patch.object(sess, "request", side_effect=[redirect, final]):
+            request_with_ssrf_guard("GET", "https://example.com/start", session=sess)
+
+        assert sess.auth is None
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_kwargs_auth_does_not_reappear_in_multihop_chain(self, _):
+        """Once auth= is stripped at hop 2, it must not reappear at hop 3."""
+        hop1 = _mock_redirect("https://other.example/step2")   # cross-origin: strip
+        hop2 = _mock_redirect("https://other.example/final")   # same host as hop1: stay stripped
+        final = _mock_final()
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request",
+            side_effect=[hop1, hop2, final],
+        ) as mock_req:
+            request_with_ssrf_guard(
+                "GET",
+                "https://example.com/start",
+                auth=("user", "pass"),
+            )
+
+        assert mock_req.call_count == 3
+        # Hop 1: auth present (same origin).
+        assert mock_req.call_args_list[0].kwargs.get("auth") == ("user", "pass")
+        # Hop 2: stripped.
+        assert mock_req.call_args_list[1].kwargs.get("auth") is None
+        # Hop 3: stays stripped — no resurrection.
+        assert mock_req.call_args_list[2].kwargs.get("auth") is None
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_session_trust_env_disabled_before_cross_origin_hop(self, _):
+        """session.trust_env must be False AT CALL TIME of the cross-origin hop.
+
+        When trust_env=True, requests reads ~/.netrc for the redirect target host
+        and calls prepare_auth() with those credentials — even after session.auth
+        and kwargs['auth'] are cleared.  Disabling trust_env before the hop closes
+        this bypass channel.
+        """
+        sess = requests.Session()
+        sess.trust_env = True  # explicit default
+        redirect = _mock_redirect("https://other.example/final")
+        final = _mock_final()
+
+        trust_env_snapshots: list = []
+
+        def capturing_side_effect(*args, **kwargs):
+            trust_env_snapshots.append(sess.trust_env)
+            return [redirect, final][len(trust_env_snapshots) - 1]
+
+        with patch.object(sess, "request", side_effect=capturing_side_effect):
+            request_with_ssrf_guard("GET", "https://example.com/start", session=sess)
+
+        assert len(trust_env_snapshots) == 2
+
+        # Hop 1 (same origin): trust_env is True (unchanged).
+        assert trust_env_snapshots[0] is True, (
+            "trust_env must be unchanged for the first (same-origin) call"
+        )
+
+        # Hop 2 (cross-origin): trust_env must be False to block .netrc lookup.
+        assert trust_env_snapshots[1] is False, (
+            "trust_env must be False BEFORE the cross-origin call to prevent "
+            "requests from looking up ~/.netrc credentials for the redirect target"
+        )
+
+        # After the guard returns, trust_env must be restored.
+        assert sess.trust_env is True, (
+            "session.trust_env must be restored after the guard returns"
+        )
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_session_trust_env_restored_after_exception(self, _):
+        """session.trust_env must be restored even when the guard raises."""
+        sess = requests.Session()
+        sess.trust_env = True
+        redirect = _mock_redirect("http://127.0.0.1/secret")  # will raise ValidationError
+
+        with patch.object(sess, "request", return_value=redirect):
+            with pytest.raises(ValidationError):
+                request_with_ssrf_guard(
+                    "GET", "https://example.com/start", session=sess
+                )
+
+        assert sess.trust_env is True
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_session_trust_env_false_stays_false_after_call(self, _):
+        """If trust_env was already False, it must stay False after the call."""
+        sess = requests.Session()
+        sess.trust_env = False  # caller explicitly disabled .netrc
+        redirect = _mock_redirect("https://other.example/final")
+        final = _mock_final()
+
+        with patch.object(sess, "request", side_effect=[redirect, final]):
+            request_with_ssrf_guard("GET", "https://example.com/start", session=sess)
+
+        assert sess.trust_env is False  # restored to the original False value
 
 
 # ===========================================================================
