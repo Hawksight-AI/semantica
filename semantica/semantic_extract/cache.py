@@ -19,6 +19,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import copy
 import time
 import hashlib
 import json
@@ -29,9 +30,18 @@ from threading import Lock
 from ..utils.logging import get_logger
 
 class CacheItem:
-    """Container for cached data."""
+    """Container for cached data.
+
+    Holds a private snapshot: callers own what get() hands them, and the
+    stored value is immune to later mutation of the list the caller passed
+    to set(). Without the snapshot, extraction results were handed out by
+    reference and post-processing (weighted-confidence reblending, boundary
+    correction) rewrote the CACHED entities in place — every later cache hit
+    returned already-mutated objects, and a non-idempotent transform like
+    calculate_weighted_confidence compounded on each hit.
+    """
     def __init__(self, value: Any, ttl: Optional[int] = None):
-        self.value = value
+        self.value = copy.deepcopy(value)
         self.timestamp = time.time()
         self.ttl = ttl
 
@@ -122,8 +132,11 @@ class ExtractionCache:
                 
                 # Move to end (mark as recently used)
                 cache.move_to_end(key)
-                return item.value
-        
+                # A copy, not the stored snapshot: the caller owns what comes
+                # back and may post-process it in place, and that must never
+                # reach the next reader of this entry.
+                return copy.deepcopy(item.value)
+
         return None
 
     def set(self, namespace: str, text: str, value: Any, **params) -> None:
