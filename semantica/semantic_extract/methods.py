@@ -108,6 +108,7 @@ License: MIT
 
 import re
 import difflib
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -152,6 +153,39 @@ spacy, SPACY_AVAILABLE = safe_import("spacy")
 # Global cache for spacy model and text embedder to avoid reloading
 _nlp_cache = None
 _embedder_cache = None
+
+# Cache for models loaded by name, so extraction functions do not pay
+# spacy.load() on every call. Entries record the spacy module they were loaded
+# from: tests patch `methods.spacy` with a mock, and an entry produced by a
+# different module object must not be handed back to a later caller.
+_spacy_model_cache: Dict[str, Tuple[Any, Any]] = {}
+_spacy_model_cache_lock = threading.Lock()
+
+
+def load_spacy_model(name: str):
+    """Load a spaCy model once per process, keyed by model name.
+
+    Raises whatever ``spacy.load`` raises (``OSError`` for a missing model), so
+    callers keep their existing fallback behavior.
+    """
+    cached = _spacy_model_cache.get(name)
+    if cached is not None and cached[0] is spacy:
+        return cached[1]
+
+    with _spacy_model_cache_lock:
+        cached = _spacy_model_cache.get(name)
+        if cached is not None and cached[0] is spacy:
+            return cached[1]
+        nlp = spacy.load(name)
+        _spacy_model_cache[name] = (spacy, nlp)
+        return nlp
+
+
+def clear_spacy_model_cache() -> None:
+    """Drop every cached spaCy model. Intended for tests."""
+    with _spacy_model_cache_lock:
+        _spacy_model_cache.clear()
+
 
 def get_text_embedder():
     """
@@ -202,8 +236,8 @@ def get_nlp_model():
         try:
             _nlp_cache = spacy.load("en_core_web_sm", disable=["parser", "ner", "lemmatizer"])
             return _nlp_cache
-        except:
-            pass
+        except Exception:
+            pass  # spacy.load raises OSError for a missing model
             
     except Exception as e:
         logger.warning(f"Failed to load spaCy model for similarity: {e}")
@@ -676,11 +710,11 @@ def extract_entities_ml(
         return extract_entities_pattern(text, **kwargs)
 
     try:
-        nlp = spacy.load(model)
+        nlp = load_spacy_model(model)
     except OSError:
         logger.warning(f"spaCy model {model} not found, using en_core_web_sm")
         try:
-            nlp = spacy.load("en_core_web_sm")
+            nlp = load_spacy_model("en_core_web_sm")
         except OSError:
             logger.warning(
                 "spaCy model not available, falling back to pattern extraction"
@@ -1400,14 +1434,14 @@ def extract_relations_similarity(
             # Prefer larger models for vectors
             for model_name in ["en_core_web_lg", "en_core_web_md", "en_core_web_sm"]:
                 if spacy.util.is_package(model_name):
-                    nlp = spacy.load(model_name)
+                    nlp = load_spacy_model(model_name)
                     break
             if not nlp:
                  # Try loading what we have
                  try:
-                     nlp = spacy.load("en_core_web_sm") 
-                 except:
-                     pass
+                     nlp = load_spacy_model("en_core_web_sm")
+                 except Exception:
+                     pass  # load_spacy_model raises OSError for a missing model
         except Exception:
             pass
 
@@ -1505,7 +1539,7 @@ def extract_relations_dependency(
         return extract_relations_pattern(text, entities, **kwargs)
 
     try:
-        nlp = spacy.load(model)
+        nlp = load_spacy_model(model)
     except OSError:
         logger.warning(f"spaCy model {model} not found")
         return extract_relations_pattern(text, entities, **kwargs)
