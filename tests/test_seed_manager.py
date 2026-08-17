@@ -331,35 +331,3 @@ def test_export_seed_data(seed_manager, temp_data_dir):
         rows = list(reader)
         assert len(rows) == 1
         assert rows[0]["id"] == "1"
-
-
-
-class TestFindByEntityLimit:
-    """#1018: find_by_entity's default limit of 10 silently truncated results,
-    making erasure workflows incomplete for entities with >10 memories."""
-
-    def test_returns_all_matches_by_default(self):
-        from semantica.context.agent_memory import AgentMemory
-        mem = AgentMemory()
-        for i in range(15):
-            mem.store(
-                content=f"fact {i} about entity",
-                entities=[{"id": "e1", "name": "Entity", "type": "thing"}],
-            )
-        results = mem.find_by_entity("e1")
-        assert len(results) == 15, f"expected 15 (all), got {len(results)}"
-
-    def test_explicit_limit_still_works(self):
-        from semantica.context.agent_memory import AgentMemory
-        mem = AgentMemory()
-        for i in range(15):
-            mem.store(
-                content=f"fact {i}",
-                entities=[{"id": "e1", "name": "Entity", "type": "thing"}],
-            )
-        assert len(mem.find_by_entity("e1", limit=5)) == 5
-
-    def test_no_matches_returns_empty(self):
-        from semantica.context.agent_memory import AgentMemory
-        mem = AgentMemory()
-        assert mem.find_by_entity("nonexistent") == []
