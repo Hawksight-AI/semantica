@@ -9,6 +9,7 @@ from dataclasses import asdict
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from semantica.semantic_extract.ner_extractor import NERExtractor, Entity
+from semantica.semantic_extract.schemas import EntitiesResponse, EntityOut
 from semantica.semantic_extract.named_entity_recognizer import NamedEntityRecognizer
 from semantica.semantic_extract.methods import get_entity_method
 
@@ -30,13 +31,17 @@ class TestNERConfigurations(unittest.TestCase):
         """Test NER with LLM configuration"""
         print("\nTesting NER with LLM configuration...")
         
-        # Mock LLM provider
+        # Mock LLM provider. extract_entities_llm() has used generate_typed()
+        # with the EntitiesResponse schema since typed generation landed; a
+        # generate_structured mock was never exercised, so the test silently
+        # fell through the error path instead of covering the LLM extraction
+        # (#1059).
         mock_provider = MagicMock()
         mock_provider.is_available.return_value = True
-        mock_provider.generate_structured.return_value = [
-            {"text": "Apple Inc.", "label": "ORG", "start": 0, "end": 10, "confidence": 0.95},
-            {"text": "Steve Jobs", "label": "PERSON", "start": 26, "end": 36, "confidence": 0.98}
-        ]
+        mock_provider.generate_typed.return_value = EntitiesResponse(entities=[
+            EntityOut(text="Apple Inc.", label="ORG", start=0, end=10, confidence=0.95),
+            EntityOut(text="Steve Jobs", label="PERSON", start=26, end=36, confidence=0.98),
+        ])
         mock_create_provider.return_value = mock_provider
         
         # Initialize extractor with LLM method
@@ -56,8 +61,11 @@ class TestNERConfigurations(unittest.TestCase):
         self.assertEqual(len(entities), 2)
         self.assertEqual(entities[0].text, "Apple Inc.")
         self.assertEqual(entities[0].label, "ORG")
-        self.assertEqual(entities[0].metadata["extraction_method"], "llm")
+        self.assertEqual(entities[0].metadata["extraction_method"], "llm_typed")
         self.assertEqual(entities[0].metadata["model"], "gpt-4")
+        # The typed path must actually have been exercised, not the
+        # error/fallback path the stale generate_structured mock fell through.
+        mock_provider.generate_typed.assert_called_once()
 
     @patch('semantica.semantic_extract.methods.spacy')
     def test_ner_ml_config_spacy_available(self, mock_spacy):
@@ -170,10 +178,11 @@ class TestNERConfigurations(unittest.TestCase):
         
         self.assertTrue(len(entities) >= 2)
         texts = [e.text for e in entities]
-        self.assertIn("Apple Inc", texts) # Regex pattern does not capture the trailing dot
-        # Actually methods.py regex: r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:Inc|Corp|LLC|Ltd|Company))\b"
-        # "Apple Inc." -> "Apple Inc" (dot is outside \b if not matched?)
-        # Let's check the result strictly
+        # The ORG pattern intentionally captures the trailing period when
+        # present (commit 246bcc96), so the canonical surface form is
+        # "Apple Inc." — the old "Apple Inc" expectation was stale (#1059).
+        self.assertIn("Apple Inc.", texts)
+        self.assertIn("Steve Jobs", texts)
         
     @patch('semantica.semantic_extract.methods.create_provider')
     @patch('semantica.semantic_extract.methods.spacy')
