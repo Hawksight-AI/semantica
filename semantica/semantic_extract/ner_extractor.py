@@ -375,9 +375,12 @@ class NERExtractor:
                         )
                         method_options["device"] = all_options.get("device")
                         # #1060: NER-level configuration must not leak into the
-                        # HuggingFace model loader as arbitrary kwargs. The
-                        # loader only supports model / device / aggregation_strategy /
-                        # tokenizer — huggingface_model is a NERExtractor option.
+                        # HuggingFace model loader as arbitrary kwargs.
+                        # load_ner_model() takes the model name plus **kwargs
+                        # it forwards to the transformers pipeline —
+                        # huggingface_model is a NERExtractor option naming
+                        # the model, not a pipeline option, so it is consumed
+                        # into method_options["model"] above and removed.
                         method_options.pop("huggingface_model", None)
                     elif method_name == "llm":
                         method_options["provider"] = all_options.get(
