@@ -29,34 +29,35 @@ class TestNERConfigurations(unittest.TestCase):
     def test_ner_llm_config(self, mock_create_provider):
         """Test NER with LLM configuration"""
         print("\nTesting NER with LLM configuration...")
-        
-        # Mock LLM provider
+
+        # Mock LLM provider — production now uses generate_typed (not generate_structured)
+        from semantica.semantic_extract.schemas import EntitiesResponse, EntityOut
         mock_provider = MagicMock()
         mock_provider.is_available.return_value = True
-        mock_provider.generate_structured.return_value = [
-            {"text": "Apple Inc.", "label": "ORG", "start": 0, "end": 10, "confidence": 0.95},
-            {"text": "Steve Jobs", "label": "PERSON", "start": 26, "end": 36, "confidence": 0.98}
-        ]
+        mock_provider.generate_typed.return_value = EntitiesResponse(entities=[
+            EntityOut(text="Apple Inc.", label="ORG", start_char=0, end_char=10, confidence=0.95),
+            EntityOut(text="Steve Jobs", label="PERSON", start_char=26, end_char=36, confidence=0.98),
+        ])
         mock_create_provider.return_value = mock_provider
-        
+
         # Initialize extractor with LLM method
         extractor = NERExtractor(
-            method="llm", 
-            provider="openai", 
+            method="llm",
+            provider="openai",
             model="gpt-4",
             temperature=0.1
         )
-        
+
         entities = extractor.extract_entities(self.text)
-        
+
         # Verify provider creation args
         mock_create_provider.assert_called_with("openai", model="gpt-4", temperature=0.1)
-        
-        # Verify extraction
+
+        # Verify extraction — extraction_method is now "llm_typed"
         self.assertEqual(len(entities), 2)
         self.assertEqual(entities[0].text, "Apple Inc.")
         self.assertEqual(entities[0].label, "ORG")
-        self.assertEqual(entities[0].metadata["extraction_method"], "llm")
+        self.assertEqual(entities[0].metadata["extraction_method"], "llm_typed")
         self.assertEqual(entities[0].metadata["model"], "gpt-4")
 
     @patch('semantica.semantic_extract.methods.spacy')
@@ -183,10 +184,7 @@ class TestNERConfigurations(unittest.TestCase):
         
         self.assertTrue(len(entities) >= 2)
         texts = [e.text for e in entities]
-        self.assertIn("Apple Inc", texts) # Regex pattern does not capture the trailing dot
-        # Actually methods.py regex: r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:Inc|Corp|LLC|Ltd|Company))\b"
-        # "Apple Inc." -> "Apple Inc" (dot is outside \b if not matched?)
-        # Let's check the result strictly
+        self.assertIn("Apple Inc.", texts) # ORG pattern updated to capture trailing period
         
     @patch('semantica.semantic_extract.methods.create_provider')
     @patch('semantica.semantic_extract.methods.spacy')
@@ -255,7 +253,7 @@ class TestNERConfigurations(unittest.TestCase):
         )
         entities = extractor.extract_entities(self.text)
         
-        mock_loader.load_ner_model.assert_called_with("dslim/bert-base-NER")
+        mock_loader.load_ner_model.assert_called_once_with("dslim/bert-base-NER")
         self.assertEqual(len(entities), 1)
         self.assertEqual(entities[0].text, "Apple Inc.")
         self.assertEqual(entities[0].label, "ORG")
