@@ -143,9 +143,9 @@ class MemoryItem:
         """Reconstruct a MemoryItem from a serialised dict."""
         raw_ts = data.get("timestamp")
         try:
-            ts = datetime.fromisoformat(raw_ts) if raw_ts else datetime.utcnow()
+            ts = datetime.fromisoformat(raw_ts) if raw_ts else datetime.now(timezone.utc)
         except (ValueError, TypeError):
-            ts = datetime.utcnow()
+            ts = datetime.now(timezone.utc)
         return cls(
             content=data.get("content", ""),
             timestamp=ts,
@@ -332,7 +332,14 @@ class AgentMemory:
 
         try:
             memory_id = options.get("memory_id") or self._generate_memory_id()
-            timestamp = options.get("timestamp") or datetime.now()
+            # Aware UTC, deliberately: _timestamp_comparison_key interprets a
+            # naive stamp as LOCAL time, so a naive local "now" here and a
+            # naive utcnow() elsewhere differ by the host's UTC offset — on a
+            # UTC+8 host that pushed freshly added memories 8 hours outside
+            # every start_date/end_date window. One aware producer removes
+            # the ambiguity; legacy naive stamps keep their local-time
+            # meaning through the comparison key.
+            timestamp = options.get("timestamp") or datetime.now(timezone.utc)
 
             if memory_id in self.memory_items:
                 replacement_options = dict(options)
@@ -1028,7 +1035,7 @@ class AgentMemory:
         else:
             days = 30
 
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         # Delete old items
         memory_ids_to_delete = []
