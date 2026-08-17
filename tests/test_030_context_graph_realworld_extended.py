@@ -27,7 +27,6 @@ Real-world data used (no live HTTP calls made — all data is static public know
   - Open-source: GitHub URLs used as provenance source identifiers
 """
 
-import importlib.util
 import json
 import os
 import tempfile
@@ -54,6 +53,11 @@ from semantica.context.decision_models import (
     serialize_decision,
     validate_decision,
 )
+
+# ── Export module ──────────────────────────────────────────────────────────────
+# Set by the exporter's own `import pyarrow` attempt; False when pyarrow is
+# missing or unimportable.
+from semantica.export.parquet_exporter import PARQUET_AVAILABLE
 
 # ── KG module ──────────────────────────────────────────────────────────────────
 from semantica.kg import (
@@ -984,10 +988,12 @@ class TestParquetExportRealData:
 
     # ParquetExporter imports fine without pyarrow and only raises ImportError
     # when an export actually runs, so guarding on that import never skips
-    # anything. Guard on the dependency itself, as tests/ingest/
-    # test_parquet_ingestor.py and test_arrow_ingestor.py already do.
+    # anything. Guard on the exporter's own availability flag instead: it is set
+    # by the same `import pyarrow` / `import pyarrow.parquet` the exporter gates
+    # on, so the skip condition cannot drift from the runtime check — including
+    # when pyarrow is present on the path but fails to import.
     pytestmark = pytest.mark.skipif(
-        importlib.util.find_spec("pyarrow") is None,
+        not PARQUET_AVAILABLE,
         reason="pyarrow not installed",
     )
 
