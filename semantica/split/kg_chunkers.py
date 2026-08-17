@@ -375,10 +375,12 @@ class HierarchicalChunker:
 
     def __init__(
         self,
-        levels: List[str] = ["section", "paragraph", "sentence"],
+        levels: Optional[List[str]] = None,
         chunk_sizes: Optional[List[int]] = None,
         **kwargs,
     ):
+        if levels is None:
+            levels = ["section", "paragraph", "sentence"]
         """
         Initialize hierarchical chunker.
 
