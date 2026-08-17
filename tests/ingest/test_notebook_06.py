@@ -78,10 +78,16 @@ class TestNotebook06MultiSourceIntegration:
         relationships = [
             {"source": "e2", "target": "e1", "type": "CEO_of", "source": "file1"}
         ]
-        
-        with patch.object(provenance_tracker, 'track_relationship'):
+
+        # #1055: ProvenanceTracker.track_relationship was never implemented
+        # (see CHANGELOG.md:563). The old patch.object raised AttributeError
+        # before the test body ran. Track entities instead — the relationships
+        # are consumed by GraphBuilder below.
+        with patch.object(provenance_tracker, 'track_entity'):
             for rel in relationships:
-                provenance_tracker.track_relationship(rel.get("source"), rel.get("target"), rel.get("source"), rel)
+                provenance_tracker.track_entity(
+                    rel.get("target"), rel.get("source")
+                )
 
         # --- Step 5: Build Unified KG ---
         builder = GraphBuilder()
