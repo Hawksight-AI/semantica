@@ -773,6 +773,15 @@ def changelog(cli_ctx: CLIContext, local_json: bool) -> None:
     _run_with_error_handling(_action)
 
 
+class _DeepEmbeddingFailure(Exception):
+    """A deep-probe failure from doctor's embedding checks.
+
+    Marks failures that happened AFTER the backend imported cleanly — model
+    load, probe, or runtime problems — so the check's hint can point at the
+    real remediation instead of `pip install`.
+    """
+
+
 @main.command()
 @click.option("--json", "local_json", is_flag=True, default=False)
 @click.option("--deep-embeddings", "deep_embeddings", is_flag=True, default=False,
@@ -790,6 +799,16 @@ def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None
         try:
             note = fn()
             return label, "ok", note, None
+        except _DeepEmbeddingFailure as exc:
+            # A deep-probe failure means the package IMPORTED fine: the pip
+            # hint would be the wrong remediation for what is actually a
+            # runtime/model-load problem (broken torch, failed model
+            # download, missing shared libs).
+            return label, "fail", str(exc), (
+                "runtime/model-load failure — reinstalling the package usually "
+                "does not help; check the warnings above (torch install, model "
+                "download, disk space)"
+            )
         except Exception as exc:
             return label, "fail", str(exc), hint
 
@@ -837,7 +856,7 @@ def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None
         # SEMANTICA_DOCTOR_DEEP_EMBEDDINGS=1) instantiates the backend through
         # TextEmbedder and embeds a probe, which is the only level that
         # catches a backend that imports cleanly but cannot actually load.
-        deep = deep_embeddings or os.environ.get("SEMANTICA_DOCTOR_DEEP_EMBEDDINGS", "") in ("1", "true", "yes")
+        deep = deep_embeddings or os.environ.get("SEMANTICA_DOCTOR_DEEP_EMBEDDINGS", "").strip().lower() in ("1", "true", "yes", "on")
 
         def _embedding_backend(method: str) -> str:
             if method == "sentence_transformers":
@@ -848,14 +867,19 @@ def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None
                 note = f"importable ({importlib.metadata.version('fastembed')})"
             if not deep:
                 return note
-            from .embeddings import TextEmbedder
-            embedder = TextEmbedder(method=method)
-            if embedder.model is None and embedder.fastembed_model is None:
-                raise RuntimeError(
-                    "model failed to load — the hash fallback is active "
-                    "(see warnings above); embedding quality is degraded"
-                )
-            probe = embedder.embed_text("semantica doctor embedding probe")
+            try:
+                from .embeddings import TextEmbedder
+                embedder = TextEmbedder(method=method)
+                if embedder.model is None and embedder.fastembed_model is None:
+                    raise RuntimeError(
+                        "model failed to load — the hash fallback is active "
+                        "(see warnings above); embedding quality is degraded"
+                    )
+                probe = embedder.embed_text("semantica doctor embedding probe")
+            except _DeepEmbeddingFailure:
+                raise
+            except Exception as exc:
+                raise _DeepEmbeddingFailure(str(exc)) from exc
             return f"{note}; deep probe ok ({len(probe)}-dim)"
 
         checks.append(_check(
