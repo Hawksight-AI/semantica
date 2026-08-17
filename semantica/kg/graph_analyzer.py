@@ -258,8 +258,6 @@ class GraphAnalyzer:
         **options,
     ):
         """
-        if metrics is None:
-            metrics = ["node_count", "edge_count", "density", "communities"]
         Analyze temporal evolution of graph.
 
         Args:
@@ -273,6 +271,8 @@ class GraphAnalyzer:
         Returns:
             Evolution analysis results with time series data
         """
+        if metrics is None:
+            metrics = ["node_count", "edge_count", "density", "communities"]
         self.logger.info("Analyzing temporal evolution")
 
         from .temporal_query import TemporalGraphQuery

@@ -1419,6 +1419,8 @@ def split_hierarchical(
     """
     if chunk_sizes is None:
         chunk_sizes = [2000, 1000, 500]
+    if levels is None:
+        levels = ["section", "paragraph", "sentence"]
 
     # Start with largest level
     if "section" in levels:

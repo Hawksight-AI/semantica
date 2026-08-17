@@ -379,8 +379,6 @@ class HierarchicalChunker:
         chunk_sizes: Optional[List[int]] = None,
         **kwargs,
     ):
-        if levels is None:
-            levels = ["section", "paragraph", "sentence"]
         """
         Initialize hierarchical chunker.
 
@@ -389,6 +387,8 @@ class HierarchicalChunker:
             chunk_sizes: Chunk sizes for each level
             **kwargs: Additional options
         """
+        if levels is None:
+            levels = ["section", "paragraph", "sentence"]
         self.levels = levels
         self.chunk_sizes = chunk_sizes or [2000, 1000, 500]
         self.options = kwargs
