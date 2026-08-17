@@ -139,7 +139,16 @@ class NERExtractor:
         if not self.progress_tracker.enabled:
             self.progress_tracker.enabled = True
 
-        # Initialize spaCy model if ML method is used
+        # Initialize spaCy model if ML method is used. The instance is NOT
+        # consumed by the dispatch path — methods.extract_entities_ml() loads
+        # and caches its own pipeline — but this eager load doubles as a
+        # runtime probe: a model that imports fine yet fails to load here
+        # (broken install, incomplete config schema) flips _ml_runtime_usable
+        # so the dispatch can drop ML from the method list once instead of
+        # paying a doomed spacy.load on every extraction. See
+        # test_ner_ml_init_falls_back_when_spacy_runtime_is_broken and
+        # test_ner_ml_runtime_failure_disables_repeated_ml_load_attempts,
+        # which pin the one-load-then-disable contract.
         self.nlp = None
         self._ml_runtime_usable = True
         if "ml" in self.method and SPACY_AVAILABLE:
@@ -466,6 +475,66 @@ class NERExtractor:
                 tracking_id, status="failed", message=str(e)
             )
             raise
+
+    def _extract_fallback(self, text: str) -> List[Entity]:
+        """Fallback entity extraction using simple patterns."""
+        entities = []
+        import re
+
+        # Simple patterns for common entity types
+        patterns = {
+            "PERSON": r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b",
+            "ORG": r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:Inc|Corp|LLC|Ltd|Company))\b",
+            "GPE": r"\b([A-Z][a-z]+\s*(?:City|State|Country|Nation))\b",
+            "DATE": r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4})\b",
+        }
+
+        # Track covered ranges to avoid overlaps
+        covered_ranges = set()
+
+        for label, pattern in patterns.items():
+            for match in re.finditer(pattern, text):
+                start, end = match.start(), match.end()
+                # Check overlap
+                is_overlap = any(r_start < end and r_end > start for r_start, r_end in covered_ranges)
+                if not is_overlap:
+                    # Use group 1 if available, else group 0
+                    text_val = match.group(1) if match.lastindex and match.lastindex >= 1 else match.group(0)
+                    
+                    entities.append(
+                        Entity(
+                            text=text_val,
+                            label=label,
+                            start_char=start,
+                            end_char=end,
+                            confidence=0.7,  # Lower confidence for pattern-based
+                            metadata={"extraction_method": "pattern"},
+                        )
+                    )
+                    covered_ranges.add((start, end))
+
+        # Last Resort: If no entities found, try single capitalized words as generic entities
+        if not entities:
+            # Match any capitalized word of length > 2
+            cap_pattern = r"\b[A-Z][a-z]{2,}\b"
+            for match in re.finditer(cap_pattern, text):
+                start, end = match.start(), match.end()
+                is_overlap = any(r_start < end and r_end > start for r_start, r_end in covered_ranges)
+                if not is_overlap:
+                    entities.append(
+                        Entity(
+                            text=match.group(0),
+                            label="UNKNOWN",
+                            start_char=start,
+                            end_char=end,
+                            confidence=0.5,
+                            metadata={"extraction_method": "last_resort_pattern"},
+                        )
+                    )
+                    covered_ranges.add((start, end))
+
+        return entities
+
 
     def _filter_unusable_methods(self, methods: List[str]) -> List[str]:
         """Skip ML dispatch after a known spaCy runtime initialization failure."""
