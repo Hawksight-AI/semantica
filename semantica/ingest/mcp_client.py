@@ -354,8 +354,13 @@ class MCPClient:
         ``allow_private_ips=True`` is set because MCP servers are explicitly
         configured by the operator and frequently run on localhost or an
         internal network — the same trust model as ``allow_private_ips`` opt-in
-        in the other ingestors.  Scheme validation (http/https only) and the
-        auth-stripping logic remain active regardless of this flag.
+        in the other ingestors.  That trust covers only ``self.url`` itself:
+        ``allow_private_ips_on_redirect=False`` keeps redirect targets held to
+        the normal public-address check, so a compromised or malicious MCP
+        server cannot use a redirect to route the client into private/
+        internal address space (e.g. cloud metadata) that the operator never
+        configured.  Scheme validation (http/https only) and the
+        auth-stripping logic remain active regardless of these flags.
         """
         try:
             response = request_with_ssrf_guard(
@@ -365,6 +370,7 @@ class MCPClient:
                 json=request,
                 timeout=self.config.get("timeout", 30.0),
                 allow_private_ips=True,
+                allow_private_ips_on_redirect=False,
             )
             response.raise_for_status()
             return response.json()

@@ -360,6 +360,11 @@ class PublicAPIIngestor(RESTIngestor):
         request_options = options.copy()
         timeout = request_options.pop("timeout", self.config.get("timeout", 30))
         rate_limit_delay = request_options.pop("rate_limit_delay", None)
+        # session and allow_private_ips are always supplied explicitly below;
+        # drop any caller-provided copies so request_with_ssrf_guard() does
+        # not receive duplicate keyword arguments.
+        request_options.pop("session", None)
+        request_options.pop("allow_private_ips", None)
         request_headers = self._merged_headers(headers)
 
         try:
@@ -378,6 +383,8 @@ class PublicAPIIngestor(RESTIngestor):
                 allow_private_ips=self.allow_private_ips,
                 **request_options,
             )
+        except (ValidationError, ProcessingError):
+            raise
         except requests.exceptions.RequestException as exc:
             self.logger.error(f"Failed to detect public API {endpoint}: {exc}")
             raise ProcessingError(f"Failed to detect public API: {exc}") from exc
@@ -447,6 +454,11 @@ class PublicAPIIngestor(RESTIngestor):
 
         request_options = options.copy()
         timeout = request_options.pop("timeout", self.config.get("timeout", 30))
+        # session and allow_private_ips are always supplied explicitly below;
+        # drop any caller-provided copies so request_with_ssrf_guard() does
+        # not receive duplicate keyword arguments.
+        request_options.pop("session", None)
+        request_options.pop("allow_private_ips", None)
         request_headers = self._merged_headers(headers)
 
         try:

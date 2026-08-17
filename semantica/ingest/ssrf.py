@@ -268,6 +268,7 @@ def request_with_ssrf_guard(
     *,
     session: Optional[requests.Session] = None,
     allow_private_ips: bool = False,
+    allow_private_ips_on_redirect: Optional[bool] = None,
     max_redirects: int = _DEFAULT_MAX_REDIRECTS,
     **kwargs: Any,
 ) -> requests.Response:
@@ -278,6 +279,19 @@ def request_with_ssrf_guard(
     disables automatic redirects and re-validates each ``Location`` target
     before issuing the next hop.
 
+    ``allow_private_ips`` trusts the caller's own *url* (e.g. an
+    operator-configured internal endpoint). That trust follows a redirect
+    only when the redirect target's host matches the original host (e.g. a
+    same-host path redirect on a private/localhost server); a redirect to a
+    *different* host is validated with ``allow_private_ips_on_redirect``
+    instead, which defaults to ``allow_private_ips`` for backward
+    compatibility but can be pinned to ``False`` by callers that want to
+    trust only the original host and never extend private-IP eligibility to
+    any other host a redirect chain might reach — otherwise a private-IP-
+    eligible endpoint could be tricked into redirecting into arbitrary
+    internal address space (e.g. cloud metadata) the caller never
+    configured.
+
     Authorization / credential-header handling (issue #947)
     --------------------------------------------------------
     Credentials are stripped from **all** sources that ``requests`` can use to
@@ -286,8 +300,9 @@ def request_with_ssrf_guard(
     1. ``kwargs["headers"]`` — per-request header dict (already handled).
     2. ``session.headers`` — session-level headers that ``requests`` merges
        automatically; cleared for the hop and restored via ``finally``.
-    3. ``kwargs["auth"]`` — per-request auth tuple/callable; removed from
-       ``kwargs`` when stripping is required and restored in ``finally``.
+    3. ``kwargs["auth"]`` — per-request auth tuple/callable; removed from the
+       local ``kwargs`` copy when stripping is required. This copy never
+       escapes to the caller, so there is nothing to restore.
     4. ``session.auth`` — session-level auth handler that ``requests`` merges
        via ``merge_setting(auth, self.auth)`` inside ``prepare_request``;
        cleared for the hop and restored via ``finally``.
@@ -314,6 +329,13 @@ def request_with_ssrf_guard(
     """
     kwargs = dict(kwargs)
     kwargs.pop("allow_redirects", None)
+
+    redirect_allow_private_ips = (
+        allow_private_ips
+        if allow_private_ips_on_redirect is None
+        else allow_private_ips_on_redirect
+    )
+    _original_host = (urlparse(url).hostname or "").lower()
 
     validate_url_for_request(url, allow_private_ips=allow_private_ips)
 
@@ -372,7 +394,20 @@ def request_with_ssrf_guard(
                 )
 
             next_url = urljoin(current_url, str(location).strip())
-            validate_url_for_request(next_url, allow_private_ips=allow_private_ips)
+            next_host = (urlparse(next_url).hostname or "").lower()
+            # A redirect back to the original host inherits the caller's
+            # trust in that host (e.g. a same-host path redirect on a
+            # private/localhost MCP server). A redirect to a *different*
+            # host must not inherit that trust, even if the original host
+            # was private/internal — otherwise a compromised or malicious
+            # endpoint could redirect into arbitrary private address space
+            # (e.g. cloud metadata) the caller never configured.
+            hop_allow_private_ips = (
+                allow_private_ips
+                if next_host and next_host == _original_host
+                else redirect_allow_private_ips
+            )
+            validate_url_for_request(next_url, allow_private_ips=hop_allow_private_ips)
 
             # Do not leak sensitive headers or auth handlers to a different
             # origin on redirects.  All four credential sources are cleared:

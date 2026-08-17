@@ -693,6 +693,64 @@ class TestRedirectTypesAndOriginChanges:
             )
 
 
+class TestAllowPrivateIpsOnRedirect:
+    """allow_private_ips must not extend to a redirect target on a different host."""
+
+    def test_cross_host_redirect_to_private_ip_is_blocked_when_pinned(self):
+        """allow_private_ips_on_redirect=False must block a cross-host hop into private space."""
+        redirect = _mock_redirect("http://169.254.169.254/latest/meta-data/")
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request",
+            return_value=redirect,
+        ):
+            with pytest.raises(ValidationError, match="blocked"):
+                request_with_ssrf_guard(
+                    "GET",
+                    "https://trusted.example.com/start",
+                    allow_private_ips=True,
+                    allow_private_ips_on_redirect=False,
+                )
+
+    def test_same_host_redirect_keeps_private_ip_trust_when_pinned(self):
+        """A same-host redirect must still inherit the original host's trust."""
+        redirect = _mock_redirect("http://localhost:8000/v2")
+        final = _mock_final()
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request",
+            side_effect=[redirect, final],
+        ) as mock_req:
+            request_with_ssrf_guard(
+                "GET",
+                "http://localhost:8000/start",
+                allow_private_ips=True,
+                allow_private_ips_on_redirect=False,
+            )
+
+        assert mock_req.call_count == 2
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_default_behavior_unchanged_without_the_new_kwarg(self, _):
+        """Existing callers that never pass allow_private_ips_on_redirect keep old behavior."""
+        redirect = _mock_redirect("http://169.254.169.254/latest/meta-data/")
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request",
+            side_effect=[redirect, _mock_final()],
+        ) as mock_req:
+            # allow_private_ips=True with no override: redirect target validation
+            # falls back to allow_private_ips, matching pre-fix behavior for the
+            # existing opt-in ingestors (web/feed/api/public-api/seed).
+            request_with_ssrf_guard(
+                "GET",
+                "https://trusted.example.com/start",
+                allow_private_ips=True,
+            )
+
+        assert mock_req.call_count == 2
+
+
 # ===========================================================================
 # Section 4 – MCPClient: redirect auth-stripping  (#947)
 # ===========================================================================
@@ -782,6 +840,40 @@ class TestMCPClientAuthRedirect:
             client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
 
         mock_req.assert_called_once()
+
+    def test_same_host_redirect_on_private_mcp_server_is_not_blocked(self):
+        """A same-host redirect on a trusted private/localhost MCP server must still work."""
+        redirect = _mock_redirect("http://localhost:8000/mcp/v2")
+        final = self._mock_mcp_response()
+
+        client = MCPClient(url="http://localhost:8000/mcp")
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request",
+            side_effect=[redirect, final],
+        ) as mock_req:
+            client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
+
+        assert mock_req.call_count == 2
+
+    @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
+    def test_redirect_to_private_ip_is_blocked(self, _):
+        """A redirect from a public MCP server to a private/internal IP must be blocked.
+
+        allow_private_ips=True trusts the operator-configured MCP host itself;
+        it must not let a compromised or malicious server redirect the client
+        into private address space (e.g. cloud metadata) via a cross-host hop.
+        """
+        redirect = _mock_redirect("http://169.254.169.254/latest/meta-data/")
+
+        client = MCPClient(url="https://mcp.example.com/mcp")
+
+        with patch(
+            "semantica.ingest.ssrf.requests.request",
+            return_value=redirect,
+        ):
+            with pytest.raises(ValidationError, match="blocked"):
+                client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
 
     @patch("semantica.ingest.ssrf.socket.getaddrinfo", side_effect=_public_getaddrinfo)
     def test_scheme_downgrade_strips_authorization(self, _):
