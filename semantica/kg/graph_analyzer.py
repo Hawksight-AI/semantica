@@ -253,11 +253,13 @@ class GraphAnalyzer:
         graph,
         start_time=None,
         end_time=None,
-        metrics=["node_count", "edge_count", "density", "communities"],
+        metrics=None,
         interval=None,
         **options,
     ):
         """
+        if metrics is None:
+            metrics = ["node_count", "edge_count", "density", "communities"]
         Analyze temporal evolution of graph.
 
         Args:
