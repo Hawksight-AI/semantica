@@ -146,7 +146,7 @@ This writes the compiled assets to `../semantica/static/`. The Python server the
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SEMANTICA_API_KEY` | — | API key for protected Explorer routes (`X-API-Key`); if unset, protected routes fail closed with `503` unless anonymous mode is explicitly enabled |
+| `SEMANTICA_API_KEY` | — | API key for protected Explorer routes. REST clients send `X-API-Key: <key>`; WebSocket `/ws/graph-updates` clients use `?api_key=<key>` in browsers, while non-browser clients may also use `X-API-Key`. If unset, protected routes fail closed with `503` unless anonymous mode is explicitly enabled |
 | `SEMANTICA_ALLOW_ANONYMOUS` | `false` | Set to `true` to explicitly allow unauthenticated access |
 | `EXPLORER_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated list of allowed CORS origins |
 | `EXPLORER_CORS_CREDENTIALS` | `false` | Set to `true` to allow credentialed cross-origin requests (only needed behind an authenticating reverse proxy) |
