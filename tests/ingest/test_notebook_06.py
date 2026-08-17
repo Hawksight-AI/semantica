@@ -1,7 +1,7 @@
 import os
 import tempfile
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from semantica.ingest import FileIngestor, WebIngestor, DBIngestor, StreamIngestor, FeedIngestor
 from semantica.kg import GraphBuilder, EntityResolver, ProvenanceTracker
@@ -76,18 +76,25 @@ class TestNotebook06MultiSourceIntegration:
                 provenance_tracker.track_entity(entity.get("id"), entity.get("source"), entity)
                 
         relationships = [
-            {"source": "e2", "target": "e1", "type": "CEO_of", "source": "file1"}
+            # One "source" key per literal: in the repo's relationship schema
+            # "source" is the source ENTITY id. The original literal carried
+            # the key twice, so Python kept only "file1" and silently dropped
+            # "e2" — every rel.get("source") below read a nonexistent entity
+            # id. The file origin moves to its own key.
+            {"source": "e2", "target": "e1", "type": "CEO_of", "origin": "file1"}
         ]
 
         # #1055: ProvenanceTracker.track_relationship was never implemented
         # (see CHANGELOG.md:563). The old patch.object raised AttributeError
-        # before the test body ran. Track entities instead — the relationships
-        # are consumed by GraphBuilder below.
-        with patch.object(provenance_tracker, 'track_entity'):
+        # before the test body ran. Track entities instead — and ASSERT on
+        # the tracked calls, so the step verifies behavior instead of merely
+        # installing a mock nothing observes.
+        with patch.object(provenance_tracker, 'track_entity') as mock_track:
             for rel in relationships:
                 provenance_tracker.track_entity(
                     rel.get("target"), rel.get("source")
                 )
+            mock_track.assert_has_calls([call("e1", "e2")])
 
         # --- Step 5: Build Unified KG ---
         builder = GraphBuilder()
