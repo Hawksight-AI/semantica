@@ -391,9 +391,7 @@ def chunk_list(items: List[Any], chunk_size: int) -> List[List[Any]]:
     Returns:
         List of chunks
     """
-    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
-
-    
+    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]    
 def flatten_dict(
     d: Dict[str, Any], parent_key: str = "", sep: str = "."
 ) -> Dict[str, Any]:
