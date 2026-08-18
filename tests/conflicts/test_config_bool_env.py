@@ -104,14 +104,19 @@ class TestConfigBoolEnvOverride(unittest.TestCase):
 _MAPPED_BOOL_ENV = [
     ("conflicts", "CONFLICT_AUTO_RESOLVE", ConflictsConfig),
     ("deduplication", "DEDUP_USE_CLUSTERING", DeduplicationConfig),
-    ("split", "SPLIT_STRICT", SplitConfig),
     ("embeddings", "EMBEDDING_NORMALIZE", EmbeddingsConfig),
     ("export", "EXPORT_VALIDATE", ExportConfig),
     ("ingest", "INGEST_RECURSIVE", IngestConfig),
     ("kg", "KG_MERGE_ENTITIES", KGConfig),
-    ("normalize", "NORMALIZE_VALIDATE", NormalizeConfig),
     ("ontology", "ONTOLOGY_CHECK_CONSISTENCY", OntologyConfig),
     ("parse", "PARSE_EXTRACT_TABLES", ParseConfig),
+]
+
+# Modules that only reach bool env parsing via the generic PREFIX_* scanner
+# in _load_env_vars (no bool entry in env_mappings).
+_SCANNER_BOOL_ENV = [
+    ("split", "SPLIT_ZZTESTFLAG", SplitConfig),
+    ("normalize", "NORMALIZE_ZZTESTFLAG", NormalizeConfig),
 ]
 
 
@@ -131,6 +136,32 @@ class TestMappedBoolEnvVars(unittest.TestCase):
                     cfg = cls()
                     key = env_key.split("_", 1)[1].lower()
                     self.assertIs(cfg.get(key, True), False)
+
+    def test_mapped_bool_with_whitespace(self):
+        # Qodo follow-up: _load_env_vars() must strip like get() does, so a
+        # padded value (" true ") is not silently parsed as False.
+        for module, env_key, cls in _MAPPED_BOOL_ENV:
+            with self.subTest(module=module, env_key=env_key):
+                with patch.dict(os.environ, {env_key: " true "}):
+                    cfg = cls()
+                    key = env_key.split("_", 1)[1].lower()
+                    self.assertIs(cfg.get(key, False), True)
+
+    def test_scanner_bool_true(self):
+        for module, env_key, cls in _SCANNER_BOOL_ENV:
+            with self.subTest(module=module, env_key=env_key):
+                with patch.dict(os.environ, {env_key: "true"}):
+                    cfg = cls()
+                    key = env_key.split("_", 1)[1].lower()
+                    self.assertIs(cfg.get(key, False), True)
+
+    def test_scanner_bool_with_whitespace(self):
+        for module, env_key, cls in _SCANNER_BOOL_ENV:
+            with self.subTest(module=module, env_key=env_key):
+                with patch.dict(os.environ, {env_key: " true "}):
+                    cfg = cls()
+                    key = env_key.split("_", 1)[1].lower()
+                    self.assertIs(cfg.get(key, False), True)
 
 
 if __name__ == "__main__":

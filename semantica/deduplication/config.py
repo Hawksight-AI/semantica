@@ -110,7 +110,7 @@ class DeduplicationConfig:
             if value:
                 try:
                     if type_func == bool:
-                        self._configs[config_key] = value.lower() in (
+                        self._configs[config_key] = value.strip().lower() in (
                             "true",
                             "1",
                             "yes",
