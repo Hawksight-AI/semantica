@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from semantica.ingest import FileIngestor, WebIngestor, DBIngestor, StreamIngestor, FeedIngestor
 from semantica.kg import GraphBuilder, EntityResolver, ProvenanceTracker
-from semantica.provenance import ProvenanceManager
+from semantica.provenance import InMemoryStorage, ProvenanceManager
 from semantica.conflicts import ConflictDetector
 
 pytestmark = pytest.mark.integration
@@ -76,22 +76,28 @@ class TestNotebook06MultiSourceIntegration:
             for entity in all_entities:
                 provenance_tracker.track_entity(entity.get("id"), entity.get("source"), entity)
                 
-        # "source_id"/"target_id" rather than "source" for the endpoints: the
-        # literal previously set "source" twice, so the endpoint value was
-        # silently overwritten by the document name.
+        # Endpoints stay on "source"/"target", which is what GraphBuilder's
+        # dict normalization expects; the originating document moves to
+        # "document". The literal previously set "source" twice, so the
+        # endpoint id was silently overwritten by the document name.
         relationships = [
-            {"id": "r1", "source_id": "e2", "target_id": "e1",
-             "type": "CEO_of", "source": "file1"}
+            {"id": "r1", "source": "e2", "target": "e1",
+             "type": "CEO_of", "document": "file1"}
         ]
 
         # kg.ProvenanceTracker has no track_relationship and never did; that
         # lives on ProvenanceManager, which is where ProvenanceTracker's own
         # DeprecationWarning points callers. Called for real rather than
         # patched, so this step actually exercises something.
-        provenance_manager = ProvenanceManager()
+        #
+        # Storage is pinned to in-memory: with no argument, ProvenanceManager
+        # falls back to the mutable class-level _default_storage_path, so an
+        # earlier test setting it would make this write SQLite to disk and
+        # turn the result order-dependent.
+        provenance_manager = ProvenanceManager(storage=InMemoryStorage())
         for rel in relationships:
             entry = provenance_manager.track_relationship(
-                rel["id"], rel["source"], metadata=rel
+                rel["id"], rel["document"], metadata=rel
             )
             assert entry is not None
 
