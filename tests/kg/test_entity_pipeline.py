@@ -107,6 +107,47 @@ def test_direct_entity_objects_in_analyzer():
     
     print("Direct Entity objects test passed successfully!")
 
+
+def test_entity_id_only_merge_remaps_relationship_endpoints():
+    """Entity aliases must survive merging and relationship remapping."""
+    builder = GraphBuilder(
+        merge_entities=True,
+        entity_resolution_strategy="exact",
+        resolve_conflicts=False,
+    )
+
+    graph = builder.build(
+        {
+            "entities": [
+                {"entity_id": "alice:1", "name": "Alice", "type": "Person"},
+                {"entity_id": "alice:2", "name": " Alice ", "type": "Person"},
+                {"entity_id": "org:1", "name": "Acme", "type": "Organization"},
+            ],
+            "relationships": [
+                {
+                    "source_id": "alice:2",
+                    "target_id": "org:1",
+                    "type": "WORKS_FOR",
+                }
+            ],
+        }
+    )
+
+    merged_alice = next(entity for entity in graph["entities"] if entity["name"] == "Alice")
+    relationship = graph["relationships"][0]
+    entity_ids = {
+        entity.get("id") or entity.get("entity_id") for entity in graph["entities"]
+    }
+
+    assert merged_alice["id"] == "alice:1"
+    assert set(merged_alice["merged_from"]) == {"alice:1", "alice:2"}
+    assert {
+        item["id"] for item in merged_alice["metadata"]["provenance"]["merged_from"]
+    } == {"alice:1", "alice:2"}
+    assert relationship["source"] == "alice:1"
+    assert relationship["target"] == "org:1"
+    assert {relationship["source"], relationship["target"]} <= entity_ids
+
 if __name__ == "__main__":
     test_full_entity_pipeline()
     test_direct_entity_objects_in_analyzer()
