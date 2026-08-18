@@ -13,6 +13,7 @@ The contract pinned here: values cross the cache boundary only as deep
 copies, in both directions.
 """
 
+import copy
 import sys
 import os
 import unittest
@@ -99,3 +100,88 @@ class TestExtractionResultsAreNotSharedWithTheCache(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReviewHardening:
+    """Follow-ups from the PR review: copy outside the lock, and tolerate
+    values that cannot be deep-copied instead of failing the extraction."""
+
+    def test_lock_hold_time_does_not_scale_with_value_size(self):
+        # The copy happens after the lock is released: while a large hit
+        # value is paused mid-copy, another reader on a DIFFERENT key of the
+        # same namespace must still complete. Only the big value is slowed;
+        # the small one copies instantly, so the reader finishes iff the
+        # namespace lock is free.
+        import threading
+        import time as _time
+
+        cache = ExtractionCache(max_size=10, ttl=3600)
+        big = ["x" * 10_000 for _ in range(50)]
+        cache.set("entities", "big", list(big), provider="p")
+        cache.set("entities", "small", [make_entity("s")], provider="p")
+
+        big_copy_started = threading.Event()
+        release_big_copy = threading.Event()
+        original_deepcopy = copy.deepcopy
+
+        def size_aware_copy(v, memo=None):
+            if isinstance(v, list) and sum(len(x) for x in v if isinstance(x, str)) > 100_000:
+                big_copy_started.set()
+                release_big_copy.wait(timeout=10)
+            return original_deepcopy(v)
+
+        def big_reader():
+            with patch.object(copy, "deepcopy", side_effect=size_aware_copy):
+                return cache.get("entities", "big", provider="p")
+
+        t = threading.Thread(target=big_reader)
+        t.start()
+        assert big_copy_started.wait(timeout=5), "the big value must reach its copy"
+
+        small_result = []
+
+        def small_reader():
+            small_result.append(cache.get("entities", "small", provider="p"))
+
+        t2 = threading.Thread(target=small_reader)
+        t2.start()
+        t2.join(timeout=1.5)
+        small_done = not t2.is_alive()
+        release_big_copy.set()
+        t.join(timeout=10)
+        assert not t.is_alive()
+
+        assert small_done, (
+            "the namespace lock must be free while a hit value is being copied"
+        )
+        assert small_result and small_result[0] is not None
+
+    def test_uncopyable_value_is_a_miss_not_an_extraction_failure(self):
+        cache = ExtractionCache(max_size=10, ttl=3600)
+
+        class Uncopyable:
+            def __deepcopy__(self, memo):
+                raise TypeError("cannot copy me")
+
+        cache.set("entities", "u", [Uncopyable()], provider="p")
+        # get() must not raise over cached data; it reads as a miss.
+        assert cache.get("entities", "u", provider="p") is None
+        # The corrupt entry is evicted, and the cache keeps serving others.
+        cache.set("entities", "ok", [make_entity()], provider="p")
+        assert cache.get("entities", "ok", provider="p") is not None
+
+    def test_uncopyable_value_still_caches_as_is(self):
+        cache = ExtractionCache(max_size=10, ttl=3600)
+
+        class Uncopyable:
+            def __deepcopy__(self, memo):
+                raise TypeError("cannot copy me")
+
+        sentinel = Uncopyable()
+        cache.set("entities", "u", [sentinel], provider="p")
+        # Snapshot fell back to storing as-is: the namespace holds exactly
+        # one entry whose value still contains the caller's object.
+        with cache._locks["entities"]:
+            entries = list(cache._caches["entities"].values())
+            assert len(entries) == 1
+            assert any(sentinel is item for item in entries[0].value)
