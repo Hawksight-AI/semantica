@@ -209,6 +209,60 @@ def test_load_from_api_allows_private_when_configured(mock_guard, seed_manager):
     call_kwargs = mock_guard.call_args[1]
     assert call_kwargs["allow_private_ips"] is True
 
+
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_does_not_mutate_caller_headers_dict(mock_guard, seed_manager):
+    """Regression test for issue #947 audit: load_from_api must not mutate the
+    caller's headers dict in-place when api_key is provided.
+
+    Before the fix, ``request_headers = headers or {}`` aliased the caller's dict.
+    Writing ``request_headers["Authorization"] = ...`` then silently modified the
+    caller's original dict, potentially leaking credentials to subsequent calls
+    that reused the same headers dict without expecting it to carry Authorization.
+    """
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"results": []}
+    mock_guard.return_value = mock_response
+
+    # Caller owns this dict and expects it to be unchanged after the call.
+    original_headers = {"X-Custom-Header": "value"}
+    headers_before = dict(original_headers)  # snapshot
+
+    seed_manager.load_from_api(
+        api_url="http://api.example.com",
+        api_key="secret-key",
+        headers=original_headers,
+    )
+
+    # The caller's dict must be unchanged — Authorization must NOT have been added.
+    assert original_headers == headers_before, (
+        "load_from_api must not mutate the caller's headers dict; "
+        f"expected {headers_before!r}, got {original_headers!r}"
+    )
+
+    # The guard must still have received Authorization (in its own copy).
+    call_kwargs = mock_guard.call_args[1]
+    guard_headers = call_kwargs.get("headers", {})
+    assert guard_headers.get("Authorization") == "Bearer secret-key"
+
+
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_does_not_mutate_empty_headers_dict(mock_guard, seed_manager):
+    """When headers=None, a fresh dict is created — no aliasing to a shared mutable default."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"results": []}
+    mock_guard.return_value = mock_response
+
+    seed_manager.load_from_api(
+        api_url="http://api.example.com",
+        api_key="key",
+        headers=None,
+    )
+
+    call_kwargs = mock_guard.call_args[1]
+    guard_headers = call_kwargs.get("headers", {})
+    assert guard_headers.get("Authorization") == "Bearer key"
+
 def test_load_source(seed_manager, temp_data_dir):
     json_file = temp_data_dir / "source.json"
     with open(json_file, "w") as f:

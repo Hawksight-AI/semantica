@@ -268,6 +268,7 @@ def request_with_ssrf_guard(
     *,
     session: Optional[requests.Session] = None,
     allow_private_ips: bool = False,
+    allow_private_ips_on_redirect: Optional[bool] = None,
     max_redirects: int = _DEFAULT_MAX_REDIRECTS,
     **kwargs: Any,
 ) -> requests.Response:
@@ -277,9 +278,64 @@ def request_with_ssrf_guard(
     public URL to bounce into private/loopback/link-local space. This helper
     disables automatic redirects and re-validates each ``Location`` target
     before issuing the next hop.
+
+    ``allow_private_ips`` trusts the caller's own *url* (e.g. an
+    operator-configured internal endpoint). That trust follows a redirect
+    only when the redirect target's host matches the original host (e.g. a
+    same-host path redirect on a private/localhost server); a redirect to a
+    *different* host is validated with ``allow_private_ips_on_redirect``
+    instead, which defaults to ``allow_private_ips`` for backward
+    compatibility but can be pinned to ``False`` by callers that want to
+    trust only the original host and never extend private-IP eligibility to
+    any other host a redirect chain might reach — otherwise a private-IP-
+    eligible endpoint could be tricked into redirecting into arbitrary
+    internal address space (e.g. cloud metadata) the caller never
+    configured.
+
+    Authorization / credential-header handling (issue #947)
+    --------------------------------------------------------
+    Credentials are stripped from **all** sources that ``requests`` can use to
+    attach an ``Authorization`` header whenever a redirect changes origin:
+
+    1. ``kwargs["headers"]`` — per-request header dict (already handled).
+    2. ``session.headers`` — session-level headers that ``requests`` merges
+       automatically; cleared for the hop and restored via ``finally``.
+    3. ``kwargs["auth"]`` — per-request auth tuple/callable; removed from the
+       local ``kwargs`` copy when stripping is required. This copy never
+       escapes to the caller, so there is nothing to restore.
+    4. ``session.auth`` — session-level auth handler that ``requests`` merges
+       via ``merge_setting(auth, self.auth)`` inside ``prepare_request``;
+       cleared for the hop and restored via ``finally``.
+    5. ``session.trust_env`` — when ``True``, ``requests`` reads ``~/.netrc``
+       for the *redirect target* host and calls ``prepare_auth()`` with those
+       credentials even after sources 3 and 4 are cleared; disabled for
+       cross-origin hops and restored via ``finally``.
+
+    Leaving any one of these intact allows ``requests`` to re-attach
+    credentials on the hop to the foreign origin, defeating the header-level
+    strip.
+
+    Session state that was removed is unconditionally restored in a ``finally``
+    block so the session is left in its original state after this call returns,
+    regardless of how it exits (normal return, exception, redirect cap).  The
+    loop is sequential and single-threaded within one call, so the mutation is
+    safe as long as the caller does not share the session across concurrent
+    threads (the standard Semantica pattern: one session per ingestor instance).
+
+    Once credentials have been stripped for a cross-origin hop they are NOT
+    re-added for subsequent hops in the same chain, even if a later hop
+    happens to point back to the original host.  This prevents credential
+    resurrection via crafted multi-hop redirect chains.
     """
     kwargs = dict(kwargs)
     kwargs.pop("allow_redirects", None)
+
+    redirect_allow_private_ips = (
+        allow_private_ips
+        if allow_private_ips_on_redirect is None
+        else allow_private_ips_on_redirect
+    )
+    _original_host = (urlparse(url).hostname or "").lower()
 
     validate_url_for_request(url, allow_private_ips=allow_private_ips)
 
@@ -288,56 +344,141 @@ def request_with_ssrf_guard(
     current_method = method.upper()
     redirects_followed = 0
 
-    while True:
-        response = requester(
-            current_method,
-            current_url,
-            allow_redirects=False,
-            **kwargs,
-        )
+    # -- issue #947: snapshot every session-level credential source so we can
+    #    restore them unconditionally when this call exits.
+    _SENSITIVE = ("Authorization", "Proxy-Authorization")
+    _session_auth_backup: dict = {}
+    _session_auth_handler_backup: Any = None  # session.auth backup
+    _session_trust_env_backup: bool = True    # session.trust_env backup
 
-        if response.status_code not in _REDIRECT_STATUS_CODES:
-            return response
+    if session is not None:
+        for _h in _SENSITIVE:
+            # requests stores session headers in a case-insensitive dict;
+            # .get() matches regardless of the casing used at insertion time.
+            _val = session.headers.get(_h)
+            if _val is not None:
+                _session_auth_backup[_h] = _val
+        # Snapshot session.auth (HTTPBasicAuth, tuple, callable, or None).
+        _session_auth_handler_backup = session.auth
+        # Snapshot session.trust_env (controls .netrc / env proxy lookup).
+        _session_trust_env_backup = session.trust_env
 
-        if redirects_followed >= max_redirects:
-            response.close()
-            raise ValidationError(
-                f"Exceeded maximum redirects ({max_redirects}) while "
-                f"fetching '{url}'"
+    # Track whether credentials have been stripped for this redirect chain.
+    # Once stripped they must not reappear on any subsequent hop.
+    _auth_stripped = False
+
+    try:
+        while True:
+            response = requester(
+                current_method,
+                current_url,
+                allow_redirects=False,
+                **kwargs,
             )
 
-        location = response.headers.get("Location")
-        if not location or not str(location).strip():
-            response.close()
-            raise ValidationError(
-                f"Redirect from '{current_url}' is missing a Location header"
+            if response.status_code not in _REDIRECT_STATUS_CODES:
+                return response
+
+            if redirects_followed >= max_redirects:
+                response.close()
+                raise ValidationError(
+                    f"Exceeded maximum redirects ({max_redirects}) while "
+                    f"fetching '{url}'"
+                )
+
+            location = response.headers.get("Location")
+            if not location or not str(location).strip():
+                response.close()
+                raise ValidationError(
+                    f"Redirect from '{current_url}' is missing a Location header"
+                )
+
+            next_url = urljoin(current_url, str(location).strip())
+            next_host = (urlparse(next_url).hostname or "").lower()
+            # A redirect back to the original host inherits the caller's
+            # trust in that host (e.g. a same-host path redirect on a
+            # private/localhost MCP server). A redirect to a *different*
+            # host must not inherit that trust, even if the original host
+            # was private/internal — otherwise a compromised or malicious
+            # endpoint could redirect into arbitrary private address space
+            # (e.g. cloud metadata) the caller never configured.
+            hop_allow_private_ips = (
+                allow_private_ips
+                if next_host and next_host == _original_host
+                else redirect_allow_private_ips
             )
+            validate_url_for_request(next_url, allow_private_ips=hop_allow_private_ips)
 
-        next_url = urljoin(current_url, str(location).strip())
-        validate_url_for_request(next_url, allow_private_ips=allow_private_ips)
+            # Do not leak sensitive headers or auth handlers to a different
+            # origin on redirects.  All four credential sources are cleared:
+            #   • kwargs["headers"]   — per-request header dict
+            #   • session.headers     — session-level header dict
+            #   • kwargs["auth"]      — per-request auth tuple/callable
+            #   • session.auth        — session-level auth handler
+            #
+            # Once stripped (_auth_stripped=True), credentials stay absent for
+            # the remainder of the chain — even if a later hop targets the
+            # original host — to prevent credential resurrection.
+            if _auth_stripped or _should_strip_auth(current_url, next_url):
+                _auth_stripped = True
 
-        # Do not leak sensitive headers to a different origin on redirects:
-        # reuse the caller's headers only while host, port, and scheme keep
-        # the credential safe, mirroring requests' should_strip_auth.
-        if _should_strip_auth(current_url, next_url):
-            kwargs = dict(kwargs)
-            headers = dict(kwargs.get("headers") or {})
-            for sensitive in ("Authorization", "Proxy-Authorization"):
-                headers.pop(sensitive, None)
-            kwargs["headers"] = headers
+                # 1. Strip from per-request kwargs headers.
+                kwargs = dict(kwargs)
+                headers = dict(kwargs.get("headers") or {})
+                for sensitive in _SENSITIVE:
+                    headers.pop(sensitive, None)
+                    # Also remove any case variant the caller may have used
+                    # (e.g. "authorization" or "AUTHORIZATION").
+                    for key in list(headers):
+                        if key.lower() == sensitive.lower():
+                            del headers[key]
+                kwargs["headers"] = headers
 
-        # Match requests' historical method rewriting for 301/302/303.
-        if (
-            response.status_code in _STRIP_BODY_ON_REDIRECT
-            and current_method not in {"GET", "HEAD"}
-        ):
-            current_method = "GET"
-            for key in ("data", "json", "files"):
-                kwargs.pop(key, None)
+                # 2. Strip per-request auth kwarg so requests cannot call
+                #    prepare_auth() with the caller's credential on this hop.
+                kwargs.pop("auth", None)
 
-        # Params apply to the original request URL only; Location is authoritative.
-        kwargs.pop("params", None)
+                # 3. Strip session-level headers so requests cannot re-inject
+                #    them when merging session + per-request headers for this hop.
+                if session is not None:
+                    for sensitive in _SENSITIVE:
+                        # CaseInsensitiveDict.pop(key, None) handles any casing.
+                        session.headers.pop(sensitive, None)
 
-        response.close()
-        current_url = next_url
-        redirects_followed += 1
+                    # 4. Clear session.auth so prepare_request's merge_setting()
+                    #    cannot fall back to the session-level auth handler and
+                    #    reattach credentials on the foreign-origin hop.
+                    session.auth = None
+
+                    # 5. Disable .netrc / environment-proxy credential lookup so
+                    #    requests cannot inject credentials from ~/.netrc for the
+                    #    redirect target host on this hop.
+                    session.trust_env = False
+
+            # Match requests' historical method rewriting for 301/302/303.
+            if (
+                response.status_code in _STRIP_BODY_ON_REDIRECT
+                and current_method not in {"GET", "HEAD"}
+            ):
+                current_method = "GET"
+                for key in ("data", "json", "files"):
+                    kwargs.pop(key, None)
+
+            # Params apply to the original request URL only; Location is authoritative.
+            kwargs.pop("params", None)
+
+            response.close()
+            current_url = next_url
+            redirects_followed += 1
+
+    finally:
+        # Unconditionally restore every session credential source we touched,
+        # so the session is in its original state after this call returns or raises.
+        if session is not None:
+            if _session_auth_backup:
+                for _h, _v in _session_auth_backup.items():
+                    session.headers[_h] = _v
+            # Restore session.auth to whatever it was before this call.
+            session.auth = _session_auth_handler_backup
+            # Restore session.trust_env (.netrc / env-proxy lookup flag).
+            session.trust_env = _session_trust_env_backup

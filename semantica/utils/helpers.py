@@ -398,9 +398,7 @@ def chunk_list(items: List[Any], chunk_size: int) -> List[List[Any]]:
     Returns:
         List of chunks
     """
-    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
-
-
+    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]    
 def flatten_dict(
     d: Dict[str, Any], parent_key: str = "", sep: str = "."
 ) -> Dict[str, Any]:
@@ -414,18 +412,32 @@ def flatten_dict(
 
     Returns:
         Flattened dictionary
+
+    Raises:
+        ValueError: If two input paths produce the same flattened key.
     """
-    items = []
+    result = {}
 
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
 
         if isinstance(v, dict):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
+            nested = flatten_dict(v, new_key, sep=sep)
 
-    return dict(items)
+            for key, value in nested.items():
+                if key in result:
+                    raise ValueError(
+                        f"Key collision while flattening dictionary: {key}"
+                    )
+                result[key] = value
+        else:
+            if new_key in result:
+                raise ValueError(
+                    f"Key collision while flattening dictionary: {new_key}"
+                )
+            result[new_key] = v
+
+    return result
 
 
 def get_nested_value(
