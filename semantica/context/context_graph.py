@@ -72,9 +72,9 @@ Example Usage:
     ...                    node_embeddings=True)
     >>> 
     >>> # Basic graph operations
-    >>> graph.add_node("Python", type="language", properties={"popularity": "high"})
-    >>> graph.add_node("Programming", type="concept")
-    >>> graph.add_edge("Python", "Programming", type="related_to")
+    >>> graph.add_node("Python", "language", popularity="high")
+    >>> graph.add_node("Programming", "concept")
+    >>> graph.add_edge("Python", "Programming", "related_to")
     >>> centrality = graph.get_node_centrality("Python")
     >>> similar = graph.find_similar_nodes("Python", similarity_type="content")
     >>> analysis = graph.analyze_graph_with_kg()
@@ -88,7 +88,7 @@ Example Usage:
     ...     confidence=0.95,
     ...     entities=["customer_123", "property_456"]
     ... )
-    >>> precedents = graph.find_precedents("loan_approval", limit=5)
+    >>> precedents = graph.find_precedents(decision_id, limit=5)
     >>> influence = graph.analyze_decision_influence(decision_id)
     >>> insights = graph.get_decision_insights()
     >>> causality = graph.trace_decision_causality(decision_id)

@@ -23,6 +23,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import html
 import json
 from datetime import datetime
 from pathlib import Path
@@ -362,7 +363,7 @@ class ReportGenerator:
             '  <meta name="viewport" content="width=device-width, initial-scale=1.0">'
         )
         title = data.get("title", "Report")
-        lines.append(f"  <title>{title}</title>")
+        lines.append(f"  <title>{html.escape(str(title))}</title>")
         lines.append("  <style>")
         lines.append("    body { font-family: Arial, sans-serif; margin: 20px; }")
         lines.append("    h1 { color: #333; }")
@@ -380,11 +381,14 @@ class ReportGenerator:
 
         # Title
         title = data.get("title", "Report")
-        lines.append(f"  <h1>{title}</h1>")
+        lines.append(f"  <h1>{html.escape(str(title))}</h1>")
 
         # Generated at
         if "generated_at" in data:
-            lines.append(f'  <p><strong>Generated:</strong> {data["generated_at"]}</p>')
+            lines.append(
+                f'  <p><strong>Generated:</strong> '
+                f'{html.escape(str(data["generated_at"]))}</p>'
+            )
 
         # Summary
         if "summary" in data:
@@ -393,10 +397,13 @@ class ReportGenerator:
             if isinstance(summary, dict):
                 lines.append("  <ul>")
                 for key, value in summary.items():
-                    lines.append(f"    <li><strong>{key}:</strong> {value}</li>")
+                    lines.append(
+                        f"    <li><strong>{html.escape(str(key))}:</strong> "
+                        f"{html.escape(str(value))}</li>"
+                    )
                 lines.append("  </ul>")
             else:
-                lines.append(f"  <p>{summary}</p>")
+                lines.append(f"  <p>{html.escape(str(summary))}</p>")
 
         # Metrics
         if "metrics" in data:
@@ -483,7 +490,10 @@ class ReportGenerator:
             else:
                 value_str = str(value)
 
-            lines.append(f"    <tr><td>{key}</td><td>{value_str}</td></tr>")
+            lines.append(
+                f"    <tr><td>{html.escape(str(key))}</td>"
+                f"<td>{html.escape(value_str)}</td></tr>"
+            )
 
         lines.append("  </table>")
 
