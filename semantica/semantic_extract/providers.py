@@ -11,6 +11,9 @@ Supported Providers:
     - "groq": Groq API (llama2, mixtral, etc.)
     - "anthropic": Anthropic Claude API (claude-3-sonnet, etc.)
     - "ollama": Ollama local provider (local open-source models)
+    - "deepseek": DeepSeek API (deepseek-chat, etc.)
+    - "novita": Novita AI API (OpenAI-compatible)
+    - "orcarouter": OrcaRouter routing gateway (OpenAI-compatible, frontier models)
     - "huggingface_llm": HuggingFace Transformers for LLM tasks
 
 Supported Model Types:
@@ -1126,6 +1129,77 @@ class NovitaProvider(BaseProvider):
         except Exception as e:
             raise ProcessingError(f"Failed to parse JSON from Novita response: {e}")
 
+
+class OrcaRouterProvider(BaseProvider):
+    """OrcaRouter provider implementation - OpenAI-compatible routing gateway.
+
+    OrcaRouter (https://www.orcarouter.ai) exposes a unified OpenAI-compatible
+    endpoint that routes requests to frontier models across vendors. Models are
+    addressed with the same ``provider/model`` prefix convention used by LiteLLM,
+    e.g. ``openai/gpt-4o``, ``anthropic/claude-sonnet-4.6`` or
+    ``deepseek/deepseek-v4-flash``.
+    """
+
+    def __init__(
+        self, api_key: Optional[str] = None, model: str = "openai/gpt-4o", **kwargs
+    ):
+        """Initialize OrcaRouter provider."""
+        super().__init__(**kwargs)
+        self.api_key = api_key or config.get_api_key("orcarouter")
+        self.model = model
+        self.base_url = "https://api.orcarouter.ai/v1"
+        self.client = None
+        self._init_client()
+
+    def _init_client(self):
+        try:
+            from openai import OpenAI
+
+            if self.api_key:
+                self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        except (ImportError, OSError):
+            self.client = None
+            self.logger.warning(
+                "openai library not installed. Install with: pip install semantica[llm-openai]"
+            )
+
+    def is_available(self) -> bool:
+        return self.client is not None
+
+    def generate(self, prompt: str, **kwargs) -> str:
+        if not self.client:
+            raise ProcessingError(
+                "OrcaRouter client not initialized. Set ORCAROUTER_API_KEY or pass api_key."
+            )
+
+        create_kwargs = {
+            "model": kwargs.get("model", self.model),
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens")
+
+        response = self.client.chat.completions.create(**create_kwargs)
+        return response.choices[0].message.content
+
+    def generate_structured(self, prompt: str, **kwargs) -> Union[dict, list]:
+        """Generate structured output."""
+        if not self.client:
+            raise ProcessingError("OrcaRouter client not initialized.")
+
+        create_kwargs = {
+            "model": kwargs.get("model", self.model),
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+        }
+        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens")
+
+        response = self.client.chat.completions.create(**create_kwargs)
+        try:
+            return self._parse_json(response.choices[0].message.content)
+        except Exception as e:
+            raise ProcessingError(f"Failed to parse JSON from OrcaRouter response: {e}")
+
+
 class HuggingFaceLLMProvider(BaseProvider):
     """HuggingFace transformers for LLM tasks."""
 
@@ -1508,7 +1582,8 @@ class ProviderPool:
             "ollama": OllamaProvider,
             "huggingface_llm": HuggingFaceLLMProvider,
             "deepseek": DeepSeekProvider,
-             "novita": NovitaProvider,
+            "novita": NovitaProvider,
+            "orcarouter": OrcaRouterProvider,
         }
 
         provider_class = builtin.get(name.lower())

@@ -16,7 +16,7 @@ icon: "microchip"
 ## Exported Classes
 
 ```python
-from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
+from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM, OrcaRouter
 ```
 
 | Class | Provider | API Key Required |
@@ -25,6 +25,7 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
 | `OpenAI` | OpenAI / any OpenAI-compatible gateway | `OPENAI_API_KEY` |
 | `LiteLLM` | 100+ providers via LiteLLM routing | Depends on model |
 | `HuggingFaceLLM` | Local HuggingFace Transformers | None (local) |
+| `OrcaRouter` | Routing gateway to frontier models (Anthropic, OpenAI, Gemini, DeepSeek, …) | `ORCAROUTER_API_KEY` |
 
 <Tip>
   **Anthropic, Gemini, Ollama, DeepSeek, Azure, Bedrock, Cohere, and 90+ others** are all available via `LiteLLM` using their model-string prefix. See the [LiteLLM section](#litellm-100-providers) below.
@@ -167,6 +168,7 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
 export GROQ_API_KEY="your_groq_api_key_here"
 export OPENAI_API_KEY="your_openai_api_key_here" 
 export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+export ORCAROUTER_API_KEY="your_orcarouter_api_key_here"
 
 # Reload your shell
 source ~/.bashrc
@@ -243,6 +245,18 @@ llm = OpenAI(
     temperature=0.0,
 )
 # **Best for:** general purpose, function calling, JSON mode
+```
+
+```python OrcaRouter
+import os
+from semantica.llms import OrcaRouter
+
+llm = OrcaRouter(
+    model="openai/gpt-4o",              # any provider/model prefix on the gateway
+    api_key=os.getenv("ORCAROUTER_API_KEY"),
+    temperature=0.0,
+)
+# **Best for:** one contract across frontier vendors (Anthropic, OpenAI, Gemini, DeepSeek)
 ```
 
 ```python LiteLLM (100+ providers)

@@ -143,6 +143,33 @@ risk_data = oai.generate_structured(
 
 The default model `gpt-3.5-turbo` is fine for classification and light extraction. Switch to `gpt-4o` for complex multi-step regulatory reasoning or document understanding.
 
+## OrcaRouter — Unified Gateway to Frontier Models
+
+**[OrcaRouter](https://www.orcarouter.ai)** is a routing gateway that exposes one OpenAI-compatible endpoint and forwards every request to the best available frontier model — Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek and more — under a single API key. Models use the familiar `provider/model` prefix (`openai/gpt-4o`, `anthropic/claude-sonnet-4.6`, `deepseek/deepseek-v4-flash`), so swapping vendors is a one-line change. It also runs gateway-level, zero-trust security for AI agents on the same endpoint — screening every prompt/response and governing every tool call on a default-deny basis, with no application code changes.
+
+Use the `OrcaRouter` provider when you want a single contract across multiple frontier vendors, need to fail over between models without touching application code, or want your extraction pipeline to be vendor-agnostic.
+
+```python
+from semantica.llms import OrcaRouter
+
+orca = OrcaRouter(model="openai/gpt-4o", api_key="YOUR_ORCAROUTER_KEY")
+# api_key falls back to ORCAROUTER_API_KEY environment variable
+
+response = orca.generate(
+    "Classify this alert: 4200 LDAP objects enumerated in 8s from ws-finance-03."
+)
+print(response)
+
+# Structured output — same .generate_structured() interface as every provider
+risk_data = orca.generate_structured(
+    "Extract all counterparty names and exposure amounts from: "
+    "Counterparty A: 45M EUR notional, Counterparty B: 12M EUR notional."
+)
+# {"counterparties": [{"name": "Counterparty A", "exposure_eur": 45000000}, ...]}
+```
+
+The default model `openai/gpt-4o` is a good all-round default for classification and extraction. Use the `provider/model` prefix to target any model on the gateway, e.g. `anthropic/claude-sonnet-4.6` for high-accuracy reasoning.
+
 ## LiteLLM — One Interface, 100+ Providers
 
 **LiteLLM** is a universal adapter that provides a single interface to over 100 different LLM providers, including Anthropic Claude, Azure OpenAI, AWS Bedrock, Google Vertex AI, and local Ollama instances. It acts as a translation layer, converting your unified API calls into provider-specific requests, enabling easy switching between providers without code changes.

@@ -6,7 +6,7 @@ supporting multiple configuration sources including environment variables, confi
 and programmatic configuration.
 
 Supported Configuration Sources:
-    - Environment variables: OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, NOVITA_API_KEY, etc.
+    - Environment variables: OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, NOVITA_API_KEY, ORCAROUTER_API_KEY, etc.
     - Config files: YAML, JSON, TOML formats
     - Programmatic: Python API for setting provider configurations
 
@@ -97,7 +97,15 @@ class Config:
     def _load_env_vars(self):
         """Load configuration from environment variables."""
         # Common environment variable patterns
-        providers = ["openai", "gemini", "groq", "anthropic", "ollama", "novita"]
+        providers = [
+            "openai",
+            "gemini",
+            "groq",
+            "anthropic",
+            "ollama",
+            "novita",
+            "orcarouter",
+        ]
         for provider in providers:
             env_key = f"{provider.upper()}_API_KEY"
             api_key = os.getenv(env_key)
