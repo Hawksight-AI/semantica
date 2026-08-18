@@ -2482,12 +2482,21 @@ class ContextGraph:
             for n in self.nodes.values():
                 if entities_only and n.node_type != "entity":
                     continue
+                # Normalize the entity id to ``str`` so it matches ContextEdge,
+                # which coerces its endpoints to ``str`` in ``__post_init__``.
+                # Without this, non-string node ids (e.g. numeric ids loaded via
+                # ``from_dict``) would fail the ``valid_ids`` membership check
+                # below and silently drop otherwise-valid relationships.
+                entity_id = str(n.node_id)
                 entity: Dict[str, Any] = {
-                    "id": n.node_id,
+                    "id": entity_id,
                     "text": n.content,
                     "type": n.node_type,
-                    "properties": dict(n.properties),
-                    "metadata": dict(n.metadata),
+                    # ``properties`` / ``metadata`` may be ``None`` when a node
+                    # was loaded from JSON containing an explicit ``null``;
+                    # guard with ``or {}`` so ``dict(...)`` never raises.
+                    "properties": dict(n.properties or {}),
+                    "metadata": dict(n.metadata or {}),
                 }
                 if n.valid_from is not None:
                     entity["valid_from"] = n.valid_from
