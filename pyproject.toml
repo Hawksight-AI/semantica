@@ -200,7 +200,7 @@ gpu = [
 ]
 
 # ---- Agentic Framework Integrations ----
-agno = ["agno>=1.0.0"]
+agno = ["agno>=2.9,<3"]
 # crewai core provides BaseTool and BaseKnowledgeSource; crewai-tools is not
 # needed (it pulls vulnerable transitive deps like chromadb) and would only
 # duplicate the prebuilt tooling users can install separately.

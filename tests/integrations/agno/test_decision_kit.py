@@ -5,45 +5,9 @@ Tests for AgnoDecisionKit — decision intelligence Agno Toolkit.
 from __future__ import annotations
 
 import json
-import sys
-import types
 import unittest
 from unittest.mock import MagicMock, patch
 
-
-# ---------------------------------------------------------------------------
-# Stub agno Toolkit
-# ---------------------------------------------------------------------------
-def _stub_agno() -> None:
-    if "agno" in sys.modules:
-        return
-
-    agno = types.ModuleType("agno")
-
-    tools_pkg = types.ModuleType("agno.tools")
-    tools_toolkit = types.ModuleType("agno.tools.toolkit")
-
-    class Toolkit:
-        def __init__(self, name="toolkit", **kw):
-            self.name = name
-            self._tools = []
-
-        def register(self, fn):
-            self._tools.append(fn)
-
-    tools_toolkit.Toolkit = Toolkit  # type: ignore
-    tools_pkg.toolkit = tools_toolkit
-    agno.tools = tools_pkg  # type: ignore
-
-    for name, mod in [
-        ("agno", agno),
-        ("agno.tools", tools_pkg),
-        ("agno.tools.toolkit", tools_toolkit),
-    ]:
-        sys.modules.setdefault(name, mod)
-
-
-_stub_agno()
 
 from integrations.agno.decision_kit import AgnoDecisionKit  # noqa: E402
 

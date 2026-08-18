@@ -1,14 +1,11 @@
 """
 Shared pytest configuration for Agno integration tests.
 
-Installs a comprehensive agno stub into sys.modules before any test in this
-directory runs, so that every test file can import the integration modules
-without a real agno installation.
-
-Each per-file stub only runs `if "agno" in sys.modules: return`, which would
-skip when another file already loaded a partial stub.  This conftest installs
-ALL required sub-modules at session start so the guard works correctly for
-every file.
+When the real ``agno`` package (v2) is importable, tests run against it
+directly — no stubs are installed.  Otherwise a comprehensive agno v2 stub is
+installed into sys.modules before any test in this directory runs, so that
+every test file can import the integration modules without a real agno
+installation.
 """
 from __future__ import annotations
 
@@ -16,39 +13,92 @@ import sys
 import types
 
 
+def _real_agno_available() -> bool:
+    try:
+        import agno  # noqa: F401
+        from agno.db.base import BaseDb  # noqa: F401
+        from agno.knowledge.knowledge import Knowledge  # noqa: F401
+        from agno.tools.toolkit import Toolkit  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 def _install_agno_stubs() -> None:
-    """Install a full set of agno stubs into sys.modules."""
+    """Install a full set of agno v2 stubs into sys.modules."""
+
+    agno = types.ModuleType("agno")
 
     # -----------------------------------------------------------------------
-    # agno root
+    # agno.db.base  — BaseDb
     # -----------------------------------------------------------------------
-    agno = sys.modules.get("agno") or types.ModuleType("agno")
+    db_pkg = types.ModuleType("agno.db")
+    db_base = types.ModuleType("agno.db.base")
 
-    # -----------------------------------------------------------------------
-    # agno.memory.db.base  — MemoryDb
-    # -----------------------------------------------------------------------
-    memory_pkg = types.ModuleType("agno.memory")
-    memory_db_pkg = types.ModuleType("agno.memory.db")
-    memory_db_base = types.ModuleType("agno.memory.db.base")
-    memory_db_row = types.ModuleType("agno.memory.db.row")
-
-    class MemoryDb:  # noqa: D101
+    class BaseDb:  # noqa: D101
         def __init__(self, *a, **kw): ...  # noqa: E704
 
-    class MemoryRow:  # noqa: D101
-        def __init__(self, memory: str, id=None, user_id=None, **kw):
-            self.memory = memory
-            self.id = id
-            self.user_id = user_id
-            self.last_updated = 0.0
-            self.topics = kw.get("topics", [])
+    db_base.BaseDb = BaseDb  # type: ignore
+    db_pkg.base = db_base
 
-    memory_db_base.MemoryDb = MemoryDb  # type: ignore
-    memory_db_row.MemoryRow = MemoryRow  # type: ignore
-    memory_db_pkg.base = memory_db_base
-    memory_db_pkg.row = memory_db_row
-    memory_pkg.db = memory_db_pkg
-    agno.memory = memory_pkg  # type: ignore
+    # -----------------------------------------------------------------------
+    # agno.db.schemas.memory  — UserMemory
+    # -----------------------------------------------------------------------
+    db_schemas = types.ModuleType("agno.db.schemas")
+    db_schemas_memory = types.ModuleType("agno.db.schemas.memory")
+
+    class UserMemory:  # noqa: D101
+        def __init__(
+            self,
+            memory,
+            memory_id=None,
+            topics=None,
+            user_id=None,
+            input=None,
+            created_at=None,
+            updated_at=None,
+            feedback=None,
+            agent_id=None,
+            team_id=None,
+        ):
+            self.memory = memory
+            self.memory_id = memory_id
+            self.topics = topics
+            self.user_id = user_id
+            self.input = input
+            self.created_at = created_at
+            self.updated_at = updated_at
+            self.feedback = feedback
+            self.agent_id = agent_id
+            self.team_id = team_id
+
+        def to_dict(self):
+            return {
+                k: v
+                for k, v in {
+                    "memory": self.memory,
+                    "memory_id": self.memory_id,
+                    "topics": self.topics,
+                    "user_id": self.user_id,
+                    "input": self.input,
+                    "created_at": self.created_at,
+                    "updated_at": self.updated_at,
+                    "feedback": self.feedback,
+                    "agent_id": self.agent_id,
+                    "team_id": self.team_id,
+                }.items()
+                if v is not None
+            }
+
+        @classmethod
+        def from_dict(cls, data):
+            return cls(**data)
+
+    db_schemas_memory.UserMemory = UserMemory  # type: ignore
+    db_schemas.memory = db_schemas_memory
+    db_pkg.schemas = db_schemas
+    agno.db = db_pkg  # type: ignore
 
     # -----------------------------------------------------------------------
     # agno.tools.toolkit  — Toolkit
@@ -59,36 +109,37 @@ def _install_agno_stubs() -> None:
     class Toolkit:  # noqa: D101
         def __init__(self, name: str = "toolkit", **kw):
             self.name = name
-            self._tools: list = []
+            self.functions: dict = {}
 
-        def register(self, fn):  # noqa: D102
-            self._tools.append(fn)
+        def register(self, fn, name=None):  # noqa: D102
+            self.functions[name or fn.__name__] = fn
 
     tools_toolkit_mod.Toolkit = Toolkit  # type: ignore
     tools_pkg.toolkit = tools_toolkit_mod
     agno.tools = tools_pkg  # type: ignore
 
     # -----------------------------------------------------------------------
-    # agno.knowledge.base  — AgentKnowledge
+    # agno.knowledge.knowledge  — Knowledge
     # -----------------------------------------------------------------------
     knowledge_pkg = types.ModuleType("agno.knowledge")
-    knowledge_base_mod = types.ModuleType("agno.knowledge.base")
+    knowledge_mod = types.ModuleType("agno.knowledge.knowledge")
 
-    class AgentKnowledge:  # noqa: D101
-        def __init__(self, *a, **kw): ...  # noqa: E704
+    class Knowledge:  # noqa: D101
+        def __init__(self, name=None, max_results=10, **kw):
+            self.name = name
+            self.max_results = max_results
 
-        def search(self, query, num_documents=None, filters=None):  # noqa: D102
+        def search(self, query, max_results=None, filters=None, search_type=None):  # noqa: D102
             return []
 
-    knowledge_base_mod.AgentKnowledge = AgentKnowledge  # type: ignore
-    knowledge_pkg.base = knowledge_base_mod
-    agno.knowledge = knowledge_pkg  # type: ignore
+    knowledge_mod.Knowledge = Knowledge  # type: ignore
+    knowledge_pkg.knowledge = knowledge_mod
 
     # -----------------------------------------------------------------------
-    # agno.document.base  — Document
+    # agno.knowledge.document.base  — Document
     # -----------------------------------------------------------------------
-    document_pkg = types.ModuleType("agno.document")
-    document_base_mod = types.ModuleType("agno.document.base")
+    document_pkg = types.ModuleType("agno.knowledge.document")
+    document_base_mod = types.ModuleType("agno.knowledge.document.base")
 
     class Document:  # noqa: D101
         def __init__(self, content="", id=None, name=None, meta_data=None):
@@ -99,27 +150,29 @@ def _install_agno_stubs() -> None:
 
     document_base_mod.Document = Document  # type: ignore
     document_pkg.base = document_base_mod
-    agno.document = document_pkg  # type: ignore
+    knowledge_pkg.document = document_pkg
+    agno.knowledge = knowledge_pkg  # type: ignore
 
     # -----------------------------------------------------------------------
     # Register everything
     # -----------------------------------------------------------------------
     _mods = {
         "agno": agno,
-        "agno.memory": memory_pkg,
-        "agno.memory.db": memory_db_pkg,
-        "agno.memory.db.base": memory_db_base,
-        "agno.memory.db.row": memory_db_row,
+        "agno.db": db_pkg,
+        "agno.db.base": db_base,
+        "agno.db.schemas": db_schemas,
+        "agno.db.schemas.memory": db_schemas_memory,
         "agno.tools": tools_pkg,
         "agno.tools.toolkit": tools_toolkit_mod,
         "agno.knowledge": knowledge_pkg,
-        "agno.knowledge.base": knowledge_base_mod,
-        "agno.document": document_pkg,
-        "agno.document.base": document_base_mod,
+        "agno.knowledge.knowledge": knowledge_mod,
+        "agno.knowledge.document": document_pkg,
+        "agno.knowledge.document.base": document_base_mod,
     }
     for name, mod in _mods.items():
         sys.modules[name] = mod
 
 
-# Install once at import time (conftest is imported before any test file)
-_install_agno_stubs()
+# Install stubs only when the real agno v2 package is not importable.
+if not _real_agno_available():
+    _install_agno_stubs()

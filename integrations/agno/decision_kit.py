@@ -38,23 +38,19 @@ from typing import Any, Dict, List, Optional
 
 from semantica.utils.logging import get_logger
 
+from ._availability import AGNO_AVAILABLE, AGNO_IMPORT_ERROR  # noqa: F401
+
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional: Agno Toolkit base class
 # ---------------------------------------------------------------------------
-AGNO_AVAILABLE = False
-AGNO_IMPORT_ERROR: Optional[str] = None
-
 _ToolkitBase: Any = object
 
-try:
+if AGNO_AVAILABLE:
     from agno.tools.toolkit import Toolkit as _AgnoToolkit  # type: ignore
 
     _ToolkitBase = _AgnoToolkit
-    AGNO_AVAILABLE = True
-except ImportError as exc:
-    AGNO_IMPORT_ERROR = str(exc)
 
 
 # ---------------------------------------------------------------------------

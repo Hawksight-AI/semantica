@@ -1,71 +1,21 @@
 """
-Tests for AgnoContextStore — graph-backed Agno MemoryDb.
+Tests for AgnoContextStore — graph-backed Agno v2 ``BaseDb``.
 
-All tests run without a real Agno installation by mocking the base class
-and using in-memory Semantica components only.
+All tests run with or without a real Agno installation (conftest installs a
+v2 stub when agno is absent) and use in-memory Semantica components only.
 """
 
 from __future__ import annotations
 
-import sys
-import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
-# ---------------------------------------------------------------------------
-# Stub the agno package so the import succeeds without it installed
-# ---------------------------------------------------------------------------
-def _stub_agno() -> None:
-    """Insert minimal agno stubs into sys.modules."""
-    if "agno" in sys.modules:
-        return  # real agno installed — no stub needed
-
-    agno = types.ModuleType("agno")
-
-    # agno.memory.db.base
-    memory_pkg = types.ModuleType("agno.memory")
-    memory_db_pkg = types.ModuleType("agno.memory.db")
-    memory_db_base = types.ModuleType("agno.memory.db.base")
-
-    class MemoryDb:  # noqa: D101
-        def __init__(self, *a, **kw): ...  # noqa: E704
-
-    memory_db_base.MemoryDb = MemoryDb  # type: ignore
-
-    # agno.memory.db.row
-    memory_db_row = types.ModuleType("agno.memory.db.row")
-
-    class MemoryRow:  # noqa: D101
-        def __init__(self, memory: str, id=None, user_id=None, **kw):
-            self.memory = memory
-            self.id = id
-            self.user_id = user_id
-            self.last_updated = 0.0
-            self.topics = kw.get("topics", [])
-
-    memory_db_row.MemoryRow = MemoryRow  # type: ignore
-
-    memory_db_pkg.base = memory_db_base
-    memory_db_pkg.row = memory_db_row
-    memory_pkg.db = memory_db_pkg
-
-    agno.memory = memory_pkg  # type: ignore
-
-    for name, mod in [
-        ("agno", agno),
-        ("agno.memory", memory_pkg),
-        ("agno.memory.db", memory_db_pkg),
-        ("agno.memory.db.base", memory_db_base),
-        ("agno.memory.db.row", memory_db_row),
-    ]:
-        sys.modules.setdefault(name, mod)
+from integrations.agno.context_store import AgnoContextStore, UserMemory  # noqa: E402
 
 
-_stub_agno()
-
-
-from integrations.agno.context_store import AgnoContextStore  # noqa: E402
+def _make_memory(text: str, uid: str = "u1", **kwargs) -> UserMemory:
+    return UserMemory(memory=text, user_id=uid, **kwargs)
 
 
 class TestAgnoContextStoreInit(unittest.TestCase):
@@ -96,83 +46,171 @@ class TestAgnoContextStoreInit(unittest.TestCase):
         self.assertIsNotNone(store.context)
 
 
-class TestAgnoContextStoreMemoryDb(unittest.TestCase):
-    """MemoryDb protocol methods."""
+class TestAgnoContextStoreUserMemoryGroup(unittest.TestCase):
+    """BaseDb UserMemory-group protocol methods."""
 
     def setUp(self):
         self.store = AgnoContextStore(decision_tracking=False)
 
-    def _make_row(self, text: str, uid: str = "u1"):
-        row = MagicMock()
-        row.memory = text
-        row.id = None
-        row.user_id = uid
-        row.last_updated = 0.0
-        row.topics = []
-        return row
-
     def test_table_exists(self):
-        self.assertTrue(self.store.table_exists())
-
-    def test_create_noop(self):
-        # Should not raise
-        self.store.create()
+        self.assertTrue(self.store.table_exists("user_memories"))
 
     def test_upsert_and_read(self):
-        row = self._make_row("Hello world")
-        self.store.upsert_memory(row)
-        memories = self.store.read_memories()
+        self.store.upsert_user_memory(_make_memory("Hello world"))
+        memories = self.store.get_user_memories()
         self.assertEqual(len(memories), 1)
 
-    def test_upsert_sets_id(self):
-        row = self._make_row("Test memory")
-        self.store.upsert_memory(row)
-        self.assertIsNotNone(row.id)
+    def test_upsert_sets_memory_id(self):
+        mem = _make_memory("Test memory")
+        self.store.upsert_user_memory(mem)
+        self.assertIsNotNone(mem.memory_id)
 
-    def test_memory_exists_after_upsert(self):
-        row = self._make_row("Exists check")
-        self.store.upsert_memory(row)
-        self.assertTrue(self.store.memory_exists(row))
+    def test_upsert_sets_timestamps(self):
+        mem = _make_memory("Timestamped")
+        self.store.upsert_user_memory(mem)
+        self.assertIsNotNone(mem.created_at)
+        self.assertIsNotNone(mem.updated_at)
 
-    def test_memory_not_exists_before_upsert(self):
-        row = self._make_row("Not yet")
-        row.id = "unknown-id"
-        self.assertFalse(self.store.memory_exists(row))
+    def test_get_user_memory_by_id(self):
+        mem = _make_memory("Fetch me")
+        self.store.upsert_user_memory(mem)
+        fetched = self.store.get_user_memory(mem.memory_id)
+        self.assertIsNotNone(fetched)
+        self.assertEqual(fetched.memory, "Fetch me")
 
-    def test_delete_memory(self):
-        row = self._make_row("To delete")
-        self.store.upsert_memory(row)
-        mem_id = row.id
-        self.store.delete_memory(mem_id)
-        self.assertFalse(self.store.memory_exists(row))
+    def test_get_user_memory_missing_returns_none(self):
+        self.assertIsNone(self.store.get_user_memory("no-such-id"))
 
-    def test_read_memories_user_filter(self):
-        row_a = self._make_row("User A memory", uid="alice")
-        row_b = self._make_row("User B memory", uid="bob")
-        self.store.upsert_memory(row_a)
-        self.store.upsert_memory(row_b)
+    def test_get_user_memory_deserialize_false_returns_dict(self):
+        mem = _make_memory("As dict")
+        self.store.upsert_user_memory(mem)
+        raw = self.store.get_user_memory(mem.memory_id, deserialize=False)
+        self.assertIsInstance(raw, dict)
+        self.assertEqual(raw["memory"], "As dict")
 
-        alice_rows = self.store.read_memories(user_id="alice")
+    def test_get_user_memory_user_id_mismatch(self):
+        mem = _make_memory("Owned by alice", uid="alice")
+        self.store.upsert_user_memory(mem)
+        self.assertIsNone(self.store.get_user_memory(mem.memory_id, user_id="bob"))
+
+    def test_delete_user_memory(self):
+        mem = _make_memory("To delete")
+        self.store.upsert_user_memory(mem)
+        self.store.delete_user_memory(mem.memory_id)
+        self.assertIsNone(self.store.get_user_memory(mem.memory_id))
+
+    def test_delete_user_memory_wrong_user_keeps_memory(self):
+        mem = _make_memory("Owned", uid="alice")
+        self.store.upsert_user_memory(mem)
+        self.store.delete_user_memory(mem.memory_id, user_id="bob")
+        self.assertIsNotNone(self.store.get_user_memory(mem.memory_id))
+
+    def test_delete_user_memories_bulk(self):
+        ids = []
+        for i in range(3):
+            mem = _make_memory(f"Bulk {i}")
+            self.store.upsert_user_memory(mem)
+            ids.append(mem.memory_id)
+        self.store.delete_user_memories(ids)
+        self.assertEqual(len(self.store.get_user_memories()), 0)
+
+    def test_get_user_memories_user_filter(self):
+        self.store.upsert_user_memory(_make_memory("User A memory", uid="alice"))
+        self.store.upsert_user_memory(_make_memory("User B memory", uid="bob"))
+
+        alice_rows = self.store.get_user_memories(user_id="alice")
         self.assertEqual(len(alice_rows), 1)
         self.assertEqual(alice_rows[0].user_id, "alice")
 
-    def test_read_memories_limit(self):
+    def test_get_user_memories_search_content(self):
+        self.store.upsert_user_memory(_make_memory("Basel IV applies from 2026"))
+        self.store.upsert_user_memory(_make_memory("Unrelated note"))
+        rows = self.store.get_user_memories(search_content="basel")
+        self.assertEqual(len(rows), 1)
+
+    def test_get_user_memories_topics_filter(self):
+        self.store.upsert_user_memory(_make_memory("Finance fact", topics=["finance"]))
+        self.store.upsert_user_memory(_make_memory("Sports fact", topics=["sports"]))
+        rows = self.store.get_user_memories(topics=["finance"])
+        self.assertEqual(len(rows), 1)
+
+    def test_get_user_memories_limit(self):
         for i in range(5):
-            self.store.upsert_memory(self._make_row(f"Memory {i}"))
-        rows = self.store.read_memories(limit=3)
+            self.store.upsert_user_memory(_make_memory(f"Memory {i}"))
+        rows = self.store.get_user_memories(limit=3)
         self.assertEqual(len(rows), 3)
 
-    def test_clear(self):
-        for i in range(3):
-            self.store.upsert_memory(self._make_row(f"M{i}"))
-        result = self.store.clear()
-        self.assertTrue(result)
-        self.assertEqual(len(self.store.read_memories()), 0)
+    def test_get_user_memories_deserialize_false_returns_tuple(self):
+        for i in range(4):
+            self.store.upsert_user_memory(_make_memory(f"M{i}"))
+        rows, total = self.store.get_user_memories(limit=2, deserialize=False)
+        self.assertEqual(total, 4)
+        self.assertEqual(len(rows), 2)
+        self.assertIsInstance(rows[0], dict)
 
-    def test_drop_table(self):
-        self.store.upsert_memory(self._make_row("Drop me"))
-        self.store.drop_table()
-        self.assertEqual(len(self.store.read_memories()), 0)
+    def test_get_all_memory_topics(self):
+        self.store.upsert_user_memory(_make_memory("A", topics=["x", "y"]))
+        self.store.upsert_user_memory(_make_memory("B", topics=["y", "z"]))
+        self.assertEqual(self.store.get_all_memory_topics(), ["x", "y", "z"])
+
+    def test_get_user_memory_stats(self):
+        self.store.upsert_user_memory(_make_memory("A", uid="alice", topics=["t1"]))
+        self.store.upsert_user_memory(_make_memory("B", uid="alice"))
+        self.store.upsert_user_memory(_make_memory("C", uid="bob"))
+        rows, total = self.store.get_user_memory_stats()
+        self.assertEqual(total, 2)
+        alice = next(r for r in rows if r["user_id"] == "alice")
+        self.assertEqual(alice["total_memories"], 2)
+        self.assertEqual(alice["topics"], ["t1"])
+
+    def test_upsert_memories_bulk(self):
+        mems = [_make_memory(f"Bulk {i}") for i in range(3)]
+        results = self.store.upsert_memories(mems)
+        self.assertEqual(len(results), 3)
+        self.assertEqual(len(self.store.get_user_memories()), 3)
+
+    def test_upsert_memories_deserialize_false(self):
+        results = self.store.upsert_memories([_make_memory("x")], deserialize=False)
+        self.assertIsInstance(results[0], dict)
+
+    def test_clear_memories(self):
+        for i in range(3):
+            self.store.upsert_user_memory(_make_memory(f"M{i}"))
+        self.store.clear_memories()
+        self.assertEqual(len(self.store.get_user_memories()), 0)
+
+
+class TestAgnoContextStoreUnsupportedGroups(unittest.TestCase):
+    """Non-memory BaseDb groups raise NotImplementedError (documented degradation)."""
+
+    def setUp(self):
+        self.store = AgnoContextStore(decision_tracking=False)
+
+    def test_session_group_unsupported(self):
+        with self.assertRaises(NotImplementedError):
+            self.store.get_session(session_id="s1")
+        with self.assertRaises(NotImplementedError):
+            self.store.upsert_session(session=MagicMock())
+        with self.assertRaises(NotImplementedError):
+            self.store.delete_session(session_id="s1")
+
+    def test_metrics_group_unsupported(self):
+        with self.assertRaises(NotImplementedError):
+            self.store.get_metrics()
+        with self.assertRaises(NotImplementedError):
+            self.store.calculate_metrics()
+
+    def test_knowledge_group_unsupported(self):
+        with self.assertRaises(NotImplementedError):
+            self.store.get_knowledge_content(id="k1")
+
+    def test_eval_group_unsupported(self):
+        with self.assertRaises(NotImplementedError):
+            self.store.get_eval_runs()
+
+    def test_traces_group_unsupported(self):
+        with self.assertRaises(NotImplementedError):
+            self.store.get_traces()
 
 
 class TestAgnoContextStoreExtendedAPI(unittest.TestCase):
@@ -218,13 +256,7 @@ class TestAgnoContextStoreExtendedAPI(unittest.TestCase):
         self.assertEqual(call_kwargs["entities"], ["applicant", "loan"])
 
     def test_upsert_with_decision_tracking(self):
-        row = MagicMock()
-        row.memory = "Important fact"
-        row.id = None
-        row.user_id = "u1"
-        row.last_updated = 0.0
-        row.topics = []
-        self.store.upsert_memory(row)
+        self.store.upsert_user_memory(_make_memory("Important fact"))
         # decision should have been recorded
         self.store._context.record_decision.assert_called()
 

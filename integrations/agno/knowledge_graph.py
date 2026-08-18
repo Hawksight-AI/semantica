@@ -1,8 +1,9 @@
 """
 AgnoKnowledgeGraph — Relational agent knowledge backed by Semantica's KG pipeline.
 
-Implements Agno's ``AgentKnowledge`` protocol so that Agno agents can query a
-structured ``ContextGraph`` instead of a flat vector document store.
+Subclasses Agno's v2 ``agno.knowledge.knowledge.Knowledge`` so that Agno
+agents can query a structured ``ContextGraph`` instead of a flat vector
+document store.
 
 Ingested documents pass through the full Semantica extraction pipeline:
 
@@ -25,43 +26,38 @@ Example
     ...     ner_extractor=NERExtractor(),
     ...     relation_extractor=RelationExtractor(),
     ... )
-    >>> kg.load("regulatory_docs/", recursive=True)
+    >>> kg.insert(path="regulatory_docs/", include=["*.txt"])
     >>> from agno.agent import Agent
     >>> agent = Agent(knowledge=kg, search_knowledge=True)
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from semantica.utils.logging import get_logger
+
+from ._availability import AGNO_AVAILABLE
 
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Optional: Agno AgentKnowledge base class
+# Optional: Agno v2 Knowledge base class + Document schema
 # ---------------------------------------------------------------------------
-AGNO_AVAILABLE = False
-AGNO_IMPORT_ERROR: Optional[str] = None
-
 _KnowledgeBase: Any = object
 
-try:
-    from agno.knowledge.base import AgentKnowledge as _AgnoAgentKnowledge  # type: ignore
+if AGNO_AVAILABLE:
+    from agno.knowledge.knowledge import Knowledge as _AgnoKnowledge  # type: ignore
 
-    _KnowledgeBase = _AgnoAgentKnowledge
-    AGNO_AVAILABLE = True
-except ImportError as exc:
-    AGNO_IMPORT_ERROR = str(exc)
+    _KnowledgeBase = _AgnoKnowledge
 
 
 # ---------------------------------------------------------------------------
 # Lightweight document stand-in (used when agno is absent)
 # ---------------------------------------------------------------------------
 class _Document:
-    """Minimal stand-in for ``agno.document.Document``."""
+    """Minimal stand-in for ``agno.knowledge.document.base.Document``."""
 
     __slots__ = ("id", "content", "meta_data", "name")
 
@@ -78,9 +74,9 @@ class _Document:
         self.meta_data = meta_data or {}
 
 
-try:
-    from agno.document.base import Document as AgnoDocument  # type: ignore
-except ImportError:
+if AGNO_AVAILABLE:
+    from agno.knowledge.document.base import Document as AgnoDocument  # type: ignore
+else:
     AgnoDocument = _Document  # type: ignore
 
 
@@ -112,7 +108,8 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
     graph_store_uri:
         Connection URI for the chosen graph store backend.
     num_documents:
-        Default number of documents returned by ``search()``.
+        Default number of documents returned by ``search()`` — mapped to
+        ``max_results`` on the Agno v2 ``Knowledge`` base class.
     chunk_size:
         Maximum characters per text chunk during ingestion.
     """
@@ -127,11 +124,20 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
         graph_store_uri: Optional[str] = None,
         num_documents: int = 5,
         chunk_size: int = 1000,
+        name: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         if AGNO_AVAILABLE:
-            super().__init__(**kwargs)  # type: ignore[call-arg]
+            super().__init__(  # type: ignore[call-arg]
+                name=name or "semantica_knowledge_graph",
+                max_results=num_documents,
+                **kwargs,
+            )
+        else:
+            self.name = name or "semantica_knowledge_graph"
+            self.max_results = num_documents
 
+        # Backwards-compatible alias for the Semantica-side API.
         self.num_documents = num_documents
         self.chunk_size = chunk_size
         self._graph_store_backend = graph_store_backend
@@ -167,14 +173,15 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
         )
 
     # ------------------------------------------------------------------
-    # AgentKnowledge protocol
+    # Knowledge v2 protocol — search
     # ------------------------------------------------------------------
 
     def search(
         self,
         query: str,
-        num_documents: Optional[int] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        max_results: Optional[int] = None,
+        filters: Optional[Any] = None,
+        search_type: Optional[str] = None,
     ) -> List[Any]:
         """
         Multi-hop GraphRAG search.
@@ -186,7 +193,7 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
         Falls back to keyword scoring over the in-process ``_docs`` cache
         when vector retrieval is unavailable.
         """
-        k = num_documents or self.num_documents
+        k = max_results or self.num_documents
         results: List[Any] = []
 
         # Primary: vector similarity retrieval
@@ -237,6 +244,66 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
         logger.debug("search('%s') → %d documents (keyword)", query, len(results))
         return results
 
+    async def asearch(
+        self,
+        query: str,
+        max_results: Optional[int] = None,
+        filters: Optional[Any] = None,
+        search_type: Optional[str] = None,
+    ) -> List[Any]:
+        """Async variant — delegates to the synchronous GraphRAG search."""
+        return self.search(
+            query=query,
+            max_results=max_results,
+            filters=filters,
+            search_type=search_type,
+        )
+
+    # ------------------------------------------------------------------
+    # Knowledge v2 protocol — insert
+    # ------------------------------------------------------------------
+
+    def insert(
+        self,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        path: Optional[str] = None,
+        url: Optional[str] = None,
+        text_content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        topics: Optional[List[str]] = None,
+        remote_content: Optional[Any] = None,
+        reader: Optional[Any] = None,
+        include: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+        upsert: bool = True,
+        skip_if_exists: bool = False,
+        auth: Optional[Any] = None,
+    ) -> None:
+        """
+        Ingest content into the knowledge graph via the Semantica pipeline.
+
+        Supports ``path`` (file, directory, or glob), ``url`` (http/https
+        only), and ``text_content``.  ``remote_content``, ``reader`` and
+        ``auth`` are accepted for signature compatibility with Agno v2 but
+        are not used — ingestion always runs through Semantica's
+        parse → NER → relation extract → graph build pipeline.
+        """
+        if remote_content is not None or reader is not None or auth is not None:
+            logger.warning(
+                "AgnoKnowledgeGraph.insert: remote_content/reader/auth are not "
+                "supported by the Semantica pipeline and will be ignored."
+            )
+
+        if text_content:
+            self._ingest_text(text_content, source=name or "<inline>")
+
+        if path is not None:
+            self._ingest_path(Path(path), include=include, exclude=exclude)
+
+        if url is not None:
+            self.load_urls([url])
+
     def load(
         self,
         path: Union[str, Path, None] = None,
@@ -246,7 +313,8 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
         recreate: bool = False,
     ) -> None:
         """
-        Ingest documents into the knowledge graph.
+        Ingest documents into the knowledge graph (Semantica-side convenience
+        wrapper around ``insert()``).
 
         Parameters
         ----------
@@ -269,7 +337,12 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
                 self._ingest_text(text, source="<inline>")
 
         if path is not None:
-            self._ingest_path(Path(path), recursive=recursive)
+            p = Path(path)
+            if p.is_dir():
+                pattern = "**/*" if recursive else "*"
+                self._ingest_path(p, include=[pattern])
+            else:
+                self._ingest_path(p)
 
         if urls:
             self.load_urls(urls)
@@ -299,7 +372,6 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
             except Exception as exc:
                 logger.warning("Failed to fetch %s: %s", url, exc)
 
-    # AgentKnowledge also expects `load_documents`
     def load_documents(
         self,
         documents: List[Any],
@@ -432,15 +504,24 @@ class AgnoKnowledgeGraph(_KnowledgeBase):  # type: ignore[misc]
             len(chunks),
         )
 
-    def _ingest_path(self, path: Path, recursive: bool = False) -> None:
-        """Walk a file or directory and ingest all text files."""
+    def _ingest_path(
+        self,
+        path: Path,
+        include: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+    ) -> None:
+        """Walk a file or directory and ingest all matching files."""
         if path.is_file():
             self._ingest_file(path)
         elif path.is_dir():
-            pattern = "**/*" if recursive else "*"
-            for child in path.glob(pattern):
-                if child.is_file():
-                    self._ingest_file(child)
+            patterns = include or ["*"]
+            excluded: set = set()
+            for pattern in exclude or []:
+                excluded.update(path.glob(pattern))
+            for pattern in patterns:
+                for child in sorted(path.glob(pattern)):
+                    if child.is_file() and child not in excluded:
+                        self._ingest_file(child)
         else:
             logger.warning("Path not found: %s", path)
 

@@ -3,12 +3,12 @@ Semantica × Agno Integration
 =============================
 
 First-class integration between the Semantica semantic intelligence stack and
-the `Agno <https://github.com/agno-agi/agno>`_ agentic framework.
+the `Agno <https://github.com/agno-agi/agno>`_ agentic framework (v2 API).
 
 Public surface
 --------------
-AgnoContextStore   — Graph-backed ``MemoryDb`` (drop-in for ``AgentMemory(db=…)``)
-AgnoKnowledgeGraph — Relational ``AgentKnowledge`` with multi-hop GraphRAG
+AgnoContextStore   — Graph-backed ``BaseDb`` (drop-in for ``Agent(db=…, update_memory_on_run=True)``)
+AgnoKnowledgeGraph — Relational ``Knowledge`` with multi-hop GraphRAG
 AgnoDecisionKit    — Agno ``Toolkit`` exposing decision-intelligence tools
 AgnoKGToolkit      — Agno ``Toolkit`` exposing KG construction/query tools
 AgnoSharedContext  — Team-level shared ``ContextGraph`` with per-agent scoping
@@ -27,12 +27,14 @@ Quick start
 
 Compatibility
 -------------
-Requires ``agno >= 1.0``.  All five classes degrade gracefully when ``agno``
-is not installed — they are still importable and carry the full Semantica API,
-but cannot be passed directly to Agno ``Agent`` / ``Team`` constructors.
+Requires ``agno >= 2.9`` (the v2 API — agno v1 is **not** supported).  All
+five classes degrade gracefully when ``agno`` is not installed — they are
+still importable and carry the full Semantica API, but cannot be passed
+directly to Agno ``Agent`` / ``Team`` constructors.
 """
 
-from .context_store import AGNO_AVAILABLE, AgnoContextStore
+from ._availability import AGNO_AVAILABLE, AGNO_IMPORT_ERROR
+from .context_store import AgnoContextStore
 from .decision_kit import AgnoDecisionKit
 from .kg_toolkit import AgnoKGToolkit
 from .knowledge_graph import AgnoKnowledgeGraph
@@ -45,6 +47,7 @@ __all__ = [
     "AgnoKGToolkit",
     "AgnoSharedContext",
     "AGNO_AVAILABLE",
+    "AGNO_IMPORT_ERROR",
 ]
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"

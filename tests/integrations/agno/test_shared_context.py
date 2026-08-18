@@ -4,56 +4,11 @@ Tests for AgnoSharedContext — multi-agent shared ContextGraph coordinator.
 
 from __future__ import annotations
 
-import sys
-import types
 import unittest
 from unittest.mock import MagicMock
 
 
-# ---------------------------------------------------------------------------
-# Stub agno (MemoryDb needed by AgnoContextStore base)
-# ---------------------------------------------------------------------------
-def _stub_agno() -> None:
-    if "agno" in sys.modules:
-        return
-
-    agno = types.ModuleType("agno")
-
-    memory_pkg = types.ModuleType("agno.memory")
-    memory_db_pkg = types.ModuleType("agno.memory.db")
-    memory_db_base = types.ModuleType("agno.memory.db.base")
-    memory_db_row = types.ModuleType("agno.memory.db.row")
-
-    class MemoryDb:
-        def __init__(self, *a, **kw): ...  # noqa: E704
-
-    class MemoryRow:
-        def __init__(self, memory, id=None, user_id=None, **kw):
-            self.memory = memory
-            self.id = id
-            self.user_id = user_id
-            self.last_updated = 0.0
-            self.topics = kw.get("topics", [])
-
-    memory_db_base.MemoryDb = MemoryDb  # type: ignore
-    memory_db_row.MemoryRow = MemoryRow  # type: ignore
-    memory_db_pkg.base = memory_db_base
-    memory_db_pkg.row = memory_db_row
-    memory_pkg.db = memory_db_pkg
-    agno.memory = memory_pkg  # type: ignore
-
-    for name, mod in [
-        ("agno", agno),
-        ("agno.memory", memory_pkg),
-        ("agno.memory.db", memory_db_pkg),
-        ("agno.memory.db.base", memory_db_base),
-        ("agno.memory.db.row", memory_db_row),
-    ]:
-        sys.modules.setdefault(name, mod)
-
-
-_stub_agno()
-
+from integrations.agno.context_store import UserMemory  # noqa: E402
 from integrations.agno.shared_context import AgnoSharedContext  # noqa: E402
 
 
@@ -66,6 +21,10 @@ def _make_shared(**kwargs) -> AgnoSharedContext:
     mock_ctx.get_context_insights.return_value = {"total": 0}
     shared._context = mock_ctx
     return shared
+
+
+def _make_row(text: str) -> UserMemory:
+    return UserMemory(memory=text, user_id="u1")
 
 
 class TestAgnoSharedContextInit(unittest.TestCase):
@@ -135,60 +94,57 @@ class TestSharedMemoryPool(unittest.TestCase):
         self.researcher = self.shared.bind_agent("researcher")
         self.analyst = self.shared.bind_agent("analyst")
 
-    def _make_row(self, text: str):
-        row = MagicMock()
-        row.memory = text
-        row.id = None
-        row.user_id = "u1"
-        row.last_updated = 0.0
-        row.topics = []
-        return row
-
     def test_researcher_memory_visible_to_analyst(self):
-        row = self._make_row("New regulation: Basel IV applies from 2026")
-        self.researcher.upsert_memory(row)
+        self.researcher.upsert_user_memory(_make_row("New regulation: Basel IV applies from 2026"))
 
-        analyst_memories = self.analyst.read_memories()
+        analyst_memories = self.analyst.get_user_memories()
         texts = [getattr(m, "memory", "") for m in analyst_memories]
         self.assertIn("New regulation: Basel IV applies from 2026", texts)
 
     def test_analyst_memory_visible_to_researcher(self):
-        row = self._make_row("Market share: Competitor X grew by 12%")
-        self.analyst.upsert_memory(row)
+        self.analyst.upsert_user_memory(_make_row("Market share: Competitor X grew by 12%"))
 
-        researcher_memories = self.researcher.read_memories()
+        researcher_memories = self.researcher.get_user_memories()
         texts = [getattr(m, "memory", "") for m in researcher_memories]
         self.assertIn("Market share: Competitor X grew by 12%", texts)
 
     def test_both_memories_in_pool(self):
-        self.researcher.upsert_memory(self._make_row("Research insight A"))
-        self.analyst.upsert_memory(self._make_row("Analysis finding B"))
+        self.researcher.upsert_user_memory(_make_row("Research insight A"))
+        self.analyst.upsert_user_memory(_make_row("Analysis finding B"))
 
         # Either agent should see both
-        researcher_memories = self.researcher.read_memories()
+        researcher_memories = self.researcher.get_user_memories()
         self.assertTrue(len(researcher_memories) >= 2)
 
     def test_limit_respected_in_read(self):
         for i in range(5):
-            self.researcher.upsert_memory(self._make_row(f"Fact {i}"))
-        memories = self.analyst.read_memories(limit=2)
+            self.researcher.upsert_user_memory(_make_row(f"Fact {i}"))
+        memories = self.analyst.get_user_memories(limit=2)
         self.assertTrue(len(memories) <= 2)
+
+    def test_delete_removes_from_shared_pool(self):
+        mem = _make_row("Ephemeral fact")
+        self.researcher.upsert_user_memory(mem)
+        self.researcher.delete_user_memory(mem.memory_id)
+        analyst_memories = self.analyst.get_user_memories()
+        texts = [getattr(m, "memory", "") for m in analyst_memories]
+        self.assertNotIn("Ephemeral fact", texts)
 
     def test_upsert_memory_store_failure_logs_warning(self):
         self.shared._context.store.side_effect = RuntimeError("store error")
         with self.assertLogs("semantica.integrations.agno.shared_context", level="WARNING") as cm:
-            mem = self.researcher.upsert_memory(self._make_row("Test store fail"))
+            mem = self.researcher.upsert_user_memory(_make_row("Test store fail"))
         self.assertIsNotNone(mem)
-        self.assertIn(mem.id, self.researcher._memories)
+        self.assertIn(mem.memory_id, self.researcher._memories)
         self.assertTrue(any("store failed:" in msg and "store error" in msg for msg in cm.output))
         self.shared._context.store.side_effect = None
 
     def test_upsert_memory_record_decision_failure_logs_warning(self):
         self.shared._context.record_decision.side_effect = RuntimeError("decision error")
         with self.assertLogs("semantica.integrations.agno.shared_context", level="WARNING") as cm:
-            mem = self.researcher.upsert_memory(self._make_row("Test decision fail"))
+            mem = self.researcher.upsert_user_memory(_make_row("Test decision fail"))
         self.assertIsNotNone(mem)
-        self.assertIn(mem.id, self.researcher._memories)
+        self.assertIn(mem.memory_id, self.researcher._memories)
         self.assertTrue(any("record_decision failed:" in msg and "decision error" in msg for msg in cm.output))
         self.shared._context.record_decision.side_effect = None
 

@@ -1,62 +1,12 @@
 """
-Tests for AgnoKnowledgeGraph — relational AgentKnowledge with GraphRAG.
+Tests for AgnoKnowledgeGraph — relational Agno v2 ``Knowledge`` with GraphRAG.
 """
 
 from __future__ import annotations
 
-import sys
-import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-
-# ---------------------------------------------------------------------------
-# Stub agno
-# ---------------------------------------------------------------------------
-def _stub_agno() -> None:
-    if "agno" in sys.modules:
-        return
-
-    agno = types.ModuleType("agno")
-
-    # agno.knowledge.base
-    knowledge_pkg = types.ModuleType("agno.knowledge")
-    knowledge_base = types.ModuleType("agno.knowledge.base")
-
-    class AgentKnowledge:
-        def __init__(self, *a, **kw): ...  # noqa: E704
-        def search(self, query, num_documents=None, filters=None): return []  # noqa: E704
-
-    knowledge_base.AgentKnowledge = AgentKnowledge  # type: ignore
-    knowledge_pkg.base = knowledge_base
-    agno.knowledge = knowledge_pkg  # type: ignore
-
-    # agno.document.base
-    document_pkg = types.ModuleType("agno.document")
-    document_base = types.ModuleType("agno.document.base")
-
-    class Document:
-        def __init__(self, content="", id=None, name=None, meta_data=None):
-            self.content = content
-            self.id = id
-            self.name = name
-            self.meta_data = meta_data or {}
-
-    document_base.Document = Document  # type: ignore
-    document_pkg.base = document_base
-    agno.document = document_pkg  # type: ignore
-
-    for name, mod in [
-        ("agno", agno),
-        ("agno.knowledge", knowledge_pkg),
-        ("agno.knowledge.base", knowledge_base),
-        ("agno.document", document_pkg),
-        ("agno.document.base", document_base),
-    ]:
-        sys.modules.setdefault(name, mod)
-
-
-_stub_agno()
 
 from integrations.agno.knowledge_graph import AgnoKnowledgeGraph  # noqa: E402
 
@@ -93,6 +43,16 @@ class _FakeContextGraph:
         return [node]
 
 
+def _make_kg(**kwargs) -> AgnoKnowledgeGraph:
+    return AgnoKnowledgeGraph(
+        graph_builder=_FakeGraphBuilder(),
+        ner_extractor=_FakeNER(),
+        relation_extractor=_FakeRelExtractor(),
+        context_graph=_FakeContextGraph(),
+        **kwargs,
+    )
+
+
 class TestAgnoKnowledgeGraphInit(unittest.TestCase):
 
     def test_creates_with_defaults(self):
@@ -100,28 +60,23 @@ class TestAgnoKnowledgeGraphInit(unittest.TestCase):
         self.assertIsNotNone(kg)
 
     def test_creates_with_custom_components(self):
-        kg = AgnoKnowledgeGraph(
-            graph_builder=_FakeGraphBuilder(),
-            ner_extractor=_FakeNER(),
-            relation_extractor=_FakeRelExtractor(),
-            context_graph=_FakeContextGraph(),
-        )
+        kg = _make_kg()
         self.assertIsNotNone(kg)
 
     def test_num_documents_default(self):
         kg = AgnoKnowledgeGraph(num_documents=10)
         self.assertEqual(kg.num_documents, 10)
+        self.assertEqual(kg.max_results, 10)
+
+    def test_custom_name(self):
+        kg = _make_kg(name="regulatory_kb")
+        self.assertEqual(kg.name, "regulatory_kb")
 
 
 class TestAgnoKnowledgeGraphLoad(unittest.TestCase):
 
     def setUp(self):
-        self.kg = AgnoKnowledgeGraph(
-            graph_builder=_FakeGraphBuilder(),
-            ner_extractor=_FakeNER(),
-            relation_extractor=_FakeRelExtractor(),
-            context_graph=_FakeContextGraph(),
-        )
+        self.kg = _make_kg()
 
     def test_load_texts(self):
         self.kg.load(texts=["Alice works at Acme Corp.", "Bob is the CEO."])
@@ -151,15 +106,50 @@ class TestAgnoKnowledgeGraphLoad(unittest.TestCase):
         self.assertTrue(len(stored["entities"]) > 0)
 
 
+class TestAgnoKnowledgeGraphInsert(unittest.TestCase):
+    """v2 Knowledge.insert() entry point."""
+
+    def setUp(self):
+        self.kg = _make_kg()
+
+    def test_insert_text_content(self):
+        self.kg.insert(text_content="Basel IV applies from 2026.", name="basel")
+        self.assertEqual(len(self.kg._docs), 1)
+        self.assertEqual(self.kg._docs[0]["source"], "basel")
+
+    def test_insert_path_file(self):
+        import os
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("Inserted from a file.")
+            tmp_path = f.name
+        try:
+            self.kg.insert(path=tmp_path)
+            self.assertEqual(len(self.kg._docs), 1)
+        finally:
+            os.unlink(tmp_path)
+
+    def test_insert_path_directory_with_include(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            for fname in ("a.txt", "b.txt", "c.md"):
+                with open(os.path.join(d, fname), "w") as f:
+                    f.write(f"content of {fname}")
+            self.kg.insert(path=d, include=["*.txt"])
+            self.assertEqual(len(self.kg._docs), 2)
+
+    def test_insert_url_disallowed_scheme_skipped(self):
+        self.kg.insert(url="file:///etc/passwd")
+        self.assertEqual(len(self.kg._docs), 0)
+
+
 class TestAgnoKnowledgeGraphSearch(unittest.TestCase):
 
     def setUp(self):
-        self.kg = AgnoKnowledgeGraph(
-            graph_builder=_FakeGraphBuilder(),
-            ner_extractor=_FakeNER(),
-            relation_extractor=_FakeRelExtractor(),
-            context_graph=_FakeContextGraph(),
-        )
+        self.kg = _make_kg()
         self.kg.load(texts=[
             "Machine learning is a subset of artificial intelligence.",
             "Python is a popular programming language.",
@@ -171,24 +161,26 @@ class TestAgnoKnowledgeGraphSearch(unittest.TestCase):
         self.assertIsInstance(results, list)
 
     def test_search_returns_agno_documents(self):
-        results = self.kg.search("python", num_documents=2)
+        results = self.kg.search("python", max_results=2)
         self.assertTrue(len(results) <= 2)
         for doc in results:
             self.assertTrue(hasattr(doc, "content"))
 
     def test_search_empty_kg_returns_empty(self):
-        kg = AgnoKnowledgeGraph(
-            graph_builder=_FakeGraphBuilder(),
-            ner_extractor=_FakeNER(),
-            relation_extractor=_FakeRelExtractor(),
-            context_graph=_FakeContextGraph(),
-        )
+        kg = _make_kg()
         results = kg.search("anything")
         self.assertEqual(results, [])
 
-    def test_search_num_documents_respected(self):
-        results = self.kg.search("a", num_documents=1)
+    def test_search_max_results_respected(self):
+        results = self.kg.search("a", max_results=1)
         self.assertTrue(len(results) <= 1)
+
+    def test_asearch_delegates_to_search(self):
+        import asyncio
+
+        results = asyncio.run(self.kg.asearch("python", max_results=2))
+        self.assertIsInstance(results, list)
+        self.assertTrue(len(results) <= 2)
 
     def test_get_graph_context(self):
         ctx = self.kg.get_graph_context("FakeEntity")
@@ -199,25 +191,16 @@ class TestAgnoKnowledgeGraphPathLoading(unittest.TestCase):
     """Test path-based loading with a temporary file."""
 
     def test_load_missing_path_warns(self):
-        kg = AgnoKnowledgeGraph(
-            graph_builder=_FakeGraphBuilder(),
-            ner_extractor=_FakeNER(),
-            relation_extractor=_FakeRelExtractor(),
-            context_graph=_FakeContextGraph(),
-        )
+        kg = _make_kg()
         # Should not raise even for non-existent path
         kg.load(path="/nonexistent/path/xyz")
         self.assertEqual(len(kg._docs), 0)
 
     def test_load_file(self):
-        import tempfile, os
+        import os
+        import tempfile
 
-        kg = AgnoKnowledgeGraph(
-            graph_builder=_FakeGraphBuilder(),
-            ner_extractor=_FakeNER(),
-            relation_extractor=_FakeRelExtractor(),
-            context_graph=_FakeContextGraph(),
-        )
+        kg = _make_kg()
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("Test document content for loading.")
             tmp_path = f.name

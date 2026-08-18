@@ -22,24 +22,31 @@ Example
     ...     decision_tracking=True,
     ... )
     >>> from agno.agent import Agent
-    >>> from agno.team import Team
+    >>> from agno.team.team import Team
     >>> researcher = Agent(
     ...     name="Researcher",
-    ...     memory=shared.bind_agent("researcher"),
+    ...     db=shared.bind_agent("researcher"),
+    ...     update_memory_on_run=True,
     ...     tools=[AgnoKGToolkit(context=shared)],
     ... )
     >>> analyst = Agent(
     ...     name="Analyst",
-    ...     memory=shared.bind_agent("analyst"),
+    ...     db=shared.bind_agent("analyst"),
+    ...     update_memory_on_run=True,
     ...     tools=[AgnoDecisionKit(context=shared)],
     ... )
-    >>> team = Team(agents=[researcher, analyst], mode="coordinate")
-"""
+    >>> team = Team(
+    ...     members=[researcher, analyst],
+    ...     session_state={"shared_session_id": shared.session_id},
+    ... )
+    """
 
 from __future__ import annotations
 
 import threading
-from typing import Any, Dict, List, Optional
+import time
+import uuid
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from semantica.utils.logging import get_logger
 
@@ -71,14 +78,19 @@ class _AgentScopedStore(AgnoContextStore):
         self._context = shared._context  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
-    # Override upsert / record to tag with role
+    # Override upsert / read to tag with role and share across agents
     # ------------------------------------------------------------------
 
-    def upsert_memory(self, memory: Any) -> Optional[Any]:  # type: ignore[override]
-        import uuid
-
-        mem_id = getattr(memory, "id", None) or str(uuid.uuid4())
+    def upsert_user_memory(
+        self, memory: Any, deserialize: Optional[bool] = True
+    ) -> Optional[Union[Any, Dict[str, Any]]]:  # type: ignore[override]
+        mem_id = getattr(memory, "memory_id", None) or str(uuid.uuid4())
         mem_text = getattr(memory, "memory", str(memory))
+
+        now = int(time.time())
+        if getattr(memory, "created_at", None) is None:
+            memory.created_at = now
+        memory.updated_at = now
 
         try:
             self._context.store(mem_text, conversation_id=self.session_id)
@@ -97,35 +109,80 @@ class _AgentScopedStore(AgnoContextStore):
             except Exception as exc:
                 logger.warning("[%s] record_decision failed: %s", self._role, exc, exc_info=True)
 
-        if hasattr(memory, "id"):
-            memory.id = mem_id
+        if hasattr(memory, "memory_id"):
+            memory.memory_id = mem_id
         self._memories[mem_id] = memory
 
         # Also push into the shared registry so all agents can read it
         self._shared._shared_memories[mem_id] = memory
 
+        if not deserialize:
+            return memory.to_dict() if hasattr(memory, "to_dict") else dict(memory.__dict__)
         return memory
 
-    def read_memories(  # type: ignore[override]
+    def get_user_memories(  # type: ignore[override]
         self,
         user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        search_content: Optional[str] = None,
         limit: Optional[int] = None,
-        sort: Optional[str] = None,
-    ) -> List[Any]:
+        page: Optional[int] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        deserialize: Optional[bool] = True,
+    ) -> Union[List[Any], Tuple[List[Dict[str, Any]], int]]:
         # Return own memories + shared memories from all agents
         combined = dict(self._shared._shared_memories)
         combined.update(self._memories)
 
         rows = list(combined.values())
-        if user_id:
+        if user_id is not None:
             rows = [r for r in rows if getattr(r, "user_id", None) == user_id]
+        if topics is not None:
+            rows = [
+                r
+                for r in rows
+                if any(t in (getattr(r, "topics", None) or []) for t in topics)
+            ]
+        if search_content is not None:
+            rows = [
+                r
+                for r in rows
+                if search_content.lower() in str(getattr(r, "memory", "")).lower()
+            ]
 
-        reverse = sort != "asc"
-        rows.sort(key=lambda r: getattr(r, "last_updated", 0), reverse=reverse)
+        total_count = len(rows)
+
+        sort_key = sort_by or "updated_at"
+        reverse = (sort_order or "desc").lower() != "asc"
+        rows.sort(key=lambda r: getattr(r, sort_key, None) or 0, reverse=reverse)
 
         if limit is not None:
-            rows = rows[:limit]
+            start = (page - 1) * limit if page is not None else 0
+            rows = rows[start : start + limit]
+
+        if not deserialize:
+            return (
+                [r.to_dict() if hasattr(r, "to_dict") else dict(r.__dict__) for r in rows],
+                total_count,
+            )
         return rows
+
+    def delete_user_memory(self, memory_id: str, user_id: Optional[str] = None) -> None:  # type: ignore[override]
+        self._memories.pop(memory_id, None)
+        self._shared._shared_memories.pop(memory_id, None)
+        try:
+            self._context.forget(memory_id=memory_id)
+        except Exception as exc:
+            logger.debug("[%s] forget(%s) failed: %s", self._role, memory_id, exc)
+
+    def clear_memories(self) -> None:  # type: ignore[override]
+        """Clear this role's memories and its entries in the shared pool."""
+        for mem_id in list(self._memories):
+            self._shared._shared_memories.pop(mem_id, None)
+        self._memories.clear()
 
 
 class AgnoSharedContext:
