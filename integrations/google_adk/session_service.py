@@ -60,9 +60,8 @@ class SemanticaSessionService(BaseSessionService):
         self.graph = graph
         self._lock = threading.RLock()
 
-    # ------------------------------------------------------------------
+
     # Graph helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _node_id(session_id: str) -> str:
@@ -590,12 +589,14 @@ class SemanticaSessionService(BaseSessionService):
                         str(edge["target"])
                     )
 
+            # FIX: Use `purge_node` instead of `remove_node`
             for event_node_id in event_node_ids:
-                self.graph.remove_node(
+                self.graph.purge_node(
                     event_node_id
                 )
 
-            self.graph.remove_node(
+            # FIX: Use `purge_node` instead of `remove_node`
+            self.graph.purge_node(
                 session_node_id
             )
 

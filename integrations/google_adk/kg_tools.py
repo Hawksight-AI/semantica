@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -13,9 +12,12 @@ except ImportError:
     ADK_AVAILABLE = False
 
 
-
 _graph_locks_guard = threading.Lock()
 _graph_locks: Dict[int, threading.RLock] = {}
+
+# FIX: Renamed from _graph_lock to _default_graph_lock to avoid colliding with the function name below
+_default_graph = None
+_default_graph_lock = threading.Lock()
 
 
 def _graph_lock(graph: Any) -> threading.RLock:
@@ -32,11 +34,15 @@ def _graph_lock(graph: Any) -> threading.RLock:
         return lock
 
 
-def _get_default_graph() -> Any:
-    """Create a default Semantica ContextGraph."""
-    from semantica.context import ContextGraph
-
-    return ContextGraph()
+def _get_default_graph():
+    """Create or return the cached default Semantica ContextGraph."""
+    global _default_graph
+    # FIX: Use the renamed lock variable
+    with _default_graph_lock:
+        if _default_graph is None:
+            from semantica.context import ContextGraph
+            _default_graph = ContextGraph()
+        return _default_graph
 
 
 def _get_ner_extractor() -> Any:
@@ -51,7 +57,6 @@ def _get_relation_extractor() -> Any:
     from semantica.semantic_extract import RelationExtractor
 
     return RelationExtractor()
-
 
 
 def _first_string(obj: Any, attributes: tuple[str, ...]) -> str:
@@ -208,7 +213,6 @@ def _json_safe(value: Any) -> Any:
             pass
 
     return str(value)
-
 
 
 def extract_entities(text: str) -> dict:
@@ -627,7 +631,6 @@ def _query_graph(query: str, graph: Any) -> dict:
             "count": 0,
             "error": str(exc),
         }
-
 
 
 def semantica_kg_tools(
