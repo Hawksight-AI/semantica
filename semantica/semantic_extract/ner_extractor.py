@@ -144,7 +144,12 @@ class NERExtractor:
         self._ml_runtime_usable = True
         if "ml" in self.method and SPACY_AVAILABLE:
             try:
-                self.nlp = spacy.load(self.model_name)
+                # Deferred import: keeps semantic_extract.methods out of the
+                # module-level import graph and routes loading through the
+                # process-level cache so repeated NERExtractor constructions
+                # never pay the ~120 ms spacy.load() cost more than once.
+                from .methods import load_spacy_model
+                self.nlp = load_spacy_model(self.model_name)
             except OSError:
                 self.logger.warning(
                     f"spaCy model {self.model_name} not found. ML method will fallback."
