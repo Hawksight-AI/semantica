@@ -201,6 +201,10 @@ gpu = [
 
 # ---- Agentic Framework Integrations ----
 agno = ["agno>=1.0.0"]
+# crewai core provides BaseTool and BaseKnowledgeSource; crewai-tools is not
+# needed (it pulls vulnerable transitive deps like chromadb) and would only
+# duplicate the prebuilt tooling users can install separately.
+crewai = ["crewai>=0.80.0"]
 
 # ---- File Watching ----
 watch = ["watchdog>=6.0.0"]
@@ -242,6 +246,10 @@ explorer-lite = [
 ]
 
 # Everything (cross-platform — gpu excluded; install semantica[gpu] separately on Linux)
+# NOTE: the ``crewai`` extra is intentionally NOT in ``all``: crewai hard-requires
+# ``chromadb~=1.1.0``, which carries a pre-authentication code-injection advisory
+# (CVE-2026-45829) with no fixed release — including it here would fail the CI
+# dependency-audit/security gates.  Install it explicitly via ``semantica[crewai]``.
 all = [
   "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,explorer]",
   "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno]"
