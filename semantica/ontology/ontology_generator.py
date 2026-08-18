@@ -840,7 +840,14 @@ class SHACLGenerator:
         """
         self.logger = get_logger("ontology_shacl")
         self.progress_tracker = get_progress_tracker()
-        self.base_uri = base_uri.rstrip("/") + "/"
+        # Preserve an RDF namespace that already ends in `#` (the common
+        # convention for vocabularies): `...manufacturing#` must not become
+        # `...manufacturing#/`, or every generated URI lands in the wrong
+        # namespace and SHACL validation silently targets nothing. Matches
+        # the `#`-aware normalization in `generate()`.
+        self.base_uri = (
+            base_uri if base_uri.endswith(("/", "#")) else base_uri + "/"
+        )
         self.shapes_uri = shapes_uri or (self.base_uri + "shapes")
         self.include_inherited = include_inherited
         self.severity = severity

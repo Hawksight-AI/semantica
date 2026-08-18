@@ -340,6 +340,19 @@ class TestSHACLHierarchicalAndValidation(unittest.TestCase):
         ttl = gen.serialize(graph, format="turtle")
         self.assertIn("myorg.com", ttl)
 
+    # 24a — an RDF namespace ending in `#` must not gain a trailing `/`,
+    # or every generated URI lands in a different namespace and SHACL
+    # validation silently targets nothing.
+    def test_hash_namespace_base_uri_is_not_mangled(self):
+        gen = self._make_gen(base_uri="http://example.org/manufacturing#")
+        self.assertEqual(gen.base_uri, "http://example.org/manufacturing#")
+        self.assertEqual(gen.shapes_uri, "http://example.org/manufacturing#shapes")
+
+        graph = gen.generate(self._HIER_ONTOLOGY)
+        ttl = gen.serialize(graph, format="turtle")
+        self.assertNotIn("#/", ttl)
+        self.assertIn("manufacturing#", ttl)
+
     # 25
     def test_severity_warning(self):
         gen = self._make_gen(severity="Warning")
