@@ -254,7 +254,7 @@ class TestAuthHandlerStripping:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -285,7 +285,7 @@ class TestAuthHandlerStripping:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -416,7 +416,7 @@ class TestAuthHandlerStripping:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[hop1, hop2, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -520,7 +520,7 @@ class TestCredentialResurrection:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[hop1, hop2, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -578,7 +578,7 @@ class TestRedirectTypesAndOriginChanges:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -600,7 +600,7 @@ class TestRedirectTypesAndOriginChanges:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -619,7 +619,7 @@ class TestRedirectTypesAndOriginChanges:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -638,7 +638,7 @@ class TestRedirectTypesAndOriginChanges:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -657,7 +657,7 @@ class TestRedirectTypesAndOriginChanges:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -676,7 +676,7 @@ class TestRedirectTypesAndOriginChanges:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -701,7 +701,7 @@ class TestAllowPrivateIpsOnRedirect:
         redirect = _mock_redirect("http://169.254.169.254/latest/meta-data/")
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             return_value=redirect,
         ):
             with pytest.raises(ValidationError, match="blocked"):
@@ -718,7 +718,7 @@ class TestAllowPrivateIpsOnRedirect:
         final = _mock_final()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             request_with_ssrf_guard(
@@ -736,7 +736,7 @@ class TestAllowPrivateIpsOnRedirect:
         redirect = _mock_redirect("http://169.254.169.254/latest/meta-data/")
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, _mock_final()],
         ) as mock_req:
             # allow_private_ips=True with no override: redirect target validation
@@ -784,7 +784,7 @@ class TestMCPClientAuthRedirect:
         )
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
@@ -806,7 +806,7 @@ class TestMCPClientAuthRedirect:
         )
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
@@ -821,7 +821,7 @@ class TestMCPClientAuthRedirect:
         client = MCPClient(url="http://localhost:8000/mcp")
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             return_value=final,
         ) as mock_req:
             client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
@@ -834,7 +834,7 @@ class TestMCPClientAuthRedirect:
         client = MCPClient(url="http://127.0.0.1:9000/mcp")
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             return_value=final,
         ) as mock_req:
             client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
@@ -849,7 +849,7 @@ class TestMCPClientAuthRedirect:
         client = MCPClient(url="http://localhost:8000/mcp")
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
@@ -869,7 +869,7 @@ class TestMCPClientAuthRedirect:
         client = MCPClient(url="https://mcp.example.com/mcp")
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             return_value=redirect,
         ):
             with pytest.raises(ValidationError, match="blocked"):
@@ -888,7 +888,7 @@ class TestMCPClientAuthRedirect:
         )
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             side_effect=[redirect, final],
         ) as mock_req:
             client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
@@ -904,7 +904,7 @@ class TestMCPClientAuthRedirect:
         client = MCPClient(url="https://mcp.example.com/mcp")
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             return_value=hop,
         ):
             with pytest.raises((ValidationError, Exception), match="[Rr]edirect|[Ee]xceeded"):
@@ -920,7 +920,7 @@ class TestMCPClientAuthRedirect:
         )
 
         with patch(
-            "semantica.ingest.ssrf.requests.request",
+            "requests.Session.request",
             return_value=final,
         ) as mock_req:
             client._send_request_http({"jsonrpc": "2.0", "method": "ping"})
