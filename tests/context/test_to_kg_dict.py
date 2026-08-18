@@ -87,3 +87,64 @@ def test_returned_dicts_are_isolated_from_internal_state():
     # Mutating the returned dict must not corrupt internal node properties.
     entity["properties"]["injected"] = True
     assert "injected" not in g.nodes["e1"].properties
+
+
+def test_null_properties_and_metadata_do_not_crash():
+    """Nodes loaded from JSON ``null`` keep None props/metadata; to_kg_dict
+    must normalize them instead of raising TypeError (Qodo bug 1)."""
+    g = ContextGraph()
+    n = ContextNode(node_id="e1", node_type="entity", content="Alice")
+    n.properties = None
+    n.metadata = None
+    g._add_internal_node(n)
+
+    kg = g.to_kg_dict()
+    entity = kg["entities"][0]
+    assert entity["properties"] == {}
+    assert entity["metadata"] == {}
+
+
+def test_non_string_node_id_is_normalized_and_keeps_edges():
+    """ContextEdge coerces endpoints to str; entity ids must be coerced too
+    so entities_only filtering does not drop valid edges (Qodo bug 3)."""
+    g = ContextGraph()
+    g._add_internal_node(ContextNode(node_id=1, node_type="entity", content="one"))
+    g._add_internal_node(ContextNode(node_id=2, node_type="entity", content="two"))
+    g._add_internal_edge(ContextEdge(source_id=1, target_id=2, edge_type="links"))
+
+    kg = g.to_kg_dict(entities_only=True)
+    ids = {e["id"] for e in kg["entities"]}
+    assert ids == {"1", "2"}
+    assert all(isinstance(e["id"], str) for e in kg["entities"])
+    # The edge must survive filtering despite the int-vs-str origin.
+    assert {r["type"] for r in kg["relationships"]} == {"links"}
+
+
+def test_output_is_consumable_by_kg_utilities():
+    """to_kg_dict output must validate and be traversable by KG utilities that
+    historically read ``source``/``target`` (Qodo bug 2, consumer side)."""
+    from semantica.kg.graph_validator import GraphValidator, ValidationSeverity
+    from semantica.kg.temporal_query import TemporalGraphQuery
+
+    g = ContextGraph()
+    g._add_internal_node(ContextNode(node_id="e1", node_type="entity", content="Alice"))
+    g._add_internal_node(ContextNode(node_id="e2", node_type="entity", content="Bob"))
+    g._add_internal_edge(ContextEdge(source_id="e1", target_id="e2", edge_type="knows"))
+    kg = g.to_kg_dict()
+
+    # Validator requires entity ``name``; add it so only endpoint compat is tested.
+    for e in kg["entities"]:
+        e["name"] = e["text"]
+
+    result = GraphValidator().validate(kg)
+    endpoint_errors = [
+        i for i in result.issues
+        if i.code in {"MISSING_FIELD", "DANGLING_EDGE"}
+        and i.element_type == "relationship"
+    ]
+    assert endpoint_errors == [], endpoint_errors
+
+    # TemporalGraphQuery.analyze_evolution must see the relationship for "e1".
+    tq = TemporalGraphQuery()
+    filtered = tq.analyze_evolution(kg, entity="e1")
+    assert filtered is not None
