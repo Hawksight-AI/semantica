@@ -844,9 +844,11 @@ class SHACLGenerator:
         # convention for vocabularies): `...manufacturing#` must not become
         # `...manufacturing#/`, or every generated URI lands in the wrong
         # namespace and SHACL validation silently targets nothing. Matches
-        # the `#`-aware normalization in `generate()`.
+        # the `#`-aware normalization in `generate()`. Slash-terminated
+        # bases are collapsed to a single trailing `/` so redundant runs
+        # (`.../ns////`) cannot leak a different namespace into emitted IRIs.
         self.base_uri = (
-            base_uri if base_uri.endswith(("/", "#")) else base_uri + "/"
+            base_uri if base_uri.endswith("#") else base_uri.rstrip("/") + "/"
         )
         self.shapes_uri = shapes_uri or (self.base_uri + "shapes")
         self.include_inherited = include_inherited

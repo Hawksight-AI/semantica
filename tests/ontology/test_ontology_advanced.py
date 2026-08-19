@@ -353,6 +353,14 @@ class TestSHACLHierarchicalAndValidation(unittest.TestCase):
         self.assertNotIn("#/", ttl)
         self.assertIn("manufacturing#", ttl)
 
+    # 24b — a `#`-terminated base is preserved verbatim, while slash runs
+    # are collapsed: Qodo review caught that `endswith(("/","#"))` left
+    # `.../ns////` intact, leaking a different namespace into emitted IRIs.
+    def test_slash_run_normalization_regression(self):
+        gen = self._make_gen(base_uri="http://example.org/ns////")
+        self.assertEqual(gen.base_uri, "http://example.org/ns/")
+        self.assertEqual(gen.shapes_uri, "http://example.org/ns/shapes")
+
     # 25
     def test_severity_warning(self):
         gen = self._make_gen(severity="Warning")
