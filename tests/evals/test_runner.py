@@ -72,3 +72,109 @@ class TestEvaluate:
         assert result.passed == 1
         assert "exact_match" in result.cases[0].metrics
         assert "keyword_check" in result.cases[0].metrics
+
+
+class TestObjective:
+    def test_maximize_with_threshold_pass(self):
+        # levenshtein similarity 1.0 for identical, objective demands >= 0.5
+        result = evaluate(
+            [("apple", "apple")],
+            evaluators=["levenshtein"],
+            config={"levenshtein": {"objective": {"direction": "maximize", "threshold": 0.5}}},
+        )
+        assert result.cases[0].status == "pass"
+        assert result.cases[0].metrics["levenshtein"].passed is True
+
+    def test_maximize_with_threshold_fail(self):
+        result = evaluate(
+            [("apple", "aple")],  # similarity < 1.0
+            evaluators=["levenshtein"],
+            config={"levenshtein": {"objective": {"direction": "maximize", "threshold": 0.99}}},
+        )
+        assert result.cases[0].status == "fail"
+        assert result.cases[0].metrics["levenshtein"].passed is False
+        assert "levenshtein" in result.cases[0].details
+
+    def test_minimize_with_threshold_pass(self):
+        # levenshtein similarity 0.6 for ("night", "nacht"); objective: similarity <= 0.7
+        result = evaluate(
+            [("night", "nacht")],
+            evaluators=["levenshtein"],
+            config={"levenshtein": {"objective": {"direction": "minimize", "threshold": 0.7}}},
+        )
+        assert result.cases[0].status == "pass"
+        assert result.cases[0].metrics["levenshtein"].passed is True
+
+    def test_minimize_with_threshold_fail(self):
+        result = evaluate(
+            [("night", "nacht")],
+            evaluators=["levenshtein"],
+            config={"levenshtein": {"objective": {"direction": "minimize", "threshold": 0.1}}},
+        )
+        assert result.cases[0].status == "fail"
+
+    def test_expect_true_on_boolean_metric(self):
+        result = evaluate(
+            [("ok", "ok")],
+            evaluators=["exact_match"],
+            config={"exact_match": {"objective": {"expect": True}}},
+        )
+        assert result.cases[0].status == "pass"
+
+    def test_expect_false_overrides_passing_metric(self):
+        # exact_match passes (score 1.0) but expectation is false -> fail
+        result = evaluate(
+            [("ok", "ok")],
+            evaluators=["exact_match"],
+            config={"exact_match": {"objective": {"expect": False}}},
+        )
+        assert result.cases[0].status == "fail"
+        assert result.cases[0].metrics["exact_match"].passed is False
+        assert "exact_match" in result.cases[0].details
+
+    def test_maximize_without_threshold_is_noop(self):
+        # identical behavior to no objective: evaluator's own verdict stands
+        result = evaluate(
+            [("ok", "no")],
+            evaluators=["exact_match"],
+            config={"exact_match": {"objective": {"direction": "maximize"}}},
+        )
+        assert result.cases[0].status == "fail"
+
+    def test_minimize_without_threshold_raises(self):
+        with pytest.raises(ValueError):
+            evaluate(
+                [("a", "b")],
+                evaluators=["levenshtein"],
+                config={"levenshtein": {"objective": {"direction": "minimize"}}},
+            )
+
+    def test_bad_direction_raises(self):
+        with pytest.raises(ValueError):
+            evaluate(
+                [("a", "b")],
+                evaluators=["levenshtein"],
+                config={"levenshtein": {"objective": {"direction": "sideways", "threshold": 0.5}}},
+            )
+
+    def test_expect_with_direction_raises(self):
+        with pytest.raises(ValueError):
+            evaluate(
+                [("a", "b")],
+                evaluators=["levenshtein"],
+                config={"levenshtein": {"objective": {"expect": True, "direction": "maximize"}}},
+            )
+
+    def test_error_metric_wins_over_objective(self):
+        result = evaluate(
+            [("[invalid", "x")],
+            evaluators=["regex_match"],
+            config={"regex_match": {"objective": {"direction": "maximize", "threshold": 0.0}}},
+        )
+        assert result.cases[0].status == "error"
+        assert result.errors == 1
+        assert result.failed == 0
+
+    def test_no_objective_unchanged(self):
+        result = evaluate([("ok", "no")], evaluators=["exact_match"])
+        assert result.cases[0].status == "fail"

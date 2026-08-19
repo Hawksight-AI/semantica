@@ -8,6 +8,51 @@ from .types import CaseResult, EvalMetric, EvalSummary
 Case = Union[Dict[str, Any], Tuple[Any, Any]]
 
 
+def _parse_objective(name, eval_config):
+    """Return the validated objective dict, or None when not configured.
+
+    Raises ValueError for invalid configurations (programmer error).
+    """
+    objective = (eval_config or {}).get("objective")
+    if objective is None:
+        return None
+    direction = objective.get("direction")
+    threshold = objective.get("threshold")
+    expect = objective.get("expect")
+
+    if expect is not None:
+        if direction is not None or threshold is not None:
+            raise ValueError(
+                f"objective for '{name}': 'expect' cannot be combined with "
+                "'direction' or 'threshold'"
+            )
+        return {"expect": bool(expect)}
+    if direction == "minimize":
+        if threshold is None:
+            raise ValueError(
+                f"objective for '{name}': 'minimize' requires a 'threshold'"
+            )
+        return {"direction": "minimize", "threshold": float(threshold)}
+    if direction == "maximize":
+        if threshold is None:
+            # no bar to re-decide against; treat as absent (evaluator default stands)
+            return None
+        return {"direction": "maximize", "threshold": float(threshold)}
+    raise ValueError(
+        f"objective for '{name}': 'direction' must be 'maximize' or 'minimize' "
+        f"(got {direction!r})"
+    )
+
+
+def _apply_objective(metric, objective):
+    """Return the objective-adjusted pass verdict for a non-error metric."""
+    if "expect" in objective:
+        return bool(metric.score) == objective["expect"]
+    if objective["direction"] == "minimize":
+        return metric.score <= objective["threshold"]
+    return metric.score >= objective["threshold"]
+
+
 def _extract(case: Case, target_fn: Optional[Callable]):
     """Return (case_id, expected, actual, config, per_case_target_fn)."""
     if isinstance(case, tuple):
@@ -50,6 +95,10 @@ def evaluate(
         merged.update(case_config)
         if expected is None:
             expected = merged.get("expected")
+        objective_by_name = {
+            name: _parse_objective(name, merged.get(name) or {})
+            for name in evaluators
+        }
         metrics: Dict[str, EvalMetric] = {}
         details: Dict[str, Any] = {}
         failed, errored = False, False
@@ -57,6 +106,9 @@ def evaluate(
             eval_config = merged.get(name) or {}
             try:
                 metric = get_evaluator(name)(actual, expected, config=eval_config)
+                objective = objective_by_name.get(name)
+                if objective is not None and "error" not in metric.meta:
+                    metric = EvalMetric(metric.score, _apply_objective(metric, objective), metric.meta)
                 metrics[name] = metric
                 if "error" in metric.meta:
                     errored = True
