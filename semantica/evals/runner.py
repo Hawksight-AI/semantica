@@ -16,17 +16,25 @@ def _parse_objective(name, eval_config):
     objective = (eval_config or {}).get("objective")
     if objective is None:
         return None
+    if not isinstance(objective, dict):
+        raise ValueError(
+            f"objective for '{name}': expected a dict, got {type(objective).__name__}"
+        )
     direction = objective.get("direction")
     threshold = objective.get("threshold")
     expect = objective.get("expect")
 
     if expect is not None:
+        if not isinstance(expect, bool):
+            raise ValueError(
+                f"objective for '{name}': 'expect' must be a bool (got {expect!r})"
+            )
         if direction is not None or threshold is not None:
             raise ValueError(
                 f"objective for '{name}': 'expect' cannot be combined with "
                 "'direction' or 'threshold'"
             )
-        return {"expect": bool(expect)}
+        return {"expect": expect}
     if direction == "minimize":
         if threshold is None:
             raise ValueError(

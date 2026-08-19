@@ -178,3 +178,19 @@ class TestObjective:
     def test_no_objective_unchanged(self):
         result = evaluate([("ok", "no")], evaluators=["exact_match"])
         assert result.cases[0].status == "fail"
+
+    def test_non_dict_objective_raises(self):
+        with pytest.raises(ValueError):
+            evaluate(
+                [("a", "b")],
+                evaluators=["levenshtein"],
+                config={"levenshtein": {"objective": "maximize"}},
+            )
+
+    def test_non_bool_expect_raises(self):
+        with pytest.raises(ValueError):
+            evaluate(
+                [("a", "b")],
+                evaluators=["exact_match"],
+                config={"exact_match": {"objective": {"expect": "false"}}},
+            )

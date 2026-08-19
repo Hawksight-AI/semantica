@@ -123,10 +123,13 @@ Rules:
 - `minimize` + `threshold`: pass iff `score <= threshold`. `minimize`
   **requires** a threshold — omitting it raises `ValueError`.
 - `expect` (`true`/`false`): pass iff `bool(score)` matches; cannot be
-  combined with `direction`/`threshold`.
+  combined with `direction`/`threshold`. `expect` must be a real boolean
+  (a string like `"false"` is rejected).
 - A metric whose `meta` contains `"error"` is always an error, never affected
   by an objective.
-- Invalid objective config raises `ValueError` before any evaluator runs.
+- Invalid objective config (non-dict objective, bad `direction`, `minimize`
+  without `threshold`, non-bool `expect`) raises `ValueError` before any
+  evaluator runs.
 
 ## Interpret the summary
 
