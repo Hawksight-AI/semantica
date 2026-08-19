@@ -163,5 +163,98 @@ class TestRuleActions(unittest.TestCase):
         self.assertIn("Child(Jane, John)", self.reasoner.facts)
 
 
+class TestRuleActionRegressions(unittest.TestCase):
+    """Regression coverage for the qodo-flagged bugs on PR #1096."""
+
+    def test_variable_substitution_no_prefix_collision(self):
+        # bug7: naive str.replace of "?x" would also corrupt "?xy". A
+        # token-aware substitution must bind ?x and ?xy independently.
+        reasoner = Reasoner()
+        rule = reasoner.add_rule("IF Pair(?x, ?xy) THEN Linked(?x, ?xy)")
+        rule.actions = [AssertAction("Tag(?x, ?xy)")]
+        reasoner.add_fact("Pair(John, Johny)")
+
+        reasoner.forward_chain()
+
+        self.assertIn("Tag(John, Johny)", reasoner.facts)
+
+    def test_assert_write_back_to_canonical_knowledge_graph(self):
+        # bug1: a KG exposing only entities/relationships (no add_fact) must
+        # still receive the asserted fact via canonical translation.
+        from semantica.kg.knowledge_graph import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        reasoner = Reasoner(knowledge_graph=kg)
+        rule = reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [AssertAction("Adult(?x)", write_back=True)]
+        reasoner.add_fact("Person(John)")
+
+        reasoner.forward_chain()
+
+        # A single-argument fact lands as an entity node.
+        self.assertTrue(any("John" in str(e) for e in kg.entities))
+
+    def test_write_back_unsupported_target_raises(self):
+        # bug1: an unsupported write-back target must fail loudly, not silently.
+        from semantica.reasoning.reasoner import _write_fact_to_graph
+
+        with self.assertRaises(ValueError):
+            _write_fact_to_graph(object(), "Adult(John)")
+
+    def test_provenance_entry_has_timestamp(self):
+        # bug3: action_log entries must be structured with a timestamp.
+        reasoner = Reasoner(provenance=True)
+        rule = reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [AssertAction("Adult(?x)")]
+        reasoner.add_fact("Person(John)")
+
+        reasoner.forward_chain()
+
+        entry = reasoner.action_log[0]
+        self.assertIn("timestamp", entry)
+        self.assertTrue(entry["timestamp"])
+
+    def test_action_fires_even_when_conclusion_already_known(self):
+        # bug4: previously an activation whose conclusion was already known
+        # skipped firing its actions. Now it must still fire exactly once.
+        reasoner = Reasoner()
+        rule = reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [AssertAction("Verified(?x)")]
+        reasoner.add_fact("Person(John)")
+        # Conclusion already present before the pass runs.
+        reasoner.add_fact("Adult(John)")
+
+        reasoner.forward_chain()
+
+        self.assertIn("Verified(John)", reasoner.facts)
+
+    def test_retract_self_conclusion_terminates(self):
+        # bug5: a RetractAction removing its own premise previously re-fired
+        # every pass up to max_iterations. It must fire once and terminate.
+        reasoner = Reasoner()
+        rule = reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [RetractAction("Person(?x)")]
+        reasoner.add_fact("Person(John)")
+
+        # Should return promptly without exhausting iterations.
+        reasoner.forward_chain()
+
+        self.assertNotIn("Person(John)", reasoner.facts)
+
+    def test_infer_with_results_preserves_confidence(self):
+        # bug9: confidence must survive to the InferenceResult objects.
+        reasoner = Reasoner()
+        rule = reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.confidence = 0.8
+
+        results = reasoner.infer_with_results(["Person(John)"])
+
+        self.assertTrue(results)
+        self.assertTrue(all(0.0 <= r.confidence <= 1.0 for r in results))
+        self.assertAlmostEqual(
+            min(r.confidence for r in results), 0.8, places=6
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

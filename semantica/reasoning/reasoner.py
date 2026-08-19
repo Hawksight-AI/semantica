@@ -8,6 +8,7 @@ supported by the Semantica framework. It serves as a facade for different reason
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -21,6 +22,122 @@ class RuleType(Enum):
     EQUIVALENCE = "equivalence"
     CONSTRAINT = "constraint"
     TRANSFORMATION = "transformation"
+
+
+def _substitute_variables(template: str, bindings: Dict[str, str]) -> str:
+    """Substitute ``?var`` placeholders with their bound values, token-aware.
+
+    A naive ``str.replace(f"?{var}", value)`` corrupts placeholders that share
+    a prefix -- e.g. binding ``?x`` would also rewrite the ``?x`` inside ``?xy``.
+    We replace every ``?word`` token in a single regex pass so that only whole
+    variable names are matched (``\\w+`` never partially matches a longer name),
+    leaving unbound placeholders untouched.
+    """
+    if not bindings:
+        return template
+
+    def _replace(match: "re.Match") -> str:
+        var_name = match.group(1)
+        # Preserve unbound placeholders verbatim.
+        return str(bindings[var_name]) if var_name in bindings else match.group(0)
+
+    return re.sub(r"\?(\w+)", _replace, template)
+
+
+def _parse_fact(fact: str) -> Optional[Tuple[str, List[str]]]:
+    """Parse a ``Predicate(arg1, arg2, ...)`` fact string.
+
+    Returns ``(predicate, [args])`` or ``None`` when the fact is not in the
+    canonical predicate form (e.g. a bare atom). Whitespace around args is
+    stripped and empty arg lists are supported (``Foo()`` -> ``("Foo", [])``).
+    """
+    match = re.match(r"^\s*([^()\s]+)\s*\((.*)\)\s*$", fact)
+    if not match:
+        return None
+    predicate = match.group(1)
+    inner = match.group(2).strip()
+    if not inner:
+        return predicate, []
+    args = [arg.strip() for arg in inner.split(",")]
+    return predicate, args
+
+
+def _write_fact_to_graph(graph: Any, fact: str, *, retract: bool = False) -> None:
+    """Persist (or remove) a fact against a knowledge-graph-like target.
+
+    Write-back follows an explicit, ordered protocol so that
+    ``AssertAction(write_back=True)`` never silently no-ops:
+
+    1. If the target exposes an explicit fact API (``add_fact`` / ``assert_fact``
+       for asserts, ``remove_fact`` / ``retract_fact`` / ``discard_fact`` for
+       retracts), that is used verbatim.
+    2. Otherwise, if the target looks like the canonical
+       :class:`~semantica.kg.knowledge_graph.KnowledgeGraph` (has ``entities``
+       and ``relationships`` lists), the fact is translated into a node
+       (single-arg predicate) or relationship (two-arg predicate) and
+       added/removed accordingly.
+    3. Any other target, or a fact that cannot be translated, raises
+       :class:`ValueError` so the failure surfaces instead of being swallowed.
+    """
+    if retract:
+        for method_name in ("retract_fact", "remove_fact", "discard_fact"):
+            method = getattr(graph, method_name, None)
+            if callable(method):
+                method(fact)
+                return
+    else:
+        for method_name in ("add_fact", "assert_fact"):
+            method = getattr(graph, method_name, None)
+            if callable(method):
+                method(fact)
+                return
+
+    entities = getattr(graph, "entities", None)
+    relationships = getattr(graph, "relationships", None)
+    if isinstance(entities, list) and isinstance(relationships, list):
+        parsed = _parse_fact(fact)
+        if parsed is None:
+            raise ValueError(
+                f"Cannot translate fact {fact!r} into graph node/relationship: "
+                "expected canonical Predicate(args) form."
+            )
+        predicate, args = parsed
+        if len(args) == 1:
+            node = {"id": args[0], "type": predicate}
+            if retract:
+                _remove_matching(
+                    entities,
+                    lambda e: e.get("id") == args[0] and e.get("type") == predicate,
+                )
+            elif node not in entities:
+                entities.append(node)
+            return
+        if len(args) == 2:
+            rel = {"source": args[0], "target": args[1], "type": predicate}
+            if retract:
+                _remove_matching(
+                    relationships,
+                    lambda r: r.get("source") == args[0]
+                    and r.get("target") == args[1]
+                    and r.get("type") == predicate,
+                )
+            elif rel not in relationships:
+                relationships.append(rel)
+            return
+        raise ValueError(
+            f"Cannot write fact {fact!r} to graph: only unary (node) and binary "
+            "(relationship) predicates are supported by the default adapter."
+        )
+
+    raise ValueError(
+        f"knowledge_graph target {type(graph).__name__!r} does not expose a "
+        "supported write-back API (add_fact/assert_fact or entities/relationships)."
+    )
+
+
+def _remove_matching(items: List[Dict[str, Any]], predicate: Callable[[Dict[str, Any]], bool]) -> None:
+    """Remove in place every dict in ``items`` for which ``predicate`` is True."""
+    items[:] = [item for item in items if not predicate(item)]
 
 class Action:
     """Base class for an action fired when a rule matches.
@@ -41,10 +158,7 @@ class Action:
 
     @staticmethod
     def _substitute(template: str, bindings: Dict[str, str]) -> str:
-        result = template
-        for var, value in bindings.items():
-            result = result.replace(f"?{var}", value)
-        return result
+        return _substitute_variables(template, bindings)
 
 
 @dataclass
@@ -63,21 +177,27 @@ class AssertAction(Action):
         concrete = self._substitute(self.fact, bindings)
         reasoner.facts.add(concrete)
         if self.write_back and getattr(reasoner, "knowledge_graph", None) is not None:
-            adder = getattr(reasoner.knowledge_graph, "add_fact", None)
-            if callable(adder):
-                adder(concrete)
+            _write_fact_to_graph(reasoner.knowledge_graph, concrete)
         return f"assert {concrete}"
 
 
 @dataclass
 class RetractAction(Action):
-    """Retract a fact when the rule fires (basic truth maintenance)."""
+    """Retract a fact when the rule fires (basic truth maintenance).
+
+    If ``write_back`` is set and the reasoner exposes a knowledge graph, the
+    fact is also removed there using the graph's delete semantics (mirroring
+    :class:`AssertAction`'s write-back).
+    """
 
     fact: str
+    write_back: bool = False
 
     def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
         concrete = self._substitute(self.fact, bindings)
         reasoner.facts.discard(concrete)
+        if self.write_back and getattr(reasoner, "knowledge_graph", None) is not None:
+            _write_fact_to_graph(reasoner.knowledge_graph, concrete, retract=True)
         return f"retract {concrete}"
 
 
@@ -193,17 +313,29 @@ class Reasoner:
     def _record_action(
         self, rule: "Rule", action: "Action", description: Optional[str], bindings: Dict[str, str]
     ) -> None:
-        """Record a fired action for provenance / explanation when enabled."""
+        """Record a fired action for provenance / explanation when enabled.
+
+        Each entry is a structured dict carrying an ISO-8601 ``timestamp`` and a
+        parsed ``operation``/``fact`` split (when the description follows the
+        ``"<op> <fact>"`` convention used by the built-in actions) so that
+        downstream consumers such as :class:`ExplanationGenerator` and the
+        provenance layer can reason about *what changed* without re-parsing the
+        free-text description.
+        """
         if not self.provenance or description is None:
             return
+        operation, _, subject = description.partition(" ")
         self.action_log.append(
             {
                 "action_id": uuid.uuid4().hex[:8],
                 "rule_id": rule.rule_id,
                 "action": type(action).__name__,
+                "operation": operation or None,
+                "fact": subject or None,
                 "description": description,
                 "bindings": dict(bindings),
                 "confidence": rule.confidence,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         )
 
@@ -308,6 +440,20 @@ class Reasoner:
         Returns:
             List of inferred facts (conclusions)
         """
+        return [result.conclusion for result in self.infer_with_results(facts, rules)]
+
+    def infer_with_results(
+        self,
+        facts: Union[List[Any], Dict[str, Any]],
+        rules: Optional[List[Union[str, Rule]]] = None,
+    ) -> List[InferenceResult]:
+        """Infer new facts and return the full :class:`InferenceResult` objects.
+
+        Unlike :meth:`infer_facts` (which returns only conclusion strings for
+        backward compatibility), this preserves each result's ``rule_used``,
+        ``premises`` and ``confidence`` so callers such as the provenance
+        wrapper can record real confidence values instead of ``None``.
+        """
         tracking_id = self.progress_tracker.start_tracking(
             module="reasoning",
             submodule="Reasoner",
@@ -327,17 +473,14 @@ class Reasoner:
             
             # Perform inference
             results = self.forward_chain()
-                
-            # Extract conclusions from results
-            inferred_facts = [result.conclusion for result in results]
             
             self.progress_tracker.stop_tracking(
                 tracking_id,
                 status="completed",
-                message=f"Inferred {len(inferred_facts)} new facts"
+                message=f"Inferred {len(results)} new facts"
             )
             
-            return inferred_facts
+            return results
             
         except Exception as e:
             self.progress_tracker.stop_tracking(
@@ -360,6 +503,16 @@ class Reasoner:
         new_facts_added = True
         max_iterations = self.config.get("max_iterations", 50)
         iteration = 0
+        # Activations (rule + concrete bindings) whose actions have already
+        # fired, tracked across ALL passes. Actions are side-effecting and must
+        # fire exactly once per distinct match, decoupled from whether the
+        # rule's *conclusion* is new. This fixes two failure modes:
+        #   * A valid binding whose conclusion is already known (or duplicated
+        #     within a pass) previously never fired its actions.
+        #   * A RetractAction that removes a premise of its own rule previously
+        #     re-fired every pass, iterating to max_iterations. Recording the
+        #     activation means it fires once and stops driving iterations.
+        fired_activations: Set[Tuple[str, Tuple[Tuple[str, str], ...]]] = set()
         
         while new_facts_added and iteration < max_iterations:
             new_facts_added = False
@@ -384,6 +537,19 @@ class Reasoner:
             
             for rule in self.rules:
                 for conclusion, matched_facts, bindings in self._match_rule(rule):
+                    # Fire this activation's actions exactly once, independent
+                    # of the conclusion-dedup below. Keyed by rule id + the
+                    # concrete bindings so distinct matches each fire, but a
+                    # repeated match (same bindings across passes) does not.
+                    if rule.actions or rule.handler is not None:
+                        activation_key = (
+                            rule.rule_id,
+                            tuple(sorted(bindings.items())),
+                        )
+                        if activation_key not in fired_activations:
+                            fired_activations.add(activation_key)
+                            self._fire_actions(rule, bindings)
+
                     if conclusion in pass_results:
                         # Another derivation of a conclusion already produced
                         # earlier in this same pass: merge premises, dedup.
@@ -407,9 +573,6 @@ class Reasoner:
                     pass_results[conclusion] = inference_result
                     results.append(inference_result)
                     new_facts_added = True
-
-                    # Fire rule-driven actions for this successful match.
-                    self._fire_actions(rule, bindings)
                         
         self.progress_tracker.stop_tracking(
             tracking_id,
@@ -609,10 +772,7 @@ class Reasoner:
         
     def _substitute(self, pattern: str, bindings: Dict[str, str]) -> str:
         """Substitute variables in a pattern with bound values."""
-        result = pattern
-        for var, value in bindings.items():
-            result = result.replace(f"?{var}", value)
-        return result
+        return _substitute_variables(pattern, bindings)
         
     def clear(self) -> None:
         """Clear facts and rules."""
