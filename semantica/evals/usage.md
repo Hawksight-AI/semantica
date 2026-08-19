@@ -30,15 +30,19 @@ a dict with `expected`, `actual`, optional `config`, and optional `id`. The
 `actual` can be a finished `Decision` object or its dict form.
 
 ```python
+from datetime import datetime
 from semantica.context.decision_models import Decision
 from semantica.evals import evaluate
 
 decision = Decision(
+    decision_id="d-1",
+    category="loan",
+    scenario="loan-request",
+    reasoning="vetted by policy",
     outcome="approve",
     confidence=0.87,
+    timestamp=datetime.now(),
     decision_maker="approver-a",
-    reasoning="vetted by policy",
-    scenario="loan-request",
     metadata={"provenance": "workflow:loan/v3"},
 )
 
@@ -55,9 +59,17 @@ cases = [
     },
     {
         "id": "loan-002",
-        "actual": {"outcome": "reject", "confidence": 0.9,
-                   "decision_maker": "system", "reasoning": "auto",
-                   "scenario": "loan-request", "metadata": {}},
+        "actual": {
+            "decision_id": "d-2",
+            "category": "loan",
+            "scenario": "loan-request",
+            "reasoning": "auto",
+            "outcome": "reject",
+            "confidence": 0.9,
+            "timestamp": datetime.now().isoformat(),
+            "decision_maker": "system",
+            "metadata": {},
+        },
         "config": {
             "decision_scores": {
                 "expected_outcome": "approve",
@@ -78,9 +90,9 @@ summary = evaluate(cases, ["decision_scores"])
 
 ```python
 >>> summary.total, summary.passed, summary.failed, summary.errors
-(2, 0, 2, 0)
+(2, 1, 1, 0)
 >>> summary.pass_rate
-0.0
+0.5
 
 >>> for case in summary.cases:
 ...     print(case.case_id, case.status)
@@ -91,8 +103,9 @@ loan-001 pass
    decision_scores 1.0 True
     {}
 loan-002 fail
-   decision_scores 0.6 False
-    {'decision_outcome': "expected 'approve', got 'reject'", 'provenance': 'no provenance record found in metadata'}
+   decision_scores 0.667 False
+    {'decision_outcome': "expected 'approve', got 'reject'",
+     'provenance': 'no provenance record found in metadata'}
 ```
 
 `EvalSummary` fields:
