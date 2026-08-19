@@ -13,6 +13,12 @@ class TestEvalMetric:
         m = EvalMetric(0.0, False)
         assert m.meta == {}
 
+    def test_default_meta_is_not_shared(self):
+        m1 = EvalMetric(0.0, False)
+        m2 = EvalMetric(0.0, False)
+        m1.meta["mutated"] = True
+        assert "mutated" not in m2.meta
+
 
 class TestCaseResult:
     def test_status_fail_on_any_failed_metric(self):
