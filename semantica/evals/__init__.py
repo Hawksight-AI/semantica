@@ -1,13 +1,13 @@
-"""
-Semantica Evals Module
+"""Semantica Evals — evaluation layer for decision intelligence outputs.
 
-Coming Soon
+Provides a small library of deterministic and model-backed evaluators plus a
+runner for measuring decision records, audit trails, and reasoning output.
 """
 
 from . import decision_evaluators  # noqa: F401  import runs register() side effects
 from . import evaluators  # noqa: F401  import runs register() side effects
+from .registry import list_evaluators
+from .runner import evaluate
 
-__version__ = "0.1.1"
-__status__ = "coming_soon"
-__all__ = []
-
+__version__ = "0.1.0"
+__all__ = ["evaluate", "list_evaluators", "CaseResult", "EvalMetric", "EvalSummary"]
