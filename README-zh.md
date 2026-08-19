@@ -282,29 +282,40 @@ MCP 工具包括 `extract_entities`、`extract_relations`、`record_decision`、
 ### REST API
 
 ```bash
+# 以下示例使用 Bash/Zsh；PowerShell 请改用：
+# $env:SEMANTICA_API_KEY = "replace-with-a-strong-random-value"
+export SEMANTICA_API_KEY="replace-with-a-strong-random-value"
 python -m semantica.server   # 默认端口 8000
 
 curl -X POST http://localhost:8000/api/enrich/extract \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $SEMANTICA_API_KEY" \
   -d '{"text": "Apple CEO Tim Cook announced record earnings."}'
 
-curl "http://localhost:8000/api/decisions?category=vendor_selection"
-curl "http://localhost:8000/api/graph/node/acme_corp/neighbors?depth=2"
+curl -H "X-API-Key: $SEMANTICA_API_KEY" \
+  "http://localhost:8000/api/decisions?category=vendor_selection"
+curl -H "X-API-Key: $SEMANTICA_API_KEY" \
+  "http://localhost:8000/api/graph/node/acme_corp/neighbors?depth=2"
 ```
 
-REST 覆盖 `enrich`、`graph`、`decisions`、`reasoning`、`provenance`、`ontology`、`embeddings`、`search`、`export`、`pipeline`、`temporal` 和 `deduplication`。
+`SEMANTICA_API_KEY` 未设置时，除 `/api/health` 和 `/api/info` 外的受保护路由会以 `503` 失败关闭；密钥错误或缺失会返回 `401`。REST 覆盖 `enrich`、`graph`、`decisions`、`reasoning`、`provenance`、`ontology`、`embeddings`、`search`、`export`、`pipeline`、`temporal` 和 `deduplication`。
 
 ## Knowledge Explorer
 
 Knowledge Explorer 是基于 React 19 和 Sigma.js 的浏览器图工作台，可用于平移缩放图、回放时间线、查看决策因果链、合并重复实体、编辑本体和检查 PROV-O 血缘。
 
-无需 Node.js 即可启动：
+无需 Node.js 即可启动。下面是**仅限本机开发**的最快方式：默认绑定 `127.0.0.1`，并显式允许匿名访问。不要将此模式与 `--host 0.0.0.0` 或任何可被其他设备访问的地址一起使用。
 
 ```bash
 pip install "semantica[explorer]"
-semantica-explorer --graph my_graph.json
+# Bash/Zsh
+SEMANTICA_ALLOW_ANONYMOUS=true semantica-explorer --graph my_graph.json
 # 控制台地址：http://127.0.0.1:8000
 ```
+
+PowerShell 用户可以运行 `$env:SEMANTICA_ALLOW_ANONYMOUS = "true"`，再执行 `semantica-explorer --graph my_graph.json`。
+
+用于网络可达或生产环境时，设置 `SEMANTICA_API_KEY`，并让每个 API 客户端通过 `X-API-Key` 发送该值。当前内置 Explorer 浏览器前端不会为其 API 请求提供密钥输入；如需安全地发布该前端，请使用受信任的反向代理完成用户认证，并仅在代理已验证用户后向后端注入匹配的 `X-API-Key` 请求头。确保后端端口不直接暴露。
 
 开发者本地设置见 [explorer/README.md](explorer/README.md)。
 
@@ -350,7 +361,7 @@ pip install semantica[watch]                # 目录文件监视
 pip install semantica[explorer]             # Knowledge Explorer
 ```
 
-生产部署建议使用 Docker 或 Kubernetes，并设置 `SEMANTICA_SECRET_KEY`，配置持久化 LPG/RDF 存储和托管向量后端。源码开发：
+生产部署建议使用 Docker 或 Kubernetes，并设置 `SEMANTICA_API_KEY`，配置持久化 LPG/RDF 存储和托管向量后端。受保护 API 客户端必须以 `X-API-Key` 请求头发送同一个值。源码开发：
 
 ```bash
 git clone https://github.com/semantica-agi/semantica.git
