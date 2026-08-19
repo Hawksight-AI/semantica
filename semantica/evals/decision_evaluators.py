@@ -37,9 +37,11 @@ def decision_scores(actual, expected=None, config=None, **kwargs):
     checks: Dict[str, bool] = {}
     reasons: Dict[str, str] = {}
 
-    checks["decision_outcome"] = decision.outcome == cfg.get("expected_outcome")
-    if not checks["decision_outcome"]:
-        reasons["decision_outcome"] = f"expected {cfg.get('expected_outcome')!r}, got {decision.outcome!r}"
+    expected_outcome = cfg.get("expected_outcome", expected)
+    if expected_outcome is not None:
+        checks["decision_outcome"] = decision.outcome == expected_outcome
+        if not checks["decision_outcome"]:
+            reasons["decision_outcome"] = f"expected {expected_outcome!r}, got {decision.outcome!r}"
 
     lo = cfg.get("min_confidence", 0.0)
     hi = cfg.get("max_confidence", 1.0)

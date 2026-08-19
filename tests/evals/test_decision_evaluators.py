@@ -39,6 +39,24 @@ class TestDecisionScores:
         assert not r.passed
         assert r.meta["decision_outcome"] is False
 
+    def test_outcome_from_expected_argument(self):
+        d = _decision(metadata={"provenance": {"prov_record": "rid-1"}})
+        r = reg.get_evaluator("decision_scores")(d, expected="approved")
+        assert r.passed
+        assert r.meta["decision_outcome"] is True
+
+    def test_outcome_mismatch_via_expected_argument(self):
+        d = _decision(metadata={"provenance": {"prov_record": "rid-1"}})
+        r = reg.get_evaluator("decision_scores")(d, expected="denied")
+        assert not r.passed
+        assert r.meta["decision_outcome"] is False
+        assert "decision_outcome" in r.meta["reasons"]
+
+    def test_outcome_check_skipped_when_no_expected(self):
+        d = _decision(metadata={"provenance": {"prov_record": "rid-1"}})
+        r = reg.get_evaluator("decision_scores")(d)
+        assert "decision_outcome" not in r.meta
+
     def test_confidence_out_of_range(self):
         d = _decision(metadata={"provenance": {"prov_record": "rid-1"}}, confidence=0.4)
         r = reg.get_evaluator("decision_scores")(

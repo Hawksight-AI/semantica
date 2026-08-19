@@ -58,7 +58,10 @@ def evaluate(
             try:
                 metric = get_evaluator(name)(actual, expected, config=eval_config)
                 metrics[name] = metric
-                if not metric.passed:
+                if "error" in metric.meta:
+                    errored = True
+                    details[name] = metric.meta
+                elif not metric.passed:
                     failed = True
                     details[name] = metric.meta
             except Exception as exc:  # noqa: BLE001
