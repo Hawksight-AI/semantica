@@ -398,7 +398,7 @@ class RDFSerializer:
             confidence = entity.get("confidence", 1.0)
 
             lines.append(f"<{entity_id}> a <{entity_type}> ;")
-            lines.append(f'    semantica:text "{text}" ;')
+            lines.append(f'    semantica:text "{self._escape_turtle_string(text)}" ;')
             lines.append(f"    semantica:confidence {confidence} .")
             lines.append("")
 
@@ -418,6 +418,15 @@ class RDFSerializer:
 
         return "\n".join(lines)
 
+    @staticmethod
+    def _escape_turtle_string(value: Any) -> str:
+        """Escape characters that have syntax meaning in Turtle short strings."""
+        return str(value).translate(
+            str.maketrans(
+                {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+            )
+        )
+
     def _owl_time_triples_for_rel(
         self, rel: Dict[str, Any], idx: int, time_axis: str
     ) -> List[str]:
@@ -434,7 +443,7 @@ class RDFSerializer:
         def _is_open(v: Any) -> bool:
             if v is None:
                 return False
-            if hasattr(v, "value"):          # TemporalBound enum
+            if hasattr(v, "value"):  # TemporalBound enum
                 return v.value == _OPEN_SENTINEL
             return str(v).strip().upper() == _OPEN_SENTINEL
 
@@ -466,9 +475,7 @@ class RDFSerializer:
             lines.append(f"    time:hasBeginning <{begin_id}> ;")
 
             if _is_open(until_val):
-                lines.append(
-                    '    semantica:openEndedInterval "true"^^xsd:boolean .'
-                )
+                lines.append('    semantica:openEndedInterval "true"^^xsd:boolean .')
             elif until_val is not None:
                 end_id = f"{rel_base_id}__{axis_name}_end"
                 lines.append(f"    time:hasEnd <{end_id}> .")
@@ -477,7 +484,9 @@ class RDFSerializer:
                     f'    time:inXSDDateTimeStamp "{until_val}"^^xsd:dateTimeStamp .'
                 )
             else:
-                lines[-1] = lines[-1].rstrip(" ;") + " ."  # close interval without hasEnd
+                lines[-1] = (
+                    lines[-1].rstrip(" ;") + " ."
+                )  # close interval without hasEnd
 
             lines.append(f"<{begin_id}> a time:Instant ;")
             lines.append(
@@ -791,8 +800,7 @@ class RDFValidator:
         # Check for required fields
         if "entities" not in rdf_data and "relationships" not in rdf_data:
             warnings.append(
-                "No entities or relationships found in RDF data. "
-                "RDF data may be empty."
+                "No entities or relationships found in RDF data. RDF data may be empty."
             )
 
         # Validate entities

@@ -55,11 +55,19 @@ class TestExportModule(unittest.TestCase):
             data = json.load(f)
             self.assertEqual(len(data['entities']), 2)
             self.assertEqual(len(data['relationships']), 1)
-            
+
         # Test export_entities
         entities_path = Path(self.test_dir) / "entities.json"
         exporter.export_entities(self.entities, str(entities_path))
         self.assertTrue(entities_path.exists())
+
+    def test_turtle_serializer_escapes_literal_syntax(self):
+        turtle = RDFSerializer().serialize_to_turtle({
+            "entities": [{"id": "https://example.org/e1", "type": "Person",
+                          "text": 'He said "hi"\\then\nleft\r'}],
+            "relationships": [],
+        })
+        self.assertIn('semantica:text "He said \\"hi\\"\\\\then\\nleft\\r"', turtle)
 
     def test_export_knowledge_graph_smoke(self):
         from semantica.export.methods import export_knowledge_graph
