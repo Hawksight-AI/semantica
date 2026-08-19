@@ -9,10 +9,11 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
 
 class RuleType(Enum):
     """Rule types."""
@@ -20,6 +21,101 @@ class RuleType(Enum):
     EQUIVALENCE = "equivalence"
     CONSTRAINT = "constraint"
     TRANSFORMATION = "transformation"
+
+class Action:
+    """Base class for an action fired when a rule matches.
+
+    Actions turn the reasoner from a pure inference engine into a
+    production-rule system: when a rule's conditions match, its actions run
+    with the match's variable bindings, allowing side effects (asserting or
+    retracting facts, calling external tools, emitting events) rather than
+    only deriving a new fact.
+
+    Subclasses implement :meth:`execute`, which receives the substituted
+    ``bindings`` and the owning ``reasoner`` and returns an optional
+    description of what happened (used for provenance / explanation).
+    """
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        raise NotImplementedError
+
+    @staticmethod
+    def _substitute(template: str, bindings: Dict[str, str]) -> str:
+        result = template
+        for var, value in bindings.items():
+            result = result.replace(f"?{var}", value)
+        return result
+
+
+@dataclass
+class AssertAction(Action):
+    """Assert a new fact when the rule fires.
+
+    ``fact`` may contain ``?var`` placeholders that are substituted with the
+    match bindings. If ``write_back`` is set and the reasoner exposes a
+    knowledge graph, the fact is also written there.
+    """
+
+    fact: str
+    write_back: bool = False
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        concrete = self._substitute(self.fact, bindings)
+        reasoner.facts.add(concrete)
+        if self.write_back and getattr(reasoner, "knowledge_graph", None) is not None:
+            adder = getattr(reasoner.knowledge_graph, "add_fact", None)
+            if callable(adder):
+                adder(concrete)
+        return f"assert {concrete}"
+
+
+@dataclass
+class RetractAction(Action):
+    """Retract a fact when the rule fires (basic truth maintenance)."""
+
+    fact: str
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        concrete = self._substitute(self.fact, bindings)
+        reasoner.facts.discard(concrete)
+        return f"retract {concrete}"
+
+
+@dataclass
+class CallAction(Action):
+    """Call an external function/tool when the rule fires.
+
+    Wraps an arbitrary callable, which is invoked as ``func(bindings,
+    reasoner)``. This is the structured replacement for the previously
+    unused ``Rule.handler`` callback.
+    """
+
+    func: Callable
+    name: str = "call"
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        self.func(bindings, reasoner)
+        return f"call {self.name}"
+
+
+@dataclass
+class EmitEventAction(Action):
+    """Emit an event to the reasoner's registered event sink when fired.
+
+    The event name may contain ``?var`` placeholders. Events are delivered to
+    any callable registered via :meth:`Reasoner.on_event`.
+    """
+
+    event: str
+    payload: Dict[str, Any] = field(default_factory=dict)
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        concrete = self._substitute(self.event, bindings)
+        sink = getattr(reasoner, "_event_sink", None)
+        if callable(sink):
+            sink(concrete, {**self.payload, "bindings": dict(bindings)})
+        return f"emit {concrete}"
+
 
 @dataclass
 class Rule:
@@ -32,6 +128,7 @@ class Rule:
     confidence: float = 1.0
     priority: int = 0
     handler: Optional[Callable] = None
+    actions: List[Action] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
@@ -79,7 +176,57 @@ class Reasoner:
         self.rules: List[Rule] = []
         self.facts: Set[str] = set()
         self.rule_counter = 0
-            
+
+        # Optional knowledge graph for AssertAction(write_back=True) targets.
+        self.knowledge_graph = kwargs.get("knowledge_graph")
+        # Optional event sink for EmitEventAction; register via on_event().
+        self._event_sink: Optional[Callable] = None
+        # When True, action-induced fact changes are recorded for provenance
+        # via _record_action() -> self.action_log.
+        self.provenance: bool = bool(kwargs.get("provenance", False))
+        self.action_log: List[Dict[str, Any]] = []
+
+    def on_event(self, sink: Callable) -> None:
+        """Register a callable ``sink(event_name, payload)`` for EmitEventAction."""
+        self._event_sink = sink
+
+    def _record_action(
+        self, rule: "Rule", action: "Action", description: Optional[str], bindings: Dict[str, str]
+    ) -> None:
+        """Record a fired action for provenance / explanation when enabled."""
+        if not self.provenance or description is None:
+            return
+        self.action_log.append(
+            {
+                "action_id": uuid.uuid4().hex[:8],
+                "rule_id": rule.rule_id,
+                "action": type(action).__name__,
+                "description": description,
+                "bindings": dict(bindings),
+                "confidence": rule.confidence,
+            }
+        )
+
+    def _fire_actions(self, rule: "Rule", bindings: Dict[str, str]) -> None:
+        """Run a fired rule's actions (and legacy handler) with match bindings.
+
+        Backward compatible: a rule with an old-style ``handler`` but no
+        ``actions`` still has its handler invoked, so pre-existing rules keep
+        working while new rules use the structured Action layer.
+        """
+        actions = list(rule.actions)
+        if rule.handler is not None:
+            actions.append(CallAction(rule.handler, name=f"handler:{rule.rule_id}"))
+        for action in actions:
+            try:
+                description = action.execute(bindings, self)
+                self._record_action(rule, action, description, bindings)
+            except Exception as exc:  # noqa: BLE001
+                self.logger.error(
+                    f"Error executing action {type(action).__name__} "
+                    f"for rule '{rule.rule_id}': {exc}"
+                )
+
     def add_rule(self, rule_def: Union[str, Rule]) -> Rule:
         """Add a rule to the reasoner.
 
@@ -236,7 +383,7 @@ class Reasoner:
             pass_results: Dict[str, InferenceResult] = {}
             
             for rule in self.rules:
-                for conclusion, matched_facts in self._match_rule(rule):
+                for conclusion, matched_facts, bindings in self._match_rule(rule):
                     if conclusion in pass_results:
                         # Another derivation of a conclusion already produced
                         # earlier in this same pass: merge premises, dedup.
@@ -260,6 +407,9 @@ class Reasoner:
                     pass_results[conclusion] = inference_result
                     results.append(inference_result)
                     new_facts_added = True
+
+                    # Fire rule-driven actions for this successful match.
+                    self._fire_actions(rule, bindings)
                         
         self.progress_tracker.stop_tracking(
             tracking_id,
@@ -372,14 +522,17 @@ class Reasoner:
             conclusion=conclusion_str.strip()
         )
         
-    def _match_rule(self, rule: Rule) -> List[Tuple[str, List[str]]]:
+    def _match_rule(self, rule: Rule) -> List[Tuple[str, List[str], Dict[str, str]]]:
         """
         Match rule conditions against facts and return instantiated conclusions
-        paired with the facts that satisfied each condition.
+        paired with the facts that satisfied each condition and the variable
+        bindings that produced them.
 
         Returns:
-            List of (conclusion, matched_facts) tuples, where matched_facts is
-            the ordered list of facts bound to this rule's conditions.
+            List of (conclusion, matched_facts, bindings) tuples, where
+            matched_facts is the ordered list of facts bound to this rule's
+            conditions and bindings maps variable name -> matched value (used
+            to fire the rule's actions).
         """
         if not rule.conditions:
             return []
@@ -410,7 +563,7 @@ class Reasoner:
         results = []
         for bindings, matched_facts in bindings_list:
             instantiated_conclusion = self._substitute(rule.conclusion, bindings)
-            results.append((instantiated_conclusion, matched_facts))
+            results.append((instantiated_conclusion, matched_facts, bindings))
             
         return results
         

@@ -28,10 +28,10 @@ class ReasoningEngineWithProvenance:
         is_automated: bool = True,
         **config,
     ):
-        from .reasoning_engine import ReasoningEngine
+        from .reasoner import Reasoner
 
         self.provenance = provenance
-        self._engine = ReasoningEngine(**config)
+        self._engine = Reasoner(**config)
         self._prov_manager = None
         self._agent_id = agent_id or self.__class__.__name__
         self._is_automated = is_automated
@@ -46,7 +46,7 @@ class ReasoningEngineWithProvenance:
     def infer(self, premises: Any, source: str = None, **kwargs):
         """Perform inference with provenance tracking."""
         activity_started_at_time = datetime.utcnow().isoformat()
-        result = self._engine.infer(premises, **kwargs)
+        result = self._engine.infer_facts(premises, **kwargs)
         activity_ended_at_time = datetime.utcnow().isoformat()
 
         if self.provenance and self._prov_manager:

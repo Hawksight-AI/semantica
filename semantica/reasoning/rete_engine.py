@@ -151,6 +151,16 @@ class ReteEngine:
         self.facts: List[Fact] = []
         self.fact_counter = 0
         self.node_counter = 0
+        # Optional Reasoner used to fire rule-driven actions on match. When
+        # set, execute_matches() runs each matched rule's ``actions`` (and any
+        # legacy ``handler``) through the Reasoner's action machinery so that
+        # Rete-based matching benefits from the same production-rule behaviour
+        # as forward_chain(). Left None keeps the pure-matching mode.
+        self.reasoner: Optional[Any] = self.config.get("reasoner")
+
+    def bind_reasoner(self, reasoner: Any) -> None:
+        """Attach a Reasoner so matched rules can fire their actions."""
+        self.reasoner = reasoner
 
     def build_network(self, rules: List[Rule]) -> None:
         """
@@ -340,7 +350,14 @@ class ReteEngine:
             results = []
             for match in matches:
                 try:
-                    # Execute rule
+                    # Fire the rule's actions (and any legacy handler) through
+                    # the bound Reasoner so Rete matching produces the same
+                    # side effects / provenance as forward_chain(). Falls back
+                    # to just recording the conclusion when no Reasoner is bound.
+                    if self.reasoner is not None and (
+                        match.rule.actions or match.rule.handler is not None
+                    ):
+                        self.reasoner._fire_actions(match.rule, match.bindings)
                     result = match.rule.conclusion
                     results.append(result)
                 except Exception as e:
