@@ -52,11 +52,13 @@ Boolean-form objective (shorthand): for metrics whose score is Boolean-like (0.0
 
 For each metric produced by an evaluator during a case run, if an objective exists for that evaluator name, the runner recomputes the metric's pass verdict:
 
-- **maximize** (default): pass iff `score >= threshold` when `threshold` is given; otherwise pass iff `score == metric.passed`'s default meaning is unchanged — i.e. no objective, no re-decision. (See "no threshold" rule below.)
-- **minimize**: pass iff `score <= threshold` when `threshold` is given; otherwise pass iff `score` is the minimum possible for the metric (handled explicitly: `minimize` without `threshold` passes iff `score <= 0` for error/range metrics — **decision: require threshold for minimize to avoid ambiguity**, see 3.4).
+- **maximize**: pass iff `score >= threshold`. If no `threshold` is given, the objective is treated as absent (evaluator's own verdict stands) — see 3.4 rule 2.
+- **minimize**: pass iff `score <= threshold` (threshold required, see 3.4 rule 1).
 - **expect**: pass iff `bool(score)` equals `expect` (for Boolean-style metrics).
 
 When an objective is present, the runner **overrides** `metric.passed` with the objective verdict. When absent, `metric.passed` is used unchanged (existing behavior).
+
+The `objective` key is a **reserved runner-level key**: it is consumed by the runner and is passed through to the evaluator function inside `eval_config` (evaluators already ignore unknown config keys via `cfg.get(...)`, so this is harmless); evaluators must not rely on it. The runner re-decision happens on the metric the evaluator returns, so no evaluator change is required.
 
 ### 3.3 Interaction with errors
 
@@ -76,6 +78,7 @@ Unchanged:
 - Case `status`: `"error"` if any metric errored, else `"fail"` if any failed, else `"pass"`.
 - `pass_rate` = passed / total (1.0 on empty).
 - `metrics` dict holds the (possibly re-verdict'd) `EvalMetric`; the re-verdict is observable via `metric.passed`.
+- `details[name]` is populated when a metric ends up failed **after** objective re-decision (i.e. objective-failed metrics appear in `details`; metrics that pass under objective are not recorded there). This mirrors the existing "record failures in details" behavior applied to the final verdict.
 
 ### 3.6 Files
 
@@ -102,7 +105,8 @@ New tests in `tests/evals/test_runner.py`:
 5. no objective → existing behavior unchanged (evaluator's own verdict).
 6. objective + error metric → error wins (status=error, not fail).
 7. config error (bad direction) → `ValueError` raised by `evaluate()`.
-8. backward-compat: all existing 62 tests keep passing.
+8. objective turns a passing metric into failing → `details` records it; case status becomes fail.
+9. backward-compat: all existing 62 tests keep passing.
 
 ## 6. Compatibility
 
