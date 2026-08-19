@@ -132,7 +132,7 @@ def levenshtein(actual, expected, config=None, **kwargs):
     return EvalMetric(
         score=similarity,
         passed=passed,
-        meta={"similarity": similarity} if not passed else {"similarity": similarity},
+        meta={"similarity": similarity},
     )
 
 

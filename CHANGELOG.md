@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+<<<<<<< HEAD
 - **Semantica RDF vocabulary, and deterministic entity/relationship IRIs** (#1109, closes #1107, closes #1101) by @fabio-rovai, reviewed by @KaifAhmad1
   - Every RDF/JSON-LD export mints terms in `https://semantica.dev/ns#`, and until now nothing declared what those terms meant — the namespace 404s and no vocabulary shipped with the package, so a consumer receiving an export had no way to tell `sem:text` from a typo of it, and no closed-world checker could validate an export at all
   - `semantica/ontology/vocabulary/semantica-ns.ttl` declares the terms the exporters actually emit — drawn from the emitting call sites in `export/rdf_exporter.py`, `export/json_exporter.py` and `provenance/manager.py`, not from what a vocabulary "ought" to contain. Ships inside the package (`from semantica.ontology.vocabulary import vocabulary_turtle`) so it loads without a network round trip, and is the same document intended to be served at the namespace IRI once hosting/content-negotiation is sorted
