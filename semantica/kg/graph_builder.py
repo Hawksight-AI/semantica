@@ -325,10 +325,21 @@ class GraphBuilder:
                     # to report rather than making graph construction fail here.
                     continue
 
-                if canonical_id is not None and canonical_id != endpoint_id:
+                if canonical_id is None:
+                    continue
+
+                remapped = canonical_id != endpoint_id
+                if remapped:
                     relationship[endpoint] = canonical_id
-                    if endpoint_alias in relationship:
-                        relationship[endpoint_alias] = canonical_id
+
+                if (
+                    endpoint_alias in relationship
+                    and relationship[endpoint_alias] != canonical_id
+                ):
+                    relationship[endpoint_alias] = canonical_id
+                    remapped = True
+
+                if remapped:
                     remapped_count += 1
 
         if remapped_count:

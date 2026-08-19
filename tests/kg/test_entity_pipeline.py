@@ -164,6 +164,39 @@ def test_entity_id_helper_ignores_falsy_identifiers():
     )
     assert get_entity_id({"id": "", "entity_id": 0}) is None
 
+
+def test_entity_merge_repairs_stale_alias_for_canonical_endpoint():
+    """A canonical endpoint must not retain a merged-away endpoint alias."""
+    graph = GraphBuilder(
+        merge_entities=True,
+        entity_resolution_strategy="exact",
+        resolve_conflicts=False,
+    ).build(
+        {
+            "entities": [
+                {"entity_id": "alice:1", "name": "Alice", "type": "Person"},
+                {"entity_id": "alice:2", "name": " Alice ", "type": "Person"},
+                {"entity_id": "org:1", "name": "Acme", "type": "Organization"},
+            ],
+            "relationships": [
+                {
+                    "source": "alice:1",
+                    "source_id": "alice:2",
+                    "target": "org:1",
+                    "target_id": "org:1",
+                    "type": "WORKS_FOR",
+                }
+            ],
+        }
+    )
+
+    relationship = graph["relationships"][0]
+
+    assert relationship["source"] == "alice:1"
+    assert relationship["source_id"] == "alice:1"
+    assert relationship["target"] == "org:1"
+    assert relationship["target_id"] == "org:1"
+
 if __name__ == "__main__":
     test_full_entity_pipeline()
     test_direct_entity_objects_in_analyzer()
