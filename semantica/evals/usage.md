@@ -86,6 +86,48 @@ summary = evaluate(cases, ["decision_scores"])
 `llm_as_judge`; per-case or top-level `config` may carry per-evaluator settings
 (e.g. `config={"exact_match": {...}}`).
 
+## Set per-evaluator objectives
+
+By default each evaluator decides its own pass/fail. To override that
+verdict at the run level, configure an **objective** per evaluator name:
+
+```python
+from semantica.evals import evaluate
+
+# Require a minimum similarity (default direction is maximize):
+evaluate(
+    [("apple", "aple")],
+    evaluators=["levenshtein"],
+    config={"levenshtein": {"objective": {"direction": "maximize", "threshold": 0.7}}},
+)
+
+# Lower is better — override the direction:
+evaluate(
+    [("night", "nacht")],
+    evaluators=["levenshtein"],
+    config={"levenshtein": {"objective": {"direction": "minimize", "threshold": 0.5}}},
+)
+
+# Boolean expectation on a 0/1 metric:
+evaluate(
+    [("ok", "ok")],
+    evaluators=["exact_match"],
+    config={"exact_match": {"objective": {"expect": False}}},
+)
+```
+
+Rules:
+
+- `maximize` + `threshold`: pass iff `score >= threshold`. `maximize` without
+  a threshold is a no-op (the evaluator's own verdict stands).
+- `minimize` + `threshold`: pass iff `score <= threshold`. `minimize`
+  **requires** a threshold — omitting it raises `ValueError`.
+- `expect` (`true`/`false`): pass iff `bool(score)` matches; cannot be
+  combined with `direction`/`threshold`.
+- A metric whose `meta` contains `"error"` is always an error, never affected
+  by an objective.
+- Invalid objective config raises `ValueError` before any evaluator runs.
+
 ## Interpret the summary
 
 ```python

@@ -13,7 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-<<<<<<< HEAD
 - **Semantica RDF vocabulary, and deterministic entity/relationship IRIs** (#1109, closes #1107, closes #1101) by @fabio-rovai, reviewed by @KaifAhmad1
   - Every RDF/JSON-LD export mints terms in `https://semantica.dev/ns#`, and until now nothing declared what those terms meant — the namespace 404s and no vocabulary shipped with the package, so a consumer receiving an export had no way to tell `sem:text` from a typo of it, and no closed-world checker could validate an export at all
   - `semantica/ontology/vocabulary/semantica-ns.ttl` declares the terms the exporters actually emit — drawn from the emitting call sites in `export/rdf_exporter.py`, `export/json_exporter.py` and `provenance/manager.py`, not from what a vocabulary "ought" to contain. Ships inside the package (`from semantica.ontology.vocabulary import vocabulary_turtle`) so it loads without a network round trip, and is the same document intended to be served at the namespace IRI once hosting/content-negotiation is sorted
@@ -24,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Also fixed, on the JSON-LD paths**: the first fix covered the Turtle, N-Triples and RDF/XML serializers, and left both JSON-LD writers interpolating the entity's own text into `f"semantica:entity/{text}"` and the endpoints into `f"semantica:rel/{source}_{target}"`. Three consequences, all live in 0.6.5: an entity whose text contained a space produced an invalid IRI, and a JSON-LD parser dropped that node in full rather than reporting it, so the entity disappeared from the export; every relationship carrying `source`/`target` rather than `source_id`/`target_id` minted the identical `semantica:rel/_`, collapsing all of them onto one node whose types and endpoints merged; and the JSON-LD `@id` disagreed with the Turtle IRI for the same entity, so the two serializations of one knowledge graph were two different graphs. Both JSON-LD writers now use `mint_entity_iri`/`mint_relationship_iri`, and `JSONExporter.export_entities`/`export_relationships` declare the `semantica` prefix their `@context` was already writing `semantica:entities` against — without it a processor reads that as an IRI in the scheme `semantica`, which is the original #1101 defect on a third path
   - `tests/export/test_jsonld_iri_minting.py` parses each export with a real JSON-LD processor and asserts the entity survives, the relationships stay distinct, no term expands into the `semantica` scheme, and the JSON-LD `@id` equals the Turtle IRI
   - 236 export and ontology tests pass
+- **`semantica.evals` runner gains per-metric objectives** (#1091)
+  - `evaluate()` now accepts `config={"<evaluator>": {"objective": {"direction": "maximize"|"minimize", "threshold": X}}}` to override the evaluator's default pass verdict with a threshold; `{"objective": {"expect": bool}}` expresses a Boolean expectation
+  - `minimize` requires a `threshold`; `maximize` without one is a no-op; `expect` cannot be combined with `direction`/`threshold`; invalid config raises `ValueError` before any evaluator runs
+  - Error metrics are never affected by objectives (error wins over fail)
+  - Backward compatible: no `objective` key → existing behavior unchanged
+  - New tests in `tests/evals/test_runner.py::TestObjective`
 - **`semantica.evals` is now a fully implemented evaluation module** (was a "Coming Soon" stub in the package layout)
   - `evaluate(cases, evaluators, config=None, target_fn=None)` runner with per-case `pass`/`fail`/`error` status and an aggregate `pass_rate`, using a registry of named evaluators (`list_evaluators()`)
   - 10 built-in evaluators: `exact_match`, `regex_match`, `numeric_range`, `temporal_range`, `length_range`, `keyword_check`, `levenshtein` (edit-distance similarity), `rouge` (in-house token F1, no new dependencies), `llm_as_judge` (lazy: caller-supplied `judge_fn`), and `decision_scores` (composite over `semantica.context.Decision`)
