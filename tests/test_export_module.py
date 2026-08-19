@@ -325,5 +325,19 @@ class TestExportModule(unittest.TestCase):
         method("data", str(output_path))
         self.assertTrue(output_path.exists())
 
+    def test_owl_time_literals_escape_both_boundaries(self):
+        serializer = RDFSerializer()
+        rel = {
+            "id": "r1",
+            "valid_from": '2024-01-01T00:00:00"\\\n',
+            "valid_until": '2024-01-02T00:00:00\t"\\',
+        }
+
+        lines = serializer._owl_time_triples_for_rel(rel, 0, "valid")
+        output = "\n".join(lines)
+
+        self.assertIn('2024-01-01T00:00:00\\"\\\\\\n', output)
+        self.assertIn('2024-01-02T00:00:00\\t\\"\\\\', output)
+
 if __name__ == '__main__':
     unittest.main()

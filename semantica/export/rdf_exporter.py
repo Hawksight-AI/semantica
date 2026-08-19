@@ -481,7 +481,7 @@ class RDFSerializer:
                 lines.append(f"    time:hasEnd <{end_id}> .")
                 lines.append(f"<{end_id}> a time:Instant ;")
                 lines.append(
-                    f'    time:inXSDDateTimeStamp "{until_val}"^^xsd:dateTimeStamp .'
+                    f'    time:inXSDDateTimeStamp "{self._escape_turtle_string(until_val)}"^^xsd:dateTimeStamp .'
                 )
             else:
                 lines[-1] = (
@@ -490,7 +490,7 @@ class RDFSerializer:
 
             lines.append(f"<{begin_id}> a time:Instant ;")
             lines.append(
-                f'    time:inXSDDateTimeStamp "{from_val}"^^xsd:dateTimeStamp .'
+                f'    time:inXSDDateTimeStamp "{self._escape_turtle_string(from_val)}"^^xsd:dateTimeStamp .'
             )
             lines.append("")
 
