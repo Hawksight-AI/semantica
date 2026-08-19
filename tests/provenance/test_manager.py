@@ -1736,3 +1736,148 @@ class TestTimezoneAwareUtcTimestamps:
         started = datetime.fromisoformat(person["activity_started_at_time"])
         ended = datetime.fromisoformat(person["activity_ended_at_time"])
         assert started <= ended
+
+class TestMixedFormatTimestampComparisons:
+    """Issue #946 review — naive and offset-bearing stamps must compare as instants.
+
+    Records written before the timezone-aware change carry a naive UTC stamp
+    (``2026-08-19T22:35:38.501697``); records written after carry ``+00:00``.
+    Comparing the two as raw strings puts the offset-bearing form above a naive
+    bound at the identical instant, so the record falls outside a range that
+    should contain it. These tests pin the boundary in both directions.
+    """
+
+    NAIVE = "2026-08-19T12:00:00.500000"
+    AWARE = "2026-08-19T12:00:00.500000+00:00"
+
+    def _manager_with(self, *timestamps):
+        prov_mgr = ProvenanceManager()
+        for index, stamp in enumerate(timestamps):
+            prov_mgr.storage.store(
+                ProvenanceEntry(
+                    entity_id=f"entity_{index}",
+                    entity_type="entity",
+                    activity_id="test",
+                    source_document="doc_1",
+                    timestamp=stamp,
+                )
+            )
+        return prov_mgr
+
+    def test_raw_string_compare_would_exclude_the_boundary_record(self):
+        """Guards the premise: the two forms are not string-comparable."""
+        assert not (self.AWARE <= self.NAIVE)
+        assert datetime.fromisoformat(self.AWARE) == datetime.fromisoformat(
+            self.NAIVE
+        ).replace(tzinfo=timezone.utc)
+
+    def test_query_range_with_naive_bounds_includes_aware_record(self):
+        prov_mgr = self._manager_with(self.AWARE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T12:00:00.500000", "2026-08-19T12:00:00.500000"
+        )
+        assert [r["entity_id"] for r in results] == ["entity_0"]
+
+    def test_query_range_with_aware_bounds_includes_naive_record(self):
+        prov_mgr = self._manager_with(self.NAIVE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T12:00:00.500000+00:00", "2026-08-19T12:00:00.500000+00:00"
+        )
+        assert [r["entity_id"] for r in results] == ["entity_0"]
+
+    def test_query_range_returns_both_formats_from_a_mixed_store(self):
+        prov_mgr = self._manager_with(self.NAIVE, self.AWARE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T11:00:00", "2026-08-19T13:00:00+00:00"
+        )
+        assert {r["entity_id"] for r in results} == {"entity_0", "entity_1"}
+
+    def test_query_range_sorts_mixed_formats_chronologically(self):
+        prov_mgr = self._manager_with(
+            "2026-08-19T12:00:02+00:00",  # entity_0, latest
+            "2026-08-19T12:00:00",        # entity_1, earliest
+            "2026-08-19T12:00:01+00:00",  # entity_2, middle
+        )
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T11:00:00", "2026-08-19T13:00:00"
+        )
+        assert [r["entity_id"] for r in results] == [
+            "entity_1",
+            "entity_2",
+            "entity_0",
+        ]
+
+    def test_query_range_accepts_trailing_z(self):
+        prov_mgr = self._manager_with(self.NAIVE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T11:00:00Z", "2026-08-19T13:00:00Z"
+        )
+        assert len(results) == 1
+
+    def test_query_range_skips_and_logs_unparseable_timestamp(self):
+        prov_mgr = self._manager_with("not-a-timestamp", self.AWARE)
+        with patch.object(prov_mgr.logger, "warning") as mock_warning:
+            results = prov_mgr.query_recorded_between(
+                "2026-08-19T11:00:00", "2026-08-19T13:00:00"
+            )
+        assert [r["entity_id"] for r in results] == ["entity_1"]
+        mock_warning.assert_called_once()
+        assert "not-a-timestamp" in str(mock_warning.call_args)
+
+    def test_query_range_rejects_unparseable_bound(self):
+        prov_mgr = self._manager_with(self.AWARE)
+        with pytest.raises(ValueError):
+            prov_mgr.query_recorded_between("not-a-timestamp", "2026-08-19T13:00:00")
+
+    def test_audit_log_since_naive_bound_includes_aware_record(self):
+        prov_mgr = self._manager_with(self.AWARE)
+        entries = prov_mgr.audit_log(
+            since="2026-08-19T12:00:00.500000", format="json"
+        )
+        assert [e["entity_id"] for e in entries] == ["entity_0"]
+
+    def test_audit_log_since_aware_bound_includes_naive_record(self):
+        prov_mgr = self._manager_with(self.NAIVE)
+        entries = prov_mgr.audit_log(
+            since="2026-08-19T12:00:00.500000+00:00", format="json"
+        )
+        assert [e["entity_id"] for e in entries] == ["entity_0"]
+
+    def test_audit_log_excludes_records_before_since_across_formats(self):
+        prov_mgr = self._manager_with(
+            "2026-08-19T11:59:59",        # entity_0, before
+            "2026-08-19T12:00:01+00:00",  # entity_1, after
+        )
+        entries = prov_mgr.audit_log(since="2026-08-19T12:00:00+00:00", format="json")
+        assert [e["entity_id"] for e in entries] == ["entity_1"]
+
+    def test_audit_log_sorts_mixed_formats_chronologically(self):
+        prov_mgr = self._manager_with(
+            "2026-08-19T12:00:02+00:00",
+            "2026-08-19T12:00:00",
+            "2026-08-19T12:00:01+00:00",
+        )
+        entries = prov_mgr.audit_log(format="json")
+        assert [e["entity_id"] for e in entries] == [
+            "entity_1",
+            "entity_2",
+            "entity_0",
+        ]
+
+    def test_audit_log_unparseable_timestamp_sorts_first_and_is_logged(self):
+        prov_mgr = self._manager_with("not-a-timestamp", "2026-08-19T12:00:00+00:00")
+        with patch.object(prov_mgr.logger, "warning") as mock_warning:
+            entries = prov_mgr.audit_log(format="json")
+        assert [e["entity_id"] for e in entries] == ["entity_0", "entity_1"]
+        mock_warning.assert_called_once()
+
+    def test_audit_log_since_excludes_unparseable_timestamp(self):
+        prov_mgr = self._manager_with("not-a-timestamp", "2026-08-19T12:00:00+00:00")
+        with patch.object(prov_mgr.logger, "warning"):
+            entries = prov_mgr.audit_log(since="2026-08-19T11:00:00", format="json")
+        assert [e["entity_id"] for e in entries] == ["entity_1"]
+
+    def test_audit_log_rejects_unparseable_since(self):
+        prov_mgr = self._manager_with(self.AWARE)
+        with pytest.raises(ValueError):
+            prov_mgr.audit_log(since="not-a-timestamp", format="json")
