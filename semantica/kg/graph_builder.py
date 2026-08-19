@@ -313,7 +313,10 @@ class GraphBuilder:
             if not isinstance(relationship, dict):
                 continue
 
-            for endpoint in ("source", "target"):
+            for endpoint, endpoint_alias in (
+                ("source", "source_id"),
+                ("target", "target_id"),
+            ):
                 endpoint_id = relationship.get(endpoint)
                 try:
                     canonical_id = endpoint_map.get(endpoint_id)
@@ -324,6 +327,8 @@ class GraphBuilder:
 
                 if canonical_id is not None and canonical_id != endpoint_id:
                     relationship[endpoint] = canonical_id
+                    if endpoint_alias in relationship:
+                        relationship[endpoint_alias] = canonical_id
                     remapped_count += 1
 
         if remapped_count:

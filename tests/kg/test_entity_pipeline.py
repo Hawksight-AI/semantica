@@ -149,6 +149,8 @@ def test_entity_id_only_merge_remaps_relationship_endpoints():
     } == {"alice:1", "alice:2"}
     assert relationship["source"] == "alice:1"
     assert relationship["target"] == "org:1"
+    assert relationship["source_id"] == "alice:1"
+    assert relationship["target_id"] == "org:1"
     assert {relationship["source"], relationship["target"]} <= entity_ids
 
 
