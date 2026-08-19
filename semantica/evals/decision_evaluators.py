@@ -55,7 +55,8 @@ def decision_scores(actual, expected=None, config=None, **kwargs):
         if not checks[field]:
             reasons[field] = f"field {field!r} is empty"
 
-    prov = (decision.metadata or {}).get(cfg.get("provenance_key", "provenance"))
+    metadata = decision.metadata if isinstance(decision.metadata, dict) else {}
+    prov = metadata.get(cfg.get("provenance_key", "provenance"))
     checks["provenance"] = bool(prov)
     if not checks["provenance"]:
         reasons["provenance"] = "no provenance record found in metadata"

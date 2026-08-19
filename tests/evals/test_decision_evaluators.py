@@ -90,6 +90,12 @@ class TestDecisionScores:
         assert not r.passed
         assert r.meta.get("error")
 
+    def test_non_dict_metadata_is_error_not_crash(self):
+        bad = _decision(metadata="not-a-dict")
+        r = reg.get_evaluator("decision_scores")(bad, config={})
+        assert not r.passed
+        assert r.meta["provenance"] is False
+
     def test_policy_compliance_check(self):
         class FakePolicyEngine:
             def check_compliance(self, decision, policy_id):
