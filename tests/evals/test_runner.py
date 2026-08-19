@@ -35,6 +35,24 @@ class TestEvaluate:
         assert result.failed == 0
         assert result.pass_rate == 0.0
 
+    def test_error_metric_classified_as_error(self):
+        result = evaluate(
+            [("[invalid", "x")],
+            evaluators=["regex_match"],
+        )
+        assert result.errors == 1
+        assert result.failed == 0
+        assert result.cases[0].status == "error"
+
+    def test_error_metric_and_fail_combine_as_error(self):
+        result = evaluate(
+            [("[invalid", "apple pie")],
+            evaluators=["regex_match", "exact_match"],
+        )
+        assert result.errors == 1
+        assert result.failed == 0
+        assert result.cases[0].status == "error"
+
     def test_per_case_details(self):
         result = evaluate([("a", "b")], evaluators=["exact_match"])
         case = result.cases[0]
