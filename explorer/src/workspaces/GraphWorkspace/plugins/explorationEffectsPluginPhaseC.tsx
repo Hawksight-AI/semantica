@@ -48,6 +48,11 @@ const SCENE_EFFECT_ROWS: EffectRowConfig[] = [
     description: "Low-contrast density halos around the strongest visible anchors.",
   },
   {
+    key: "edgeLabelsEnabled",
+    label: "Edge Labels",
+    description: "Draw the relationship type on graph edges. Off restores label-free edges on dense graphs.",
+  },
+  {
     key: "legendEnabled",
     label: "Regions Summary",
     description: "Keep the regions and signals summary visible in the Effects panel.",
@@ -83,6 +88,7 @@ const AVAILABILITY_KEYS: Record<GraphEffectToggle, keyof GraphDiagnosticsSnapsho
   communitiesEnabled: "communities",
   centralityEnabled: "centrality",
   legendEnabled: "legend",
+  edgeLabelsEnabled: "edgeLabels",
   diagnosticsEnabled: "diagnostics",
 };
 
