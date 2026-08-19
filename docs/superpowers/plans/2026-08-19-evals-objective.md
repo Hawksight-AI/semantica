@@ -103,8 +103,7 @@ class TestObjective:
         assert result.cases[0].status == "fail"
 
     def test_minimize_without_threshold_raises(self):
-        import pytest as _pytest
-        with _pytest.raises(ValueError):
+        with pytest.raises(ValueError):
             evaluate(
                 [("a", "b")],
                 evaluators=["levenshtein"],
@@ -112,8 +111,7 @@ class TestObjective:
             )
 
     def test_bad_direction_raises(self):
-        import pytest as _pytest
-        with _pytest.raises(ValueError):
+        with pytest.raises(ValueError):
             evaluate(
                 [("a", "b")],
                 evaluators=["levenshtein"],
@@ -121,8 +119,7 @@ class TestObjective:
             )
 
     def test_expect_with_direction_raises(self):
-        import pytest as _pytest
-        with _pytest.raises(ValueError):
+        with pytest.raises(ValueError):
             evaluate(
                 [("a", "b")],
                 evaluators=["levenshtein"],
