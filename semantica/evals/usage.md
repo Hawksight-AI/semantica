@@ -105,7 +105,7 @@ evaluate(
 evaluate(
     [("night", "nacht")],
     evaluators=["levenshtein"],
-    config={"levenshtein": {"objective": {"direction": "minimize", "threshold": 0.5}}},
+    config={"levenshtein": {"objective": {"direction": "minimize", "threshold": 0.7}}},
 )
 
 # Boolean expectation on a 0/1 metric:
