@@ -12,8 +12,8 @@ SemanticaRetriever  — ``BaseRetriever`` with multi-hop GraphRAG (walks graph
                       edges from hybrid-search hits)
 SemanticaVectorStore — ``VectorStore`` adapter over Semantica's hybrid search
                       (drop-in for RetrievalQA / LCEL chains)
-SemanticaKGTool     — ``StructuredTool`` for building/querying the context graph
-SemanticaDecisionTool — ``StructuredTool`` exposing decision-intelligence tools
+SemanticaKGTool     — ``BaseTool`` for querying the context graph
+SemanticaDecisionTool — ``BaseTool`` exposing the recorded decision log
 
 Quick start
 -----------

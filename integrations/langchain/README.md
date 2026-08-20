@@ -50,8 +50,8 @@ from integrations.langchain import SemanticaKGTool, SemanticaDecisionTool
 from langgraph.prebuilt import create_react_agent
 
 tools = [
-    SemanticaKGTool(graph).build(),
-    SemanticaDecisionTool(graph).build(),
+    SemanticaKGTool(graph),
+    SemanticaDecisionTool(graph),
 ]
 agent = create_react_agent(model, tools)
 ```

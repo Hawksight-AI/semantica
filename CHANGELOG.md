@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `pip install semantica[langchain]` extra (`langchain-core>=0.3.0`), included in the `all` bundle
   - `integrations/langchain/SemanticaRetriever` — LangChain `BaseRetriever` that seeds from `HybridSearch` then walks graph edges (`hops=2` default) for GraphRAG-style retrieval; falls back to `ContextGraph.query` when hybrid search is unavailable
   - `integrations/langchain/SemanticaVectorStore` — LangChain `VectorStore` adapter over `HybridSearch` (`add_texts`, `similarity_search`, `similarity_search_with_score`, `from_texts`)
-  - `integrations/langchain/SemanticaKGTool` / `SemanticaDecisionTool` — `StructuredTool` adapters (`semantica_query_graph`, `semantica_query_decisions`) for LangGraph / tool-calling agents; `build()` returns `None` when langchain-core is absent
+  - `integrations/langchain/SemanticaKGTool` / `SemanticaDecisionTool` — `BaseTool` subclasses with Pydantic `args_schema` (`semantica_query_graph`, `semantica_query_decisions`); `build()` returns the tool, or `None` when langchain-core is absent
+  - Retriever and VectorStore read HybridSearch nested `metadata` (`content`, `node_id`, `node_type`) rather than top-level fields that HybridSearch does not set
   - All adapters remain importable without langchain-core (`LANGCHAIN_AVAILABLE` flag)
   - Docs: `docs/integrations/langchain.md`, README native-integration matrix, and `docs.json` nav entry
 

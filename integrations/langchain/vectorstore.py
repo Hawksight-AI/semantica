@@ -9,6 +9,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from semantica.utils.logging import get_logger
 
+from .retriever import _hit_content, _hit_id, _hit_score, _hit_type, _hit_layers
+
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -41,6 +43,22 @@ except ImportError:  # pragma: no cover
     logger.debug(LANGCHAIN_IMPORT_ERROR)
 
 
+def _document_from_hit(hit: Dict[str, Any], include_score: bool = True) -> Any:
+    metadata, _ = _hit_layers(hit)
+    node_id = _hit_id(hit)
+    doc_meta = {
+        **metadata,
+        "node_id": node_id,
+        "node_type": _hit_type(hit),
+    }
+    if include_score:
+        doc_meta["score"] = _hit_score(hit, default=0.0)
+    return _make_document(
+        page_content=_hit_content(hit),
+        metadata=doc_meta,
+    )
+
+
 class SemanticaVectorStore(_VectorStoreBase):  # type: ignore[misc]
     """Wrap Semantica hybrid search as a LangChain ``VectorStore``.
 
@@ -54,7 +72,10 @@ class SemanticaVectorStore(_VectorStoreBase):  # type: ignore[misc]
     vector_store: Any = None
 
     def __init__(self, hybrid: Any, vector_store: Any = None, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+        if LANGCHAIN_AVAILABLE:
+            super().__init__(**kwargs)
+        else:
+            super().__init__()
         self.hybrid = hybrid
         self.vector_store = vector_store
 
@@ -85,17 +106,7 @@ class SemanticaVectorStore(_VectorStoreBase):  # type: ignore[misc]
 
     def similarity_search(self, query: str, k: int = 4, **kwargs: Any) -> List[Any]:
         """Return documents most similar to the query."""
-        return [
-            _make_document(
-                page_content=hit.get("content") or hit.get("text") or "",
-                metadata={
-                    "node_id": hit.get("node_id") or hit.get("id"),
-                    "node_type": hit.get("node_type") or "node",
-                    "score": float(hit.get("score") or 0.0),
-                },
-            )
-            for hit in self.hybrid.search(query, k=k)
-        ]
+        return [_document_from_hit(hit) for hit in self.hybrid.search(query, k=k)]
 
     def similarity_search_with_score(
         self, query: str, k: int = 4, **kwargs: Any
@@ -103,14 +114,8 @@ class SemanticaVectorStore(_VectorStoreBase):  # type: ignore[misc]
         """Return (document, score) pairs."""
         return [
             (
-                _make_document(
-                    page_content=hit.get("content") or hit.get("text") or "",
-                    metadata={
-                        "node_id": hit.get("node_id") or hit.get("id"),
-                        "node_type": hit.get("node_type") or "node",
-                    },
-                ),
-                float(hit.get("score") or 0.0),
+                _document_from_hit(hit, include_score=False),
+                _hit_score(hit, default=0.0),
             )
             for hit in self.hybrid.search(query, k=k)
         ]

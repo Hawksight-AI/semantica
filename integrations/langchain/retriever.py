@@ -7,7 +7,7 @@ steps so results go beyond flat vector similarity.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from semantica.utils.logging import get_logger
 
@@ -44,10 +44,53 @@ except ImportError:  # pragma: no cover - exercised only without langchain
     logger.debug(LANGCHAIN_IMPORT_ERROR)
 
 
-def _hit_id(hit: Dict[str, Any]) -> Optional[str]:
-    """Pull a node id out of a hybrid-search hit or ContextGraph.query row."""
+def _hit_layers(hit: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Nested HybridSearch metadata and ContextGraph.query node, if present."""
+    metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
     node = hit.get("node") if isinstance(hit.get("node"), dict) else {}
-    return hit.get("node_id") or hit.get("id") or node.get("id") or node.get("node_id")
+    return metadata, node
+
+
+def _hit_id(hit: Dict[str, Any]) -> Optional[str]:
+    """Graph node id, preferring metadata over a HybridSearch vector id."""
+    metadata, node = _hit_layers(hit)
+    return (
+        hit.get("node_id")
+        or metadata.get("node_id")
+        or node.get("id")
+        or node.get("node_id")
+        or hit.get("id")
+    )
+
+
+def _hit_content(hit: Dict[str, Any], fallback: str = "") -> str:
+    metadata, node = _hit_layers(hit)
+    props = node.get("properties") if isinstance(node.get("properties"), dict) else {}
+    return (
+        hit.get("content")
+        or hit.get("text")
+        or metadata.get("content")
+        or metadata.get("text")
+        or props.get("content")
+        or fallback
+    )
+
+
+def _hit_type(hit: Dict[str, Any]) -> str:
+    metadata, node = _hit_layers(hit)
+    return (
+        hit.get("node_type")
+        or hit.get("type")
+        or metadata.get("node_type")
+        or metadata.get("type")
+        or node.get("type")
+        or node.get("node_type")
+        or "node"
+    )
+
+
+def _hit_score(hit: Dict[str, Any], default: float = 1.0) -> float:
+    return float(hit.get("score") if hit.get("score") is not None else hit.get("distance") or default)
 
 
 class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
@@ -60,14 +103,12 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
             is used.
         hops: Number of graph-edge expansion hops (default 2).
         top_k: Number of seed hits (default 10).
-        graph_weight: Blending weight for graph-expanded results (0-1).
     """
 
     graph: Any
     hybrid: Any = None
     hops: int = 2
     top_k: int = 10
-    graph_weight: float = 0.5
 
     def __init__(
         self,
@@ -75,7 +116,6 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
         hybrid: Any = None,
         hops: int = 2,
         top_k: int = 10,
-        graph_weight: float = 0.5,
         **kwargs: Any,
     ) -> None:
         """Explicit init so the retriever works with and without langchain."""
@@ -87,7 +127,6 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
                 hybrid=hybrid,
                 hops=hops,
                 top_k=top_k,
-                graph_weight=graph_weight,
                 **kwargs,
             )
         else:
@@ -97,7 +136,6 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
             self.hybrid = hybrid
             self.hops = hops
             self.top_k = top_k
-            self.graph_weight = graph_weight
 
     def _get_relevant_documents(self, query: str, **kwargs: Any) -> List[Any]:
         """LangChain BaseRetriever entry point."""
@@ -111,10 +149,12 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
             node_id = _hit_id(hit)
             if not node_id:
                 continue
+            metadata, _ = _hit_layers(hit)
             expanded[node_id] = {
-                "content": hit.get("content") or hit.get("text") or str(node_id),
-                "node_type": hit.get("node_type") or hit.get("type") or "node",
-                "score": float(hit.get("score") or hit.get("distance") or 1.0),
+                "content": _hit_content(hit, fallback=str(node_id)),
+                "node_type": _hit_type(hit),
+                "score": _hit_score(hit),
+                "metadata": metadata,
             }
             try:
                 neighbors = self.graph.get_neighbors(node_id, hops=self.hops)
@@ -130,6 +170,7 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
                             or neighbor.get("type")
                             or "node",
                             "score": float(neighbor.get("weight") or 0.5),
+                            "metadata": {},
                         }
             except Exception as exc:  # graph expansion is best-effort
                 logger.debug("graph expansion failed for %s: %s", node_id, exc)
@@ -152,6 +193,7 @@ class SemanticaRetriever(_BaseRetriever):  # type: ignore[misc]
             _get_document(
                 page_content=item["content"],
                 metadata={
+                    **item["metadata"],
                     "node_id": nid,
                     "node_type": item["node_type"],
                     "score": item["score"],

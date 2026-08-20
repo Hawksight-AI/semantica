@@ -18,7 +18,7 @@ Requires `langchain-core >= 0.3`. If langchain-core is not installed, the integr
 
 - **SemanticaRetriever** — `BaseRetriever`: hybrid-search seeds retrieval, then graph edges are walked `hops` steps (default 2) for GraphRAG-style results.
 - **SemanticaVectorStore** — `VectorStore`: `add_texts` / `similarity_search` / `similarity_search_with_score` / `from_texts` over `HybridSearch`.
-- **SemanticaKGTool** / **SemanticaDecisionTool** — `StructuredTool`: `semantica_query_graph` and `semantica_query_decisions` for LangGraph / tool-calling agents.
+- **SemanticaKGTool** / **SemanticaDecisionTool** — `BaseTool` subclasses: `semantica_query_graph` and `semantica_query_decisions` for LangGraph / tool-calling agents.
 
 ## Component Details
 
@@ -59,15 +59,16 @@ Requires `langchain-core >= 0.3`. If langchain-core is not installed, the integr
     `add_texts` delegates to a Semantica vector store with `add_documents` (pass `vector_store=` to `HybridSearch` or to `SemanticaVectorStore`).
   </Tab>
   <Tab title="Agent tools">
-    Built via `.build()`; returns `None` when langchain-core is absent.
+    Instances are LangChain `BaseTool`s and can be passed to an agent directly.
+    `.build()` returns the tool, or `None` when langchain-core is absent.
 
     ```python
     from integrations.langchain import SemanticaKGTool, SemanticaDecisionTool
     from langgraph.prebuilt import create_react_agent
 
     tools = [
-        SemanticaKGTool(graph).build(),
-        SemanticaDecisionTool(graph).build(),
+        SemanticaKGTool(graph),
+        SemanticaDecisionTool(graph),
     ]
     agent = create_react_agent(model, tools)
     ```
