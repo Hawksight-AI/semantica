@@ -84,6 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The temporal-evolution `stability` metric was a hardcoded placeholder, not a duration**
+  - `TemporalGraphQuery.analyze_evolution()` documents `stability` as a "relationship duration/stability measure", but the implementation appended a constant `1` for every relationship with both `valid_from` and `valid_until` set (`durations.append(1)  # Placeholder`). The reported stability was therefore always `1.0` when any bounded relationship existed and `0` otherwise — it never reflected how long relationships actually stayed valid, so it could not distinguish a graph of decade-long relationships from one of one-second relationships
+  - `stability` now computes the mean valid-time duration in seconds (`(valid_until - valid_from).total_seconds()`) across relationships that have both bounds set. Relationships with a missing or open `valid_from`/`valid_until` are skipped (their duration is unbounded), and non-positive intervals are clamped to `0`; an empty set still reports `0`
+  - New tests in `tests/kg/test_kg.py` assert the mean-duration result, the skipping of unbounded/half-open intervals, and the empty-graph zero case
+
 - **Every timestamp an export or a provenance record wrote was timezone-naive** (closes #1114) by @fabio-rovai
   - `semantica/export/` stamped with `datetime.now().isoformat()`, which reads the machine's **local** clock; `semantica/provenance/` stamped with `datetime.utcnow().isoformat()`, which reads **UTC**. Both produce a naive value and both serialize identically, so nothing downstream can tell which zone a given timestamp belongs to — the same string means two different instants depending on which module wrote it
   - In RDF the consequence is silent rather than loud. Under XSD 1.1 a value with no timezone compared against one with a timezone is indeterminate whenever the two fall inside the ±14 hour window; SPARQL turns an indeterminate comparison into an error, and `FILTER` discards errors as non-matches. A timezone-qualified query over an Oxigraph store returns an answer with every Semantica-written record quietly absent from it, which is a poor property for `prov:generatedAtTime`, `prov:startedAtTime`, `prov:endedAtTime` and `prov:atTime` to have
