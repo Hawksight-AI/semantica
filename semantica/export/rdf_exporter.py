@@ -332,6 +332,22 @@ class RDFSerializer:
     # node to signal that valid_until is OPEN/unbounded. This keeps the
     # interval well-formed while remaining human- and machine-readable.
 
+    @staticmethod
+    def _escape_turtle_literal(value: str) -> str:
+        """Escape a string value for safe embedding in a Turtle string literal.
+
+        Backslash must be escaped first, then the double quote and the
+        recognized control characters (newline, carriage return, tab), per the
+        RDF 1.1 Turtle grammar for STRING_LITERAL_QUOTE.
+        """
+        return (
+            value.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
+
     def serialize_to_turtle(self, rdf_data: Dict[str, Any], **options) -> str:
         """
         Serialize RDF to Turtle format.
@@ -398,7 +414,7 @@ class RDFSerializer:
             confidence = entity.get("confidence", 1.0)
 
             lines.append(f"<{entity_id}> a <{entity_type}> ;")
-            lines.append(f'    semantica:text "{text}" ;')
+            lines.append(f'    semantica:text "{self._escape_turtle_literal(text)}" ;')
             lines.append(f"    semantica:confidence {confidence} .")
             lines.append("")
 
@@ -692,7 +708,7 @@ class RDFSerializer:
             # Text property
             text = entity.get("text") or entity.get("label", "")
             if text:
-                safe_text = text.replace('"', '\\"').replace("\n", "\\n")
+                safe_text = self._escape_turtle_literal(text)
                 lines.append(
                     f'{subject} {expand_uri("semantica:text")} "{safe_text}" .'
                 )
