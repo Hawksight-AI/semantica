@@ -141,13 +141,15 @@ class TestObjective:
         )
         assert result.cases[0].status == "fail"
 
-    def test_minimize_without_threshold_raises(self):
-        with pytest.raises(ValueError):
-            evaluate(
-                [("a", "b")],
-                evaluators=["levenshtein"],
-                config={"levenshtein": {"objective": {"direction": "minimize"}}},
-            )
+    def test_minimize_without_threshold_is_noop(self):
+        # identical behavior to no objective: evaluator's own verdict stands
+        result = evaluate(
+            [("a", "b")],
+            evaluators=["levenshtein"],
+            config={"levenshtein": {"objective": {"direction": "minimize"}}},
+        )
+        # levenshtein("a","b") scores 1, whose own pass bar (lenient) stands
+        assert result.cases[0].status != "error"
 
     def test_bad_direction_raises(self):
         with pytest.raises(ValueError):
@@ -194,3 +196,31 @@ class TestObjective:
                 evaluators=["exact_match"],
                 config={"exact_match": {"objective": {"expect": "false"}}},
             )
+
+    def test_invalid_per_case_objective_fails_fast_before_target_fn(self):
+        calls = []
+
+        def side_effectful_target_fn(case):
+            calls.append(case)
+            return "line"
+
+        with pytest.raises(ValueError):
+            evaluate(
+                [{"id": "c1"}, {"id": "c2", "config": {"levenshtein": {"objective": {"direction": "diagonal"}}}}],
+                evaluators=["levenshtein"],
+                target_fn=side_effectful_target_fn,
+            )
+        # validation must reject the run before any case is processed
+        assert calls == []
+
+    def test_case_config_keeps_global_objective(self):
+        # global objective on the evaluator must survive a per-case override
+        # that touches other settings for the same evaluator (deep merge)
+        result = evaluate(
+            [{"id": "c1", "expected": "abc", "actual": "abd",
+              "config": {"levenshtein": {"ignore_case": False}}}],
+            evaluators=["levenshtein"],
+            config={"levenshtein": {"objective": {"direction": "minimize", "threshold": 0.0}}},
+        )
+        # levenshtein("abc","abd") == 1 > 0 -> objective fails the case
+        assert result.cases[0].status == "fail"

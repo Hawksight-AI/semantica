@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 236 export and ontology tests pass
 - **`semantica.evals` runner gains per-metric objectives** (#1091)
   - `evaluate()` now accepts `config={"<evaluator>": {"objective": {"direction": "maximize"|"minimize", "threshold": X}}}` to override the evaluator's default pass verdict with a threshold; `{"objective": {"expect": bool}}` expresses a Boolean expectation
-  - `minimize` requires a `threshold`; `maximize` without one is a no-op; `expect` cannot be combined with `direction`/`threshold`; invalid config raises `ValueError` before any evaluator runs
+  - `minimize`/`maximize` without a threshold is a no-op (the evaluator's own verdict stands); `expect` cannot be combined with `direction`/`threshold`; invalid config raises `ValueError` before any evaluator runs
   - Error metrics are never affected by objectives (error wins over fail)
   - Backward compatible: no `objective` key → existing behavior unchanged
   - New tests in `tests/evals/test_runner.py::TestObjective`

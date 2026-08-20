@@ -37,9 +37,8 @@ def _parse_objective(name, eval_config):
         return {"expect": expect}
     if direction == "minimize":
         if threshold is None:
-            raise ValueError(
-                f"objective for '{name}': 'minimize' requires a 'threshold'"
-            )
+            # no bar to re-decide against; treat as absent (evaluator default stands)
+            return None
         return {"direction": "minimize", "threshold": float(threshold)}
     if direction == "maximize":
         if threshold is None:
@@ -74,6 +73,24 @@ def _extract(case: Case, target_fn: Optional[Callable]):
     return case_id, expected, actual, config, per_fn
 
 
+def _merge_config(default_config: Dict[str, Any], case_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep-merge per-case config over the global config.
+
+    Top-level keys are merged key-by-key, so a per-case override of one
+    evaluator's settings keeps the global objective for that evaluator
+    (rather than replacing the whole top-level entry).
+    """
+    merged = dict(default_config)
+    for key, value in (case_config or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            current = dict(merged[key])
+            current.update(value)
+            merged[key] = current
+        else:
+            merged[key] = value
+    return merged
+
+
 def evaluate(
     cases: List[Case],
     evaluators: List[str],
@@ -88,8 +105,25 @@ def evaluate(
     default_config = config or {}
     case_results: List[CaseResult] = []
 
+    # Validate objective config for every case up front so an invalid objective
+    # rejects the run before any target_fn or evaluator executes (fail-fast),
+    # regardless of which case carries it.
+    pre_resolved = []
     for case in cases:
+        _, _, _, case_config, _ = _extract(case, target_fn)
+        merged = _merge_config(default_config, case_config)
+        pre_resolved.append(
+            {
+                name: _parse_objective(name, merged.get(name) or {})
+                for name in evaluators
+            }
+        )
+
+    for case, objective_by_name in zip(cases, pre_resolved):
         case_id, expected, actual, case_config, per_fn = _extract(case, target_fn)
+        merged = _merge_config(default_config, case_config)
+        if expected is None:
+            expected = merged.get("expected")
         resolver = per_fn or target_fn
         if actual is None and resolver is not None:
             try:
@@ -99,14 +133,6 @@ def evaluate(
                     CaseResult(case_id, "error", {}, {"target_fn": str(exc)})
                 )
                 continue
-        merged = dict(default_config)
-        merged.update(case_config)
-        if expected is None:
-            expected = merged.get("expected")
-        objective_by_name = {
-            name: _parse_objective(name, merged.get(name) or {})
-            for name in evaluators
-        }
         metrics: Dict[str, EvalMetric] = {}
         details: Dict[str, Any] = {}
         failed, errored = False, False
