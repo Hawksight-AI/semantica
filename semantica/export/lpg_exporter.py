@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory
+from ..utils.helpers import _require_mapping, ensure_directory, normalize_graph_payload
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
@@ -154,15 +154,26 @@ class LPGExporter:
         """
         queries = []
 
-        # Generate indexes if requested
-        if self.include_indexes:
-            queries.extend(self._generate_indexes(knowledge_graph))
+        # A non-mapping payload cannot reach normalize_graph_payload(): it
+        # raises ValidationError for that case, which would leave this
+        # exporter alone in raising a different exception type than the YAML
+        # and Neo4j exporters raise for the identical mistake.
+        _require_mapping(
+            knowledge_graph, ("entities", "relationships", "nodes", "edges")
+        )
 
-        # Extract entities and relationships
-        entities = knowledge_graph.get("entities", [])
-        relationships = knowledge_graph.get("relationships", [])
-        nodes = knowledge_graph.get("nodes", entities)
-        edges = knowledge_graph.get("edges", relationships)
+        # Accept either vocabulary. Reading 'nodes' with 'entities' as the
+        # default dropped every entity when 'nodes' was present but empty --
+        # the shape JSONExporter emits -- so resolution is centralized.
+        normalized = normalize_graph_payload(knowledge_graph)
+        nodes = normalized["entities"]
+        edges = normalized["relationships"]
+
+        # Generate indexes if requested. Fed the normalized entities so index
+        # generation sees the same records as node generation; reading
+        # 'entities' directly here skipped indexes for nodes/edges payloads.
+        if self.include_indexes:
+            queries.extend(self._generate_indexes(nodes))
 
         # Generate node creation queries
         node_queries = self._generate_node_queries(nodes)
@@ -174,13 +185,18 @@ class LPGExporter:
 
         return queries
 
-    def _generate_indexes(self, knowledge_graph: Dict[str, Any]) -> List[str]:
-        """Generate Cypher index and constraint creation queries."""
+    def _generate_indexes(self, entities: List[Dict[str, Any]]) -> List[str]:
+        """Generate Cypher index and constraint creation queries.
+
+        Args:
+            entities: Entity records, already resolved from whichever
+                vocabulary the caller supplied.
+        """
         indexes = []
 
         # Get unique entity types for labels
         entity_types = set()
-        for entity in knowledge_graph.get("entities", []):
+        for entity in entities:
             entity_type = entity.get("type") or entity.get("entity_type")
             if entity_type:
                 entity_types.add(entity_type)

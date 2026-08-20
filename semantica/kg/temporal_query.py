@@ -535,7 +535,8 @@ class TemporalGraphQuery:
             relationships = [
                 rel
                 for rel in relationships
-                if rel.get("source") == entity or rel.get("target") == entity
+                if (rel.get("source") or rel.get("source_id")) == entity
+                or (rel.get("target") or rel.get("target_id")) == entity
             ]
 
         if relationship:
@@ -642,8 +643,14 @@ class TemporalGraphQuery:
         parsed_end_time = self._parse_time(end_time) if end_time else None
 
         for rel in relationships:
+            # Accept both the legacy ``source``/``target`` keys and the
+            # canonical ``source_id``/``target_id`` keys from ``to_kg_dict()``.
             s = rel.get("source")
+            if s is None:
+                s = rel.get("source_id")
             t = rel.get("target")
+            if t is None:
+                t = rel.get("target_id")
 
             # Check temporal validity
             if start_time or end_time:
