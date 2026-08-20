@@ -142,7 +142,7 @@ compliant = graph.check_decision_rules({"category": "vendor_selection"})  # poli
 ```bash
 semantica doctor
 # Python 3.11.9         pass
-# semantica 0.6.5       pass
+# semantica 0.6.6       pass
 # faiss vector store    pass
 # Config file           pass    ~/.semantica/config.yaml
 ```
@@ -1466,18 +1466,18 @@ For contributor / dev-server setup: **[explorer/README.md: Local Setup Guide](ex
 
 ---
 
-## What's New in v0.6.5
+## What's New in v0.6.6
 
-**Security release — upgrading is strongly recommended.** Fixes for 5 externally-reported vulnerabilities in the Explorer API and graph/triplet store backends, plus a CodeQL-flagged ReDoS:
+**Security release — upgrading is strongly recommended.** Fixes for a privately disclosed batch of vulnerabilities spanning backup/restore, database export, outbound requests, and triplet-store backends, plus SSRF hardening across ingestion:
 
-- **Missing authentication on all Explorer API routes** (GHSA-j4mq-hprp-987v, Critical): every route now requires `SEMANTICA_API_KEY`, fails closed (503) rather than open when unconfigured
-- **SSRF via redirect bypass in ontology URL fetching** (GHSA-8c7v-62gr-hj6g, High): redirect targets are now re-validated at every hop and the connection is pinned to the validated address, closing a DNS check-then-use race
-- **Cypher injection via unvalidated node labels and property keys** (GHSA-482h-hw99-h62p, Critical): Neptune, Neo4j, and FalkorDB now sanitize every label/relationship-type/property-key interpolation site
-- **SPARQL injection via unvalidated triplet IRIs** (GHSA-8vgg-8mr4-r236, Critical): Blazegraph, RDF4J, and Jena now validate subject/predicate/object IRIs before interpolation
-- **Missing Origin validation on the WebSocket handshake** (GHSA-4643-wpgq-w329, Moderate, anonymous-mode only): `/ws/graph-updates` now checks `Origin` against the same allowlist `CORSMiddleware` enforces for HTTP
-- **Polynomial ReDoS in SPARQL query validation** (CodeQL `py/polynomial-redos`): fixed a backtracking regex in the Explorer's SPARQL route
+- **Tarball restore path traversal**: `semantica backup restore` now validates every archive member for path containment and rejects symlink/hardlink escapes before extraction
+- **Latent SQL injection in `DataExporter.export_table_data()`**: table/schema names are now identifier-allowlisted and `where`/`order_by` fragments are blocklist-checked
+- **DNS-rebinding TOCTOU in the shared SSRF guard**: the resolved IP that passes validation is now the one the connection is pinned to, closing the check-then-use race (also closes the `100.64.0.0/10` CGNAT gap)
+- **Stored XSS in HTML report generation** and **unvalidated SPARQL object IRIs in AnzoStore** (SPARQL injection): both now escape/validate before interpolation
+- **`Authorization`/`Proxy-Authorization` credential leakage across redirects**, plus **SSRF gaps in `FeedIngestor`/`FeedMonitor`, `RepoIngestor`, and the MCP/public-API ingest paths**: all now route through the shared, redirect-safe SSRF guard
+- **HTTP response header injection and an unbounded-memory DoS** in the Explorer API, and a **`fastapi`/`python-multipart` ReDoS** (PYSEC-2024-38): floors raised, inputs sanitized, candidate pools capped
 
-Also includes: embedded Oxigraph backend for `TripletStore`, PROV-O trust/spec completeness for `ProvenanceManager`, and the Altair Anzo triplet store backend.
+Also ships: **first-class CrewAI integration** (`semantica[crewai]`, extraction/decision tools + a knowledge source), **`ContextGraph` retraction and purge** (GDPR-style erasure without a full `clear()`), a declared **Semantica RDF vocabulary with deterministic entity/relationship IRIs** (stable, diffable exports), and **timezone-aware timestamps** across `export/` and `provenance/`.
 
 → [Full release notes](RELEASE_NOTES.md) · [Changelog](CHANGELOG.md)
 

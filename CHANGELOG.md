@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-08-20
+
 ### Added
 
 - **Semantica RDF vocabulary, and deterministic entity/relationship IRIs** (#1109, closes #1107, closes #1101) by @fabio-rovai, reviewed by @KaifAhmad1
@@ -22,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tests/export/test_jsonld_iri_minting.py` parses each export with a real JSON-LD processor and asserts the entity survives, the relationships stay distinct, no term expands into the `semantica` scheme, and the JSON-LD `@id` equals the Turtle IRI
   - 236 export and ontology tests pass
 
-- **First-class CrewAI integration** (#962)
+- **First-class CrewAI integration** (#988, closes #962) by @Shindevrp
   - New `pip install semantica[crewai]` extra (`crewai>=0.80.0`) — crewai core provides `BaseTool`/`BaseKnowledgeSource`, so `crewai-tools` is intentionally not included, and the extra is intentionally **not** part of the `all` bundle: crewai hard-requires `chromadb~=1.1.0`, which is affected by the unpatched pre-auth code-injection CVE-2026-45829 (see `integrations/crewai/README.md`)
   - `integrations/crewai/SemanticaKGTool` — a CrewAI `BaseTool` exposing 5 KG actions (`extract_entities`, `extract_relations`, `add_to_graph`, `query_graph`, `find_related`) backed by `NERExtractor` / `RelationExtractor` / `ContextGraph`; supports both sync `run()` and async `arun()`
   - `integrations/crewai/SemanticaDecisionTool` — a CrewAI `BaseTool` wrapping `AgentContext` with 5 decision-intelligence actions (`record_decision`, `find_precedents`, `trace_causal_chain`, `analyze_impact`, `check_policy`)
@@ -52,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `tests/export/test_distance_exporter_metric_errors.py`: 6 tests covering success, single/multiple failures, opt-out, the no-path-vs-error distinction, and default-schema stability; existing `tests/export/test_distance_exporter.py` updated for the new tuple return type
   - Full `tests/export/` suite: 77 passed
 
+- **`ContextGraph.to_kg_dict()`: an adapter converting a `ContextGraph`'s internal `nodes`/`edges`/`source` shape into the canonical `entities`/`relationships`/`source_id` shape `RDFExporter` and `TemporalGraphQuery` consume** (#1081) by @cxzg007
+  - Previously there was no supported way to feed a `ContextGraph` into those consumers without hand-rolling the field remapping; `to_kg_dict()` does it once, with an `entities_only` option that drops relationships left dangling by the filter
+  - **Fixed during review** (Qodo): null `properties`/`metadata` on a node loaded from JSON raised `TypeError` when copied — both are now guarded with `or {}`; entity ids are coerced to `str(node_id)` to match `ContextEdge`'s already-str-coerced endpoints, so valid relationships were no longer dropped by `entities_only` filtering
+  - `RDFExporter`'s validator and `TemporalGraphQuery` now also accept `source_id`/`target_id` endpoints, the shape `to_kg_dict()` emits
+
 ### Changed
 
 - **`GraphBuilder`'s 6 public methods now have Google-style docstrings** (#878, closes #876) by @cakeni
@@ -61,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Corrected during review**: `add_temporal_edge`/`create_temporal_snapshot` docstrings overclaimed numeric-timestamp support; `_parse_time()` only special-cases `str` and `datetime`, falling back to a bare `str()` cast for anything else (not true numeric parsing). Narrowed to "datetime or ISO-formatted string"
   - **Fixed along the way**: `build()`'s `**options` documented a default only for `extract`; `extract_relations`, `extract_triplets`, `ner_method`, `relation_method`, and `triplet_method` all have concrete defaults in `_extract_from_text()` (`True`, `True`, `"llm"`, `"llm"`, `"llm"`) that were left unstated, inconsistent with CONTRIBUTING.md's own docstring example of noting defaults inline
   - `python -m pytest tests/kg/test_kg.py tests/kg/test_graph_builder_external.py -q`: 45 passed
-- **`GraphBuilder` raw-text extraction now defaults to local extractors instead of LLM extraction** (closes #930) by @dex0shubham
+- **`GraphBuilder` raw-text extraction now defaults to local extractors instead of LLM extraction** (#941, closes #930) by @dex0shubham
   - `GraphBuilder._extract_from_text()` defaulted `ner_method`, `relation_method`, and `triplet_method` to `"llm"`, and ran relation extraction unconditionally (`extract_relations` defaulted to `True`) — all four contradicting the defaults documented in the `build()` docstring at the time (`"ml"` / `"pattern"` / `False`), and diverging from the standalone extractors (`NERExtractor` defaults to `method="ml"`, `RelationExtractor` and `TripletExtractor` to `method="pattern"`). The practical effect was that any raw-text `build()` call silently required a configured provider, an API key, and network access
   - Defaults are now `ner_method="ml"`, `relation_method="pattern"`, `triplet_method="pattern"`, and `extract_relations=False`, matching the docstring. LLM extraction remains fully available and is now opt-in
   - **To restore the previous behaviour**, pass the methods explicitly:
@@ -81,6 +88,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fixed along the way**: `GraphBuilder._extraction_stats` was only initialised inside `build()`, so calling `_extract_from_text()` directly raised an `AttributeError` that the extraction path's broad `except` swallowed and reported as `"Entity extraction failed"`. It is now seeded in `__init__` as well; `build()` still resets it per run
   - New regression coverage in `tests/kg/test_graph_builder_extraction_defaults.py` pinning all four defaults, verifying that no default resolves to `"llm"`, confirming explicit LLM opt-in still routes correctly, asserting extractors are constructed once across repeated texts, covering fallback method lists (e.g. `ner_method=["pattern", "ml"]`) for all three extractors, asserting relations are forwarded to triplet extraction (and that `None` is forwarded when relation extraction is disabled or fails), and running the real default path end to end with no provider mocked. Verified to fail against the pre-fix code
   - Full `kg` suite: 473 passed
+
+- **Explorer graph canvas now renders edge labels** (#1013, closes #1009) by @yzxcj797
+  - `GraphCanvas.tsx` had no edge-label rendering path at all; Sigma's edge-label renderer draws `data.label`, but the graph state stored the relationship type under `edgeType`, so simply enabling the renderer would have left every edge blank. `graphSceneState`'s edge reducer now maps `edgeType` onto `label` (suppressed for hidden edges)
+  - Rendering is gated behind a new `edgeLabelsEnabled` entry in the Effects panel (default on), wired through the existing `GraphEffectToggle`/`GraphEffectsState` plumbing, so dense graphs can still turn labels off
+  - **Fixed during review** (Qodo): two follow-up passes closed gaps the first cut left — label rendering wasn't wired through `explorationEffectsPluginPhaseC.tsx`'s Phase C variant, and toggling the effect off mid-session didn't clear already-rendered labels
+  - New coverage in `explorer/tests/graphSceneState.display.test.ts`
+
+- **Removed `GraphWorkspaceShell.tsx`, `GraphRuntimeStage.tsx`, and `useGraphData.ts` — a second, unused implementation of the graph-loading/error-handling logic already fixed in `GraphWorkspace.tsx`** (#984, resolves the cleanup tracked in #981 by #980's review note) by @lakshayxi
+  - 1,564 lines removed; the surviving `GraphWorkspace` path is now the only implementation, so the "two copies that drifted apart" root cause #980 fixed can't recur in the copy nobody was maintaining
+
+- **Explorer README and `docs/explorer-setup.md` corrected to describe the authentication 0.6.5 actually shipped**, plus a documented `/ws/graph-updates` auth note (#1040, fixes #1028) by @Kyou12138
+  - Both docs still claimed the Explorer API had no built-in authentication after v0.6.5 added mandatory `SEMANTICA_API_KEY` enforcement with a `503` fail-closed default; corrected to describe the actual behavior, including that only protected routes require the key (`/api/health`/`/api/info` stay open), the non-loopback-bind CLI warning only fires in anonymous mode or when the key is unset, and `SEMANTICA_API_KEY`/`SEMANTICA_ALLOW_ANONYMOUS` are documented in the environment-variable table
+
+- **CI: pinned `github/codeql-action` to current v4** (#986) by @ZohaibHassan16, and **pinned Python dependencies in `requirements-ci.txt` for reproducible CI runs** (#945) by @yunaremaia, closing the gap where an unpinned CI dependency could silently change behavior between runs
+
+- **README now states up front that Semantica's explainability is system-level, not foundation-model-internal** (#1033, #1034) by @KaifAhmad1
+  - Nothing in the README previously scoped what "explainable" meant, leaving readers to assume Semantica could expose or reconstruct an LLM's internal reasoning. A callout now states explicitly that Semantica explains and audits what the AI *system* did — context fed in, decisions produced, provenance, relationships, policies applied — not the model's private internal reasoning, and moved the note near the top of the README rather than leaving it implicit
 
 ### Fixed
 
@@ -194,6 +218,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New regression coverage in `tests/export/test_distance_exporter.py`: warnings fire on exception for all four helpers, exported sentinel values/shape stay unchanged, and the legitimate "no KG backend" `None` path still logs nothing
   - Full `tests/export/` suite: 71 passed
 
+- **`explain_violations` rendered hardcoded placeholders (`min_count=1`, `max_count=1`) instead of the SHACL shape's real constraint values, and misused the violation message text as the datatype/class value** (#1094) by @cxzg007
+  - `_run_pyshacl` never read `sh:minCount`/`sh:maxCount`/`sh:datatype`/`sh:class` back from the violation's `sh:sourceShape`, so every plain-English explanation was wrong regardless of what the shape actually declared. `SHACLViolation` now carries those four fields (also exposed via `to_dict()`), populated by back-referencing `sh:sourceShape`; `explain_violations` renders the real values, falling back to `"?"` when a value is genuinely absent
+  - **Known limitation**: `sh:qualifiedMinCount`/`sh:qualifiedMaxCount` are not handled yet and still fall back to the `"?"` placeholder
+  - New regression tests cover both the rendering path and the `sh:sourceShape` back-reference (skipped when `pyshacl`/`rdflib` are absent)
+
+- **Entity merging silently dropped `entity_id` aliases, and exact-match entity resolution had three correctness gaps** (#1086, #1026) by @T1mn
+  - `entity_merger.py`/`merge_strategy.py`/`entity_resolver.py` used inconsistent logic for extracting an entity's id across the merge path, so a merged entity could lose the `entity_id` aliases that let later lookups find it under its old identity. A new `semantica/utils/entity_ids.py` unifies id extraction across all three call sites
+  - `EntityResolver`'s exact-match path is now honored rather than silently falling through to fuzzy matching in some cases; entities with no identifier are preserved instead of being dropped, and blank exact-match names are ignored rather than matching every other blank name
+  - New/expanded coverage in `tests/kg/test_entity_pipeline.py` and `tests/kg/test_entity_resolver_exact.py`
+
+- **`flatten_dict()` silently collided keys when a flattened path from one branch matched a literal key already present at the target depth** (#1062) by @shahzaib-ahmadcs
+  - Two differently-shaped inputs could flatten to the same output key, with the second write silently overwriting the first — no error, no warning, just a dropped value. Collisions are now detected and handled explicitly instead of overwriting
+
+- **`ExcelParser.__init__` raised `NameError` on every instantiation — `get_progress_tracker()` was called but never imported** (#1016, closes #1014) by @pravit-amp
+  - Same defect as the one fixed for `SimilarityCalculator` in #530, this time in `semantica/parse/excel_parser.py`; the existing test imported the class but never constructed it, so nothing caught the missing import. Added construction coverage for every parser exported from `semantica.parse`, driven off `__all__` so future additions are covered automatically, living outside `test_parse_comprehensive.py` (whose `setUp` mocks `get_progress_tracker` into each module and would mock away the exact interaction under test)
+
+- **Graph analytics (`centrality_calculator.py`, `community_detector.py`, `connectivity_analyzer.py`) dropped isolated nodes and diverged on how each computed its working view of the graph** (#1011) by @T1mn
+  - Each analyzer had its own ad hoc logic for building the node/edge set it operated over, and none of them included nodes with no edges — a node with zero connections simply vanished from centrality scores, community assignments, and connectivity reports instead of appearing with a zero/singleton value. A new shared `semantica/kg/_graph_view.py` centralizes graph-view construction (including node fallbacks and community payload shaping) for all three analyzers, which are now ~250 lines lighter combined
+  - New `tests/kg/test_analytics_node_scope.py` covering isolated-node presence across all three analyzers
+
+- **Explorer fired temporal-bounds and snapshot requests before the graph itself had loaded, tripling failed requests when the backend was down and leaving the timeline scrubber with nothing to scrub** (#1003) by @lakshayxi
+  - Two new predicate functions gate the temporal effects on the graph having actually loaded (an empty graph still counts as loaded); confirmed against a downed backend that this cuts three failing requests per page load down to one
+
+- **`SeedDataManager.load_from_database()` never actually reached the database, and connection failures were mislabeled as a missing optional dependency** (#995, closes #973) by @yzxcj797
+  - `DBIngestor.execute_query`/`export_table` need the connection string as their first positional argument; `load_from_database()` only passed it into the constructor's config dict, which those methods never read, so every call raised `TypeError` before connecting. Also split the combined `except (ImportError, OSError)` handling apart — a genuine connection failure was reported as `"module not available"`, sending debugging in the wrong direction; `OSError` now propagates as an actual failure, chained via `from e`
+
+- **SPARQL `CONSTRUCT` detection matched inside a leading `#`-comment, misclassifying `SELECT`/`ASK` queries as `CONSTRUCT` across all four SPARQL backends** (#951) by @pravit-amp
+  - `CONSTRUCT_QUERY_RE` skipped comments with a bare `\#[^\n]*`, whose backtracking `*` let a `# CONSTRUCT ...` comment line "swallow" the real query-form keyword on the next line for a query like `# CONSTRUCT ...\nSELECT ...`. The mistaken `CONSTRUCT` classification sent `Accept: text/turtle` and tried to parse a SELECT/ASK response body as Turtle, failing with a misleading parse error. The regex now requires a comment to reach a line terminator (LF or CR, per the SPARQL grammar) before matching
+
+- **`k_shortest_paths` mutated caller-visible graph state during traversal and ignored direction when excluding already-used edges** (#1000) by @T1mn
+  - `semantica/kg/path_finder.py`'s search left side effects behind after returning, and edge exclusion during Yen's-algorithm-style path removal didn't respect the traversal direction of directed graphs, letting a later search see edges that should have been available. Both fixed; new coverage in `tests/kg/test_path_finder.py`
+
+- **`trace_decision_causality()` ignored explicitly recorded causal edges, inferring causes only from shared NER entities plus timestamp ordering** (#983) by @hsd2514
+  - A `CAUSED`/`INFLUENCED`/`PRECEDENT_FOR` edge added via `add_causal_relationship()` had no effect on the trace — when entity extraction found nothing in common between two decisions, `trace_decision_chain()` came back empty even with an explicit edge stored in the graph. Explicit causal edges are now traversed first as ground truth, with entity/timestamp inference kept as an additive fallback for pairs with no explicit link; edges whose source has no decision record (e.g. a graph restored via `from_dict`) are skipped so a stale edge can't abort the trace
+
+- **`RepoIngestor`'s module-level DNS resolve cache had no lock, raising `RuntimeError: OrderedDict mutated during iteration` under concurrent `ingest_repository()` calls** (#979) by @manjunathbhaskar
+  - `_REPO_HOST_RESOLVE_CACHE` is a shared `OrderedDict` read, written, and pruned by every thread with no synchronization — reliably reproduced with 32 threads hammering resolution under a low TTL and small cache cap. Now guarded by a lock
+
+- **`GraphBuilder` didn't remap relationship endpoints after entity resolution merged nodes, leaving relationships pointing at ids that no longer existed in the resolved graph** (#978) by @T1mn
+  - New coverage in `tests/kg/test_graph_builder_external.py`; a follow-up commit hardens the remapping against edge cases found during review
+
+- **Explorer's dev server esbuild target didn't match the browser targets the production build declares**, occasionally producing dev-only syntax errors on older browsers (#966) by @le-czs
+  - `explorer/vite.config.ts` now sets the dev esbuild target explicitly to match
+
+- **`normalize`'s number normalizer accepted currency symbols without validating them against the surrounding text, and an earlier fix's currency-code matching wasn't token-bounded** (#940) by @Mr-Neutr0n, reviewed by @ZohaibHassan16
+  - Symbol currencies are now validated before being accepted; currency codes are matched on token boundaries so a code embedded inside a longer token no longer false-positives
+
+- **`ContextGraph.to_dict()` was the one reader on the class that didn't hold `self._lock`, raising `RuntimeError: dictionary changed size during iteration` under a concurrent writer and risking a torn snapshot otherwise** (#929) by @pravit-amp
+  - Every other reader (`stats()`, `density()`, `find_nodes()`, `find_edges()`, `get_neighbors()`, `get_nodes_by_label()`, `state_at()`, `save_to_file()`) already took the lock after it was introduced; `to_dict()` predated that change and was missed. `save_to_file()` was safe only incidentally, since it builds its payload inline under its own lock rather than delegating to `to_dict()`
+
+- **`PipelineWithProvenance` had a broken import and no working `run()` method** (#862) by @Karunasagar12
+  - `from .pipeline import Pipeline` failed because `Pipeline` lives in `pipeline_builder.py`, not a nonexistent `pipeline.py` — fixed to `from .pipeline_builder import Pipeline`. The class also had no `run()`; it now delegates to `ExecutionEngine.execute_pipeline()`, the intended execution path for a built `Pipeline`. The constructor now accepts a built `Pipeline` instance directly
+
 ### Security
 
 - **Tarball restore path traversal, latent SQL injection, DNS-rebinding TOCTOU in the shared SSRF guard, stored XSS in report generation, and unvalidated SPARQL object IRIs in AnzoStore** (#1079) by @KaifAhmad1
@@ -253,6 +330,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fixed along the way**: the `Security` workflow's `pip-audit` job ran only on a weekly schedule with `continue-on-error: true`, against a bare Python environment with none of Semantica's optional extras installed — it would never have seen `fastapi`/`python-multipart` regardless of which floor was pinned. `security-scan.yml`'s Safety check has the same blind spot (`pip install -e ".[llm-litellm]"` only, never `[explorer]`). `pip-audit` now also runs on `pull_request` when `pyproject.toml` changes, installs `semantica[all]`, and fails the build on any finding for that trigger; the schedule/`workflow_dispatch` runs stay non-blocking pending a full pass over any pre-existing findings across the whole `[all]` tree
   - **Caught by the new gate on its first run**: `python -m pip install -e ".[all]"` pulled in `setuptools==79.0.1`, vulnerable to CVE-2026-59890/GHSA-h35f-9h28-mq5c/PYSEC-2026-3447 (Unicode-normalization bypass of `MANIFEST.in` exclude/prune patterns on macOS APFS/HFS+, letting excluded files leak into a built sdist), fixed in `83.0.0`. `[build-system] requires` had the exact same too-permissive-floor pattern this whole entry is about (`setuptools>=61.0`), and `actions/setup-python`'s baked-in `setuptools` isn't governed by that pin at all since it's outside any isolated build. Bumped `[build-system] requires` to `setuptools>=83.0.0`, and the `Security` workflow now runs `pip install --upgrade pip setuptools` before auditing so the scanned environment can't have a stale ambient copy regardless of what governs it
   - Full `explorer` suite: 241 passed
+
+- **`SeedDataManager.load_from_api()` made unguarded HTTP requests, with no SSRF protection at all** (#942) by @ZohaibHassan16
+  - `load_from_api()` called `requests.get()` directly instead of going through `semantica/ingest/ssrf.py`'s `request_with_ssrf_guard()`, unlike every other ingestor in this module — a caller-supplied `api_url` could target internal/private network addresses with no validation. Now routes through the shared guard, gaining redirect validation and bounded DNS resolution for free
+  - **Follow-up** (#959, closes #943) by @yunaremaia: added an `allow_private_ips` opt-in (parsed via the shared `parse_bool` helper) for trusted internal deployments that legitimately need to load from a private-network API, while keeping the guard's block-by-default behavior for everyone else
 
 ## [0.6.5] - 2026-08-11
 
