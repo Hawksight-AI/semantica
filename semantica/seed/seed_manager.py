@@ -38,6 +38,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from ..ingest.ssrf import request_with_ssrf_guard
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.helpers import read_json_file, write_json_file
 from ..utils.logging import get_logger
@@ -456,8 +457,8 @@ class SeedDataManager:
         """
         Load seed data from API.
 
-        Makes an HTTP GET request to an API endpoint and parses the JSON
-        response. Handles various response structures (list, dict with
+        Makes an SSRF-protected HTTP GET request to an API endpoint and parses
+        the JSON response. Handles various response structures (list, dict with
         'entities', 'data', 'results', 'items' keys). Automatically adds
         entity_type, relationship_type, and source metadata if provided.
 
@@ -493,8 +494,6 @@ class SeedDataManager:
             ... )
         """
         try:
-            import requests
-
             # Build full URL
             if endpoint:
                 full_url = f"{api_url.rstrip('/')}/{endpoint.lstrip('/')}"

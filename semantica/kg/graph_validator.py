@@ -185,8 +185,25 @@ class GraphValidator:
 
         # 3. Relationship Validation
         for i, rel in enumerate(relationships):
-            # Check required fields
-            missing = self.required_rel_fields - set(rel.keys())
+            # Endpoints may use either the legacy ``source``/``target`` keys or
+            # the canonical ``source_id``/``target_id`` keys emitted by
+            # ``ContextGraph.to_kg_dict()``. Accept either variant so both
+            # representations validate consistently.
+            src = rel.get("source")
+            if src is None:
+                src = rel.get("source_id")
+            tgt = rel.get("target")
+            if tgt is None:
+                tgt = rel.get("target_id")
+
+            # Check required fields: ``type`` plus a resolvable source/target.
+            missing = set()
+            if "type" not in rel:
+                missing.add("type")
+            if src is None:
+                missing.add("source")
+            if tgt is None:
+                missing.add("target")
             if missing:
                 issues.append(ValidationIssue(
                     code="MISSING_FIELD",
@@ -196,9 +213,6 @@ class GraphValidator:
                     details={"index": i}
                 ))
                 continue
-
-            src = rel.get("source")
-            tgt = rel.get("target")
             
             # Check Dangling Edges
             def is_valid_id(node_id):

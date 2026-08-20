@@ -320,6 +320,65 @@ def format_timestamp(
     return dt.strftime(format_str)
 
 
+def utc_now() -> datetime:
+    """
+    Current instant as a timezone-aware UTC datetime.
+
+    ``datetime.now()`` reads the local clock and ``datetime.utcnow()`` reads UTC,
+    but both return a naive datetime, and the two are indistinguishable once
+    serialized: a consumer cannot tell which zone the value belongs to, and an
+    RDF timestamp without an offset is not comparable against one that has an
+    offset (a SPARQL FILTER drops it rather than reporting an error). Use this
+    for any timestamp that leaves the process.
+
+    Returns:
+        Current UTC time, timezone-aware
+    """
+    return datetime.now(timezone.utc)
+
+
+def utc_now_iso() -> str:
+    """
+    Current instant as an ISO 8601 string carrying an explicit UTC offset.
+
+    Returns:
+        Timestamp string such as ``2026-08-19T14:19:04.229937+00:00``, which is
+        a valid ``xsd:dateTimeStamp`` and orders correctly against timestamps
+        written in any other timezone
+    """
+    return utc_now().isoformat()
+
+
+def to_utc_datetime(value: Union[str, datetime, None]) -> Optional[datetime]:
+    """
+    Read an ISO 8601 timestamp as a timezone-aware UTC instant.
+
+    Timestamps written before #1114 carry no offset. They were produced by
+    ``datetime.utcnow()``, so a missing offset is read as UTC: that keeps a
+    stored naive value and the same instant written with an offset comparing
+    equal, instead of ordering by how the timestamp happens to be spelled.
+
+    Args:
+        value: ISO 8601 string or datetime. ``Z`` is accepted as the offset.
+
+    Returns:
+        Timezone-aware UTC datetime, or None if the value cannot be read as a
+        timestamp, so callers can fall back rather than raise on stored data
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def parse_timestamp(timestamp_str: str, format_str: Optional[str] = None) -> datetime:
     """
     Parse timestamp string to datetime.

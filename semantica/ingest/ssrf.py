@@ -11,7 +11,7 @@ import concurrent.futures
 import ipaddress
 import socket
 import threading
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, List, Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -138,6 +138,7 @@ def _get_dns_executor() -> concurrent.futures.ThreadPoolExecutor:
 BLOCKED_NETWORKS = (
     ipaddress.ip_network("0.0.0.0/8"),
     ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("100.64.0.0/10"),  # CGNAT (RFC 6598) — routable inside carrier/cloud NAT
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("169.254.0.0/16"),  # link-local / cloud metadata
     ipaddress.ip_network("172.16.0.0/12"),
@@ -262,6 +263,218 @@ def validate_url_for_request(
         )
 
 
+def _resolve_pinned_ips(
+    url: str, *, allow_private_ips: bool
+) -> Optional[List[str]]:
+    """Validate *url* and return every resolved IP for connection pinning.
+
+    ``validate_url_for_request`` and the subsequent connection used to
+    resolve the same hostname independently, which reopens a DNS-rebinding
+    TOCTOU window: a low-TTL or rebinding DNS answer can differ between the
+    validation lookup and the connect-time lookup, so a hostname that
+    validated as public can still connect to a private/internal address.
+    This performs the one resolution that is actually used for both the
+    accept/reject decision *and* the connection (see
+    ``_make_pinned_adapter``), closing that window the same way
+    ``explorer/routes/ontology.py``'s ``_validate_fetch_url`` /
+    ``_make_pinned_session`` pair already does.
+
+    Returns ``None`` when ``allow_private_ips`` is True (the caller
+    explicitly trusts this host, e.g. an operator-configured internal
+    endpoint that may rely on live DNS/service discovery — pinning is
+    skipped so it keeps resolving normally) or when the URL has no host.
+    Otherwise returns the deduplicated, resolution-ordered list of
+    validated IP addresses.
+    """
+    validate_url_for_request(url, allow_private_ips=allow_private_ips)
+    if allow_private_ips:
+        return None
+
+    host = urlparse(url).hostname
+    if not host:
+        return None
+
+    try:
+        literal_ip = ipaddress.ip_address(host)
+    except ValueError:
+        literal_ip = None
+    if literal_ip is not None:
+        return [str(literal_ip)]
+
+    executor = _get_dns_executor()
+    owned_executor = False
+    try:
+        try:
+            future = executor.submit(socket.getaddrinfo, host, None)
+        except RuntimeError:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            owned_executor = True
+            future = executor.submit(socket.getaddrinfo, host, None)
+        resolved: Iterable = future.result(timeout=_DNS_RESOLVE_TIMEOUT_SECONDS)
+    except (socket.gaierror, concurrent.futures.TimeoutError, OSError) as exc:
+        raise ValidationError(
+            f"URL host '{host}' could not be resolved safely "
+            "(DNS error or timeout); request blocked"
+        ) from exc
+    finally:
+        if owned_executor:
+            _shutdown_executor(executor)
+
+    pinned_ips: List[str] = []
+    for info in resolved:
+        addr = ipaddress.ip_address(info[4][0])
+        if _ip_is_blocked(addr):
+            raise ValidationError(
+                f"URL host '{host}' resolves to a blocked (private/loopback/"
+                "link-local) address"
+            )
+        addr_str = str(addr)
+        if addr_str not in pinned_ips:
+            pinned_ips.append(addr_str)
+    if not pinned_ips:
+        raise ValidationError(
+            f"URL host '{host}' could not be resolved to a usable address"
+        )
+    return pinned_ips
+
+
+def _make_pinned_adapter(pinned_ips: List[str], hostname: str) -> "requests.adapters.HTTPAdapter":
+    """Build an HTTPAdapter that connects only to *pinned_ips*.
+
+    Falls back across every pinned address in order (a hostname can have
+    multiple A/AAAA records) while presenting *hostname* as the TLS SNI /
+    certificate identity and outgoing Host header, so DNS resolution is
+    bypassed entirely for the actual connection — mirroring
+    ``explorer/routes/ontology.py``'s ``_make_pinned_session``.
+    """
+    import urllib3.util.connection as _u3_connection
+    from urllib3.exceptions import NewConnectionError
+
+    class _MultiIPConnectionMixin:
+        def _new_conn(self):
+            last_exc: Optional[BaseException] = None
+            for ip in pinned_ips:
+                try:
+                    return _u3_connection.create_connection(
+                        (ip, self.port),
+                        self.timeout,
+                        source_address=self.source_address,
+                        socket_options=self.socket_options,
+                    )
+                except OSError as exc:
+                    last_exc = exc
+                    continue
+            raise NewConnectionError(
+                self,
+                f"Failed to establish a connection to any of {pinned_ips}: {last_exc}",
+            )
+
+    class _PinnedIPHTTPAdapter(requests.adapters.HTTPAdapter):
+        def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+            # A proxy performs its own DNS resolution outside this
+            # process's control, which would silently reopen the exact
+            # rebinding race pinning exists to close. Fail closed instead.
+            if requests.utils.select_proxy(request.url, proxies):
+                raise ValidationError(
+                    "Proxied requests are not supported through the "
+                    "SSRF-guarded request path (a proxy would resolve the "
+                    "host itself and bypass IP pinning)."
+                )
+            host_params, pool_kwargs = self.build_connection_pool_key_attributes(
+                request, verify, cert
+            )
+            if host_params.get("scheme") == "https":
+                pool_kwargs.setdefault("assert_hostname", hostname)
+                pool_kwargs.setdefault("server_hostname", hostname)
+            host_params["host"] = pinned_ips[0]
+            pool = self.poolmanager.connection_from_host(
+                **host_params, pool_kwargs=pool_kwargs
+            )
+            base_connection_cls = pool.ConnectionCls
+            if not issubclass(base_connection_cls, _MultiIPConnectionMixin):
+                pool.ConnectionCls = type(
+                    "_PinnedConnection",
+                    (_MultiIPConnectionMixin, base_connection_cls),
+                    {},
+                )
+            return pool
+
+    return _PinnedIPHTTPAdapter()
+
+
+def _apply_connection_pin(
+    active_session: "requests.Session",
+    url: str,
+    pinned_ips: Optional[List[str]],
+    orig_http_adapter: "requests.adapters.HTTPAdapter",
+    orig_https_adapter: "requests.adapters.HTTPAdapter",
+    had_host_header: bool,
+    orig_host_header: Optional[str],
+) -> None:
+    """Mount (or remove) IP pinning on *active_session* for the next hop."""
+    # Session.mount() silently drops whatever adapter it replaces without
+    # closing it. Across a multi-hop redirect chain, each hop gets its own
+    # fresh pinned adapter (a new pool), so failing to close the one from
+    # the previous hop would leak its pooled connection.
+    _current = active_session.adapters.get("http://")
+    if getattr(_current, "_semantica_pinned", False):
+        _current.close()
+
+    parsed = urlparse(url)
+    if pinned_ips:
+        port = parsed.port
+        default_port = _DEFAULT_PORTS.get(parsed.scheme, 80)
+        host_header = (
+            parsed.hostname
+            if port in (None, default_port)
+            else f"{parsed.hostname}:{port}"
+        )
+        adapter = _make_pinned_adapter(pinned_ips, parsed.hostname or "")
+        adapter._semantica_pinned = True
+        active_session.mount("http://", adapter)
+        active_session.mount("https://", adapter)
+        active_session.headers["Host"] = host_header
+    else:
+        active_session.mount("http://", orig_http_adapter)
+        active_session.mount("https://", orig_https_adapter)
+        # Restore the session's own pre-call Host header state rather than
+        # unconditionally clearing it — a caller-supplied session may carry
+        # a legitimate Host override (e.g. a private/internal endpoint
+        # fronted by a name that differs from the connection host), which
+        # a hop that happens not to need pinning must not silently drop.
+        if had_host_header:
+            active_session.headers["Host"] = orig_host_header
+        else:
+            active_session.headers.pop("Host", None)
+
+
+_SESSION_LOCK_ATTR = "_semantica_ssrf_lock"
+_session_lock_registry_lock = threading.Lock()
+
+
+def _get_session_lock(session: "requests.Session") -> threading.Lock:
+    """Return a lock private to *session*, creating one on first use.
+
+    request_with_ssrf_guard mutates a caller-supplied session's adapters
+    and Host header for the duration of one guarded call (including every
+    redirect hop). Without serializing on the session itself, two guarded
+    calls sharing the same session from different threads could interleave
+    their mount()/restore cycles — one call's request could go out pinned
+    to (or carrying the Host header for) a completely different call's
+    target host. Double-checked locking so concurrent first-use doesn't
+    attach two different locks to the same session.
+    """
+    lock = getattr(session, _SESSION_LOCK_ATTR, None)
+    if lock is not None:
+        return lock
+    with _session_lock_registry_lock:
+        lock = getattr(session, _SESSION_LOCK_ATTR, None)
+        if lock is None:
+            lock = threading.Lock()
+            setattr(session, _SESSION_LOCK_ATTR, lock)
+        return lock
+
+
 def request_with_ssrf_guard(
     method: str,
     url: str,
@@ -317,10 +530,12 @@ def request_with_ssrf_guard(
 
     Session state that was removed is unconditionally restored in a ``finally``
     block so the session is left in its original state after this call returns,
-    regardless of how it exits (normal return, exception, redirect cap).  The
-    loop is sequential and single-threaded within one call, so the mutation is
-    safe as long as the caller does not share the session across concurrent
-    threads (the standard Semantica pattern: one session per ingestor instance).
+    regardless of how it exits (normal return, exception, redirect cap). A
+    caller-supplied session is also serialized on internally (see
+    ``_get_session_lock``): two guarded calls sharing the same session from
+    different threads block on each other for the call's duration rather than
+    interleaving their mutations, so concurrent use of a shared session is
+    safe, if not concurrent.
 
     Once credentials have been stripped for a cross-origin hop they are NOT
     re-added for subsequent hops in the same chain, even if a later hop
@@ -337,12 +552,37 @@ def request_with_ssrf_guard(
     )
     _original_host = (urlparse(url).hostname or "").lower()
 
-    validate_url_for_request(url, allow_private_ips=allow_private_ips)
+    current_pinned_ips = _resolve_pinned_ips(url, allow_private_ips=allow_private_ips)
 
-    requester = session.request if session is not None else requests.request
+    _owns_session = session is None
+    active_session = session if session is not None else requests.Session()
+    requester = active_session.request
     current_url = url
     current_method = method.upper()
     redirects_followed = 0
+
+    # A caller-supplied session is mutated (adapters + Host header, and
+    # potentially auth/trust_env below) for the duration of this call,
+    # including every redirect hop; serialize on the session itself so a
+    # second guarded call sharing it from another thread can't interleave
+    # its own mount()/restore cycle into the middle of this one. An owned
+    # session is private to this call, so no lock is needed. Released in
+    # the outermost `finally` below, alongside the state it protects.
+    _session_lock = None if _owns_session else _get_session_lock(active_session)
+    if _session_lock is not None:
+        _session_lock.acquire()
+
+    # Snapshot the session's pre-existing adapters/Host header so pinning
+    # (mounted per-hop below) can be fully undone when this call returns —
+    # required for a caller-supplied session, which outlives this call.
+    _orig_http_adapter = (
+        active_session.adapters.get("http://") or requests.adapters.HTTPAdapter()
+    )
+    _orig_https_adapter = (
+        active_session.adapters.get("https://") or requests.adapters.HTTPAdapter()
+    )
+    _had_host_header = "Host" in active_session.headers
+    _orig_host_header = active_session.headers.get("Host")
 
     # -- issue #947: snapshot every session-level credential source so we can
     #    restore them unconditionally when this call exits.
@@ -369,6 +609,15 @@ def request_with_ssrf_guard(
 
     try:
         while True:
+            _apply_connection_pin(
+                active_session,
+                current_url,
+                current_pinned_ips,
+                _orig_http_adapter,
+                _orig_https_adapter,
+                _had_host_header,
+                _orig_host_header,
+            )
             response = requester(
                 current_method,
                 current_url,
@@ -407,7 +656,9 @@ def request_with_ssrf_guard(
                 if next_host and next_host == _original_host
                 else redirect_allow_private_ips
             )
-            validate_url_for_request(next_url, allow_private_ips=hop_allow_private_ips)
+            current_pinned_ips = _resolve_pinned_ips(
+                next_url, allow_private_ips=hop_allow_private_ips
+            )
 
             # Do not leak sensitive headers or auth handlers to a different
             # origin on redirects.  All four credential sources are cleared:
@@ -472,13 +723,31 @@ def request_with_ssrf_guard(
             redirects_followed += 1
 
     finally:
-        # Unconditionally restore every session credential source we touched,
-        # so the session is in its original state after this call returns or raises.
-        if session is not None:
+        if _owns_session:
+            # No caller holds a reference to this session; just release it.
+            active_session.close()
+        else:
+            # Unconditionally restore every session credential source and
+            # pinning artifact we touched, so the session is in its
+            # original state after this call returns or raises.
             if _session_auth_backup:
                 for _h, _v in _session_auth_backup.items():
-                    session.headers[_h] = _v
+                    active_session.headers[_h] = _v
             # Restore session.auth to whatever it was before this call.
-            session.auth = _session_auth_handler_backup
+            active_session.auth = _session_auth_handler_backup
             # Restore session.trust_env (.netrc / env-proxy lookup flag).
-            session.trust_env = _session_trust_env_backup
+            active_session.trust_env = _session_trust_env_backup
+            # Undo any IP-pinning adapter/Host header mounted for a hop,
+            # closing the last pinned adapter so its pooled connection
+            # isn't leaked (see _apply_connection_pin).
+            _current = active_session.adapters.get("http://")
+            if getattr(_current, "_semantica_pinned", False):
+                _current.close()
+            active_session.mount("http://", _orig_http_adapter)
+            active_session.mount("https://", _orig_https_adapter)
+            if _had_host_header:
+                active_session.headers["Host"] = _orig_host_header
+            else:
+                active_session.headers.pop("Host", None)
+        if _session_lock is not None:
+            _session_lock.release()

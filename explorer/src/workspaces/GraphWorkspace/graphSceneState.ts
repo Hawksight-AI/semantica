@@ -2099,6 +2099,15 @@ function createCollapsedNeighborhoodGraph(
   return collapsedGraph;
 }
 
+// Normalize an edge relationship type: empty string, null, and undefined all
+// fall back to the project-wide default used consistently across every
+// aggregation path. Keep this local — it exists only to guarantee that the
+// three code paths (single-entry, multi-entry, community-grouped) produce the
+// same semantics and do not diverge again.
+function normalizeEdgeType(value: string | null | undefined): string {
+  return value || "related_to";
+}
+
 function aggregateDisplayGraph(graphRef: GraphRef): Graph<NodeAttributes, EdgeAttributes> {
   const aggregated = new Graph<NodeAttributes, EdgeAttributes>({
     type: "directed",
@@ -2124,10 +2133,13 @@ function aggregateDisplayGraph(graphRef: GraphRef): Graph<NodeAttributes, EdgeAt
       const [{ edgeId, attrs }] = entries;
       aggregated.mergeDirectedEdgeWithKey(edgeId, sourceId, targetId, {
         ...attrs,
+        // #1009: normalize empty/null/undefined edgeType so Sigma's label
+        // renderer never receives a blank string on the single-entry path.
+        edgeType: normalizeEdgeType(attrs.edgeType),
+        dominantEdgeType: normalizeEdgeType(attrs.dominantEdgeType ?? attrs.edgeType),
         rawEdgeIds: collectRawEdgeIds(attrs, edgeId),
         isAggregated: isAggregatedEdgeAttributes(attrs),
         aggregateCount: attrs.aggregateCount ?? collectRawEdgeIds(attrs, edgeId).length,
-        dominantEdgeType: attrs.dominantEdgeType ?? attrs.edgeType,
         representativeWeight: attrs.representativeWeight ?? Number(attrs.weight ?? 1),
       });
       return;
@@ -2150,10 +2162,11 @@ function aggregateDisplayGraph(graphRef: GraphRef): Graph<NodeAttributes, EdgeAt
     const rawEdgeIds = entries.flatMap(({ edgeId, attrs }) => collectRawEdgeIds(attrs, edgeId));
     const typeCounts = new Map<string, number>();
     entries.forEach(({ attrs }) => {
-      const edgeType = String(attrs.edgeType ?? "related_to");
+      const edgeType = normalizeEdgeType(attrs.edgeType);
       typeCounts.set(edgeType, (typeCounts.get(edgeType) ?? 0) + 1);
     });
-    const dominantEdgeType = [...typeCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ?? representative.attrs.edgeType ?? "related_to";
+    const dominantEdgeType = [...typeCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0]
+      ?? normalizeEdgeType(representative.attrs.edgeType);
     const reverseKey = `${targetId}→${sourceId}`;
     const isBidirectionalBundle = groupedEdges.has(reverseKey);
     const syntheticEdgeId = `${AGGREGATED_EDGE_PREFIX}${sourceId}::${targetId}`;
@@ -2167,10 +2180,10 @@ function aggregateDisplayGraph(graphRef: GraphRef): Graph<NodeAttributes, EdgeAt
       rawEdgeIds,
       isAggregated: true,
       aggregateCount: rawEdgeIds.length,
-      dominantEdgeType: String(dominantEdgeType),
+      dominantEdgeType: dominantEdgeType,
       representativeWeight: Number(representative.attrs.weight ?? 1),
       weight: Number(representative.attrs.weight ?? 1),
-      edgeType: String(representative.attrs.edgeType ?? dominantEdgeType ?? "related_to"),
+      edgeType: representative.attrs.edgeType || dominantEdgeType,
       parallelCount: rawEdgeIds.length,
       familySize: rawEdgeIds.length,
       bundleKind: isBidirectionalBundle ? "bidirectional" : "parallel",
@@ -2280,7 +2293,7 @@ function buildCommunityGroupedGraph(): GraphDisplayResult {
     };
     bucket.rawEdgeIds.push(String(edgeId));
     bucket.weight = Math.max(bucket.weight, Number((attrs as EdgeAttributes).weight ?? 1));
-    const edgeType = String((attrs as EdgeAttributes).edgeType ?? "related_to");
+    const edgeType = normalizeEdgeType((attrs as EdgeAttributes).edgeType);
     bucket.typeCounts.set(edgeType, (bucket.typeCounts.get(edgeType) ?? 0) + 1);
     groupedEdges.set(key, bucket);
   });
@@ -2396,7 +2409,8 @@ function buildCommunityGroupedGraph(): GraphDisplayResult {
     if (!visibleGroupedEdgeKeys.has(key)) {
       return;
     }
-    const dominantEdgeType = [...bundle.typeCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ?? "related_to";
+    const dominantEdgeType = [...bundle.typeCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0]
+      ?? "related_to";
     const reverseKey = `${bundle.targetId}→${bundle.sourceId}`;
     const syntheticEdgeId = `${AGGREGATED_EDGE_PREFIX}${key}`;
     const aggregateCount = bundle.rawEdgeIds.length;

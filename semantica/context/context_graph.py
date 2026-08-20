@@ -2449,6 +2449,97 @@ class ContextGraph:
                 },
             }
 
+    def to_kg_dict(self, entities_only: bool = False) -> Dict[str, Any]:
+        """Export graph in the canonical knowledge-graph shape.
+
+        This is the official adapter that converts the ContextGraph's internal
+        ``{"nodes", "edges"}`` / ``source`` representation into the
+        ``{"entities", "relationships"}`` / ``source_id`` shape expected by
+        downstream consumers such as
+        :class:`~semantica.export.rdf_exporter.RDFExporter` and
+        :meth:`~semantica.kg.temporal_query.TemporalGraphQuery.query_time_range`.
+
+        Users no longer need to hand-map field names between APIs.
+
+        Args:
+            entities_only: If True, only nodes whose ``node_type`` is
+                ``"entity"`` are exported as entities. When False (default),
+                every node is exported. Relationships whose endpoints are not
+                in the exported entity set are dropped to avoid dangling
+                references in downstream consumers.
+
+        Returns:
+            dict: A knowledge-graph dictionary with:
+                - ``entities``: list of ``{"id", "text", "type", "properties",
+                  "metadata"}`` (plus ``valid_from`` / ``valid_until`` when set)
+                - ``relationships``: list of ``{"source_id", "target_id",
+                  "type", "weight", "id", "familyId"}`` (plus ``metadata`` and
+                  ``valid_from`` / ``valid_until`` when set)
+                - ``statistics``: ``{"entity_count", "relationship_count"}``
+        """
+        with self._lock:
+            entities_out = []
+            for n in self.nodes.values():
+                if entities_only and n.node_type != "entity":
+                    continue
+                # Normalize the entity id to ``str`` so it matches ContextEdge,
+                # which coerces its endpoints to ``str`` in ``__post_init__``.
+                # Without this, non-string node ids (e.g. numeric ids loaded via
+                # ``from_dict``) would fail the ``valid_ids`` membership check
+                # below and silently drop otherwise-valid relationships.
+                entity_id = str(n.node_id)
+                entity: Dict[str, Any] = {
+                    "id": entity_id,
+                    "text": n.content,
+                    "type": n.node_type,
+                    # ``properties`` / ``metadata`` may be ``None`` when a node
+                    # was loaded from JSON containing an explicit ``null``;
+                    # guard with ``or {}`` so ``dict(...)`` never raises.
+                    "properties": dict(n.properties or {}),
+                    "metadata": dict(n.metadata or {}),
+                }
+                if n.valid_from is not None:
+                    entity["valid_from"] = n.valid_from
+                if n.valid_until is not None:
+                    entity["valid_until"] = n.valid_until
+                entities_out.append(entity)
+
+            # When only entity nodes are exported, drop relationships whose
+            # endpoints were filtered out so downstream consumers never see a
+            # source_id/target_id that is absent from ``entities``.
+            valid_ids = {e["id"] for e in entities_out} if entities_only else None
+
+            relationships_out = []
+            for e in self.edges:
+                if valid_ids is not None and (
+                    e.source_id not in valid_ids or e.target_id not in valid_ids
+                ):
+                    continue
+                rel: Dict[str, Any] = {
+                    "id": e.edge_id,
+                    "familyId": e.family_id or e.edge_id,
+                    "source_id": e.source_id,
+                    "target_id": e.target_id,
+                    "type": e.edge_type,
+                    "weight": e.weight,
+                }
+                if e.metadata:
+                    rel["metadata"] = dict(e.metadata)
+                if e.valid_from is not None:
+                    rel["valid_from"] = e.valid_from
+                if e.valid_until is not None:
+                    rel["valid_until"] = e.valid_until
+                relationships_out.append(rel)
+
+            return {
+                "entities": entities_out,
+                "relationships": relationships_out,
+                "statistics": {
+                    "entity_count": len(entities_out),
+                    "relationship_count": len(relationships_out),
+                },
+            }
+
     def from_dict(self, graph_dict: Dict[str, Any]) -> None:
         """Load graph from dictionary format."""
         # Clear existing graph

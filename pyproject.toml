@@ -271,7 +271,7 @@ include = ["semantica*", "integrations*"]
 [tool.setuptools.package-data]
 # Explicit patterns are more reliable than **/* across setuptools versions.
 # static/* covers index.html / favicon; static/assets/* covers all JS/CSS chunks.
-"semantica" = ["static/*", "static/assets/*"]
+"semantica" = ["static/*", "static/assets/*", "ontology/vocabulary/*.ttl"]
 
 [tool.black]
 line-length = 88
