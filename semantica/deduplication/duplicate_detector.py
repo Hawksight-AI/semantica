@@ -278,8 +278,12 @@ class DuplicateDetector:
             for i, (entity1, entity2, score) in enumerate(similarities):
                 candidate = self._create_duplicate_candidate(entity1, entity2, score)
 
-                # Filter by confidence threshold
-                if candidate.confidence >= self.confidence_threshold:
+                # Filter by confidence threshold; type mismatches are excluded
+                # structurally so no threshold value can admit them.
+                if (
+                    candidate.confidence >= self.confidence_threshold
+                    and "type_mismatch" not in candidate.reasons
+                ):
                     candidates.append(candidate)
 
                 remaining = total_similarities - (i + 1)
@@ -624,8 +628,12 @@ class DuplicateDetector:
                             new_entity, existing_entity, similarity.score
                         )
 
-                        # Filter by confidence threshold
-                        if candidate.confidence >= self.confidence_threshold:
+                        # Filter by confidence threshold; type mismatches are
+                        # excluded structurally regardless of the threshold.
+                        if (
+                            candidate.confidence >= self.confidence_threshold
+                            and "type_mismatch" not in candidate.reasons
+                        ):
                             candidates.append(candidate)
 
                     processed += 1
@@ -723,7 +731,9 @@ class DuplicateDetector:
             if key == "name":
                 return getattr(entity, "text", default)
             if key == "type":
-                return getattr(entity, "label", default)
+                # Entity objects store the type on .type; extraction entities
+                # may expose .label. Missing .label never means "no type".
+                return getattr(entity, "type", default) or getattr(entity, "label", default)
             if key == "properties":
                 # Check metadata for properties
                 metadata = getattr(entity, "metadata", {})

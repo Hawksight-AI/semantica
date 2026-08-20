@@ -12,6 +12,7 @@ from semantica.deduplication.cluster_builder import ClusterBuilder
 from semantica.deduplication.registry import MethodRegistry
 from semantica.deduplication.config import DeduplicationConfig
 from semantica.deduplication.methods import get_deduplication_method
+from semantica.utils.types import Entity
 from semantica.utils.progress_tracker import ConsoleProgressDisplay
 
 class TestDeduplication(unittest.TestCase):
@@ -135,6 +136,36 @@ class TestDeduplication(unittest.TestCase):
         duplicates = detector.detect_duplicates(entities)
         self.assertTrue(
             duplicates, "Untyped same-name entities must still be detected as duplicates"
+        )
+
+    def test_entity_objects_different_types_not_duplicates(self):
+        """Entity objects expose their type via .type, not .label (issue #1137)."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.0
+        )
+        entities = [
+            Entity(id="e1", text="Alice", type="Person"),
+            Entity(id="e2", text="Acme", type="Organization"),
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertEqual(
+            duplicates, [],
+            "Entity objects with different types must never be detected as duplicates",
+        )
+
+    def test_zero_threshold_still_excludes_type_mismatch(self):
+        """Type mismatch must be excluded structurally, not just by confidence 0."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.0
+        )
+        entities = [
+            {"id": "e1", "type": "Person", "name": "Alice", "text": "Alice"},
+            {"id": "e2", "type": "Organization", "name": "Acme", "text": "Acme"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertEqual(
+            duplicates, [],
+            "Different-type candidates must be excluded even with confidence_threshold=0.0",
         )
         
     def test_entity_merger(self):
