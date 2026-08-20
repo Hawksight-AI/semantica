@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type CSSProperties } from "react";
+import { useState, useRef, useEffect, useId, type CSSProperties, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, Code2, Eye, ExternalLink, Image as ImageIcon } from "lucide-react";
@@ -51,6 +51,50 @@ export function MarkdownContentViewer({
     }
   }
 
+  // useId (not hardcoded strings) so the ids stay unique if more than one viewer
+  // is ever mounted at once — the same pattern GraphWorkspace uses for its search
+  // combobox. Hardcoded ids would collide silently in that case.
+  const baseId = useId();
+  const previewTabId = `${baseId}-tab-preview`;
+  const sourceTabId = `${baseId}-tab-source`;
+  const panelId = `${baseId}-panel`;
+
+  // Roving tabindex: the tablist is one Tab stop and arrows move focus within it.
+  // Focus is tracked separately from selection because activation is manual (see
+  // handleTabKeyDown), so a tab can hold focus without being the selected one.
+  const [focusedMode, setFocusedMode] = useState<"preview" | "source">(defaultMode);
+  const previewTabRef = useRef<HTMLButtonElement>(null);
+  const sourceTabRef = useRef<HTMLButtonElement>(null);
+
+  const focusTab = (mode: "preview" | "source") => {
+    setFocusedMode(mode);
+    (mode === "preview" ? previewTabRef : sourceTabRef).current?.focus();
+  };
+
+  const selectMode = (mode: "preview" | "source") => {
+    setActiveMode(mode);
+    setFocusedMode(mode);
+  };
+
+  // Manual activation (APG permits it, and here it is required): arrows move
+  // focus only, Enter/Space activates via the native button click. Automatic
+  // activation would re-run the full markdown parse on every arrow keypress —
+  // measured at 385ms for a 1000-row GFM table and 1.4s at 2000 rows (#1118).
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const order = ["preview", "source"] as const;
+    const current = order.indexOf(focusedMode);
+    let next: "preview" | "source";
+    switch (event.key) {
+      case "ArrowRight": next = order[(current + 1) % order.length]; break;
+      case "ArrowLeft": next = order[(current - 1 + order.length) % order.length]; break;
+      case "Home": next = order[0]; break;
+      case "End": next = order[order.length - 1]; break;
+      default: return;
+    }
+    event.preventDefault();
+    focusTab(next);
+  };
+
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clean up any outstanding timeout on unmount.
@@ -82,12 +126,17 @@ export function MarkdownContentViewer({
   return (
     <div className={className} style={viewerContainerStyle}>
       <div style={viewerHeaderStyle}>
-        <div style={{ display: "flex", gap: 4 }} role="tablist">
+        <div style={{ display: "flex", gap: 4 }} role="tablist" aria-label="Content view mode">
           <button
             type="button"
             role="tab"
+            id={previewTabId}
+            ref={previewTabRef}
             aria-selected={activeMode === "preview"}
-            onClick={() => setActiveMode("preview")}
+            aria-controls={panelId}
+            tabIndex={focusedMode === "preview" ? 0 : -1}
+            onClick={() => selectMode("preview")}
+            onKeyDown={handleTabKeyDown}
             style={{ ...tabBtnStyle, ...(activeMode === "preview" ? activeTabBtnStyle : {}) }}
           >
             <Eye size={12} style={{ marginRight: 5 }} />
@@ -96,8 +145,13 @@ export function MarkdownContentViewer({
           <button
             type="button"
             role="tab"
+            id={sourceTabId}
+            ref={sourceTabRef}
             aria-selected={activeMode === "source"}
-            onClick={() => setActiveMode("source")}
+            aria-controls={panelId}
+            tabIndex={focusedMode === "source" ? 0 : -1}
+            onClick={() => selectMode("source")}
+            onKeyDown={handleTabKeyDown}
             style={{ ...tabBtnStyle, ...(activeMode === "source" ? activeTabBtnStyle : {}) }}
           >
             <Code2 size={12} style={{ marginRight: 5 }} />
@@ -122,7 +176,19 @@ export function MarkdownContentViewer({
         )}
       </div>
 
-      <div style={viewerBodyStyle}>
+      {/* Both tabs point aria-controls at this one panel: only the active view is
+          ever rendered, so per-tab panel ids would leave the inactive tab
+          referencing an element that is not in the DOM. Wrapping all three
+          branches — including the empty state — keeps the reference resolvable.
+          tabIndex 0 because the panel is a scroll container (viewerBodyStyle caps
+          its height), so keyboard users need to be able to focus and scroll it. */}
+      <div
+        style={viewerBodyStyle}
+        role="tabpanel"
+        id={panelId}
+        aria-labelledby={activeMode === "preview" ? previewTabId : sourceTabId}
+        tabIndex={0}
+      >
         {!hasContent ? (
           <div style={emptyTextStyle}>No content available for this node.</div>
         ) : activeMode === "source" ? (

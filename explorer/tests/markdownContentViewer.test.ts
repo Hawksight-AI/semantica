@@ -262,3 +262,93 @@ test("copy button always starts in un-copied state on initial render", () => {
   assert.equal(html.includes("Copy"), true, "Copy button must be present on initial render");
   assert.equal(html.includes("Copied"), false, "Copied indicator must NOT be present on initial render");
 });
+
+// ─── #1117: complete ARIA tab/tabpanel relationship ─────────────────────────
+// The tabs previously exposed role/aria-selected but never connected to the
+// panel, so assistive tech could not tell which content the tabs controlled.
+// These assertions read the rendered HTML, matching the aria-label precedent
+// used by the GFM footnote tests above.
+
+/** Pull an attribute value out of the element carrying a given marker attribute. */
+function attrOf(html: string, elementMarker: string, attr: string): string | null {
+  const idx = html.indexOf(elementMarker);
+  if (idx === -1) return null;
+  const tagStart = html.lastIndexOf("<", idx);
+  const tag = html.slice(tagStart, html.indexOf(">", idx) + 1);
+  const m = tag.match(new RegExp(`${attr}="([^"]*)"`));
+  return m ? m[1] : null;
+}
+
+test("each tab is wired to the panel and the panel back to the active tab", () => {
+  const html = renderToString(React.createElement(MarkdownContentViewer, {
+    content: "# Node\n\nBody text.",
+    defaultMode: "preview",
+  }));
+
+  const panelId = attrOf(html, 'role="tabpanel"', "id");
+  assert.ok(panelId, "panel must carry an id");
+
+  // Both tabs must reference the panel that actually exists in the DOM.
+  const controls = [...html.matchAll(/aria-controls="([^"]*)"/g)].map((m) => m[1]);
+  assert.equal(controls.length, 2, "both tabs must declare aria-controls");
+  for (const c of controls) {
+    assert.equal(c, panelId, "aria-controls must resolve to the rendered panel");
+  }
+
+  // The panel must be labelled by the *selected* tab.
+  const labelledBy = attrOf(html, 'role="tabpanel"', "aria-labelledby");
+  const selectedTabId = attrOf(html, 'aria-selected="true"', "id");
+  assert.ok(selectedTabId, "selected tab must carry an id");
+  assert.equal(labelledBy, selectedTabId, "panel must be labelled by the selected tab");
+});
+
+test("panel labelling follows the active tab in source mode", () => {
+  const html = renderToString(React.createElement(MarkdownContentViewer, {
+    content: "# Node\n\nBody text.",
+    defaultMode: "source",
+  }));
+  const labelledBy = attrOf(html, 'role="tabpanel"', "aria-labelledby");
+  const selectedTabId = attrOf(html, 'aria-selected="true"', "id");
+  // Assert both are present before comparing — otherwise null === null would
+  // make this pass against a component with no tab wiring at all.
+  assert.ok(labelledBy, "panel must declare aria-labelledby");
+  assert.ok(selectedTabId, "selected tab must carry an id");
+  assert.equal(labelledBy, selectedTabId);
+  assert.equal(selectedTabId.endsWith("-tab-source"), true, "source tab must be the selected one");
+});
+
+// The empty state is a third render branch. If the panel only existed on the two
+// content branches, aria-controls would dangle for empty nodes.
+test("tabpanel is still rendered, and aria-controls still resolves, when empty", () => {
+  const html = renderToString(React.createElement(MarkdownContentViewer, { content: "" }));
+  assert.equal(html.includes("No content available for this node."), true);
+  const panelId = attrOf(html, 'role="tabpanel"', "id");
+  assert.ok(panelId, "empty state must still render the tabpanel");
+  const controls = [...html.matchAll(/aria-controls="([^"]*)"/g)].map((m) => m[1]);
+  assert.equal(controls.length, 2);
+  assert.deepEqual([...new Set(controls)], [panelId], "aria-controls must not dangle on the empty state");
+});
+
+test("tablist is a single tab stop via roving tabindex", () => {
+  const html = renderToString(React.createElement(MarkdownContentViewer, {
+    content: "# Node",
+    defaultMode: "preview",
+  }));
+  const tabIndexes = [...html.matchAll(/role="tab"[^>]*/g)].map((m) => m[0].match(/tabindex="(-?\d+)"/)?.[1]);
+  assert.equal(tabIndexes.filter((t) => t === "0").length, 1, "exactly one tab may be reachable via Tab");
+  assert.equal(tabIndexes.filter((t) => t === "-1").length, 1, "the other tab must be removed from tab order");
+});
+
+test("ids are unique per instance so two mounted viewers cannot collide", () => {
+  const one = renderToString(React.createElement(MarkdownContentViewer, { content: "# A" }));
+  const two = renderToString(React.createElement(
+    "div",
+    null,
+    React.createElement(MarkdownContentViewer, { content: "# A" }),
+    React.createElement(MarkdownContentViewer, { content: "# B" }),
+  ));
+  assert.ok(attrOf(one, 'role="tabpanel"', "id"));
+  const panelIds = [...two.matchAll(/role="tabpanel" id="([^"]*)"/g)].map((m) => m[1]);
+  assert.equal(panelIds.length, 2, "both viewers must render a panel");
+  assert.notEqual(panelIds[0], panelIds[1], "panel ids must differ between instances");
+});
