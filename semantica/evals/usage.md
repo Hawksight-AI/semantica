@@ -94,7 +94,7 @@ verdict at the run level, configure an **objective** per evaluator name:
 ```python
 from semantica.evals import evaluate
 
-# Require a minimum similarity (default direction is maximize):
+# Require a minimum similarity (levenshtein's default bar is >= 0.8; here we set 0.7):
 evaluate(
     [("apple", "aple")],
     evaluators=["levenshtein"],
@@ -108,7 +108,7 @@ evaluate(
     config={"levenshtein": {"objective": {"direction": "minimize", "threshold": 0.7}}},
 )
 
-# Boolean expectation on a 0/1 metric:
+# Boolean expectation — the metric matches (score 1), but we expect it not to:
 evaluate(
     [("ok", "ok")],
     evaluators=["exact_match"],
