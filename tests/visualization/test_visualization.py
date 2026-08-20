@@ -1,27 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, patch, ANY
-import sys
-import types
-
-# Helper to create a mock package
-def mock_package(name):
-    m = MagicMock()
-    m.__path__ = []
-    sys.modules[name] = m
-    return m
-
-# Mock libraries before importing module under test
-# We need to ensure matplotlib behaves like a package for seaborn
-sys.modules['matplotlib'] = MagicMock()
-sys.modules['matplotlib.colors'] = MagicMock()
-sys.modules['matplotlib.pyplot'] = MagicMock()
-sys.modules['matplotlib.patches'] = MagicMock()
-sys.modules['plotly'] = MagicMock()
-sys.modules['plotly.express'] = MagicMock()
-sys.modules['plotly.graph_objects'] = MagicMock()
-sys.modules['plotly.subplots'] = MagicMock()
-sys.modules['graphviz'] = MagicMock()
-sys.modules['seaborn'] = MagicMock()
+from unittest.mock import MagicMock, patch
 
 from semantica.visualization.kg_visualizer import KGVisualizer
 from semantica.visualization.ontology_visualizer import OntologyVisualizer
