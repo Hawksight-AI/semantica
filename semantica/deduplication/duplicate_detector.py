@@ -757,6 +757,25 @@ class DuplicateDetector:
         reasons = []
         confidence = similarity_score
 
+        # Check entity type mismatch first: two entities with different
+        # explicit types are not duplicates, whatever their similarity.
+        entity_type1 = self._get_entity_value(entity1, "type")
+        entity_type2 = self._get_entity_value(entity2, "type")
+        if entity_type1 and entity_type2 and entity_type1 != entity_type2:
+            return DuplicateCandidate(
+                entity1=entity1,
+                entity2=entity2,
+                similarity_score=similarity_score,
+                confidence=0.0,
+                reasons=["type_mismatch"],
+                metadata={
+                    "name_match": False,
+                    "common_properties": 0,
+                    "type_match": False,
+                    "type_mismatch": True,
+                },
+            )
+
         # Check for exact name match (strong indicator)
         name1 = str(self._get_entity_value(entity1, "name", "")).lower().strip()
         name2 = str(self._get_entity_value(entity2, "name", "")).lower().strip()
@@ -779,9 +798,8 @@ class DuplicateDetector:
                 # Boost confidence for each matching property
                 confidence += 0.05 * prop_matches
 
-        # Check entity type match
-        entity_type1 = self._get_entity_value(entity1, "type")
-        entity_type2 = self._get_entity_value(entity2, "type")
+        # Check entity type match (only boosts when types are equal; mismatch
+        # is handled above)
         if entity_type1 and entity_type2 and entity_type1 == entity_type2:
             reasons.append("same_type")
             confidence += 0.05
