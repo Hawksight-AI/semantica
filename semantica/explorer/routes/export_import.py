@@ -233,6 +233,30 @@ async def import_file(
     )
 
 
+#: Aliases kept identical to `mcp/tools/export.py::_FORMAT_ALIASES` on purpose: the two
+#: surfaces of one product should not disagree about what "ttl" means.
+_RDF_FORMATS: dict[str, str] = {
+    "ttl": "turtle",
+    "turtle": "turtle",
+    "nt": "nt",
+    "ntriples": "nt",
+    "n-triples": "nt",
+    "xml": "xml",
+    "rdfxml": "xml",
+    "rdf-xml": "xml",
+    "json-ld": "json-ld",
+    "jsonld": "json-ld",
+}
+
+#: Media type and file extension per rdflib serializer name.
+_RDF_MEDIA_TYPES: dict[str, tuple[str, str]] = {
+    "turtle": ("text/turtle", "ttl"),
+    "nt": ("application/n-triples", "nt"),
+    "xml": ("application/rdf+xml", "rdf"),
+    "json-ld": ("application/ld+json", "jsonld"),
+}
+
+
 @router.post("/api/export")
 async def export_graph(
     body: ExportRequest,
@@ -267,8 +291,35 @@ async def export_graph(
         content = output.getvalue()
         media_type = "text/csv"
         extension = "csv"
+    elif fmt in _RDF_FORMATS:
+        # Reuses `semantica.export`, the same exporters the MCP `export_graph` tool calls.
+        # Before this, the Explorer answered 422 for every RDF format while the MCP surface
+        # offered them, so a graph could be loaded as JSON-LD and never exported back — the
+        # round trip had to leave the product. See #1131.
+        try:
+            from semantica.export import RDFExporter
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise HTTPException(
+                status_code=503,
+                detail=f"RDF export unavailable: {exc}",
+            ) from exc
+        content = RDFExporter().export_to_rdf(graph_dict, format=_RDF_FORMATS[fmt])
+        media_type, extension = _RDF_MEDIA_TYPES[_RDF_FORMATS[fmt]]
+    elif fmt == "graphml":
+        try:
+            from semantica.export import GraphMLExporter
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise HTTPException(status_code=503, detail=f"GraphML export unavailable: {exc}") from exc
+        content = GraphMLExporter().export(graph_dict)
+        media_type, extension = "application/xml", "graphml"
     else:
-        raise HTTPException(status_code=422, detail=f"Unsupported export format '{fmt}'")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Unsupported export format '{fmt}'. "
+                f"Supported: {', '.join(sorted({'json', 'csv', 'graphml'} | set(_RDF_FORMATS)))}"
+            ),
+        )
 
     return Response(
         content=content,

@@ -715,6 +715,57 @@ class TestImportExport:
         assert response.status_code == 200
         assert "text/csv" in response.headers["content-type"].lower()
 
+    @pytest.mark.parametrize(
+        "fmt,rdflib_format",
+        [
+            ("turtle", "turtle"),
+            ("ttl", "turtle"),
+            ("nt", "nt"),
+            ("ntriples", "nt"),
+            ("xml", "xml"),
+            ("jsonld", "json-ld"),
+            ("json-ld", "json-ld"),
+        ],
+    )
+    def test_export_rdf_formats(self, client, fmt, rdflib_format):
+        """The Explorer used to answer 422 for every RDF format while the MCP
+        `export_graph` tool offered them, so a graph could be loaded as JSON-LD and never
+        exported back (#1131).
+
+        Parsed with a real RDF parser rather than asserted on strings: a response that
+        merely *looks* like Turtle is what makes this class of gap survive a test suite.
+        """
+        rdflib = pytest.importorskip("rdflib")
+
+        response = client.post("/api/export", json={"format": fmt})
+
+        assert response.status_code == 200, response.text
+        graph = rdflib.Graph()
+        graph.parse(data=response.text, format=rdflib_format)
+        assert len(graph) > 0, f"{fmt} export parsed to zero triples"
+
+    def test_export_aliases_agree_with_the_mcp_tool(self):
+        """The two surfaces of one product should not disagree about what `ttl` means.
+        Canary: if either alias table drifts, the formats a caller can use depend on which
+        door they came through."""
+        from mcp.tools.export import _FORMAT_ALIASES
+        from semantica.explorer.routes.export_import import _RDF_FORMATS
+
+        for alias, canonical in _FORMAT_ALIASES.items():
+            assert _RDF_FORMATS.get(alias) == canonical, (
+                f"alias {alias!r} resolves to {_RDF_FORMATS.get(alias)!r} in the Explorer "
+                f"and {canonical!r} in the MCP tool"
+            )
+
+    def test_unsupported_format_names_what_is_supported(self, client):
+        """The old message said only that the format was unsupported, which reads as 'this
+        format does not exist' rather than 'this door does not open it'."""
+        response = client.post("/api/export", json={"format": "no-such-format"})
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert "turtle" in detail and "json" in detail
+
     def test_import_json_with_edge_metadata(self, client):
         payload = json.dumps(
             {
