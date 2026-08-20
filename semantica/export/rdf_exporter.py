@@ -600,11 +600,13 @@ class RDFSerializer:
         # Convert entities to JSON-LD
         entities = rdf_data.get("entities", [])
         for entity in entities:
-            # Generate @id if not provided
-            entity_id = entity.get("id")
-            if not entity_id:
-                entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity/{entity_text}"
+            # Generate @id if not provided. Minted the same way the Turtle and
+            # N-Triples paths mint it (#1101), so one knowledge graph carries
+            # the same node identity whichever serializer wrote it. The former
+            # f"semantica:entity/{text}" interpolated the raw text into an IRI:
+            # any entity whose text contained a space produced an invalid IRI
+            # and was dropped in full by a JSON-LD parser, silently.
+            entity_id = entity.get("id") or mint_entity_iri(entity.get("text", ""))
 
             jsonld["@graph"].append(
                 {
@@ -617,24 +619,22 @@ class RDFSerializer:
 
         # Convert relationships to JSON-LD
         relationships = rdf_data.get("relationships", [])
-        for rel in relationships:
-            # Generate @id if not provided
-            rel_id = rel.get("id")
-            if not rel_id:
-                source_id = rel.get("source_id", "")
-                target_id = rel.get("target_id", "")
-                rel_id = f"semantica:rel/{source_id}_{target_id}"
+        for index, rel in enumerate(relationships):
+            # Endpoints are resolved both ways, as serialize_to_turtle resolves
+            # them: a relationship carrying source/target rather than
+            # source_id/target_id used to hash into f"semantica:rel/_", so every
+            # such relationship in an export collapsed onto one node and their
+            # types and endpoints merged.
+            source = rel.get("source_id") or rel.get("source", "")
+            target = rel.get("target_id") or rel.get("target", "")
+            rel_id = rel.get("id") or mint_relationship_iri(index, source, target)
 
             jsonld["@graph"].append(
                 {
                     "@id": rel_id,
                     "@type": "semantica:Relationship",
-                    "semantica:source": {
-                        "@id": rel.get("source_id") or rel.get("source")
-                    },
-                    "semantica:target": {
-                        "@id": rel.get("target_id") or rel.get("target")
-                    },
+                    "semantica:source": {"@id": source},
+                    "semantica:target": {"@id": target},
                     "semantica:type": rel.get("type", "related_to"),
                 }
             )

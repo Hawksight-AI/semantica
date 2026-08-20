@@ -25,12 +25,11 @@ License: MIT
 
 import html
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory
+from ..utils.helpers import ensure_directory, utc_now_iso
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
@@ -252,7 +251,7 @@ class ReportGenerator:
         # Build report data with summary
         report_data = {
             "title": "Quality Assurance Report",
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": utc_now_iso(),
             "metrics": quality_metrics,
             "summary": self._generate_quality_summary(quality_metrics),
         }
@@ -278,7 +277,7 @@ class ReportGenerator:
         """
         report_data = {
             "title": "Analysis Report",
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": utc_now_iso(),
             "analysis": analysis_results,
             "summary": self._generate_analysis_summary(analysis_results),
         }
@@ -304,7 +303,7 @@ class ReportGenerator:
         """
         report_data = {
             "title": "Framework Metrics Report",
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": utc_now_iso(),
             "metrics": metrics,
             "summary": self._generate_metrics_summary(metrics),
         }

@@ -118,10 +118,12 @@ sem:relationships a owl:ObjectProperty ;
 
 sem:exportedAt a owl:DatatypeProperty ;
     rdfs:label "exported at" ;
-    rdfs:comment """When the export was written. Emitted as an ISO 8601 local
-timestamp, so the range is xsd:dateTime rather than xsd:dateTimeStamp: the
-values carry no timezone offset.""" ;
-    rdfs:range xsd:dateTime ;
+    rdfs:comment """When the export was written, as an ISO 8601 timestamp with
+an explicit UTC offset. The range was xsd:dateTime while the exporters stamped
+with a naive datetime.now(); with the offset present (#1114) the value is a
+determinate instant, comparable against a timestamp written anywhere else, so
+the range is the stricter xsd:dateTimeStamp, which requires the offset.""" ;
+    rdfs:range xsd:dateTimeStamp ;
     rdfs:isDefinedBy <https://semantica.dev/ns> .
 
 sem:format a owl:DatatypeProperty ;
