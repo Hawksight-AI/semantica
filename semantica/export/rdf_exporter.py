@@ -323,6 +323,17 @@ class RDFSerializer:
 
         return rdf_data
 
+    @staticmethod
+    def _escape_turtle_literal(value: str) -> str:
+        """Escape a string value for safe embedding in a Turtle string literal."""
+        return (
+            value.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
+
     # OWL-Time namespace URI
     _OWL_TIME_NS = "http://www.w3.org/2006/time#"
 
@@ -365,6 +376,8 @@ class RDFSerializer:
         include_temporal: bool = options.pop("include_temporal", False)
         time_axis: str = options.pop("time_axis", "valid")
 
+        rdf_data = self.convert_kg_to_rdf(rdf_data)
+
         lines = []
 
         # Namespace declarations — always emit core prefixes; add OWL-Time when needed
@@ -398,7 +411,7 @@ class RDFSerializer:
             confidence = entity.get("confidence", 1.0)
 
             lines.append(f"<{entity_id}> a <{entity_type}> ;")
-            lines.append(f'    semantica:text "{text}" ;')
+            lines.append(f'    semantica:text "{self._escape_turtle_literal(text)}" ;')
             lines.append(f"    semantica:confidence {confidence} .")
             lines.append("")
 
@@ -510,6 +523,7 @@ class RDFSerializer:
             ... }
             >>> rdfxml = serializer.serialize_to_rdfxml(rdf_data)
         """
+        rdf_data = self.convert_kg_to_rdf(rdf_data)
         lines = ['<?xml version="1.0" encoding="UTF-8"?>']
         lines.append('<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"')
         lines.append('         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"')
@@ -581,6 +595,8 @@ class RDFSerializer:
             >>> jsonld = serializer.serialize_to_jsonld(rdf_data)
         """
         import json
+
+        rdf_data = self.convert_kg_to_rdf(rdf_data)
 
         # Initialize JSON-LD structure with context
         jsonld = {
@@ -655,6 +671,7 @@ class RDFSerializer:
         Returns:
             String containing N-Triples serialization
         """
+        rdf_data = self.convert_kg_to_rdf(rdf_data)
         lines = []
 
         def expand_uri(uri: str) -> str:
@@ -692,7 +709,7 @@ class RDFSerializer:
             # Text property
             text = entity.get("text") or entity.get("label", "")
             if text:
-                safe_text = text.replace('"', '\\"').replace("\n", "\\n")
+                safe_text = self._escape_turtle_literal(text)
                 lines.append(
                     f'{subject} {expand_uri("semantica:text")} "{safe_text}" .'
                 )
