@@ -1289,9 +1289,9 @@ docling-parse==7.12.1 \
     --hash=sha256:ff5ac71bc2a702cbc7bd4fd7c2fcbf6af483c982af4bae36fb727a9db169a849 \
     --hash=sha256:fff030c85eb85fc6589bdabc64bdc58a0c82cd6e0870ff9cf55114be525f46f5
     # via docling-slim
-docling-slim==2.119.0 \
-    --hash=sha256:7b4ee3891e536403f07b6ab702bc757d6c3e4fe146475656d97cf911ac96db8f \
-    --hash=sha256:ca385bc6b0ca99a4f0bba07feaa4c0fc4d5fa685a22184baa79de4bd87598323
+docling-slim==2.120.3 \
+    --hash=sha256:a36c920b6d59a577cbda066089aee8c250da92d69551c7683ad2e043fae83728 \
+    --hash=sha256:d09a7cb93c47f3fc92061265a21382b31ae293c8fd012fe1b6a2970dc52e2e8d
     # via docling
 docstring-parser==0.18.0 \
     --hash=sha256:292510982205c12b1248696f44959db3cdd1740237a968ea1e2e7a900eeb2015 \
