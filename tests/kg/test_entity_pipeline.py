@@ -34,13 +34,6 @@ def test_full_entity_pipeline():
     }
     graph_data = builder.build(sources=sources)
     
-    # DEBUG: Print graph_data keys and entities count
-    print(f"DEBUG: graph_data keys: {list(graph_data.keys())}")
-    print(f"DEBUG: Entities count: {len(graph_data.get('entities', []))}")
-    print(f"DEBUG: Relationships count: {len(graph_data.get('relationships', []))}")
-    if graph_data.get('entities'):
-        print(f"DEBUG: First entity: {graph_data['entities'][0]}")
-
     # Verify graph data contains the entities and normalized relationships
     assert len(graph_data["entities"]) >= 3
     assert len(graph_data["relationships"]) == 3
@@ -196,6 +189,37 @@ def test_entity_merge_repairs_stale_alias_for_canonical_endpoint():
     assert relationship["source_id"] == "alice:1"
     assert relationship["target"] == "org:1"
     assert relationship["target_id"] == "org:1"
+
+
+def test_entity_merge_remaps_both_stale_endpoint_aliases():
+    """Both endpoint fields must be remapped when they start with an old ID."""
+    graph = GraphBuilder(
+        merge_entities=True,
+        entity_resolution_strategy="exact",
+        resolve_conflicts=False,
+    ).build(
+        {
+            "entities": [
+                {"entity_id": "alice:1", "name": "Alice", "type": "Person"},
+                {"entity_id": "alice:2", "name": " Alice ", "type": "Person"},
+                {"entity_id": "org:1", "name": "Acme", "type": "Organization"},
+            ],
+            "relationships": [
+                {
+                    "source": "alice:2",
+                    "source_id": "alice:2",
+                    "target": "org:1",
+                    "type": "WORKS_FOR",
+                }
+            ],
+        }
+    )
+
+    relationship = graph["relationships"][0]
+
+    assert relationship["source"] == "alice:1"
+    assert relationship["source_id"] == "alice:1"
+    assert relationship["target"] == "org:1"
 
 if __name__ == "__main__":
     test_full_entity_pipeline()
