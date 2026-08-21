@@ -6,11 +6,12 @@ import asyncio
 import logging
 import time
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from ...utils.helpers import classify_path_distance
 from ..dependencies import get_session
@@ -260,14 +261,19 @@ async def _find_path_impl(
     if path_finder is None:
         raise HTTPException(status_code=503, detail="PathFinder not available; KG extras may not be installed.")
 
-    graph_dict = await asyncio.to_thread(session.build_graph_dict)
+    # Pass the live ContextGraph (which exposes has_node/neighbors/get_edge_data)
+    # to PathFinder.  build_graph_dict() returns a plain {"entities","relationships"}
+    # dict whose keys are not node ids, so PathFinder._node_exists() would reject
+    # every node and the call would 404.  The enrichment below still uses
+    # build_graph_dict() because it iterates the "relationships" list directly.
+    graph = session.graph
     path_fn = (
         path_finder.dijkstra_shortest_path
         if algorithm == _PathAlgorithm.dijkstra
         else path_finder.bfs_shortest_path
     )
     try:
-        result = await asyncio.to_thread(path_fn, graph_dict, source, target, directed=directed)
+        result = await asyncio.to_thread(path_fn, graph, source, target, directed=directed)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"No path found from '{source}' to '{target}': {exc}")
 
@@ -390,7 +396,7 @@ async def find_path_by_query(
     source: str = Query(..., description="Source node ID"),
     target: str = Query(..., description="Target node ID"),
     algorithm: _PathAlgorithm = Query(_PathAlgorithm.bfs, description="Algorithm: bfs or dijkstra"),
-    directed: bool = Query(True, description="If false, treat edges as undirected for traversal"),
+    directed: bool = Query(False, description="If false, treat edges as undirected for traversal"),
     session: GraphSession = Depends(get_session),
 ):
     return await _find_path_impl(source, target, algorithm, directed, session)
@@ -401,7 +407,7 @@ async def find_path(
     node_id: str,
     target: str = Query(..., description="Target node ID"),
     algorithm: _PathAlgorithm = Query(_PathAlgorithm.bfs, description="Algorithm: bfs or dijkstra"),
-    directed: bool = Query(True, description="If false, treat edges as undirected for traversal"),
+    directed: bool = Query(False, description="If false, treat edges as undirected for traversal"),
     session: GraphSession = Depends(get_session),
 ):
     """Deprecated path-segment route kept for backward compatibility.
@@ -653,3 +659,54 @@ async def graph_stats(
 ):
     stats = await asyncio.to_thread(session.get_stats)
     return GraphStatsResponse(**stats)
+
+
+class GraphSyncRequest(BaseModel):
+    """Incremental mutation batch pushed by the MCP server.
+
+    ``nodes``/``edges`` use the same dict shapes as ``save_to_file`` /
+    ``load_from_file`` (``ContextNode.to_dict()`` / ``ContextEdge.to_dict()``),
+    so they round-trip through ``session.add_nodes_and_edges`` unchanged.
+    """
+
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+    deleted: List[str] = []
+
+
+@router.post("/sync")
+async def sync_graph(
+    body: GraphSyncRequest,
+    session: GraphSession = Depends(get_session),
+):
+    """Accept a mutation batch from the MCP server and apply it to the graph.
+
+    The applied mutations are atomically persisted to the shared JSON file and
+    broadcast over the WebSocket channel, so the frontend updates live.
+    """
+    nodes_added, edges_added = 0, 0
+    if body.nodes or body.edges:
+        nodes_added, edges_added = await asyncio.to_thread(
+            session.add_nodes_and_edges, body.nodes, body.edges
+        )
+
+    deleted: List[str] = []
+    mutation_cb = getattr(session.graph, "mutation_callback", None)
+    for node_id in body.deleted:
+        result = session.graph.delete_node(node_id=node_id, cascade_edges=True)
+        if result.get("node_found"):
+            deleted.append(node_id)
+            if callable(mutation_cb):
+                try:
+                    mutation_cb("DELETE_NODE", node_id, {})
+                except Exception:  # noqa: BLE001
+                    pass
+    if deleted:
+        session.persist()
+
+    return {
+        "status": "ok",
+        "nodes_added": nodes_added,
+        "edges_added": edges_added,
+        "deleted": deleted,
+    }

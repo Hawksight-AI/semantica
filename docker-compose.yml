@@ -13,11 +13,18 @@ services:
       SEMANTICA_API_KEY: ${SEMANTICA_API_KEY:-}
       # Trusted local-only setups only: bypasses the API key entirely.
       SEMANTICA_ALLOW_ANONYMOUS: ${SEMANTICA_ALLOW_ANONYMOUS:-false}
+      # Shared JSON persistence (docker volume shared with the MCP server).
+      # The Explorer loads the graph from here on start and persists every
+      # mutation back to it, so MCP-created nodes/relationships/decisions
+      # survive restarts and stay visible in the platform.
+      SEMANTICA_KG_PATH: ${SEMANTICA_MCP_KG_PATH:-/shared/kg.json}
     depends_on:
       falkordb:
         condition: service_started
     ports:
       - "8000:8000"
+    volumes:
+      - kg_shared:/shared
     networks:
       - semantica
     restart: unless-stopped
@@ -32,9 +39,30 @@ services:
       - semantica
     restart: unless-stopped
 
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    image: semantica-mcp:latest
+    environment:
+      # Pull the platform graph snapshot from the explorer API on start.
+      SEMANTICA_SYNC_PLATFORM: ${SEMANTICA_MCP_SYNC_PLATFORM:-true}
+      # Shared JSON persistence volume (same file the Explorer loads/persists).
+      SEMANTICA_KG_PATH: ${SEMANTICA_MCP_KG_PATH:-/shared/kg.json}
+      # Explorer sync endpoint the MCP server pushes mutations to.
+      SEMANTICA_EXPLORER_URL: ${SEMANTICA_MCP_EXPLORER_URL:-http://explorer:8000}
+    ports:
+      - "8001:8001"
+    volumes:
+      - kg_shared:/shared
+    networks:
+      - semantica
+    restart: unless-stopped
+
 networks:
   semantica:
     driver: bridge
 
 volumes:
   falkordb_data:
+  kg_shared:

@@ -51,7 +51,33 @@ def _classify_prov(node_type: str) -> tuple[str, str]:
     return "Entity", "group_entity"
 
 
-def _add_chain_nodes(chain: List[Any], nodes: List[Dict[str, Any]], seen_nodes: set) -> None:
+def _resolve_graph_label(session: GraphSession, node_id: str, fallback: str) -> str:
+    """Resolve a display label for a lineage node from the live graph.
+
+    Prefers the node's explicit label/name/title property (e.g. set by the MCP
+    ``add_entity`` tool or an import), falls back to its content, then the id.
+    Audit-store entries that only carry an id thus render their real name
+    instead of a bare identifier.
+    """
+    node = session.graph.nodes.get(node_id) if session is not None else None
+    if node is not None:
+        meta = getattr(node, "metadata", None) or {}
+        if isinstance(meta, dict):
+            label = meta.get("label") or meta.get("name") or meta.get("title")
+            if label:
+                return str(label)
+        content = getattr(node, "content", None)
+        if content:
+            return str(content)
+    return str(fallback)
+
+
+def _add_chain_nodes(
+    chain: List[Any],
+    nodes: List[Dict[str, Any]],
+    seen_nodes: set,
+    resolver=None,
+) -> None:
     for entry in chain:
         if not isinstance(entry, dict):
             continue
@@ -61,6 +87,8 @@ def _add_chain_nodes(chain: List[Any], nodes: List[Dict[str, Any]], seen_nodes: 
         seen_nodes.add(eid)
         metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
         label = str(metadata.get("title") or metadata.get("label") or eid)
+        if resolver is not None and label == eid:
+            label = str(resolver(eid, eid))
         prov_type, parent_id = _classify_prov(str(entry.get("entity_type", "entity")))
         nodes.append({
             "id": eid,
@@ -118,6 +146,7 @@ def _transform_audit_lineage(
     lineage: Dict[str, Any],
     node_id: str,
     descendants: Optional[Dict[str, Any]] = None,
+    session: Optional[GraphSession] = None,
 ) -> Dict[str, Any]:
     # Mapping decision (W3C PROV-O to frontend swim-lanes):
     # Every ProvenanceEntry maps to a node classified by _classify_prov(entry["entity_type"]),
@@ -145,8 +174,9 @@ def _transform_audit_lineage(
         or []
     )
 
-    _add_chain_nodes(ancestor_chain, nodes, seen_nodes)
-    _add_chain_nodes(descendant_chain, nodes, seen_nodes)
+    resolver = (lambda nid, fb: _resolve_graph_label(session, nid, fb)) if session is not None else None
+    _add_chain_nodes(ancestor_chain, nodes, seen_nodes, resolver=resolver)
+    _add_chain_nodes(descendant_chain, nodes, seen_nodes, resolver=resolver)
 
     _add_chain_edges(ancestor_chain, edges, seen_edges, "upstream")
     _add_chain_edges(descendant_chain, edges, seen_edges, "downstream")
@@ -158,7 +188,7 @@ def _transform_audit_lineage(
                 prov_type, parent_id = _classify_prov("entity")
                 nodes.append({
                     "id": endpoint,
-                    "label": endpoint,
+                    "label": _resolve_graph_label(session, endpoint, endpoint) if session is not None else endpoint,
                     "prov_type": prov_type,
                     "parent_id": parent_id,
                     "source_document": None,
@@ -198,7 +228,7 @@ def _build_provenance(session: GraphSession, node_id: Optional[str] = None) -> d
                         logger.warning(
                             f"ProvenanceManager get_descendants failed for {node_id}: {exc}"
                         )
-                    return _transform_audit_lineage(lineage, node_id, descendants)
+                    return _transform_audit_lineage(lineage, node_id, descendants, session)
                 logger.warning(
                     f"Provenance integrity verification failed for {node_id}, falling back to graph traversal"
                 )
@@ -234,7 +264,7 @@ def _build_provenance(session: GraphSession, node_id: Optional[str] = None) -> d
         provenance_nodes.append(
             {
                 "id": graph_node_id,
-                "label": node.content or graph_node_id,
+                "label": _resolve_graph_label(session, graph_node_id, graph_node_id),
                 "prov_type": prov_type,
                 "parent_id": parent_id,
             }
@@ -266,7 +296,7 @@ def _build_report(session: GraphSession, node_id: str) -> Dict[str, Any]:
     provenance = _build_provenance(session, node_id)
     return {
         "node_id": node_id,
-        "label": node.get("content", node_id) if node else node_id,
+        "label": (node.get("label") or node.get("content") or node_id) if node else node_id,
         "type": node.get("type", "entity") if node else "entity",
         "properties": node.get("metadata", node.get("properties", {})) if node else {},
         "lineage": provenance,

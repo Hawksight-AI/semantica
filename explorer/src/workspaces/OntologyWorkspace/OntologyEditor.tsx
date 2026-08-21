@@ -22,6 +22,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import { useI18n } from "../../i18n";
 
 type OntologyNodeData = {
   label?: string;
@@ -85,6 +86,7 @@ interface RegistryEntry {
 }
 
 export function OntologyEditor() {
+  const { t } = useI18n();
   const [nodes, setNodes, onNodesChange] = useNodesState<OntologyNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<OntologyEdge>([]);
   const [selectedElement, setSelectedElement] = useState<OntologyNode | OntologyEdge | null>(null);
@@ -105,6 +107,56 @@ export function OntologyEditor() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showContext, setShowContext] = useState<{ x: number; y: number; type: string; element: OntologyNode | OntologyEdge } | null>(null);
+  const [showDraft, setShowDraft] = useState<boolean>(false);
+
+  const pendingCount =
+    draftDiff.added_classes.length +
+    draftDiff.removed_classes.length +
+    Object.keys(draftDiff.modified_classes).length +
+    draftDiff.added_properties.length +
+    draftDiff.removed_properties.length +
+    Object.keys(draftDiff.modified_properties).length +
+    draftDiff.added_restrictions.length +
+    draftDiff.removed_restrictions.length +
+    draftDiff.added_axioms.length +
+    draftDiff.removed_axioms.length +
+    Object.keys(draftDiff.annotation_changes).length;
+
+  const updateAddedRestriction = useCallback(
+    (index: number, patch: Record<string, any>) => {
+      setDraftDiff((prev) => {
+        const next = [...prev.added_restrictions];
+        next[index] = { ...next[index], ...patch };
+        return { ...prev, added_restrictions: next };
+      });
+    },
+    []
+  );
+
+  const removeAddedRestriction = useCallback((index: number) => {
+    setDraftDiff((prev) => ({
+      ...prev,
+      added_restrictions: prev.added_restrictions.filter((_, i) => i !== index),
+    }));
+  }, []);
+
+  const updateAddedAxiom = useCallback(
+    (index: number, patch: Record<string, any>) => {
+      setDraftDiff((prev) => {
+        const next = [...prev.added_axioms];
+        next[index] = { ...next[index], ...patch };
+        return { ...prev, added_axioms: next };
+      });
+    },
+    []
+  );
+
+  const removeAddedAxiom = useCallback((index: number) => {
+    setDraftDiff((prev) => ({
+      ...prev,
+      added_axioms: prev.added_axioms.filter((_, i) => i !== index),
+    }));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +174,51 @@ export function OntologyEditor() {
       cancelled = true;
     };
   }, []);
+
+  // Load the selected ontology's existing graph structure (classes/properties/
+  // edges) as the editable canvas — works for MCP/import-created ontologies
+  // (implicit, graph-derived) as well as explicitly registered ones.
+  useEffect(() => {
+    if (!ontologyUri) return;
+    let cancelled = false;
+    setNodes([]);
+    setEdges([]);
+    fetch(`/api/ontology/${encodeURIComponent(ontologyUri)}/structure`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const members: OntologyNode[] = [
+          ...(data.classes ?? []),
+          ...(data.properties ?? []),
+        ].map((member, index) => ({
+          id: member.id,
+          type: "classNode" as const,
+          position: { x: (index % 4) * 220 + 40, y: Math.floor(index / 4) * 140 + 40 },
+          data: { label: member.label, type: member.type || "owl:Class" },
+        }));
+        const memberIds = new Set(members.map((n) => n.id));
+        const layoutEdges: OntologyEdge[] = (data.edges ?? [])
+          .filter((edge: { source: string; target: string }) =>
+            memberIds.has(edge.source) && memberIds.has(edge.target)
+          )
+          .map((edge: { id: string; source: string; target: string; type?: string }) => ({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            label: edge.type,
+            type: "smoothstep" as const,
+            animated: false,
+          }));
+        setNodes(members);
+        setEdges(layoutEdges);
+      })
+      .catch((error) => {
+        console.error("Failed to load ontology structure:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ontologyUri, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge({ ...params, markerEnd: { type: MarkerType.ArrowClosed } }, eds)),
@@ -145,7 +242,7 @@ export function OntologyEditor() {
 
   const addProperty = useCallback(() => {
     if (nodes.length < 2) {
-      alert("Add at least two classes before creating a property edge.");
+      alert(t('onto.alertNeedClasses'));
       return;
     }
     const newId = `prop_${Date.now()}`;
@@ -199,7 +296,7 @@ export function OntologyEditor() {
 
   const saveDraft = useCallback(async () => {
     if (!ontologyUri) {
-      alert("Please select an ontology first");
+      alert(t('onto.alertSelectOntology'));
       return;
     }
     setIsSaving(true);
@@ -216,11 +313,11 @@ export function OntologyEditor() {
       });
       if (response.ok) {
         const data = await response.json();
-        alert(`Draft saved: ${data.draft_id}`);
+        alert(t('onto.draftSaved', { id: data.draft_id }));
       }
     } catch (error) {
       console.error("Failed to save draft:", error);
-      alert("Failed to save draft");
+      alert(t('onto.draftFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -262,7 +359,7 @@ export function OntologyEditor() {
   const renameSelected = useCallback(() => {
     const target = showContext?.element ?? selectedElement;
     if (target && !("source" in target)) {
-      const newLabel = prompt("Enter new name:", String(target.data.label ?? ""));
+      const newLabel = prompt(t('onto.renamePrompt'), String(target.data.label ?? ""));
       if (newLabel) {
         setNodes((nds) =>
           nds.map((n) => (n.id === target.id ? { ...n, data: { ...n.data, label: newLabel } } : n))
@@ -351,16 +448,105 @@ export function OntologyEditor() {
     backdropFilter: "blur(18px)",
   };
 
+  const draftPanelStyle: React.CSSProperties = {
+    position: "absolute",
+    right: "16px",
+    bottom: "16px",
+    width: "360px",
+    maxHeight: "55vh",
+    background: "rgba(9, 19, 34, 0.95)",
+    border: "1px solid rgba(127, 208, 255, 0.25)",
+    borderRadius: "10px",
+    boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+    backdropFilter: "blur(18px)",
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 50,
+  };
+
+  const draftPanelHeaderStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    padding: "12px 14px",
+    borderBottom: "1px solid rgba(127, 208, 255, 0.15)",
+  };
+
+  const draftPanelCloseStyle: React.CSSProperties = {
+    marginLeft: "auto",
+    background: "transparent",
+    border: "none",
+    color: "#8fa8c6",
+    fontSize: "20px",
+    lineHeight: 1,
+    cursor: "pointer",
+    padding: "0 6px",
+  };
+
+  const draftPanelBodyStyle: React.CSSProperties = {
+    padding: "12px 14px",
+    overflowY: "auto",
+  };
+
+  const draftSectionTitleStyle: React.CSSProperties = {
+    color: "#7fdcff",
+    fontSize: "12px",
+    fontWeight: 700,
+    margin: "0 0 8px 0",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  };
+
+  const draftItemRowStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginBottom: "6px",
+  };
+
+  const draftSelectStyle: React.CSSProperties = {
+    flex: "0 0 140px",
+    padding: "4px 6px",
+    borderRadius: "6px",
+    border: "1px solid rgba(127, 208, 255, 0.18)",
+    background: "rgba(3, 9, 18, 0.85)",
+    color: "#ebf3ff",
+    fontSize: "11px",
+  };
+
+  const draftInputStyle: React.CSSProperties = {
+    flex: 1,
+    padding: "4px 6px",
+    borderRadius: "6px",
+    border: "1px solid rgba(127, 208, 255, 0.18)",
+    background: "rgba(3, 9, 18, 0.85)",
+    color: "#ebf3ff",
+    fontSize: "11px",
+    minWidth: 0,
+  };
+
+  const draftRemoveStyle: React.CSSProperties = {
+    flex: "0 0 24px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "4px",
+    borderRadius: "6px",
+    border: "1px solid rgba(255, 120, 120, 0.3)",
+    background: "rgba(255, 120, 120, 0.08)",
+    color: "#ff9a9a",
+    cursor: "pointer",
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#07111f" }}>
       <div style={toolbarStyle}>
         <select
-          aria-label="Active ontology"
+          aria-label={t('onto.ariaOntology')}
           value={ontologyUri}
           onChange={(event) => setOntologyUri(event.target.value)}
           style={selectStyle}
         >
-          <option value="">Select ontology...</option>
+          <option value="">{t('onto.selectOntology')}</option>
           {registry.map((entry) => (
             <option key={entry.uri} value={entry.uri}>
               {entry.name || entry.uri}
@@ -369,32 +555,72 @@ export function OntologyEditor() {
         </select>
         <button style={toolbarButtonStyle} onClick={addClass}>
           <Plus size={14} />
-          Add Class
+          {t('onto.addClass')}
         </button>
-        <button style={toolbarButtonStyle} onClick={addProperty} disabled={nodes.length < 2}>
+        <button
+          style={toolbarButtonStyle}
+          onClick={addProperty}
+          disabled={nodes.length < 2}
+          title={t('onto.alertNeedClasses')}
+        >
           <GitBranch size={14} />
-          Add Property
+          {t('onto.addProperty')}
         </button>
         <button style={toolbarButtonStyle} onClick={addIndividual}>
           <User size={14} />
-          Add Individual
+          {t('onto.addIndividual')}
         </button>
-        <button style={toolbarButtonStyle} onClick={addRestriction}>
+        <button
+          style={toolbarButtonStyle}
+          onClick={addRestriction}
+          title={t('onto.addRestrictionHint')}
+        >
           <Shield size={14} />
-          Add Restriction
+          {t('onto.addRestriction')}
         </button>
-        <button style={toolbarButtonStyle} onClick={addAxiom}>
+        <button
+          style={toolbarButtonStyle}
+          onClick={addAxiom}
+          title={t('onto.addAxiomHint')}
+        >
           <FileText size={14} />
-          Add Axiom
+          {t('onto.addAxiom')}
         </button>
         <button style={toolbarButtonStyle} onClick={autoLayout}>
           <Layout size={14} />
-          Auto Layout
+          {t('onto.autoLayout')}
         </button>
         <div style={{ flex: 1 }} />
+        <button
+          style={{
+            ...toolbarButtonStyle,
+            background: showDraft
+              ? "rgba(127, 208, 255, 0.25)"
+              : toolbarButtonStyle.background,
+          }}
+          onClick={() => setShowDraft((s) => !s)}
+          title={t('onto.pendingDraft')}
+        >
+          <FileText size={14} />
+          {t('onto.pendingDraft')}
+          {pendingCount > 0 && (
+            <span
+              style={{
+                marginLeft: "4px",
+                padding: "0 6px",
+                borderRadius: "999px",
+                background: "rgba(127, 208, 255, 0.35)",
+                color: "#ebf3ff",
+                fontSize: "11px",
+              }}
+            >
+              {pendingCount}
+            </span>
+          )}
+        </button>
         <button style={toolbarButtonStyle} onClick={saveDraft} disabled={isSaving}>
           <Send size={14} />
-          {isSaving ? "Saving..." : "Propose"}
+          {isSaving ? t('onto.saving') : t('onto.propose')}
         </button>
       </div>
 
@@ -422,23 +648,148 @@ export function OntologyEditor() {
           <div style={{ ...contextMenuStyle, left: showContext.x, top: showContext.y }}>
             <div style={contextItemStyle} onClick={renameSelected}>
               <Pencil size={14} />
-              Rename
+              {t('onto.rename')}
             </div>
             <div style={contextItemStyle} onClick={deleteSelected}>
               <Trash2 size={14} />
-              Delete
+              {t('onto.delete')}
             </div>
+          </div>
+        )}
+
+        {showDraft && (
+          <div style={draftPanelStyle}>
+            <div style={draftPanelHeaderStyle}>
+              <strong style={{ color: "#ebf3ff", fontSize: "14px" }}>
+                {t('onto.pendingDraft')}
+              </strong>
+              <span style={{ color: "#8fa8c6", fontSize: "12px", marginLeft: "8px" }}>
+                {t('onto.pendingItemsCount', { count: pendingCount })}
+              </span>
+              <button
+                onClick={() => setShowDraft(false)}
+                style={draftPanelCloseStyle}
+                aria-label="Close pending draft"
+              >
+                ×
+              </button>
+            </div>
+
+            {pendingCount === 0 ? (
+              <p style={{ color: "#8fa8c6", fontSize: "12px", padding: "12px 4px", margin: 0 }}>
+                {t('onto.noPendingItems')}
+              </p>
+            ) : (
+              <div style={draftPanelBodyStyle}>
+                {(draftDiff.added_classes.length +
+                  draftDiff.removed_classes.length +
+                  Object.keys(draftDiff.modified_classes).length +
+                  draftDiff.added_properties.length +
+                  draftDiff.removed_properties.length +
+                  Object.keys(draftDiff.modified_properties).length) > 0 && (
+                  <div style={{ marginBottom: "12px", color: "#8fa8c6", fontSize: "12px" }}>
+                    Classes +{draftDiff.added_classes.length} −
+                    {draftDiff.removed_classes.length} ~{Object.keys(draftDiff.modified_classes).length}
+                    {" · "}
+                    Properties +{draftDiff.added_properties.length} −
+                    {draftDiff.removed_properties.length} ~{Object.keys(draftDiff.modified_properties).length}
+                  </div>
+                )}
+
+                {draftDiff.added_restrictions.length > 0 && (
+                  <div style={{ marginBottom: "14px" }}>
+                    <h4 style={draftSectionTitleStyle}>
+                      {t('onto.restrictionType')} ({draftDiff.added_restrictions.length})
+                    </h4>
+                    {draftDiff.added_restrictions.map((r, i) => (
+                      <div key={`r-${i}`} style={draftItemRowStyle}>
+                        <select
+                          value={String(r.type ?? "someValuesFrom")}
+                          onChange={(e) => updateAddedRestriction(i, { type: e.target.value })}
+                          style={draftSelectStyle}
+                        >
+                          <option value="someValuesFrom">someValuesFrom</option>
+                          <option value="allValuesFrom">allValuesFrom</option>
+                          <option value="hasValue">hasValue</option>
+                          <option value="minCardinality">minCardinality</option>
+                          <option value="maxCardinality">maxCardinality</option>
+                          <option value="exactCardinality">exactCardinality</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={String(r.value ?? "")}
+                          placeholder={t('onto.targetClass')}
+                          onChange={(e) => updateAddedRestriction(i, { value: e.target.value })}
+                          style={draftInputStyle}
+                        />
+                        <button
+                          onClick={() => removeAddedRestriction(i)}
+                          style={draftRemoveStyle}
+                          aria-label={t('onto.removeItem')}
+                          title={t('onto.removeItem')}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {draftDiff.added_axioms.length > 0 && (
+                  <div style={{ marginBottom: "14px" }}>
+                    <h4 style={draftSectionTitleStyle}>
+                      {t('onto.axiomType')} ({draftDiff.added_axioms.length})
+                    </h4>
+                    {draftDiff.added_axioms.map((a, i) => (
+                      <div key={`a-${i}`} style={draftItemRowStyle}>
+                        <select
+                          value={String(a.type ?? "subClassOf")}
+                          onChange={(e) => updateAddedAxiom(i, { type: e.target.value })}
+                          style={draftSelectStyle}
+                        >
+                          <option value="subClassOf">subClassOf</option>
+                          <option value="equivalentClass">equivalentClass</option>
+                          <option value="disjointWith">disjointWith</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={String(a.value ?? "")}
+                          placeholder={t('onto.targetClass')}
+                          onChange={(e) => updateAddedAxiom(i, { value: e.target.value })}
+                          style={draftInputStyle}
+                        />
+                        <button
+                          onClick={() => removeAddedAxiom(i)}
+                          style={draftRemoveStyle}
+                          aria-label={t('onto.removeItem')}
+                          title={t('onto.removeItem')}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {draftDiff.added_restrictions.length === 0 &&
+                  draftDiff.added_axioms.length === 0 && (
+                    <p style={{ color: "#8fa8c6", fontSize: "12px", margin: 0 }}>
+                      {t('onto.noPendingItems')}
+                    </p>
+                  )}
+              </div>
+            )}
           </div>
         )}
 
         {selectedElement && (
           <div style={detailPanelStyle}>
             <h3 style={{ margin: "0 0 16px", color: "#ebf3ff", fontSize: "16px" }}>
-              {"source" in selectedElement ? "Property Details" : "Class Details"}
+              {"source" in selectedElement ? t('onto.propertyDetails') : t('onto.classDetails')}
             </h3>
             <div style={{ marginBottom: "12px" }}>
               <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                ID
+                {t('onto.id')}
               </label>
               <div style={{ color: "#ebf3ff", fontSize: "13px", wordBreak: "break-all" }}>
                 {selectedElement.id}
@@ -448,7 +799,7 @@ export function OntologyEditor() {
               <>
                 <div style={{ marginBottom: "12px" }}>
                   <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                    Label
+                    {t('onto.label')}
                   </label>
                   <input
                     type="text"
@@ -482,7 +833,7 @@ export function OntologyEditor() {
                 </div>
                 <div style={{ marginBottom: "12px" }}>
                   <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                    Type
+                    {t('onto.type')}
                   </label>
                   <div style={{ color: "#ebf3ff", fontSize: "13px" }}>
                     {selectedElement.data.type || "owl:Class"}

@@ -42,9 +42,13 @@ class GraphSession:
         self,
         graph: ContextGraph,
         provenance_storage_path: Optional[str] = None,
+        persist_path: Optional[str] = None,
     ) -> None:
         self.graph = graph
         self._provenance_storage_path = provenance_storage_path
+        # Optional JSON file that every graph mutation is atomically persisted
+        # to (shared with the MCP server via a docker volume).
+        self._persist_path = persist_path
         self._lock = threading.RLock()
         self._search_index = GraphSearchIndex()
 
@@ -66,10 +70,28 @@ class GraphSession:
         self.rebuild_search_index()
 
     @classmethod
-    def from_file(cls, path: str) -> "GraphSession":
-        graph = ContextGraph()
+    def from_file(
+        cls,
+        path: str,
+        advanced_analytics: bool = False,
+        persist_path: Optional[str] = None,
+    ) -> "GraphSession":
+        graph = ContextGraph(advanced_analytics=advanced_analytics)
         graph.load_from_file(path)
-        return cls(graph)
+        return cls(graph, persist_path=persist_path)
+
+    def set_persist_path(self, path: Optional[str]) -> None:
+        """Set/clear the JSON file that graph mutations are persisted to."""
+        self._persist_path = path
+
+    def persist(self) -> None:
+        """Atomically persist the current graph to the configured JSON file.
+
+        Safe to call on every mutation; no-op when no persist path is set.
+        """
+        path = getattr(self, "_persist_path", None)
+        if path:
+            self.graph.save_to_file(path)
 
     @staticmethod
     def _encode_cursor(value: str) -> str:
@@ -247,6 +269,17 @@ class GraphSession:
         return {
             "id": str(node.get("id", "")),
             "type": str(node.get("type", "entity")),
+            # Display label: prefer an explicit label/name property (e.g. set by
+            # the MCP add_entity tool), fall back to content, then id. Without
+            # this the frontend graph falls back to the node id for hover/labels.
+            "label": str(
+                meta.get("label")
+                or meta.get("name")
+                or node.get("label")
+                or node.get("name")
+                or content
+                or "",
+            ),
             "content": str(content or ""),
             "properties": properties,
             "valid_from": valid_from,
@@ -789,6 +822,8 @@ class GraphSession:
                 self._bump_graph_revision_locked()
         if (nodes_added or edges_added) and not has_mutation_callback:
             self.rebuild_search_index()
+        if nodes_added or edges_added:
+            self.persist()
         return nodes_added, edges_added
 
     def add_node(
@@ -807,6 +842,8 @@ class GraphSession:
             normalized = self.get_node(node_id)
             if normalized is not None:
                 self._search_index.upsert(normalized)
+        if added:
+            self.persist()
         return added
 
     def add_edge(
@@ -829,4 +866,6 @@ class GraphSession:
             has_mutation_callback = callable(getattr(self.graph, "mutation_callback", None))
             if added and not has_mutation_callback:
                 self._bump_graph_revision_locked()
+        if added:
+            self.persist()
         return added

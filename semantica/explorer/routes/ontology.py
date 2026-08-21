@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, UTC
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 from typing_extensions import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -71,7 +71,11 @@ _ONTOLOGY_TYPES = frozenset({
     "http://www.w3.org/2002/07/owl#Ontology",
 }) | _SCHEME_TYPES
 
-_SEARCHABLE_TYPES = _CLASS_TYPES | _PROPERTY_TYPES | _INDIVIDUAL_TYPES | _CONCEPT_TYPES | _SCHEME_TYPES
+_SEARCHABLE_TYPES = (
+    _CLASS_TYPES | _PROPERTY_TYPES | _INDIVIDUAL_TYPES | _CONCEPT_TYPES | _SCHEME_TYPES
+    # Simple literal type names used by MCP add_entity / plain imports.
+    | frozenset({"class", "property", "individual", "concept", "scheme", "ontology"})
+)
 
 _URI_PREFIX_MAP = {
     "http://www.w3.org/2002/07/owl#": "owl:",
@@ -187,6 +191,8 @@ class LoadOntologyRequest(BaseModel):
     content: Optional[str] = None
     format: Optional[str] = None
     name: Optional[str] = None
+    uri: Optional[str] = None
+    namespace: Optional[str] = None
     description: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
 
@@ -534,6 +540,48 @@ def _get_registry(request: Request) -> Dict[str, OntologyEntry]:
     return request.app.state.ontology_registry
 
 
+async def _ensure_registry_entry(
+    request: Request, ontology_uri: str, session: GraphSession
+) -> Optional[OntologyEntry]:
+    """Resolve the registry entry for ``ontology_uri``.
+
+    The Ontology Manager UI lists both explicitly registered ontologies and
+    *implicit* ones discovered from the live graph (see ``list_registry``). The
+    toggle/delete/refresh endpoints historically only consulted the explicit
+    in-memory registry, so acting on an implicit ontology returned 404. This
+    helper promotes an implicit (graph-derived) ontology node to an explicit
+    entry on demand so its state can be tracked and mutated. Returns ``None``
+    when the URI is neither registered nor an ontology node in the graph.
+
+    Callers must ``unquote`` the path parameter before passing it here.
+    """
+    registry = _get_registry(request)
+    if ontology_uri in registry:
+        return registry[ontology_uri]
+    node = await asyncio.to_thread(session.get_node, ontology_uri)
+    if node is None:
+        return None
+    ntype = node.get("type", "")
+    if _classify_node_type(ntype) not in ("ontology", "scheme"):
+        return None
+    props = node.get("properties", {}) or {}
+    entry = OntologyEntry(
+        uri=ontology_uri,
+        name=_node_label(node) or ontology_uri,
+        description=props.get("description"),
+        format=props.get("format", "unknown"),
+        status="external",
+        version=props.get("version") or props.get("owl:versionInfo"),
+        class_count=0,
+        concept_count=0,
+        property_count=0,
+        loaded_at=props.get("loaded_at", ""),
+        enabled=True,
+    )
+    registry[ontology_uri] = entry
+    return entry
+
+
 def _get_alignment_store(request: Request) -> Dict[str, OntologyAlignment]:
     if not hasattr(request.app.state, "ontology_alignments"):
         request.app.state.ontology_alignments = {}
@@ -590,17 +638,22 @@ def _uri_to_prefix(uri: str) -> str:
 
 
 def _classify_node_type(node_type: str) -> str:
-    if node_type in _CLASS_TYPES:
+    # Accept the simple literal type names too — nodes created via the MCP
+    # add_entity tool or plain imports use e.g. type="ontology" / "class" /
+    # "property" / "scheme", which are NOT covered by the owl:/skos:/rdfs:
+    # prefixed sets below. Without this, such nodes are classified "unknown"
+    # and stay invisible to the ontology registry / search.
+    if node_type in _CLASS_TYPES or node_type == "class":
         return "class"
-    if node_type in _PROPERTY_TYPES:
+    if node_type in _PROPERTY_TYPES or node_type == "property":
         return "property"
-    if node_type in _INDIVIDUAL_TYPES:
+    if node_type in _INDIVIDUAL_TYPES or node_type == "individual":
         return "individual"
-    if node_type in _CONCEPT_TYPES:
+    if node_type in _CONCEPT_TYPES or node_type == "concept":
         return "concept"
-    if node_type in _SCHEME_TYPES:
+    if node_type in _SCHEME_TYPES or node_type == "scheme":
         return "scheme"
-    if node_type in _ONTOLOGY_TYPES:
+    if node_type in _ONTOLOGY_TYPES or node_type == "ontology":
         return "ontology"
     return "unknown"
 
@@ -1302,7 +1355,16 @@ async def list_registry(
         ntype = node.get("type", "")
         nid = node.get("id", "")
         etype = _classify_node_type(ntype)
-        scheme_uri = node.get("properties", {}).get("scheme_uri") or node.get("properties", {}).get("uri")
+        props = node.get("properties", {}) or {}
+        meta = props.get("metadata") if isinstance(props.get("metadata"), dict) else {}
+        # MCP add_entity stores extra fields under properties.metadata (nested);
+        # accept both the flat and the nested layout.
+        scheme_uri = (
+            props.get("scheme_uri")
+            or meta.get("scheme_uri")
+            or props.get("uri")
+            or meta.get("uri")
+        )
 
         if etype == "ontology" or etype == "scheme":
             if nid and nid not in registry:
@@ -1338,21 +1400,22 @@ async def list_registry(
         result.append(updated)
 
     for nid, node in implicit.items():
-        props = node.get("properties", {})
+        props = node.get("properties", {}) or {}
+        meta = props.get("metadata") if isinstance(props.get("metadata"), dict) else {}
         name = _node_label(node) or nid
         if not _matches(name, nid, props.get("description", "")):
             continue
         result.append(OntologyEntry(
             uri=nid,
             name=name,
-            description=props.get("description"),
-            format=props.get("format", "unknown"),
+            description=props.get("description") or meta.get("description"),
+            format=props.get("format") or meta.get("format") or "unknown",
             status="external",
-            version=props.get("version") or props.get("owl:versionInfo"),
+            version=props.get("version") or props.get("owl:versionInfo") or meta.get("version"),
             class_count=class_counts.get(nid, 0),
             concept_count=concept_counts.get(nid, 0),
             property_count=prop_counts.get(nid, 0),
-            loaded_at=props.get("loaded_at", ""),
+            loaded_at=props.get("loaded_at", "") or meta.get("loaded_at", ""),
             enabled=True,
         ))
 
@@ -1394,14 +1457,102 @@ async def preview_ontology(body: PreviewOntologyRequest):
     )
 
 
+async def _resolve_local_ontology(
+    request: Request,
+    body: LoadOntologyRequest,
+    session: GraphSession,
+) -> Optional[OntologyEntry]:
+    """Resolve a local ontology by name, URI, or namespace.
+
+    Checks the explicit in-memory registry first, then promotes matching
+    ontology/scheme nodes from the live graph via ``_ensure_registry_entry``.
+    Returns ``None`` when nothing matches, so the caller falls through to a
+    remote URL fetch / content parse.
+    """
+    keys: List[str] = []
+    for value in (body.uri, body.url, body.namespace, body.name):
+        if value and str(value).strip():
+            keys.append(str(value).strip())
+
+    registry = _get_registry(request)
+
+    # 1) Exact URI match (registry key or a graph ontology node id).
+    for key in keys:
+        if key.lower().startswith(("http://", "https://", "urn:", "temp:")):
+            if key in registry:
+                return registry[key]
+            entry = await _ensure_registry_entry(request, key, session)
+            if entry is not None:
+                return entry
+
+    # 2) Exact name match against the explicit registry.
+    for key in keys:
+        key_lower = key.lower()
+        for entry in registry.values():
+            if (entry.name or "").strip().lower() == key_lower:
+                return entry
+
+    # 3) Namespace prefix match against registry URIs.
+    for key in keys:
+        if key.lower().startswith(("http://", "https://")):
+            for uri, entry in registry.items():
+                if str(uri).startswith(key):
+                    return entry
+
+    # 4) Graph-derived matches: namespace prefix / name against ontology nodes.
+    fetched_nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=999_999)
+    ontology_nodes = [
+        node for node in fetched_nodes
+        if _classify_node_type(str(node.get("type", ""))) in ("ontology", "scheme")
+    ]
+    for key in keys:
+        key_lower = key.lower()
+        if key_lower.startswith(("http://", "https://")):
+            for node in ontology_nodes:
+                props = node.get("properties", {}) or {}
+                namespace = (
+                    props.get("namespace")
+                    or props.get("uri")
+                    or str(node.get("id", ""))
+                )
+                if namespace and str(namespace).startswith(key):
+                    return await _ensure_registry_entry(request, str(node.get("id")), session)
+        for node in ontology_nodes:
+            props = node.get("properties", {}) or {}
+            label = str(_node_label(node) or "").lower()
+            name = str(props.get("name") or props.get("label") or "").lower()
+            if label == key_lower or name == key_lower or (
+                len(key) >= 3 and (key_lower in label or key_lower in name)
+            ):
+                return await _ensure_registry_entry(request, str(node.get("id")), session)
+
+    return None
+
+
 @router.post("/load", response_model=LoadOntologyResponse)
 async def load_ontology(
     request: Request,
     body: LoadOntologyRequest,
     session: GraphSession = Depends(get_session),
 ):
+    # The loader UI accepts an existing ontology's name, URI, or namespace in
+    # addition to a remote URL / file content. Resolve against the explicit
+    # registry and the live graph first so local ontologies can be "loaded"
+    # without a network fetch (which would otherwise fail for non-URL input).
+    local = await _resolve_local_ontology(request, body, session)
+    if local is not None:
+        return LoadOntologyResponse(
+            status="existing",
+            uri=local.uri,
+            name=local.name,
+            format=local.format,
+        )
+
     if not body.url and not body.content:
-        raise HTTPException(status_code=422, detail="Provide either url or content.")
+        raise HTTPException(
+            status_code=422,
+            detail="Provide url, content, or a local ontology name / uri / namespace.",
+        )
 
     if body.url:
         raw = await asyncio.to_thread(_fetch_url_sync, body.url)
@@ -1750,11 +1901,13 @@ async def search_entities(
             continue
 
         label = _node_label(node)
-        props = node.get("properties", {})
+        props = node.get("properties", {}) or {}
+        meta = props.get("metadata") if isinstance(props.get("metadata"), dict) else {}
         definition = (
             props.get("rdfs:comment")
             or props.get("skos:definition")
             or props.get("description")
+            or meta.get("description")
         )
 
         results.append(OntologySearchResult(
@@ -1763,7 +1916,7 @@ async def search_entities(
             type=ntype,
             entity_type=etype,
             definition=definition,
-            source_ontology=props.get("scheme_uri"),
+            source_ontology=props.get("scheme_uri") or meta.get("scheme_uri"),
             namespace_prefix=_extract_namespace(node.get("id", "")),
         ))
         if len(results) >= limit:
@@ -1777,14 +1930,21 @@ async def get_entity_detail(
     entity_uri: str,
     session: GraphSession = Depends(get_session),
 ):
+    entity_uri = unquote(entity_uri)
     node = await asyncio.to_thread(session.get_node, entity_uri)
     if node is None:
         raise HTTPException(status_code=404, detail="Entity not found.")
 
-    props = node.get("properties", {})
+    props = node.get("properties", {}) or {}
+    meta = props.get("metadata") if isinstance(props.get("metadata"), dict) else {}
     ntype = node.get("type", "")
     label = _node_label(node)
-    definition = props.get("rdfs:comment") or props.get("skos:definition") or props.get("description")
+    definition = (
+        props.get("rdfs:comment")
+        or props.get("skos:definition")
+        or props.get("description")
+        or meta.get("description")
+    )
 
     out_edges, _ = await asyncio.to_thread(session.get_edges, source=entity_uri, skip=0, limit=9999)
     in_edges, _ = await asyncio.to_thread(session.get_edges, target=entity_uri, skip=0, limit=9999)
@@ -1801,7 +1961,7 @@ async def get_entity_detail(
         uri=entity_uri, label=label,
         type=ntype, entity_type=_classify_node_type(ntype),
         definition=definition,
-        source_ontology=props.get("scheme_uri"),
+        source_ontology=props.get("scheme_uri") or meta.get("scheme_uri"),
         superclasses=superclasses, subclasses=subclasses,
         domain=domain, range=range_,
         instance_count=instance_count, properties=props,
@@ -1942,6 +2102,7 @@ async def get_skos_concept(
     session: GraphSession = Depends(get_session),
 ):
     """Get SKOS concept detail using OntologyEngine.list_concepts() and search_concepts()."""
+    concept_uri = unquote(concept_uri)
     try:
         from ...ontology import OntologyEngine
         
@@ -2870,21 +3031,162 @@ async def validate_shacl(
 # Wildcard management endpoints (must come after specific routes)
 # ---------------------------------------------------------------------------
 
+async def _collect_ontology_structure(
+    session: GraphSession,
+    ontology_uri: str,
+) -> Dict[str, Any]:
+    """Collect the graph structure of an ontology (classes/properties/edges).
+
+    Matches members via ``scheme_uri`` (flat or nested ``properties.metadata``
+    layout produced by MCP ``add_entity``) and returns them in a shape the
+    Ontology Hub editor can render as a starting canvas.
+    """
+    all_nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=999_999)
+    member_ids: set = set()
+    classes: List[Dict[str, Any]] = []
+    properties_list: List[Dict[str, Any]] = []
+
+    for node in all_nodes:
+        nid = node.get("id", "")
+        props = node.get("properties", {}) or {}
+        meta = props.get("metadata") if isinstance(props.get("metadata"), dict) else {}
+        scheme = props.get("scheme_uri") or meta.get("scheme_uri")
+        if scheme != ontology_uri:
+            continue
+        etype = _classify_node_type(str(node.get("type", "")))
+        member_ids.add(nid)
+        item = {"id": nid, "label": _node_label(node) or nid, "type": node.get("type", "")}
+        if etype == "class":
+            classes.append(item)
+        elif etype == "property":
+            properties_list.append(item)
+
+    root = await asyncio.to_thread(session.get_node, ontology_uri)
+    name = _node_label(root) if root else ontology_uri
+
+    edges_all, _ = await asyncio.to_thread(session.get_edges, skip=0, limit=999_999)
+    edges: List[Dict[str, Any]] = []
+    seen: set = set()
+    for edge in edges_all:
+        src, tgt = edge.get("source"), edge.get("target")
+        if src in member_ids and tgt in member_ids and (src, tgt) not in seen:
+            seen.add((src, tgt))
+            edges.append({
+                "id": edge.get("id") or f"{src}→{tgt}",
+                "source": src,
+                "target": tgt,
+                "type": edge.get("type", "related_to"),
+            })
+
+    return {
+        "uri": ontology_uri,
+        "name": name,
+        "classes": classes,
+        "properties": properties_list,
+        "edges": edges,
+    }
+
+
+@router.get("/{ontology_uri:path}/structure")
+async def get_ontology_structure(
+    ontology_uri: str,
+    session: GraphSession = Depends(get_session),
+):
+    """Return the graph structure of an ontology for the editor canvas.
+
+    Works for MCP/import-created ontologies (implicit, graph-derived) as well
+    as explicitly registered ones.
+    """
+    ontology_uri = unquote(ontology_uri)
+    return await _collect_ontology_structure(session, ontology_uri)
+
+
+@router.post("/{ontology_uri:path}/publish", response_model=VersionEntry)
+async def publish_ontology_snapshot(
+    ontology_uri: str,
+    request: Request,
+    session: GraphSession = Depends(get_session),
+):
+    """Publish a version snapshot of an ontology's current graph structure.
+
+    Gives MCP/import-created (implicit) ontologies a version history without
+    requiring the draft→proposal→approve flow.
+    """
+    ontology_uri = unquote(ontology_uri)
+    entry = await _ensure_registry_entry(request, ontology_uri, session)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Ontology not found in registry or graph.")
+
+    structure = await _collect_ontology_structure(session, ontology_uri)
+
+    versions = _get_versions(request)
+    existing = versions.get(ontology_uri, [])
+    version_str = f"1.{len(existing) + 1}.0"
+
+    try:
+        from ...change_management.ontology_version_manager import VersionManager
+        version_manager = VersionManager(
+            store=session.graph.store if hasattr(session.graph, "store") else None
+        )
+        version_manager.create_version(
+            version=version_str,
+            ontology={
+                "uri": ontology_uri,
+                "classes": [{"uri": cls["id"]} for cls in structure["classes"]],
+                "properties": [{"uri": prop["id"]} for prop in structure["properties"]],
+                "diff": {},
+            },
+            changes=[f"Snapshot publish of {structure['name'] or ontology_uri}"],
+        )
+    except Exception as exc:
+        logger.warning(f"VersionManager.create_version failed for snapshot publish: {exc}")
+
+    record = VersionEntry(
+        version_id=version_str,
+        ontology_uri=ontology_uri,
+        state="published",
+        author="system",
+        date=datetime.now(UTC).isoformat(),
+        diff_summary={
+            "added_classes": [cls["id"] for cls in structure["classes"]],
+            "added_properties": [prop["id"] for prop in structure["properties"]],
+            "class_count": len(structure["classes"]),
+            "property_count": len(structure["properties"]),
+        },
+    )
+    versions.setdefault(ontology_uri, []).append(record)
+    return record
+
+
 @router.delete("/{ontology_uri:path}")
-async def remove_ontology(ontology_uri: str, request: Request):
-    registry = _get_registry(request)
-    if ontology_uri not in registry:
+async def remove_ontology(
+    ontology_uri: str,
+    request: Request,
+    session: GraphSession = Depends(get_session),
+):
+    # Frontends pass the ontology URI URL-encoded in the path (encodeURIComponent),
+    # but Starlette does not percent-decode path params, so decode it here to match
+    # the decoded keys stored in the registry. Implicit (graph-derived) ontologies
+    # that are not yet in the explicit registry are promoted on demand.
+    ontology_uri = unquote(ontology_uri)
+    entry = await _ensure_registry_entry(request, ontology_uri, session)
+    if entry is None:
         raise HTTPException(status_code=404, detail="Ontology not found in registry.")
+    registry = _get_registry(request)
     del registry[ontology_uri]
     return {"status": "removed", "uri": ontology_uri}
 
 
 @router.patch("/{ontology_uri:path}/toggle", response_model=ToggleResponse)
-async def toggle_ontology(ontology_uri: str, request: Request):
-    registry = _get_registry(request)
-    if ontology_uri not in registry:
+async def toggle_ontology(
+    ontology_uri: str,
+    request: Request,
+    session: GraphSession = Depends(get_session),
+):
+    ontology_uri = unquote(ontology_uri)
+    entry = await _ensure_registry_entry(request, ontology_uri, session)
+    if entry is None:
         raise HTTPException(status_code=404, detail="Ontology not found in registry.")
-    entry = registry[ontology_uri]
     entry.enabled = not entry.enabled
     return ToggleResponse(uri=ontology_uri, enabled=entry.enabled)
 
@@ -2895,10 +3197,10 @@ async def refresh_ontology(
     request: Request,
     session: GraphSession = Depends(get_session),
 ):
-    registry = _get_registry(request)
-    if ontology_uri not in registry:
+    ontology_uri = unquote(ontology_uri)
+    entry = await _ensure_registry_entry(request, ontology_uri, session)
+    if entry is None:
         raise HTTPException(status_code=404, detail="Ontology not found in registry.")
-    entry = registry[ontology_uri]
     if not entry.source_url:
         raise HTTPException(status_code=422, detail="No source URL to refresh from.")
 
@@ -2970,6 +3272,7 @@ async def list_drafts(
     request: Request,
 ):
     """Get staged draft diffs for an ontology."""
+    ontology_uri = unquote(ontology_uri)
     drafts = _get_drafts(request)
     return [d for d in drafts.values() if d.ontology_uri == ontology_uri]
 
@@ -3328,6 +3631,7 @@ async def list_versions(
     request: Request,
 ):
     """List version history for an ontology."""
+    ontology_uri = unquote(ontology_uri)
     versions = _get_versions(request)
     return versions.get(ontology_uri, [])
 
@@ -3340,6 +3644,7 @@ async def compare_versions(
     session: GraphSession = Depends(get_session),
 ):
     """Compare two ontology versions using VersionManager.compare_versions()."""
+    ontology_uri = unquote(ontology_uri)
     try:
         from ...change_management.ontology_version_manager import VersionManager
         
@@ -3476,6 +3781,7 @@ async def get_alignments(
     session: GraphSession = Depends(get_session),
 ):
     """Get all alignments for an entity using OntologyEngine.get_alignments."""
+    entity_uri = unquote(entity_uri)
     route_alignments = [
         alignment
         for alignment in _get_alignment_store(request).values()

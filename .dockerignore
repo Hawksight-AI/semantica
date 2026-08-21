@@ -1,6 +1,9 @@
 # Start with a tiny Docker context and opt in only files used by Dockerfile.
 *
 !Dockerfile
+!Dockerfile.mcp
+!mcp_http_bridge.py
+!mcp_entrypoint.sh
 !.dockerignore
 !pyproject.toml
 !README.md

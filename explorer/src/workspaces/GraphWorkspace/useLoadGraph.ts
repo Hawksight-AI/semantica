@@ -1,4 +1,5 @@
 ﻿import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "../../i18n";
 import { batchMergeEdges, batchMergeNodes, clearGraph } from "../../store/graphStore";
 import type { EdgeAttributes, NodeAttributes } from "../../store/graphStore";
 import { curveGroupForPair, pairRegistryKey } from "../../store/edgePairKeys.js";
@@ -17,6 +18,7 @@ import {
 import { classifyEntityShape } from "./graphEntityShape";
 import { createGraphLoadProgress } from "./graphLoading";
 import type { GraphLoadProgress, GraphLoadSummary } from "./types";
+import type { GraphTranslateFn } from "./plugins/types";
 
 const SEMANTIC_COLOR_FIELDS = [
   "community",
@@ -284,6 +286,7 @@ function resolveEdgeVariantMetadata(
 interface ApiNode {
   id: string;
   type: string;
+  label?: string;
   content: string;
   properties: Record<string, unknown>;
   valid_from?: string | null;
@@ -321,6 +324,7 @@ const PAGE_LIMIT = 1000;
 async function fetchAllNodes(
   signal: AbortSignal,
   onProgress?: (progress: GraphLoadProgress) => void,
+  t: GraphTranslateFn = (key) => key,
 ): Promise<ApiNode[]> {
   let cursor: string | null = null;
   const collected: ApiNode[] = [];
@@ -355,9 +359,9 @@ async function fetchAllNodes(
       edgesLoaded: 0,
       edgesTotal: null,
       message: total
-        ? `Loading nodes ${collected.length.toLocaleString()} of ${total.toLocaleString()}`
-        : `Loading nodes ${collected.length.toLocaleString()}`,
-    }));
+        ? t("graph.load.message.loadingNodes", { n: collected.length.toLocaleString(), total: total.toLocaleString() })
+        : t("graph.load.message.loadingNodesCount", { n: collected.length.toLocaleString() }),
+    }, t));
 
     if (!data.next_cursor) {
       break;
@@ -374,6 +378,7 @@ async function fetchAllEdges(
   nodeIds: Set<string>,
   nodeProgress: { loaded: number; total: number | null },
   onProgress?: (progress: GraphLoadProgress) => void,
+  t: GraphTranslateFn = (key) => key,
 ): Promise<ApiEdge[]> {
   let cursor: string | null = null;
   const collected: ApiEdge[] = [];
@@ -428,9 +433,9 @@ async function fetchAllEdges(
       edgesLoaded: safeLoaded,
       edgesTotal: total,
       message: total
-        ? `Loading edges ${safeLoaded.toLocaleString()} of ${total.toLocaleString()}`
-        : `Loading edges ${safeLoaded.toLocaleString()}`,
-    }));
+        ? t("graph.load.message.loadingEdges", { n: safeLoaded.toLocaleString(), total: total.toLocaleString() })
+        : t("graph.load.message.loadingEdgesCount", { n: safeLoaded.toLocaleString() }),
+    }, t));
 
     if (!data.next_cursor) {
       break;
@@ -457,6 +462,7 @@ interface UseLoadGraphOptions {
 
 export function useLoadGraph(options: UseLoadGraphOptions = {}) {
   const { enabled = true, onGraphReady, onProgress } = options;
+  const { t } = useI18n();
 
   return useQuery<GraphLoadSummary>({
     queryKey: ["graph", "full-load"],
@@ -472,16 +478,17 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
         nodesTotal: null,
         edgesLoaded: 0,
         edgesTotal: null,
-        message: "Preparing graph session",
-      }));
+        message: t("graph.load.message.preparing"),
+      }, t));
 
-      const fetchedNodes = await fetchAllNodes(signal, onProgress);
+      const fetchedNodes = await fetchAllNodes(signal, onProgress, t);
       const nodeIds = new Set(fetchedNodes.map((node) => node.id));
       const fetchedEdges = await fetchAllEdges(
         signal,
         nodeIds,
         { loaded: fetchedNodes.length, total: fetchedNodes.length },
         onProgress,
+        t,
       );
 
       const degreeByNode = new Map<string, number>();
@@ -497,7 +504,7 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
       const draftAttributes = fetchedNodes.map((node) => ({
         id: node.id,
         attributes: {
-          label: node.content || node.id,
+          label: node.label || node.content || node.id,
           x: 0,
           y: 0,
           nodeType: node.type,
@@ -515,8 +522,8 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
         nodesTotal: fetchedNodes.length,
         edgesLoaded: fetchedEdges.length,
         edgesTotal: fetchedEdges.length,
-        message: "Applying semantic color, sizing, and structural styling",
-      }));
+        message: t("graph.load.message.applyingStyling"),
+      }, t));
 
       const colorAccessor = chooseColorAccessor(draftAttributes);
       const nodePriorityById = new Map<string, number>();
@@ -657,8 +664,8 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
         nodesTotal: nodesToMerge.length,
         edgesLoaded: edgesToMerge.length,
         edgesTotal: edgesToMerge.length,
-        message: "Preparing renderer and hydrating graph scene",
-      }));
+        message: t("graph.load.message.preparingRenderer"),
+      }, t));
 
       try {
         clearGraph();
@@ -697,11 +704,11 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
         nodesTotal: summary.nodeCount,
         edgesLoaded: summary.edgeCount,
         edgesTotal: summary.edgeCount,
-        message: summary.layoutReady ? "Graph ready" : "Settling runtime layout",
+        message: summary.layoutReady ? t("graph.load.title.ready") : t("graph.load.message.settling"),
         showGraphBehind: !summary.layoutReady,
         layoutSource: summary.layoutSource,
         layoutState: summary.layoutReady ? "interactive" : "bootstrapping",
-      }));
+      }, t));
 
       onGraphReady?.(summary);
       return summary;

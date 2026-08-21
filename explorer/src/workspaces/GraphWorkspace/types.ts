@@ -274,6 +274,7 @@ export interface GraphAnalyticsSnapshot {
 export interface ApiNode {
   id: string;
   type: string;
+  label?: string;
   content: string;
   x?: number | null;
   y?: number | null;

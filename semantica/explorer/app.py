@@ -86,15 +86,26 @@ def create_app(
 ) -> FastAPI:
     settings = _read_explorer_settings()
     prov_path = provenance_storage_path or settings.get("provenance_storage_path")
+    # Optional shared JSON persistence (docker volume shared with the MCP
+    # server). When set, the Explorer loads the graph from this file on start
+    # and atomically persists every mutation back to it, so MCP-created nodes,
+    # relationships, and decisions survive restarts and stay visible here.
+    kg_path = os.environ.get("SEMANTICA_KG_PATH") or None
     if session is None:
-        active_session = GraphSession(
-            ContextGraph(advanced_analytics=False),
-            provenance_storage_path=prov_path,
-        )
+        if kg_path and os.path.exists(kg_path):
+            active_session = GraphSession.from_file(
+                kg_path, advanced_analytics=False, persist_path=kg_path
+            )
+        else:
+            active_session = GraphSession(
+                ContextGraph(advanced_analytics=False),
+                provenance_storage_path=prov_path,
+                persist_path=kg_path,
+            )
     else:
         active_session = session
-        if prov_path is not None:
-            active_session.set_provenance_storage_path(prov_path)
+    if prov_path is not None:
+        active_session.set_provenance_storage_path(prov_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

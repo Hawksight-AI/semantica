@@ -72,9 +72,9 @@ Example Usage:
     ...                    node_embeddings=True)
     >>> 
     >>> # Basic graph operations
-    >>> graph.add_node("Python", "language", popularity="high")
-    >>> graph.add_node("Programming", "concept")
-    >>> graph.add_edge("Python", "Programming", "related_to")
+    >>> graph.add_node("Python", type="language", properties={"popularity": "high"})
+    >>> graph.add_node("Programming", type="concept")
+    >>> graph.add_edge("Python", "Programming", type="related_to")
     >>> centrality = graph.get_node_centrality("Python")
     >>> similar = graph.find_similar_nodes("Python", similarity_type="content")
     >>> analysis = graph.analyze_graph_with_kg()
@@ -88,7 +88,7 @@ Example Usage:
     ...     confidence=0.95,
     ...     entities=["customer_123", "property_456"]
     ... )
-    >>> precedents = graph.find_precedents(decision_id, limit=5)
+    >>> precedents = graph.find_precedents("loan_approval", limit=5)
     >>> influence = graph.analyze_decision_influence(decision_id)
     >>> insights = graph.get_decision_insights()
     >>> causality = graph.trace_decision_causality(decision_id)
@@ -186,26 +186,6 @@ def _normalize_temporal_input(value: Optional[Union[str, int, float, datetime]])
             raise ValueError(f"Temporal value {value!r} is not a valid ISO datetime string")
         return parsed.isoformat()
     raise ValueError("Temporal values must be datetime, epoch seconds, ISO strings, or None")
-
-
-def _closing_valid_until(current: Optional[str], at_iso: str) -> str:
-    """Return the earlier of an existing end bound and a retraction time.
-
-    Retraction closes a validity window and must never widen one: an entity
-    added with ``valid_until`` already in the past would otherwise be reported
-    active by ``is_active``/``state_at`` for the span between its original end
-    and the retraction. An unparseable ``current`` imposes no end bound at all
-    (see :func:`_parse_iso_dt`), so ``at_iso`` still closes it.
-    """
-    if current is None:
-        return at_iso
-    existing = _parse_iso_dt(current)
-    if existing is None:
-        return at_iso
-    requested = _parse_iso_dt(at_iso)
-    if requested is None or existing <= requested:
-        return current
-    return at_iso
 
 
 def _pick_first(*values: Any) -> Any:
@@ -432,12 +412,6 @@ class ContextEdge:
 
 _ATTRS_MISSING = object()
 
-#: Edge types that represent an explicitly recorded causal relationship between
-#: two decisions. These are authoritative: they are what the caller asserted via
-#: add_causal_relationship(), as opposed to relationships inferred from shared
-#: entities and timestamps.
-_CAUSAL_EDGE_TYPES = ("CAUSED", "INFLUENCED", "PRECEDENT_FOR")
-
 
 class ContextGraph:
     """
@@ -484,7 +458,6 @@ class ContextGraph:
 
         self.nodes: Dict[str, ContextNode] = {}
         self.edges: List[ContextEdge] = []
-        self._edge_index: Dict[str, ContextEdge] = {}
 
         self._adjacency: Dict[str, List[ContextEdge]] = defaultdict(list)
 
@@ -495,15 +468,6 @@ class ContextGraph:
         self._linked_graphs: Dict[str, Tuple["ContextGraph", str, str]] = {}
 
         self._unresolved_links: Dict[str, Dict[str, str]] = {}
-
-        # Retraction closes an entity's validity window but keeps it in the
-        # graph; a tombstone records that an entity was purged outright,
-        # without retaining the purged content. Keyed by
-        # ``(entity_kind, entity_id)`` -- node ids are caller-supplied strings
-        # and edge ids are UUID strings, so a single id keyspace would let a
-        # node record mask an edge of the same id, and vice versa.
-        self._retractions: Dict[Tuple[str, str], Dict[str, Any]] = {}
-        self._tombstones: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
   
         self.progress_tracker = get_progress_tracker()
@@ -716,6 +680,37 @@ class ContextGraph:
 
     def neighbors(self, node_id: str) -> List[Dict[str, Any]]:
         return self.get_neighbors(node_id, hops=1)
+
+    def to_undirected(self) -> "Any":
+        """Return an undirected NetworkX copy of this graph for bidirectional
+        path traversal.
+
+        ``ContextGraph`` only stores outgoing adjacency, so undirected
+        shortest-path search (e.g. tracing a path between two concepts regardless
+        of edge direction) could never traverse an edge against its stored
+        direction. ``PathFinder`` already calls ``to_undirected()`` when present,
+        so this makes Dijkstra/BFS genuinely bidirectional.
+
+        The returned graph is a *copy* (not a view), so callers such as Yen's
+        k-shortest-path algorithm may safely remove/restore edges on it without
+        mutating the live graph.
+        """
+        import networkx as nx
+
+        g = nx.Graph()
+        with self._lock:
+            for nid in self.nodes:
+                g.add_node(nid)
+            for src, edges in self._adjacency.items():
+                for edge in edges:
+                    g.add_edge(
+                        src,
+                        edge.target_id,
+                        weight=edge.weight,
+                        type=edge.edge_type,
+                    )
+        return g
+
 
     def get_neighbor_ids(
         self,
@@ -1084,17 +1079,93 @@ class ContextGraph:
                 )
             )
 
+    def delete_node(
+        self,
+        node_id: str,
+        cascade_edges: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Remove a node from the graph.
+
+        By default this also removes every edge incident to the node
+        (``cascade_edges=True``), keeping the node/edge indexes consistent.
+
+        Args:
+            node_id: Unique identifier of the node to remove.
+            cascade_edges: When True (default), delete all edges where
+                ``source_id == node_id`` or ``target_id == node_id`` as well.
+
+        Returns:
+            Dict with keys:
+                ``deleted``     — whether the node was removed,
+                ``node_found``  — whether the node existed before deletion,
+                ``edges_removed`` — number of incident edges removed (0 if not cascading).
+        """
+        if not node_id:
+            return {"deleted": False, "node_found": False, "edges_removed": 0}
+
+        with self._lock:
+            node = self.nodes.pop(node_id, None)
+            if node is None:
+                return {"deleted": False, "node_found": False, "edges_removed": 0}
+
+            # Remove from the node-type index.
+            ntype = node.node_type or "unknown"
+            self.node_type_index.get(ntype, set()).discard(node_id)
+
+            edges_removed = 0
+            if cascade_edges:
+                # Keep only edges that are NOT incident to the deleted node.
+                remaining_edges = [
+                    e
+                    for e in self.edges
+                    if e.source_id != node_id and e.target_id != node_id
+                ]
+                edges_removed = len(self.edges) - len(remaining_edges)
+                self.edges = remaining_edges
+
+                # Rebuild the edge indexes from the surviving edges so they stay
+                # perfectly consistent with self.edges (cheap and unambiguous).
+                self.edge_type_index = defaultdict(list)
+                for e in self.edges:
+                    self.edge_type_index[e.edge_type].append(e)
+
+                self._adjacency = defaultdict(list)
+                for e in self.edges:
+                    self._adjacency[e.source_id].append(e)
+            else:
+                # Even without cascade, drop any dangling adjacency references.
+                self._adjacency.pop(node_id, None)
+
+            self.logger.debug(
+                "Deleted node %s (edges_removed=%d)", node_id, edges_removed
+            )
+            return {
+                "deleted": True,
+                "node_found": True,
+                "edges_removed": edges_removed,
+            }
+
     def save_to_file(self, path: str) -> None:
         """
         Save context graph to file (JSON format).
+
+        Serializes nodes, edges, cross-graph links, and the decision library
+        (including the causal index) so that a persisted graph round-trips
+        through :meth:`load_from_file` without losing decision intelligence.
+
+        Writes atomically (temp file + ``os.replace``) so that concurrent
+        writers (e.g. the MCP server and the Explorer sharing one JSON file)
+        can never observe a half-written file.
 
         Args:
             path: File path to save to
         """
         import json
+        import os
+        import tempfile
 
         with self._lock:
-    
             links_data = []
             for link_id, (other_graph, source_node_id, target_node_id) in self._linked_graphs.items():
                 links_data.append(
@@ -1113,8 +1184,34 @@ class ContextGraph:
                 "links": links_data,
             }
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            # Persist the decision library (decisions + causal index) so that
+            # decision records survive restarts. Decisions are also materialized
+            # as graph nodes/edges (see _add_decision_to_graph), but the causal
+            # links and metadata are only stored here.
+            decisions = getattr(self, "_decisions", None)
+            if decisions:
+                data["decisions"] = decisions
+                data["causal_in"] = {
+                    str(k): sorted(v) for k, v in (getattr(self, "_causal_in", {}) or {}).items()
+                }
+                data["causal_out"] = {
+                    str(k): sorted(v) for k, v in (getattr(self, "_causal_out", {}) or {}).items()
+                }
+
+        # Atomic write: same-directory temp file then replace, so readers never
+        # see a partially-written JSON document.
+        dirname = os.path.dirname(os.path.abspath(path)) or "."
+        fd, tmp_path = tempfile.mkstemp(prefix=".kg_", suffix=".tmp", dir=dirname)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
         self.logger.info(f"Saved context graph to {path}")
 
@@ -1150,44 +1247,68 @@ class ContextGraph:
             # Clear existing
             self.nodes.clear()
             self.edges.clear()
-            self._edge_index.clear()
             self._adjacency.clear()
             self.node_type_index.clear()
             self.edge_type_index.clear()
             self._linked_graphs.clear()
             self._unresolved_links.clear()
-            # Deletion metadata belongs to the graph being replaced; keeping it
-            # would make entities in the loaded graph read as already retracted.
-            self._retractions.clear()
-            self._tombstones.clear()
 
             if "graph_id" in data:
                 self.graph_id = data["graph_id"]
 
-    
-            nodes = data.get("nodes")
-            if nodes is None:
-                nodes = data.get("entities")
-            if nodes is None:
-                nodes = data.get("vertices")
-            if nodes is None:
-                nodes = []
-            self.add_nodes(nodes)
+            # Suspend the mutation callback while bulk-loading so a graph that
+            # already has a callback installed (e.g. the Explorer) does not emit
+            # one ADD_NODE/ADD_EDGE event per restored element.
+            prev_suspend = getattr(self, "_suspend_mutation_callback", False)
+            self._suspend_mutation_callback = True
+            try:
+                nodes = data.get("nodes")
+                if nodes is None:
+                    nodes = data.get("entities")
+                if nodes is None:
+                    nodes = data.get("vertices")
+                if nodes is None:
+                    nodes = []
+                self.add_nodes(nodes)
 
-            edges = data.get("edges")
-            if edges is None:
-                edges = data.get("relationships")
-            if edges is None:
-                edges = data.get("links")
-            if edges is None:
-                edges = []
-            self.add_edges(edges)
+                edges = data.get("edges")
+                if edges is None:
+                    edges = data.get("relationships")
+                if edges is None:
+                    edges = data.get("links")
+                if edges is None:
+                    edges = []
+                self.add_edges(edges)
+            finally:
+                self._suspend_mutation_callback = prev_suspend
 
-        
             for link_meta in data.get("links", []):
                 link_id = link_meta.get("link_id")
                 if link_id:
                     self._unresolved_links[link_id] = link_meta
+
+            # Rebuild the decision library (may be empty for legacy files).
+            raw_decisions = data.get("decisions") if isinstance(data, dict) else None
+            self._decisions = dict(raw_decisions) if isinstance(raw_decisions, dict) else {}
+            self._decision_index = defaultdict(set)
+            self._entity_index = defaultdict(set)
+            for did, dec in self._decisions.items():
+                category = dec.get("category")
+                if category:
+                    self._decision_index[str(category)].add(str(did))
+                for ent in (dec.get("entities") or []):
+                    self._entity_index[str(ent)].add(str(did))
+            self._temporal_index = sorted(
+                ((str(did), dec.get("timestamp", 0)) for did, dec in self._decisions.items()),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+            self._causal_in = defaultdict(set)
+            self._causal_out = defaultdict(set)
+            for k, v in (data.get("causal_in") or {}).items():
+                self._causal_in[str(k)] = {str(x) for x in v}
+            for k, v in (data.get("causal_out") or {}).items():
+                self._causal_out[str(k)] = {str(x) for x in v}
 
         self.logger.info(f"Loaded context graph from {path}")
 
@@ -1553,384 +1674,16 @@ class ContextGraph:
             max_edges = n * (n - 1) 
             return len(self.edges) / max_edges
 
-    def retract_node(
-        self,
-        node_id: str,
-        reason: Optional[str] = None,
-        at: Optional[Union[str, datetime]] = None,
-        cascade: bool = True,
-    ) -> bool:
-        """Retract a node: no longer active, but still visible in history.
-
-        Closes the node's validity window rather than deleting it, so
-        :meth:`state_at` before ``at`` still returns the node and any decision
-        recorded against it remains explainable. Use :meth:`purge_node` when
-        the data itself has to be gone.
-
-        Args:
-            node_id: Node to retract.
-            reason: Why it was retracted, stored on the retraction record.
-            at: When the retraction takes effect (ISO string or datetime).
-                Defaults to now, UTC.
-            cascade: Also retract every edge touching the node. Leaving edges
-                active around an inactive node means :meth:`find_active_nodes`
-                drops the node while its relationships still read as current,
-                so the default keeps the active view self-consistent.
-
-        Retraction is expressed through the temporal window, so it is visible
-        to the activity-aware views -- :meth:`find_active_nodes`,
-        :meth:`state_at`, ``ContextNode.is_active`` -- and not to membership
-        checks like :meth:`has_node` or :meth:`stats`, which continue to count
-        the retained record. That matches how ``valid_until`` already behaved
-        before retraction existed.
-
-        A node whose ``valid_until`` is already earlier than ``at`` keeps that
-        earlier bound: retraction only ever closes a validity window, never
-        widens one.
-
-        Returns:
-            True if the node was retracted; False if it does not exist or was
-            already retracted.
-
-        Note:
-            Emits ``UPDATE_NODE`` to the audit-trail callback, since retraction
-            changes the validity window rather than removing the record.
-        """
-        at_iso = _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
-        with self._lock:
-            node = self.nodes.get(node_id)
-            if node is None:
-                self.logger.warning("Cannot retract unknown node: %r", node_id)
-                return False
-            if ("node", node_id) in self._retractions:
-                return False
-
-            node.valid_until = _closing_valid_until(node.valid_until, at_iso)
-            record = {
-                "entity_id": node_id,
-                "entity_kind": "node",
-                "retracted_at": at_iso,
-                "reason": reason,
-            }
-            self._retractions[("node", node_id)] = record
-            node_payload = {**node.to_dict(), "retraction": dict(record)}
-
-            cascaded: List[Tuple[str, Dict[str, Any]]] = []
-            if cascade:
-                # Snapshotted once, before the loop: edge_id is content-derived
-                # and not guaranteed unique (#922), so two distinct edge objects
-                # can share one id. Checking the live _retractions dict inside
-                # the loop would let the first duplicate's record block the
-                # second from ever being closed, leaving it active indefinitely
-                # while its retraction record claimed otherwise.
-                already_retracted_edge_ids = {
-                    key[1] for key in self._retractions if key[0] == "edge"
-                }
-                for edge in self._incident_edges(node_id):
-                    if edge.edge_id in already_retracted_edge_ids:
-                        continue
-                    edge.valid_until = _closing_valid_until(edge.valid_until, at_iso)
-                    edge_record = {
-                        "entity_id": edge.edge_id,
-                        "entity_kind": "edge",
-                        "retracted_at": at_iso,
-                        "reason": reason,
-                        "cascaded_from": node_id,
-                    }
-                    self._retractions[("edge", edge.edge_id)] = edge_record
-                    # Payloads are snapshotted here, not read back after the
-                    # lock is released: a concurrent clear() would otherwise
-                    # wipe the record out from under the emission below.
-                    cascaded.append(
-                        (
-                            edge.edge_id,
-                            {**edge.to_dict(), "retraction": dict(edge_record)},
-                        )
-                    )
-
-        self._emit_mutation("UPDATE_NODE", node_id, node_payload)
-        for edge_id, edge_payload in cascaded:
-            self._emit_mutation("UPDATE_EDGE", edge_id, edge_payload)
-        self.logger.info(
-            "Retracted node %r at %s (cascaded %d edge(s))",
-            node_id,
-            at_iso,
-            len(cascaded),
-        )
-        return True
-
-    def retract_edge(
-        self,
-        edge_id: str,
-        reason: Optional[str] = None,
-        at: Optional[Union[str, datetime]] = None,
-    ) -> bool:
-        """Retract a single edge, leaving its endpoints untouched.
-
-        An edge whose ``valid_until`` is already earlier than ``at`` keeps that
-        earlier bound; retraction never widens a validity window.
-
-        Args:
-            edge_id: Edge to retract.
-            reason: Why it was retracted.
-            at: When the retraction takes effect. Defaults to now, UTC.
-
-        Returns:
-            True if the edge was retracted; False if it does not exist or was
-            already retracted.
-
-        Note:
-            ``edge_id`` is content-derived and not guaranteed unique (#922):
-            two distinct edge objects can share one id. Every edge matching
-            ``edge_id`` is closed under a single retraction record, so a
-            duplicate can never be left silently active while the record
-            claims it was retracted.
-        """
-        at_iso = _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
-        with self._lock:
-            edges = [e for e in self.edges if e.edge_id == edge_id]
-            if not edges:
-                self.logger.warning("Cannot retract unknown edge: %r", edge_id)
-                return False
-            if ("edge", edge_id) in self._retractions:
-                return False
-
-            record = {
-                "entity_id": edge_id,
-                "entity_kind": "edge",
-                "retracted_at": at_iso,
-                "reason": reason,
-            }
-            self._retractions[("edge", edge_id)] = record
-            for edge in edges:
-                edge.valid_until = _closing_valid_until(edge.valid_until, at_iso)
-            payload = {**edges[0].to_dict(), "retraction": dict(record)}
-
-        self._emit_mutation("UPDATE_EDGE", edge_id, payload)
-        self.logger.info(
-            "Retracted edge %r at %s (%d underlying record(s))",
-            edge_id,
-            at_iso,
-            len(edges),
-        )
-        return True
-
-    def purge_node(
-        self,
-        node_id: str,
-        reason: Optional[str] = None,
-        at: Optional[Union[str, datetime]] = None,
-        cascade: bool = True,
-    ) -> bool:
-        """Permanently remove a node; history no longer contains it.
-
-        Unlike :meth:`retract_node` this is destructive: the node disappears
-        from :meth:`state_at` as well as from the active view. Only a tombstone
-        remains, recording that a purge happened and why -- deliberately
-        without the purged content, since retaining it would defeat the point.
-
-        Scope is this graph only. Copies held elsewhere (``AgentMemory``, a
-        bound vector store, an exported file) are not reached, so this is one
-        step of an erasure workflow, not the whole of it.
-
-        Args:
-            node_id: Node to purge.
-            reason: Why it was purged, e.g. an erasure-request reference.
-            at: When the purge takes effect, recorded as the tombstone's
-                ``purged_at`` (ISO string or datetime). Defaults to now, UTC.
-            cascade: Also purge every edge touching the node, and the marker
-                node of any cross-graph link it exits through. Defaults to True
-                because leaving edges pointing at a removed node produces
-                dangling endpoints.
-
-        Cross-graph links registered by :meth:`link_graph` out of this node are
-        deregistered either way -- a link whose source no longer exists would
-        still resolve through :meth:`navigate_to` and still be serialized by
-        :meth:`save_to_file`.
-
-        Returns:
-            True if the node was purged; False if it does not exist.
-
-        Note:
-            Emits ``REMOVE_NODE``/``REMOVE_EDGE`` to the audit-trail callback.
-        """
-        purged_at = (
-            _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
-        )
-        with self._lock:
-            if node_id not in self.nodes:
-                self.logger.warning("Cannot purge unknown node: %r", node_id)
-                return False
-
-            # The link marker node is scaffolding reachable only from the node
-            # being purged, so it goes with the cascade rather than surviving as
-            # an orphan. Resolve the markers before deregistering the links they
-            # are derived from.
-            targets = [node_id]
-            if cascade:
-                targets.extend(self._cross_graph_marker_nodes(node_id))
-            for link_id in self._cross_graph_links_for(node_id):
-                self._linked_graphs.pop(link_id, None)
-                self._unresolved_links.pop(link_id, None)
-
-            # Tombstones are snapshotted into locals before the lock is
-            # released; reading them back afterwards would race a clear().
-            purged_edges: List[Tuple[str, Dict[str, Any]]] = []
-            purged_nodes: List[Tuple[str, Dict[str, Any]]] = []
-            for target in targets:
-                cascaded_from = None if target == node_id else node_id
-                if cascade:
-                    for edge in self._incident_edges(target):
-                        self._drop_edge_from_indexes(edge)
-                        edge_record = {
-                            "entity_id": edge.edge_id,
-                            "entity_kind": "edge",
-                            "purged_at": purged_at,
-                            "reason": reason,
-                            "cascaded_from": node_id,
-                        }
-                        self._tombstones[("edge", edge.edge_id)] = edge_record
-                        self._retractions.pop(("edge", edge.edge_id), None)
-                        purged_edges.append((edge.edge_id, dict(edge_record)))
-
-                self._drop_node_from_indexes(target)
-                node_record = {
-                    "entity_id": target,
-                    "entity_kind": "node",
-                    "purged_at": purged_at,
-                    "reason": reason,
-                }
-                if cascaded_from is not None:
-                    node_record["cascaded_from"] = cascaded_from
-                self._tombstones[("node", target)] = node_record
-                self._retractions.pop(("node", target), None)
-                purged_nodes.append((target, dict(node_record)))
-
-        for edge_id, payload in purged_edges:
-            self._emit_mutation("REMOVE_EDGE", edge_id, payload)
-        for purged_id, payload in purged_nodes:
-            self._emit_mutation("REMOVE_NODE", purged_id, payload)
-        self.logger.info(
-            "Purged node %r (cascaded %d edge(s), %d node(s))",
-            node_id,
-            len(purged_edges),
-            len(purged_nodes) - 1,
-        )
-        return True
-
-    def purge_edge(
-        self,
-        edge_id: str,
-        reason: Optional[str] = None,
-        at: Optional[Union[str, datetime]] = None,
-    ) -> bool:
-        """Permanently remove a single edge, leaving its endpoints in place.
-
-        If the edge is the bridge of a cross-graph link, the link is also
-        deregistered -- :meth:`navigate_to` should not keep resolving a link
-        whose bridge is gone. The marker node itself is an endpoint and is left
-        in place; purge it directly, or purge the link's source node, to remove
-        it too.
-
-        Args:
-            edge_id: Edge to purge.
-            reason: Why it was purged.
-            at: When the purge takes effect, recorded as the tombstone's
-                ``purged_at``. Defaults to now, UTC.
-
-        Returns:
-            True if the edge was purged; False if it does not exist.
-
-        Note:
-            ``edge_id`` is content-derived and not guaranteed unique (#922):
-            two distinct edge objects can share one id. Every edge matching
-            ``edge_id`` is dropped under a single tombstone, so a duplicate
-            can never be left live in the graph while the tombstone claims
-            the edge is gone.
-        """
-        purged_at = (
-            _normalize_temporal_input(at) or datetime.now(timezone.utc).isoformat()
-        )
-        with self._lock:
-            edges = [e for e in self.edges if e.edge_id == edge_id]
-            if not edges:
-                self.logger.warning("Cannot purge unknown edge: %r", edge_id)
-                return False
-            for edge in edges:
-                self._drop_edge_from_indexes(edge)
-                link_id = (edge.metadata or {}).get("link_id")
-                if (edge.metadata or {}).get("cross_graph") and link_id:
-                    self._linked_graphs.pop(link_id, None)
-                    self._unresolved_links.pop(link_id, None)
-            self._retractions.pop(("edge", edge_id), None)
-            record = {
-                "entity_id": edge_id,
-                "entity_kind": "edge",
-                "purged_at": purged_at,
-                "reason": reason,
-            }
-            self._tombstones[("edge", edge_id)] = record
-            payload = dict(record)
-
-        self._emit_mutation("REMOVE_EDGE", edge_id, payload)
-        self.logger.info(
-            "Purged edge %r (%d underlying record(s))", edge_id, len(edges)
-        )
-        return True
-
-    def get_retraction(
-        self, entity_id: str, entity_kind: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Return the retraction record for a node or edge, or None.
-
-        Args:
-            entity_id: Node id or edge id.
-            entity_kind: ``"node"`` or ``"edge"``. Records are keyed by kind as
-                well as id, so pass this when a node id and an edge id could
-                collide; without it a node record is preferred over an edge one.
-        """
-        with self._lock:
-            return self._find_removal_record(self._retractions, entity_id, entity_kind)
-
-    def get_tombstone(
-        self, entity_id: str, entity_kind: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Return the purge tombstone for a node or edge, or None.
-
-        The tombstone records that a purge happened, when, and why. It never
-        contains the purged content.
-
-        Args:
-            entity_id: Node id or edge id.
-            entity_kind: ``"node"`` or ``"edge"``; disambiguates a node id that
-                collides with an edge id, as for :meth:`get_retraction`.
-        """
-        with self._lock:
-            return self._find_removal_record(self._tombstones, entity_id, entity_kind)
-
-    def list_retractions(self) -> List[Dict[str, Any]]:
-        """Return every retraction record."""
-        with self._lock:
-            return [dict(record) for record in self._retractions.values()]
-
-    def list_tombstones(self) -> List[Dict[str, Any]]:
-        """Return every purge tombstone."""
-        with self._lock:
-            return [dict(record) for record in self._tombstones.values()]
-
     def clear(self) -> None:
         """Fully reset the graph state and indexes."""
         with self._lock:
             self.nodes.clear()
             self.edges.clear()
-            self._edge_index.clear()
             self._adjacency.clear()
             self.node_type_index.clear()
             self.edge_type_index.clear()
             self._linked_graphs.clear()
             self._unresolved_links.clear()
-            self._retractions.clear()
-            self._tombstones.clear()
         self.logger.debug("Graph state fully cleared.")
 
     # --- Internal Helpers ---
@@ -1998,11 +1751,6 @@ class ContextGraph:
             self.logger.warning("Skipping internal edge with invalid endpoints: %r", edge)
             return False
         with self._lock:
-            # Edge identity is content-derived, so an existing edge_id means this
-            # exact edge is already stored; re-adding it is a no-op (issue #922).
-            if edge.edge_id in self._edge_index:
-                return False
-
             # Ensure nodes exist
             if edge.source_id not in self.nodes:
                 self._add_internal_node(
@@ -2013,7 +1761,6 @@ class ContextGraph:
                     ContextNode(edge.target_id, "entity", edge.target_id)
                 )
 
-            self._edge_index[edge.edge_id] = edge
             self.edges.append(edge)
             self.edge_type_index[edge.edge_type].append(edge)
             self._adjacency[edge.source_id].append(edge)
@@ -2028,147 +1775,6 @@ class ContextGraph:
                     f"Audit trail callback failed for edge {edge.edge_id}: {e}"
                 )
         return True
-
-    def _emit_mutation(
-        self, operation: str, entity_id: str, payload: Dict[str, Any]
-    ) -> None:
-        """Fire the audit-trail callback, mirroring the add paths.
-
-        Kept in one place so retraction and purge record themselves the same
-        way ``_add_internal_node``/``_add_internal_edge`` already do, including
-        the ``_suspend_mutation_callback`` guard used during restores.
-        """
-        if not getattr(self, "mutation_callback", None):
-            return
-        if getattr(self, "_suspend_mutation_callback", False):
-            return
-        try:
-            self.mutation_callback(operation, entity_id, payload)
-        except Exception as e:
-            self.logger.warning(
-                f"Audit trail callback failed for {operation} {entity_id}: {e}"
-            )
-
-    def _incident_edges(self, node_id: str) -> List[ContextEdge]:
-        """Every edge touching ``node_id``, in either direction.
-
-        ``_adjacency`` is keyed by source only, so incoming edges have to come
-        from a scan of ``self.edges``; relying on ``_adjacency`` alone would
-        silently leave inbound edges pointing at a removed node.
-        """
-        return [
-            edge
-            for edge in self.edges
-            if edge.source_id == node_id or edge.target_id == node_id
-        ]
-
-    @staticmethod
-    def _find_removal_record(
-        store: Dict[Tuple[str, str], Dict[str, Any]],
-        entity_id: str,
-        entity_kind: Optional[str],
-    ) -> Optional[Dict[str, Any]]:
-        """Look a retraction/tombstone up by id, optionally narrowed by kind.
-
-        The caller must hold ``self._lock``. Records are keyed by
-        ``(entity_kind, entity_id)``; with no kind given, both keyspaces are
-        tried so callers that know an id is unambiguous can pass it alone.
-        """
-        if entity_kind is not None:
-            if entity_kind not in ("node", "edge"):
-                raise ValueError(
-                    f"entity_kind must be 'node', 'edge' or None, got {entity_kind!r}"
-                )
-            kinds: Tuple[str, ...] = (entity_kind,)
-        else:
-            kinds = ("node", "edge")
-        for kind in kinds:
-            record = store.get((kind, entity_id))
-            if record is not None:
-                return dict(record)
-        return None
-
-    def _cross_graph_links_for(self, node_id: str) -> List[str]:
-        """Link ids that ``node_id`` participates in, as exit point or marker.
-
-        The caller must hold ``self._lock``. :meth:`link_graph` registers a link
-        in three places -- ``_linked_graphs``, a marker node and the bridge edge
-        -- so removing only the node would leave :meth:`navigate_to` resolving a
-        link whose source is gone.
-        """
-        link_ids = [
-            link_id
-            for link_id, (_, source_node_id, _) in self._linked_graphs.items()
-            if source_node_id == node_id
-        ]
-        link_ids.extend(
-            link_id
-            for link_id, meta in self._unresolved_links.items()
-            if meta.get("source_node_id") == node_id
-        )
-        node = self.nodes.get(node_id)
-        metadata = getattr(node, "metadata", None) or {}
-        if metadata.get("cross_graph") and metadata.get("link_id"):
-            link_ids.append(metadata["link_id"])
-        return list(dict.fromkeys(link_ids))
-
-    def _cross_graph_marker_nodes(self, node_id: str) -> List[str]:
-        """Marker nodes of the cross-graph links ``node_id`` exits through.
-
-        The caller must hold ``self._lock``.
-        """
-        return [
-            marker_id
-            for marker_id in (
-                f"__cross_graph_{link_id}"
-                for link_id in self._cross_graph_links_for(node_id)
-            )
-            if marker_id != node_id and marker_id in self.nodes
-        ]
-
-    def _drop_node_from_indexes(self, node_id: str) -> None:
-        """Remove one node from ``nodes``, ``node_type_index`` and ``_adjacency``.
-
-        The caller must hold ``self._lock``. Incident edges are not touched --
-        see :meth:`_drop_edge_from_indexes`.
-        """
-        node = self.nodes.pop(node_id, None)
-        if node is None:
-            return
-        bucket = self.node_type_index.get(node.node_type)
-        if bucket is not None:
-            bucket.discard(node_id)
-            if not bucket:
-                del self.node_type_index[node.node_type]
-        self._adjacency.pop(node_id, None)
-
-    def _drop_edge_from_indexes(self, edge: ContextEdge) -> None:
-        """Remove one edge from every structure that references it.
-
-        The caller must hold ``self._lock``. ``edges``, ``edge_type_index`` and
-        ``_adjacency`` must be updated together or the indexes drift out of
-        step with the edge list.
-        """
-        try:
-            self.edges.remove(edge)
-        except ValueError:
-            pass
-        bucket = self.edge_type_index.get(edge.edge_type)
-        if bucket is not None:
-            try:
-                bucket.remove(edge)
-            except ValueError:
-                pass
-            if not bucket:
-                del self.edge_type_index[edge.edge_type]
-        adjacent = self._adjacency.get(edge.source_id)
-        if adjacent is not None:
-            try:
-                adjacent.remove(edge)
-            except ValueError:
-                pass
-            if not adjacent:
-                del self._adjacency[edge.source_id]
 
     # --- Builder Methods (Legacy/Utility) ---
 
@@ -2449,97 +2055,6 @@ class ContextGraph:
                 },
             }
 
-    def to_kg_dict(self, entities_only: bool = False) -> Dict[str, Any]:
-        """Export graph in the canonical knowledge-graph shape.
-
-        This is the official adapter that converts the ContextGraph's internal
-        ``{"nodes", "edges"}`` / ``source`` representation into the
-        ``{"entities", "relationships"}`` / ``source_id`` shape expected by
-        downstream consumers such as
-        :class:`~semantica.export.rdf_exporter.RDFExporter` and
-        :meth:`~semantica.kg.temporal_query.TemporalGraphQuery.query_time_range`.
-
-        Users no longer need to hand-map field names between APIs.
-
-        Args:
-            entities_only: If True, only nodes whose ``node_type`` is
-                ``"entity"`` are exported as entities. When False (default),
-                every node is exported. Relationships whose endpoints are not
-                in the exported entity set are dropped to avoid dangling
-                references in downstream consumers.
-
-        Returns:
-            dict: A knowledge-graph dictionary with:
-                - ``entities``: list of ``{"id", "text", "type", "properties",
-                  "metadata"}`` (plus ``valid_from`` / ``valid_until`` when set)
-                - ``relationships``: list of ``{"source_id", "target_id",
-                  "type", "weight", "id", "familyId"}`` (plus ``metadata`` and
-                  ``valid_from`` / ``valid_until`` when set)
-                - ``statistics``: ``{"entity_count", "relationship_count"}``
-        """
-        with self._lock:
-            entities_out = []
-            for n in self.nodes.values():
-                if entities_only and n.node_type != "entity":
-                    continue
-                # Normalize the entity id to ``str`` so it matches ContextEdge,
-                # which coerces its endpoints to ``str`` in ``__post_init__``.
-                # Without this, non-string node ids (e.g. numeric ids loaded via
-                # ``from_dict``) would fail the ``valid_ids`` membership check
-                # below and silently drop otherwise-valid relationships.
-                entity_id = str(n.node_id)
-                entity: Dict[str, Any] = {
-                    "id": entity_id,
-                    "text": n.content,
-                    "type": n.node_type,
-                    # ``properties`` / ``metadata`` may be ``None`` when a node
-                    # was loaded from JSON containing an explicit ``null``;
-                    # guard with ``or {}`` so ``dict(...)`` never raises.
-                    "properties": dict(n.properties or {}),
-                    "metadata": dict(n.metadata or {}),
-                }
-                if n.valid_from is not None:
-                    entity["valid_from"] = n.valid_from
-                if n.valid_until is not None:
-                    entity["valid_until"] = n.valid_until
-                entities_out.append(entity)
-
-            # When only entity nodes are exported, drop relationships whose
-            # endpoints were filtered out so downstream consumers never see a
-            # source_id/target_id that is absent from ``entities``.
-            valid_ids = {e["id"] for e in entities_out} if entities_only else None
-
-            relationships_out = []
-            for e in self.edges:
-                if valid_ids is not None and (
-                    e.source_id not in valid_ids or e.target_id not in valid_ids
-                ):
-                    continue
-                rel: Dict[str, Any] = {
-                    "id": e.edge_id,
-                    "familyId": e.family_id or e.edge_id,
-                    "source_id": e.source_id,
-                    "target_id": e.target_id,
-                    "type": e.edge_type,
-                    "weight": e.weight,
-                }
-                if e.metadata:
-                    rel["metadata"] = dict(e.metadata)
-                if e.valid_from is not None:
-                    rel["valid_from"] = e.valid_from
-                if e.valid_until is not None:
-                    rel["valid_until"] = e.valid_until
-                relationships_out.append(rel)
-
-            return {
-                "entities": entities_out,
-                "relationships": relationships_out,
-                "statistics": {
-                    "entity_count": len(entities_out),
-                    "relationship_count": len(relationships_out),
-                },
-            }
-
     def from_dict(self, graph_dict: Dict[str, Any]) -> None:
         """Load graph from dictionary format."""
         # Clear existing graph
@@ -2793,6 +2308,27 @@ class ContextGraph:
         if direction not in ["upstream", "downstream"]:
             raise ValueError("Direction must be 'upstream' or 'downstream'")
         
+        # Build a unified causal adjacency by merging two sources:
+        #   1. The decision-library causal edges written by record_decision's
+        #      `causes` / `caused_by` params (_causal_out / _causal_in).
+        #   2. Knowledge-graph edges of causal type (CAUSED / INFLUENCED /
+        #      PRECEDENT_FOR) — kept for backward compatibility with graphs that
+        #      model causality directly as KG edges.
+        # Semantics: an edge src -> tgt means "src caused tgt".
+        causal_out: Dict[str, Set[str]] = defaultdict(set)
+        causal_in: Dict[str, Set[str]] = defaultdict(set)
+
+        def _link(src: str, tgt: str) -> None:
+            causal_out[src].add(tgt)
+            causal_in[tgt].add(src)
+
+        for src, tgts in getattr(self, "_causal_out", {}).items():
+            for t in tgts:
+                _link(src, t)
+        for edge in getattr(self, "edges", []):
+            if getattr(edge, "edge_type", None) in ("CAUSED", "INFLUENCED", "PRECEDENT_FOR"):
+                _link(edge.source_id, edge.target_id)
+        
         # BFS traversal
         visited = set()
         queue = deque([(decision_id, 0)])
@@ -2808,50 +2344,52 @@ class ContextGraph:
             
             # Skip the starting decision - only add connected decisions
             if current_id != decision_id:
-                # Get decision node
-                if current_id in self.nodes:
+                # Prefer the decision-library record; fall back to the KG node.
+                decision_data = None
+                if hasattr(self, "_decisions") and current_id in self._decisions:
+                    decision_data = self._decisions[current_id]
+                    node_content = decision_data.get("scenario", "")
+                    node_vf = (decision_data.get("valid_from"), decision_data.get("valid_until"))
+                elif current_id in self.nodes:
                     node = self.nodes[current_id]
                     if (hasattr(node, 'node_type') and isinstance(node.node_type, str) and
-                        node.node_type.lower() == "decision"):
+                            node.node_type.lower() == "decision"):
                         decision_data = node.properties
-                        timestamp = self._normalize_timestamp(decision_data.get("timestamp"))
-                        decision = Decision(
-                            decision_id=current_id,
-                            category=decision_data.get("category", ""),
-                            scenario=decision_data.get("scenario", node.content),
-                            reasoning=decision_data.get("reasoning", ""),
-                            outcome=decision_data.get("outcome", ""),
-                            confidence=decision_data.get("confidence", 0.0),
-                            timestamp=timestamp,
-                            decision_maker=decision_data.get("decision_maker", ""),
-                            reasoning_embedding=decision_data.get("reasoning_embedding"),
-                            node2vec_embedding=decision_data.get("node2vec_embedding"),
-                            valid_from=node.valid_from,
-                            valid_until=node.valid_until,
-                            metadata={k: v for k, v in decision_data.items() if k not in [
-                                "category", "scenario", "reasoning", "outcome", "confidence", 
-                                "timestamp", "decision_maker", "reasoning_embedding", "node2vec_embedding"
-                            ]}
-                        )
-                        decision.metadata["causal_distance"] = depth
-                        decisions.append(decision)
+                        node_content = node.content
+                        node_vf = (node.valid_from, node.valid_until)
+                
+                if decision_data is not None:
+                    timestamp = self._normalize_timestamp(decision_data.get("timestamp"))
+                    decision = Decision(
+                        decision_id=current_id,
+                        category=decision_data.get("category", ""),
+                        scenario=decision_data.get("scenario", node_content),
+                        reasoning=decision_data.get("reasoning", ""),
+                        outcome=decision_data.get("outcome", ""),
+                        confidence=decision_data.get("confidence", 0.0),
+                        timestamp=timestamp,
+                        decision_maker=decision_data.get("decision_maker", ""),
+                        reasoning_embedding=decision_data.get("reasoning_embedding"),
+                        node2vec_embedding=decision_data.get("node2vec_embedding"),
+                        valid_from=node_vf[0] if decision_data is not None else None,
+                        valid_until=node_vf[1] if decision_data is not None else None,
+                        metadata={k: v for k, v in decision_data.items() if k not in [
+                            "category", "scenario", "reasoning", "outcome", "confidence",
+                            "timestamp", "decision_maker", "reasoning_embedding", "node2vec_embedding"
+                        ]}
+                    )
+                    decision.metadata["causal_distance"] = depth
+                    decisions.append(decision)
             
-            # Find connected decisions
-            for edge in self.edges:
-                if direction == "upstream":
-                    if edge.target_id == current_id and edge.edge_type in ["CAUSED", "INFLUENCED", "PRECEDENT_FOR"]:
-                        if edge.source_id not in visited and depth < max_depth:
-                            queue.append((edge.source_id, depth + 1))
-                else:  # downstream
-                    if edge.source_id == current_id and edge.edge_type in ["CAUSED", "INFLUENCED", "PRECEDENT_FOR"]:
-                        if edge.target_id not in visited and depth < max_depth:
-                            queue.append((edge.target_id, depth + 1))
+            # Visit neighbours in the requested direction.
+            neighbours = causal_in[current_id] if direction == "upstream" else causal_out[current_id]
+            for nxt in neighbours:
+                if nxt not in visited and depth < max_depth:
+                    queue.append((nxt, depth + 1))
         
-        # Sort by depth for upstream (most distant first) and downstream (closest first)
-        if direction == "upstream":
-            decisions.sort(key=lambda d: d.metadata.get("causal_distance", 0), reverse=True)
-        else:
-            decisions.sort(key=lambda d: d.metadata.get("causal_distance", 0))
+        # Sort by causal distance ascending (closest-first) for both directions,
+        # so a downstream/upstream chain reads outward from the start decision.
+        decisions.sort(key=lambda d: d.metadata.get("causal_distance", 0))
         
         return decisions
 
@@ -3180,6 +2718,8 @@ class ContextGraph:
         confidence: float,
         entities: Optional[List[str]] = None,
         decision_maker: Optional[str] = None,
+        causes: Optional[List[str]] = None,
+        caused_by: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         valid_from: Optional[Union[str, int, float, datetime]] = None,
         valid_until: Optional[Union[str, int, float, datetime]] = None,
@@ -3306,6 +2846,8 @@ class ContextGraph:
             self._decisions = {}
             self._decision_index = defaultdict(set)
             self._entity_index = defaultdict(set)
+            self._causal_in = defaultdict(set)
+            self._causal_out = defaultdict(set)
             self._temporal_index = []
         
         self._decisions[decision_id] = decision
@@ -3316,7 +2858,25 @@ class ContextGraph:
         
         self._temporal_index.append((decision_id, timestamp))
         self._temporal_index.sort(key=lambda x: x[1], reverse=True)
-        
+
+        # Record causal links into the decision library (direction-aware).
+        # `caused_by=[A]` for decision B means A caused B:
+        #   A -> B  =>  _causal_out[A] += B, _causal_in[B] += A
+        # `causes=[X]` for decision B means B caused X:
+        #   B -> X  =>  _causal_out[B] += X, _causal_in[X] += B
+        if not hasattr(self, "_causal_in"):
+            self._causal_in = defaultdict(set)
+        if not hasattr(self, "_causal_out"):
+            self._causal_out = defaultdict(set)
+        for cid in (caused_by or []):
+            if cid and cid != decision_id:
+                self._causal_out[cid].add(decision_id)
+                self._causal_in[decision_id].add(cid)
+        for cid in (causes or []):
+            if cid and cid != decision_id:
+                self._causal_out[decision_id].add(cid)
+                self._causal_in[cid].add(decision_id)
+
         self.logger.info(f"Recorded decision {decision_id} in category {category}")
         return decision_id
     
@@ -3427,20 +2987,11 @@ class ContextGraph:
         direct_influence.discard(decision_id)
         direct_influence.update(self._decision_index.get(decision["category"], set()))
         direct_influence.discard(decision_id)
-
-        # Explicit causal relationships recorded via add_causal_relationship() are
-        # ground truth and always count as direct influence, in either direction.
-        for edge_type in _CAUSAL_EDGE_TYPES:
-            for edge in self.edge_type_index.get(edge_type, []):
-                if edge.source_id == decision_id and edge.target_id in self._decisions:
-                    direct_influence.add(edge.target_id)
-                elif edge.target_id == decision_id and edge.source_id in self._decisions:
-                    direct_influence.add(edge.source_id)
         
         # Indirect influence (through graph relationships)
         indirect_influence = set()
         if include_indirect and self.config.get("advanced_analytics"):
-            indirect_influence = self._find_indirect_decision_influence(decision_id, max_depth) - direct_influence
+            indirect_influence = self._find_indirect_decision_influence(decision_id, max_depth)
         
         # Calculate influence scores
         influence_scores = {}
@@ -3544,106 +3095,42 @@ class ContextGraph:
     def trace_decision_causality(
         self,
         decision_id: str,
-        max_depth: int = 5,
-        max_chains: Optional[int] = 10000
+        max_depth: int = 5
     ) -> List[Dict[str, Any]]:
         """
         Trace causal chain for a decision.
-
+        
         Args:
             decision_id: Decision to trace
             max_depth: Maximum depth for causal analysis
-            max_chains: Maximum number of chains to return. Densely connected
-                graphs can contain a combinatorial number of distinct causal
-                paths, so the traversal stops once this many chains have been
-                collected and appends a ``{"truncated": True, ...}`` marker so
-                callers can tell the trace is incomplete. Pass None for no limit.
-
+            
         Returns:
             Causal chain as list of decision relationships
         """
         if not hasattr(self, '_decisions') or decision_id not in self._decisions:
             raise ValueError(f"Decision {decision_id} not found")
-
+        
         try:
             # Use graph traversal to find causal relationships
             causal_chain = []
-            chain_limit = float("inf") if max_chains is None else max_chains
-            truncated = False
-
-            # Reverse index of explicit causal edges, built once per call so the
-            # traversal does not rescan the edge list at every visited node.
-            # Edges may reference decision nodes that were never recorded through
-            # record_decision() (e.g. a graph restored via from_dict), so only
-            # causes with a known decision record are kept.
-            incoming_causal_edges = defaultdict(list)
-            for edge_type in _CAUSAL_EDGE_TYPES:
-                for edge in self.edge_type_index.get(edge_type, []):
-                    if edge.source_id in self._decisions:
-                        incoming_causal_edges[edge.target_id].append(edge)
-
-            def record_chain(cause_path):
-                """Record one chain. Returns False once the cap is reached."""
-                nonlocal truncated
-                if len(causal_chain) >= chain_limit:
-                    truncated = True
-                    return False
-                causal_chain.append(
-                    self._build_causal_chain_report(list(reversed(cause_path)))
-                )
-                return True
-
-            def trace_recursive(current_id, depth, path, path_ids):
-                # Cycle detection is per-path rather than global: a decision reached
-                # through one branch must stay traversable through another, otherwise
-                # branching graphs silently lose valid chains. max_depth bounds the
-                # traversal.
-                if truncated or depth >= max_depth or current_id in path_ids:
+            visited = set()
+            
+            def trace_recursive(current_id, depth, path):
+                if depth >= max_depth or current_id in visited:
                     return
-
-                path_ids = path_ids | {current_id}
+                
+                visited.add(current_id)
                 current_decision = self._decisions[current_id]
-
-                # Explicit causal relationships recorded via add_causal_relationship()
-                # take precedence - they are the ground truth the caller recorded.
-                # Every edge is traced, so parallel relationships between the same
-                # pair of decisions are all reported rather than overwriting.
-                explicit_causes = incoming_causal_edges.get(current_id, [])
-                explicit_cause_ids = {edge.source_id for edge in explicit_causes}
-
-                for edge in explicit_causes:
-                    cause_id = edge.source_id
-                    cause_dec = self._decisions[cause_id]
-                    weight = getattr(edge, "weight", None)
-                    # A stored weight of 0.0 is meaningful and must not be coerced
-                    # to the 1.0 default.
-                    edge_weight = 1.0 if weight is None else float(weight)
-                    hop = {
-                        "from": cause_id,
-                        "from_scenario": cause_dec.get("scenario", ""),
-                        "to": current_id,
-                        "to_scenario": current_decision.get("scenario", ""),
-                        "type": edge.edge_type,
-                        "edge_weight": edge_weight,
-                    }
-                    cause_path = path + [hop]
-                    if not record_chain(cause_path):
-                        return
-                    trace_recursive(cause_id, depth + 1, cause_path, path_ids)
-                    if truncated:
-                        return
-
-                # Find potential causes (decisions that influenced this one) via
-                # shared entities/timestamps - additive heuristic, skipping anything
-                # already covered by an explicit relationship above.
+                
+                # Find potential causes (decisions that influenced this one)
                 potential_causes = []
                 for entity in current_decision["entities"]:
                     for other_decision_id in self._entity_index.get(entity, set()):
-                        if other_decision_id != current_id and other_decision_id not in explicit_cause_ids:
+                        if other_decision_id != current_id:
                             other_decision = self._decisions[other_decision_id]
                             if other_decision["timestamp"] < current_decision["timestamp"]:
                                 potential_causes.append(other_decision_id)
-
+                
                 for cause_id in potential_causes:
                     cause_dec = self._decisions.get(cause_id, {})
                     edge_weight = float(cause_dec.get("confidence", 1.0))
@@ -3656,32 +3143,10 @@ class ContextGraph:
                         "edge_weight": edge_weight,
                     }
                     cause_path = path + [hop]
-                    if not record_chain(cause_path):
-                        return
-                    trace_recursive(cause_id, depth + 1, cause_path, path_ids)
-                    if truncated:
-                        return
-
-            trace_recursive(decision_id, 0, [], frozenset())
-
-            if truncated:
-                # Never drop chains silently: the caller is told the trace is partial.
-                self.logger.warning(
-                    "Causal trace for %s truncated at %s chains; "
-                    "raise max_chains or lower max_depth for a complete trace.",
-                    decision_id,
-                    max_chains,
-                )
-                causal_chain.append({
-                    "truncated": True,
-                    "max_chains": max_chains,
-                    "message": (
-                        f"Causal trace truncated at {max_chains} chains. "
-                        "The result is incomplete; raise max_chains or lower "
-                        "max_depth for a complete trace."
-                    ),
-                })
-
+                    causal_chain.append(self._build_causal_chain_report(list(reversed(cause_path))))
+                    trace_recursive(cause_id, depth + 1, cause_path)
+            
+            trace_recursive(decision_id, 0, [])
             return causal_chain
             
         except Exception as e:
@@ -4150,25 +3615,21 @@ class ContextGraph:
     def trace_decision_chain(
         self,
         decision_id: str,
-        max_steps: int = 5,
-        max_chains: Optional[int] = 10000
+        max_steps: int = 5
     ) -> List[Dict[str, Any]]:
         """
         Easy way to trace how decisions are connected.
-
+        
         Args:
             decision_id: Starting decision
             max_steps: Maximum steps to trace
-            max_chains: Maximum number of chains to return; see
-                trace_decision_causality(). Pass None for no limit.
-
+            
         Returns:
             Decision chain connections
         """
         return self.trace_decision_causality(
             decision_id=decision_id,
-            max_depth=max_steps,
-            max_chains=max_chains
+            max_depth=max_steps
         )
     
     def check_decision_rules(

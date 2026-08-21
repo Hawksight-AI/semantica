@@ -1,0 +1,24 @@
+# Semantica MCP Server — Streamable HTTP bridge
+#
+# Based on the platform image (contains the semantica package and all of its
+# Python dependencies). Adds a thin FastAPI bridge that exposes the stdio-only
+# `semantica.mcp_server` over the MCP Streamable HTTP transport on port 8001.
+
+FROM semantica-knowledge-explorer:latest
+
+# Overlay the merged platform source (incl. MCP server fixes) on top of the
+# base image's bundled copy.
+COPY semantica/ /app/semantica/
+COPY mcp_http_bridge.py /app/mcp_http_bridge.py
+COPY mcp_entrypoint.sh /app/mcp_entrypoint.sh
+
+WORKDIR /app
+EXPOSE 8001
+
+# The base image's HEALTHCHECK targets the Explorer's port 8000; override it
+# so this bridge is health-checked against its own /health on 8001.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)); raise SystemExit(0 if data.get('status') == 'ok' else 1)"
+
+ENTRYPOINT ["sh", "/app/mcp_entrypoint.sh"]
+CMD ["uvicorn", "mcp_http_bridge:app", "--host", "0.0.0.0", "--port", "8001"]

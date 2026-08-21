@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Scale,
 } from "lucide-react";
+import { useI18n } from "../../i18n";
 
 interface VersionEntry {
   version_id: string;
@@ -38,6 +39,7 @@ interface Proposal {
 }
 
 export function VersionsTab() {
+  const { t } = useI18n();
   const [ontologyUri, setOntologyUri] = useState<string>("");
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -59,10 +61,10 @@ export function VersionsTab() {
         setVersions(data);
         if (response.status === 207) setError(data.message || "Warning: Partial success loading versions.");
       } else {
-        setError(`Failed to load versions (${response.status})`);
+        setError(t('onto.errLoad', { status: response.status }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load versions.");
+      setError(err instanceof Error ? err.message : t('onto.errLoadSimple'));
     }
   }, [ontologyUri]);
 
@@ -75,10 +77,10 @@ export function VersionsTab() {
         setProposals(data);
         if (response.status === 207) setError(data.message || "Warning: Partial success loading proposals.");
       } else {
-        setError(`Failed to load proposals (${response.status})`);
+        setError(t('onto.errLoadProposals', { status: response.status }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load proposals.");
+      setError(err instanceof Error ? err.message : t('onto.errLoadProposalsSimple'));
     }
   }, []);
 
@@ -95,7 +97,7 @@ export function VersionsTab() {
             if (propRes.status === 207) setError(propData.message || "Warning: Partial success loading proposals.");
           }
         } else if (!ignore) {
-          setError(`Failed to load proposals (${propRes.status})`);
+          setError(t('onto.errLoadProposals', { status: propRes.status }));
         }
       } catch (err) {
         if (!ignore) setError(err instanceof Error ? err.message : "Failed to load proposals.");
@@ -111,7 +113,7 @@ export function VersionsTab() {
             if (verRes.status === 207) setError(verData.message || "Warning: Partial success loading versions.");
           }
         } else if (!ignore) {
-          setError((prev) => prev || `Failed to load versions (${verRes.status})`);
+          setError((prev) => prev || t('onto.errLoad', { status: verRes.status }));
         }
       } catch (err) {
         if (!ignore) setError((prev) => prev || (err instanceof Error ? err.message : "Failed to load versions."));
@@ -130,16 +132,16 @@ export function VersionsTab() {
       if (response.ok) {
         if (response.status === 207) {
           const data = await response.json().catch(() => ({}));
-          setError(data.message || "Warning: Partial success approving proposal.");
+          setError(data.message || t('onto.warnApprove'));
         } else {
-          alert("Proposal approved");
+          alert(t('onto.alertApproved'));
         }
         loadProposals();
       } else {
-        setError(`Failed to approve proposal (${response.status})`);
+        setError(t('onto.errApprove', { status: response.status }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to approve proposal.");
+      setError(err instanceof Error ? err.message : t('onto.errApproveSimple'));
     }
   }, [loadProposals]);
 
@@ -152,16 +154,16 @@ export function VersionsTab() {
       if (response.ok) {
         if (response.status === 207) {
           const data = await response.json().catch(() => ({}));
-          setError(data.message || "Warning: Partial success rejecting proposal.");
+          setError(data.message || t('onto.warnReject'));
         } else {
-          alert("Proposal rejected");
+          alert(t('onto.alertRejected'));
         }
         loadProposals();
       } else {
-        setError(`Failed to reject proposal (${response.status})`);
+        setError(t('onto.errReject', { status: response.status }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reject proposal.");
+      setError(err instanceof Error ? err.message : t('onto.errRejectSimple'));
     }
   }, [loadProposals]);
 
@@ -174,19 +176,43 @@ export function VersionsTab() {
       if (response.ok) {
         if (response.status === 207) {
           const data = await response.json().catch(() => ({}));
-          setError(data.message || "Warning: Partial success publishing proposal.");
+          setError(data.message || t('onto.warnPublish'));
         } else {
-          alert("Proposal published");
+          alert(t('onto.alertPublished'));
         }
         loadProposals();
         loadVersions();
       } else {
-        setError(`Failed to publish proposal (${response.status})`);
+        setError(t('onto.errPublish', { status: response.status }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to publish proposal.");
+      setError(err instanceof Error ? err.message : t('onto.errPublishSimple'));
     }
   }, [loadProposals, loadVersions]);
+
+  // Publish a version snapshot of the ontology's current graph structure —
+  // lets MCP/import-created (implicit) ontologies build a version history
+  // without the draft → proposal → approve flow.
+  const publishSnapshot = useCallback(async () => {
+    if (!ontologyUri.trim()) return;
+    setError("");
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/ontology/${encodeURIComponent(ontologyUri.trim())}/publish`, {
+        method: "POST",
+      });
+      if (response.ok) {
+        alert(t('onto.alertPublished'));
+        loadVersions();
+      } else {
+        setError(t('onto.errPublish', { status: response.status }));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('onto.errPublishSimple'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [ontologyUri, loadVersions, t]);
 
   const runVersionComparison = useCallback(async () => {
     if (!comparePair || !ontologyUri) return;
@@ -203,13 +229,13 @@ export function VersionsTab() {
       });
       if (response.ok) {
         const data = await response.json();
-        if (response.status === 207) setError(data.message || "Warning: Partial success comparing versions.");
+        if (response.status === 207)         setError(data.message || t('onto.warnCompare'));
         setCompareResult(data);
       } else {
-        setError(`Failed to compare versions (${response.status})`);
+        setError(t('onto.errCompare', { status: response.status }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to compare versions.");
+      setError(err instanceof Error ? err.message : t('onto.errCompareSimple'));
     } finally {
       setIsLoading(false);
     }
@@ -337,14 +363,23 @@ export function VersionsTab() {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={titleStyle}>Versions & Change Proposals</h1>
+        <h1 style={titleStyle}>{t('onto.versionsTitle')}</h1>
         <input
           type="text"
-          placeholder="Ontology URI"
+          placeholder={t('onto.uriPlaceholder')}
           value={ontologyUri}
           onChange={(e) => setOntologyUri(e.target.value)}
           style={{ ...inputStyle, width: "300px", marginBottom: 0 }}
         />
+        <button
+          style={{ ...buttonStyle, marginBottom: 0 }}
+          disabled={!ontologyUri.trim() || isLoading}
+          onClick={() => void publishSnapshot()}
+          title={t('onto.publishSnapshotTitle')}
+        >
+          <Layers size={12} />
+          {t('onto.publishSnapshot')}
+        </button>
       </div>
 
       {error ? <div style={errorStyle}>{error}</div> : null}
@@ -352,11 +387,11 @@ export function VersionsTab() {
       <div style={sectionStyle}>
         <h2 style={sectionTitleStyle}>
           <Layers size={16} />
-          Version History
+          {t('onto.history')}
         </h2>
         <div style={listStyle}>
           {versions.length === 0 ? (
-            <div style={{ color: "#8fa8c6", fontSize: "13px" }}>No versions found</div>
+            <div style={{ color: "#8fa8c6", fontSize: "13px" }}>{t('onto.noVersions')}</div>
           ) : (
             versions.map((version) => (
               <div key={version.version_id} style={itemStyle}>
@@ -377,7 +412,7 @@ export function VersionsTab() {
                   }}
                 >
                   <ArrowRight size={12} />
-                  Compare
+                  {t('onto.compare')}
                 </button>
               </div>
             ))
@@ -388,11 +423,11 @@ export function VersionsTab() {
       <div style={sectionStyle}>
         <h2 style={sectionTitleStyle}>
           <GitMerge size={16} />
-          Change Proposals
+          {t('onto.proposals')}
         </h2>
         <div style={listStyle}>
           {proposals.length === 0 ? (
-            <div style={{ color: "#8fa8c6", fontSize: "13px" }}>No proposals found</div>
+            <div style={{ color: "#8fa8c6", fontSize: "13px" }}>{t('onto.noProposals')}</div>
           ) : (
             proposals.map((proposal) => (
               <div key={proposal.proposal_id} style={itemStyle}>
@@ -409,19 +444,19 @@ export function VersionsTab() {
                   <div style={{ display: "flex", gap: "6px" }}>
                     <button style={buttonStyle} onClick={() => approveProposal(proposal.proposal_id)}>
                       <CheckCircle size={12} />
-                      Approve
+                      {t('onto.approve')}
                     </button>
                     <button style={buttonStyle} onClick={() => rejectProposal(proposal.proposal_id)}>
                       <XCircle size={12} />
-                      Reject
+                      {t('onto.reject')}
                     </button>
                   </div>
                 )}
                 {proposal.state === "approved" && (
-                  <button style={buttonStyle} onClick={() => publishProposal(proposal.proposal_id)}>
-                    <Send size={12} />
-                    Publish
-                  </button>
+                <button style={buttonStyle} onClick={() => publishProposal(proposal.proposal_id)}>
+                  <Send size={12} />
+                  {t('onto.publish')}
+                </button>
                 )}
                 <button
                   style={buttonStyle}
@@ -431,7 +466,7 @@ export function VersionsTab() {
                   }}
                 >
                   <FileText size={12} />
-                  Details
+                  {t('onto.details')}
                 </button>
               </div>
             ))
@@ -443,20 +478,20 @@ export function VersionsTab() {
         <div style={modalOverlayStyle} onClick={() => setShowProposalModal(false)}>
           <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, color: "#ebf3ff", fontSize: "16px" }}>Proposal Details</h3>
+              <h3 style={{ margin: 0, color: "#ebf3ff", fontSize: "16px" }}>{t('onto.proposalDetails')}</h3>
               <button onClick={() => setShowProposalModal(false)} style={{ background: "none", border: "none", color: "#8fa8c6", cursor: "pointer" }}>
                 <X size={18} />
               </button>
             </div>
             <div style={{ marginBottom: "12px" }}>
               <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                Summary
+                {t('onto.summary')}
               </label>
               <div style={{ color: "#ebf3ff", fontSize: "13px" }}>{selectedProposal.summary}</div>
             </div>
             <div style={{ marginBottom: "12px" }}>
               <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                State
+                {t('onto.state')}
               </label>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#ebf3ff", fontSize: "13px" }}>
                 {getStateIcon(selectedProposal.state)}
@@ -465,7 +500,7 @@ export function VersionsTab() {
             </div>
             <div style={{ marginBottom: "12px" }}>
               <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                Impact Analysis
+                {t('onto.impact')}
               </label>
               <pre style={{ background: "rgba(3, 9, 18, 0.8)", padding: "12px", borderRadius: "6px", color: "#ebf3ff", fontSize: "12px", overflow: "auto" }}>
                 {JSON.stringify(selectedProposal.impact_analysis, null, 2)}
@@ -473,7 +508,7 @@ export function VersionsTab() {
             </div>
             <div style={{ marginBottom: "12px" }}>
               <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                SHACL Validation
+                {t('onto.shaclValidation')}
               </label>
               <pre style={{ background: "rgba(3, 9, 18, 0.8)", padding: "12px", borderRadius: "6px", color: "#ebf3ff", fontSize: "12px", overflow: "auto" }}>
                 {JSON.stringify(selectedProposal.shacl_validation, null, 2)}
@@ -481,7 +516,7 @@ export function VersionsTab() {
             </div>
             <div>
               <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                Comments ({selectedProposal.comments.length})
+                {t('onto.comments', { count: selectedProposal.comments.length })}
               </label>
               <div style={{ maxHeight: "120px", overflow: "auto" }}>
                 {selectedProposal.comments.map((comment) => (
@@ -500,7 +535,7 @@ export function VersionsTab() {
         <div style={modalOverlayStyle} onClick={() => setShowCompareModal(false)}>
           <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, color: "#ebf3ff", fontSize: "16px" }}>Compare Versions</h3>
+              <h3 style={{ margin: 0, color: "#ebf3ff", fontSize: "16px" }}>{t('onto.compareTitle')}</h3>
               <button onClick={() => setShowCompareModal(false)} style={{ background: "none", border: "none", color: "#8fa8c6", cursor: "pointer" }}>
                 <X size={18} />
               </button>
@@ -508,7 +543,7 @@ export function VersionsTab() {
             <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
               <div style={{ flex: 1 }}>
                 <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                  Version 1
+                  {t('onto.version1')}
                 </label>
                 <input
                   type="text"
@@ -519,7 +554,7 @@ export function VersionsTab() {
               </div>
               <div style={{ flex: 1 }}>
                 <label style={{ display: "block", color: "#8fa8c6", fontSize: "12px", marginBottom: "4px" }}>
-                  Version 2
+                  {t('onto.version2')}
                 </label>
                 <input
                   type="text"
@@ -531,7 +566,7 @@ export function VersionsTab() {
             </div>
             <button style={buttonStyle} onClick={runVersionComparison} disabled={isLoading}>
               <Scale size={12} />
-              {isLoading ? "Comparing..." : "Compare"}
+              {isLoading ? t('onto.comparing') : t('onto.compare')}
             </button>
             {compareResult && (
               <pre style={{ marginTop: "16px", background: "rgba(3, 9, 18, 0.8)", padding: "12px", borderRadius: "6px", color: "#ebf3ff", fontSize: "12px", overflow: "auto" }}>

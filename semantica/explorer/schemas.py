@@ -16,6 +16,7 @@ class ErrorResponse(BaseModel):
 class NodeResponse(BaseModel):
     id: str
     type: str
+    label: str = ""
     content: str = ""
     properties: Dict[str, Any] = Field(default_factory=dict)
     valid_from: Optional[str] = None
