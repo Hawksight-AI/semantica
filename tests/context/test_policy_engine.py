@@ -352,6 +352,46 @@ class TestPolicyEngine:
         
         with pytest.raises(ValueError, match="Policy.*not found"):
             policy_engine.check_compliance(decision, "nonexistent_policy")
+
+    def test_check_compliance_raises_on_evaluation_error(
+        self, policy_engine, mock_graph_store
+    ):
+        """A failure while evaluating compliance must raise, not return False.
+
+        Returning False would conflate "checked and found non-compliant" with
+        "the check itself failed", which is dangerous in an audit/compliance
+        context. The engine must surface such failures as ProcessingError.
+        """
+        from semantica.context.decision_models import Decision
+        from semantica.utils.exceptions import ProcessingError
+
+        decision = Decision(
+            decision_id="decision_001",
+            category="credit_approval",
+            scenario="Credit limit increase",
+            reasoning="Customer meets all criteria",
+            outcome="approved",
+            confidence=0.9,
+            timestamp=datetime.now(),
+            decision_maker="ai_agent_001",
+        )
+
+        policy_id = "policy_001"
+
+        mock_graph_store.execute_query.return_value = [
+            {
+                "policy_id": policy_id,
+                "rules": {"min_credit_score": 650, "max_debt_ratio": 0.4},
+            }
+        ]
+
+        with patch.object(
+            policy_engine,
+            "_evaluate_compliance",
+            side_effect=RuntimeError("unexpected evaluation failure"),
+        ):
+            with pytest.raises(ProcessingError, match="Compliance check failed"):
+                policy_engine.check_compliance(decision, policy_id)
     
     def test_record_policy_application_success(self, policy_engine, mock_graph_store):
         """Test successful policy application recording."""

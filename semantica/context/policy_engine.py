@@ -72,6 +72,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
 from ..graph_store import GraphStore
+from ..utils.exceptions import ProcessingError
 from ..utils.logging import get_logger
 from .decision_models import Decision, Policy, PolicyException
 
@@ -384,7 +385,17 @@ class PolicyEngine:
             policy_id: Policy ID to check against
             
         Returns:
-            True if compliant, False otherwise
+            True if the decision complies with the policy, False otherwise.
+
+        Raises:
+            ValueError: If the policy cannot be found.
+            ProcessingError: If the compliance check itself fails to execute
+                (e.g. malformed rules or metadata). This is deliberately
+                distinct from returning ``False``: a returned ``False`` means
+                "evaluated and found non-compliant", whereas a raised error
+                means "could not determine compliance". Conflating the two
+                would let evaluation bugs masquerade as policy violations,
+                which is unacceptable in an audit/compliance context.
         """
         try:
             policy = self.get_policy(policy_id)
@@ -395,7 +406,9 @@ class PolicyEngine:
             raise
         except Exception as e:
             self.logger.exception("Failed to check compliance")
-            return False
+            raise ProcessingError(
+                f"Compliance check failed for policy '{policy_id}': {e}"
+            ) from e
     
     def record_policy_application(
         self,
