@@ -503,6 +503,16 @@ class Neo4jStore:
         Returns:
             List of matching nodes
         """
+        # LIMIT can't be bound as a query parameter in a way Neo4j accepts
+        # here, so it's interpolated directly; validate explicitly rather
+        # than trust the `limit: int` type hint, which Python doesn't
+        # enforce at runtime. Done outside the try/except below so a bad
+        # limit raises ValidationError, not a generic ProcessingError.
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(f"Invalid limit: {limit!r}") from exc
+
         try:
             # Build query
             if labels:
@@ -698,6 +708,15 @@ class Neo4jStore:
         Returns:
             List of matching relationships
         """
+        # See get_nodes: LIMIT is interpolated directly, so validate
+        # explicitly rather than trust the unenforced `limit: int` hint,
+        # outside the try/except below so a bad limit raises
+        # ValidationError, not a generic ProcessingError.
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(f"Invalid limit: {limit!r}") from exc
+
         try:
             type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
 

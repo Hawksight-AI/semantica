@@ -126,7 +126,11 @@ def test_load_from_database(mock_db_ingestor_cls, seed_manager):
     assert len(records) == 1
     assert records[0]["id"] == 1
     assert records[0]["entity_type"] == "User"
-    mock_db_ingestor.execute_query.assert_called_once_with("SELECT * FROM users")
+    # Regression for #973: the ingestor methods receive the connection
+    # string as their first argument — the constructor config is not enough.
+    mock_db_ingestor.execute_query.assert_called_once_with(
+        "sqlite:///:memory:", "SELECT * FROM users"
+    )
 
     # Mock export_table result
     mock_table_data = MagicMock()
@@ -139,6 +143,23 @@ def test_load_from_database(mock_db_ingestor_cls, seed_manager):
     )
     assert len(records) == 1
     assert records[0]["id"] == 2
+    mock_db_ingestor.export_table.assert_called_once_with("sqlite:///:memory:", "users")
+
+def test_load_from_database_os_error_not_misreported(seed_manager):
+    # Regression for #973: a real OSError from the ingestor must surface as a
+    # database failure with the cause chained, not as a missing module.
+    import semantica.ingest.db_ingestor as dbi
+
+    with patch.object(
+        dbi.DBIngestor, "execute_query", side_effect=OSError(111, "Connection refused")
+    ):
+        with pytest.raises(ProcessingError) as excinfo:
+            seed_manager.load_from_database(
+                "postgresql://u:p@10.0.0.9/db", query="SELECT 1"
+            )
+        assert "Failed to load from database" in str(excinfo.value)
+        assert "module not available" not in str(excinfo.value)
+        assert isinstance(excinfo.value.__cause__, OSError)
 
 def test_load_from_database_import_error(seed_manager):
     with patch.dict("sys.modules", {"semantica.ingest.db_ingestor": None}):
@@ -147,11 +168,11 @@ def test_load_from_database_import_error(seed_manager):
             seed_manager.load_from_database("sqlite:///:memory:", query="SELECT 1")
         assert "Database ingestion module not available" in str(excinfo.value)
 
-@patch("requests.get")
-def test_load_from_api(mock_get, seed_manager):
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api(mock_guard, seed_manager):
     mock_response = MagicMock()
     mock_response.json.return_value = {"results": [{"id": 1, "name": "Alice"}]}
-    mock_get.return_value = mock_response
+    mock_guard.return_value = mock_response
 
     records = seed_manager.load_from_api(
         api_url="http://api.example.com",
@@ -162,7 +183,85 @@ def test_load_from_api(mock_get, seed_manager):
     assert len(records) == 1
     assert records[0]["id"] == 1
     assert records[0]["entity_type"] == "User"
-    mock_get.assert_called_once()
+    mock_guard.assert_called_once()
+
+def test_load_from_api_blocks_private_by_default(seed_manager):
+    with pytest.raises(ProcessingError) as excinfo:
+        seed_manager.load_from_api(api_url="http://127.0.0.1:8000/secret")
+    assert "blocked" in str(excinfo.value).lower() or "not allowed" in str(excinfo.value).lower()
+
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_allows_private_when_configured(mock_guard, seed_manager):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"results": [{"id": 1, "name": "Alice"}]}
+    mock_guard.return_value = mock_response
+
+    manager = SeedDataManager(config={"allow_private_ips": True})
+    records = manager.load_from_api(
+        api_url="http://127.0.0.1:8000",
+        endpoint="users",
+        entity_type="User"
+    )
+
+    assert len(records) == 1
+    mock_guard.assert_called_once()
+    # The opt-in flag must reach the guard
+    call_kwargs = mock_guard.call_args[1]
+    assert call_kwargs["allow_private_ips"] is True
+
+
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_does_not_mutate_caller_headers_dict(mock_guard, seed_manager):
+    """Regression test for issue #947 audit: load_from_api must not mutate the
+    caller's headers dict in-place when api_key is provided.
+
+    Before the fix, ``request_headers = headers or {}`` aliased the caller's dict.
+    Writing ``request_headers["Authorization"] = ...`` then silently modified the
+    caller's original dict, potentially leaking credentials to subsequent calls
+    that reused the same headers dict without expecting it to carry Authorization.
+    """
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"results": []}
+    mock_guard.return_value = mock_response
+
+    # Caller owns this dict and expects it to be unchanged after the call.
+    original_headers = {"X-Custom-Header": "value"}
+    headers_before = dict(original_headers)  # snapshot
+
+    seed_manager.load_from_api(
+        api_url="http://api.example.com",
+        api_key="secret-key",
+        headers=original_headers,
+    )
+
+    # The caller's dict must be unchanged — Authorization must NOT have been added.
+    assert original_headers == headers_before, (
+        "load_from_api must not mutate the caller's headers dict; "
+        f"expected {headers_before!r}, got {original_headers!r}"
+    )
+
+    # The guard must still have received Authorization (in its own copy).
+    call_kwargs = mock_guard.call_args[1]
+    guard_headers = call_kwargs.get("headers", {})
+    assert guard_headers.get("Authorization") == "Bearer secret-key"
+
+
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_does_not_mutate_empty_headers_dict(mock_guard, seed_manager):
+    """When headers=None, a fresh dict is created — no aliasing to a shared mutable default."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"results": []}
+    mock_guard.return_value = mock_response
+
+    seed_manager.load_from_api(
+        api_url="http://api.example.com",
+        api_key="key",
+        headers=None,
+    )
+
+    call_kwargs = mock_guard.call_args[1]
+    guard_headers = call_kwargs.get("headers", {})
+    assert guard_headers.get("Authorization") == "Bearer key"
 
 def test_load_source(seed_manager, temp_data_dir):
     json_file = temp_data_dir / "source.json"

@@ -1,0 +1,157 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix sem:  <https://semantica.dev/ns#> .
+
+<https://semantica.dev/ns> a owl:Ontology ;
+    rdfs:label "Semantica vocabulary" ;
+    rdfs:comment """Declares the terms the Semantica exporters emit in
+https://semantica.dev/ns#. Drafted from the emitting call sites in
+semantica 0.6.5: export/rdf_exporter.py, export/json_exporter.py and
+provenance/manager.py. Every term below appears in output the package
+produces today; no term has been invented for completeness.""" ;
+    owl:versionInfo "0.1.0-draft" ;
+    dct:created "2026-08-19"^^xsd:date .
+
+# ── Classes ──────────────────────────────────────────────────────────────────
+
+sem:Entity a owl:Class ;
+    rdfs:label "Entity" ;
+    rdfs:comment """The default type given to an extracted entity when the
+source carries no type of its own. Emitted by serialize_to_turtle as the
+fallback for entity.get("type").""" ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:Relationship a owl:Class ;
+    rdfs:label "Relationship" ;
+    rdfs:comment """A reified relationship, as emitted in the JSON-LD export
+where a relationship carries sem:type, sem:source and sem:target rather than
+being written as a single triple.""" ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:KnowledgeGraph a owl:Class ;
+    rdfs:label "Knowledge Graph" ;
+    rdfs:comment """The document-level type of a JSON-LD export: the @type of
+the top-level node carrying sem:entities, sem:relationships and
+sem:exportedAt. Emitted by _convert_kg_to_jsonld in export/json_exporter.py.""" ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+# ── Properties on an entity ──────────────────────────────────────────────────
+
+sem:text a owl:DatatypeProperty ;
+    rdfs:label "text" ;
+    rdfs:comment """The surface text of an extracted entity. Carries the same
+intent as rdfs:label; declared separately because the exporters emit it under
+this IRI.""" ;
+    rdfs:domain sem:Entity ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:confidence a owl:DatatypeProperty ;
+    rdfs:label "confidence" ;
+    rdfs:comment """Extractor confidence in the assertion, on the unit interval.
+Emitted for both entities and relationships, so the domain is left open rather
+than tied to sem:Entity.
+
+No rdfs:range is declared, deliberately. The Turtle serializer writes the value
+bare, which the Turtle grammar reads as xsd:decimal, while the N-Triples
+serializer types it xsd:float explicitly, and those two datatypes are disjoint.
+Declaring either one would make the vocabulary contradict one of the exporters.
+Issue #1100 tracks the disagreement; a range belongs here once the serializers
+agree on one.""" ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:metadata a owl:AnnotationProperty ;
+    rdfs:label "metadata" ;
+    rdfs:comment """Free-form metadata carried through from extraction. An
+annotation property because its value is an arbitrary structure rather than a
+modelled one.""" ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+# ── Relationship terms (JSON-LD export) ──────────────────────────────────────
+
+sem:related_to a owl:ObjectProperty ;
+    rdfs:label "related to" ;
+    rdfs:comment """The default predicate for a relationship whose type the
+extractor did not determine. Deliberately unspecific: it asserts that two
+entities are connected and nothing about how.""" ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:source a owl:ObjectProperty ;
+    rdfs:label "source" ;
+    rdfs:comment "The subject entity of a reified relationship." ;
+    rdfs:domain sem:Relationship ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:target a owl:ObjectProperty ;
+    rdfs:label "target" ;
+    rdfs:comment "The object entity of a reified relationship." ;
+    rdfs:domain sem:Relationship ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:type a owl:DatatypeProperty ;
+    rdfs:label "type" ;
+    rdfs:comment """The relationship type as a label, as emitted in the JSON-LD
+export. Distinct from rdf:type, which relates a node to a class rather than to
+a string.""" ;
+    rdfs:domain sem:Relationship ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+# ── Document-level terms (JSON-LD export) ────────────────────────────────────
+
+sem:entities a owl:ObjectProperty ;
+    rdfs:label "entities" ;
+    rdfs:comment "Ordered list of entities in an exported graph document." ;
+    rdfs:range sem:Entity ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:relationships a owl:ObjectProperty ;
+    rdfs:label "relationships" ;
+    rdfs:comment "Ordered list of relationships in an exported graph document." ;
+    rdfs:range sem:Relationship ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:exportedAt a owl:DatatypeProperty ;
+    rdfs:label "exported at" ;
+    rdfs:comment """When the export was written, as an ISO 8601 timestamp with
+an explicit UTC offset. The range was xsd:dateTime while the exporters stamped
+with a naive datetime.now(); with the offset present (#1114) the value is a
+determinate instant, comparable against a timestamp written anywhere else, so
+the range is the stricter xsd:dateTimeStamp, which requires the offset.""" ;
+    rdfs:range xsd:dateTimeStamp ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+sem:format a owl:DatatypeProperty ;
+    rdfs:label "format" ;
+    rdfs:comment """The serialization format label written on a JSON-LD
+document (currently always the literal "json-ld"). Emitted by
+JSONExporter.export_to_jsonld in export/json_exporter.py.""" ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+# ── Temporal term (OWL-Time export) ──────────────────────────────────────────
+
+sem:openEndedInterval a owl:DatatypeProperty ;
+    rdfs:label "open ended interval" ;
+    rdfs:comment """True when an interval has no known end. OWL-Time has no
+standard predicate for this, which is the reason the exporter mints one: an
+interval with no time:hasEnd is ambiguous between "ongoing" and "end not
+recorded", and this term resolves that in favour of the first.""" ;
+    rdfs:domain time:Interval ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .
+
+# ── Provenance roles ─────────────────────────────────────────────────────────
+
+sem:role_generator a prov:Role ;
+    rdfs:label "generator" ;
+    rdfs:comment """The default role in a prov:qualifiedAssociation, used when
+an agent generated an entity rather than approving or reviewing it. Typed as
+prov:Role so that prov:hadRole has a declared value rather than an undeclared
+IRI.""" ;
+    rdfs:isDefinedBy <https://semantica.dev/ns> .

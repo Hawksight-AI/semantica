@@ -54,6 +54,24 @@ class TestCurrencyNormalizer(unittest.TestCase):
         self.assertEqual(result["amount"], 100.0)
         self.assertEqual(result["currency"], "EUR")
 
+    def test_symbol_currencies_are_validated_as_supported_codes(self):
+        for symbol, expected_code in self.normalizer.currency_symbols.items():
+            result = self.normalizer.normalize_currency(f"{symbol}100")
+            self.assertEqual(result["currency"], expected_code)
+            self.assertTrue(self.normalizer.validate_currency_code(result["currency"]))
+
+    def test_currency_codes_match_boundaries_without_matching_words(self):
+        for value in ("RUB100", "100 RUB", "rub 100"):
+            result = self.normalizer.normalize_currency(value)
+            self.assertEqual(result["amount"], 100.0)
+            self.assertEqual(result["currency"], "RUB")
+
+        for value in ("ruby 100", "wilson 100"):
+            result = self.normalizer.normalize_currency(value)
+            self.assertEqual(result["amount"], 100.0)
+            self.assertEqual(result["currency"], "USD")
+
+
 class TestScientificNotationHandler(unittest.TestCase):
     def setUp(self):
         self.handler = ScientificNotationHandler()

@@ -33,9 +33,40 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory
+from ..utils.helpers import ensure_directory, hash_data
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
+
+SEMANTICA_NS = "https://semantica.dev/ns#"
+
+#: Written when an entity carries no type of its own. A full IRI rather than the
+#: prefixed form, because the Turtle serializer writes it inside angle brackets,
+#: where `semantica:Entity` would be read as an IRI in the scheme `semantica`
+#: rather than as the prefix expansion (issue #1101).
+DEFAULT_ENTITY_TYPE = f"{SEMANTICA_NS}Entity"
+
+#: Written when a relationship carries no type of its own. Same reasoning.
+DEFAULT_RELATION_TYPE = f"{SEMANTICA_NS}related_to"
+
+
+def mint_entity_iri(text: str) -> str:
+    """Mint a stable IRI for an entity that arrived without an id.
+
+    Python's builtin ``hash()`` is randomised per process (PYTHONHASHSEED), so
+    minting from it gave the same entity a different IRI on every run: exports
+    could not be diffed, deduplicated against an earlier load, or joined to a
+    provenance record written by an earlier process. SHA-256 is stable across
+    runs and machines, which is what an identifier has to be.
+    """
+    digest = hash_data(str(text))[:16]
+    return f"{SEMANTICA_NS}entity_{digest}"
+
+
+def mint_relationship_iri(index: int, source: Any, target: Any) -> str:
+    """Mint a stable IRI for a relationship that arrived without an id."""
+    digest = hash_data(f"{source}\x00{target}")[:16]
+    return f"{SEMANTICA_NS}rel_{index}_{digest}"
 
 
 class NamespaceManager:
@@ -360,9 +391,9 @@ class RDFSerializer:
             entity_id = entity.get("id")
             if not entity_id:
                 entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity_{hash(entity_text)}"
+                entity_id = mint_entity_iri(entity_text)
 
-            entity_type = entity.get("type", "semantica:Entity")
+            entity_type = entity.get("type", DEFAULT_ENTITY_TYPE)
             text = entity.get("text") or entity.get("label", "")
             confidence = entity.get("confidence", 1.0)
 
@@ -376,7 +407,7 @@ class RDFSerializer:
         for idx, rel in enumerate(relationships):
             source_id = rel.get("source_id") or rel.get("source")
             target_id = rel.get("target_id") or rel.get("target")
-            rel_type = rel.get("type", "semantica:related_to")
+            rel_type = rel.get("type", DEFAULT_RELATION_TYPE)
 
             lines.append(f"<{source_id}> <{rel_type}> <{target_id}> .")
 
@@ -413,10 +444,14 @@ class RDFSerializer:
         if time_axis in ("transaction", "both"):
             axes.append(("tx", rel.get("recorded_at"), rel.get("superseded_at")))
 
-        rel_base_id = (
-            rel.get("id")
-            or f"semantica:rel_{idx}_{hash(str(rel.get('source_id', '')) + str(rel.get('target_id', '')))}"
-        )
+        # Resolve endpoints the same way serialize_to_turtle does: both
+        # representations are accepted upstream, and minting from source_id
+        # alone hashes empty strings for every relationship that uses source,
+        # so unrelated relationships at the same index would collide on a
+        # deterministic IRI.
+        source_id = rel.get("source_id") or rel.get("source") or ""
+        target_id = rel.get("target_id") or rel.get("target") or ""
+        rel_base_id = rel.get("id") or mint_relationship_iri(idx, source_id, target_id)
 
         lines = [""]  # blank separator
         for axis_name, from_val, until_val in axes:
@@ -488,9 +523,9 @@ class RDFSerializer:
             entity_id = entity.get("id")
             if not entity_id:
                 entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity_{hash(entity_text)}"
+                entity_id = mint_entity_iri(entity_text)
 
-            entity_type = entity.get("type", "semantica:Entity")
+            entity_type = entity.get("type", DEFAULT_ENTITY_TYPE)
             text = entity.get("text") or entity.get("label", "")
             confidence = entity.get("confidence", 1.0)
 
@@ -565,11 +600,13 @@ class RDFSerializer:
         # Convert entities to JSON-LD
         entities = rdf_data.get("entities", [])
         for entity in entities:
-            # Generate @id if not provided
-            entity_id = entity.get("id")
-            if not entity_id:
-                entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity/{entity_text}"
+            # Generate @id if not provided. Minted the same way the Turtle and
+            # N-Triples paths mint it (#1101), so one knowledge graph carries
+            # the same node identity whichever serializer wrote it. The former
+            # f"semantica:entity/{text}" interpolated the raw text into an IRI:
+            # any entity whose text contained a space produced an invalid IRI
+            # and was dropped in full by a JSON-LD parser, silently.
+            entity_id = entity.get("id") or mint_entity_iri(entity.get("text", ""))
 
             jsonld["@graph"].append(
                 {
@@ -582,24 +619,22 @@ class RDFSerializer:
 
         # Convert relationships to JSON-LD
         relationships = rdf_data.get("relationships", [])
-        for rel in relationships:
-            # Generate @id if not provided
-            rel_id = rel.get("id")
-            if not rel_id:
-                source_id = rel.get("source_id", "")
-                target_id = rel.get("target_id", "")
-                rel_id = f"semantica:rel/{source_id}_{target_id}"
+        for index, rel in enumerate(relationships):
+            # Endpoints are resolved both ways, as serialize_to_turtle resolves
+            # them: a relationship carrying source/target rather than
+            # source_id/target_id used to hash into f"semantica:rel/_", so every
+            # such relationship in an export collapsed onto one node and their
+            # types and endpoints merged.
+            source = rel.get("source_id") or rel.get("source", "")
+            target = rel.get("target_id") or rel.get("target", "")
+            rel_id = rel.get("id") or mint_relationship_iri(index, source, target)
 
             jsonld["@graph"].append(
                 {
                     "@id": rel_id,
                     "@type": "semantica:Relationship",
-                    "semantica:source": {
-                        "@id": rel.get("source_id") or rel.get("source")
-                    },
-                    "semantica:target": {
-                        "@id": rel.get("target_id") or rel.get("target")
-                    },
+                    "semantica:source": {"@id": source},
+                    "semantica:target": {"@id": target},
                     "semantica:type": rel.get("type", "related_to"),
                 }
             )
@@ -644,7 +679,7 @@ class RDFSerializer:
             entity_id = entity.get("id")
             if not entity_id:
                 entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity_{hash(entity_text)}"
+                entity_id = mint_entity_iri(entity_text)
 
             subject = expand_uri(entity_id)
 

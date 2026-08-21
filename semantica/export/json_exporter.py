@@ -24,14 +24,14 @@ License: MIT
 """
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory, write_json_file
+from ..utils.helpers import ensure_directory, utc_now_iso, write_json_file
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .rdf_exporter import SEMANTICA_NS, mint_entity_iri, mint_relationship_iri
 
 
 class JSONExporter:
@@ -265,11 +265,12 @@ class JSONExporter:
         json_data = {
             "@context": {
                 "@vocab": "https://semantica.dev/vocab/",
+                "semantica": SEMANTICA_NS,
                 "entities": {"@id": "semantica:entities", "@container": "@list"},
             },
             "entities": entities,
             "metadata": {
-                "exported_at": datetime.now().isoformat(),
+                "exported_at": utc_now_iso(),
                 "entity_count": len(entities),
                 **options.get("metadata", {}),
             },
@@ -294,6 +295,7 @@ class JSONExporter:
         json_data = {
             "@context": {
                 "@vocab": "https://semantica.dev/vocab/",
+                "semantica": SEMANTICA_NS,
                 "relationships": {
                     "@id": "semantica:relationships",
                     "@container": "@list",
@@ -301,7 +303,7 @@ class JSONExporter:
             },
             "relationships": relationships,
             "metadata": {
-                "exported_at": datetime.now().isoformat(),
+                "exported_at": utc_now_iso(),
                 "relationship_count": len(relationships),
                 **options.get("metadata", {}),
             },
@@ -339,7 +341,7 @@ class JSONExporter:
             if include_metadata:
                 if "metadata" not in result:
                     result["metadata"] = {}
-                result["metadata"]["exported_at"] = datetime.now().isoformat()
+                result["metadata"]["exported_at"] = utc_now_iso()
                 if include_provenance:
                     result["metadata"]["format"] = "json"
 
@@ -349,7 +351,7 @@ class JSONExporter:
                 "data": data,
                 "count": len(data),
                 "metadata": {
-                    "exported_at": datetime.now().isoformat(),
+                    "exported_at": utc_now_iso(),
                     "format": "json" if include_provenance else None,
                     **options.get("metadata", {}),
                 },
@@ -358,7 +360,7 @@ class JSONExporter:
             # Single value
             return {
                 "value": data,
-                "metadata": {"exported_at": datetime.now().isoformat()}
+                "metadata": {"exported_at": utc_now_iso()}
                 if include_metadata
                 else {},
             }
@@ -410,9 +412,9 @@ class JSONExporter:
 
         # Add metadata and provenance if requested
         if include_metadata:
-            jsonld["@id"] = f"https://semantica.dev/data/{datetime.now().isoformat()}"
+            jsonld["@id"] = f"https://semantica.dev/data/{utc_now_iso()}"
             if include_provenance:
-                jsonld["semantica:exportedAt"] = datetime.now().isoformat()
+                jsonld["semantica:exportedAt"] = utc_now_iso()
                 jsonld["semantica:format"] = "json-ld"
 
         return jsonld
@@ -444,7 +446,7 @@ class JSONExporter:
             "nodes": kg.get("nodes", []),
             "edges": kg.get("edges", []),
             "metadata": {
-                "exported_at": datetime.now().isoformat(),
+                "exported_at": utc_now_iso(),
                 **kg.get("metadata", {}),
                 **options.get("metadata", {}),
             },
@@ -481,7 +483,7 @@ class JSONExporter:
                 "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
                 "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
             },
-            "@id": f"https://semantica.dev/graph/{datetime.now().isoformat()}",
+            "@id": f"https://semantica.dev/graph/{utc_now_iso()}",
             "@type": "semantica:KnowledgeGraph",
         }
 
@@ -495,14 +497,15 @@ class JSONExporter:
         relationships = kg.get("relationships", [])
         if relationships:
             jsonld["semantica:relationships"] = [
-                self._relationship_to_jsonld(r) for r in relationships
+                self._relationship_to_jsonld(r, index)
+                for index, r in enumerate(relationships)
             ]
             self.logger.debug(
                 f"Converted {len(relationships)} relationship(s) to JSON-LD"
             )
 
         # Add metadata
-        jsonld["semantica:exportedAt"] = datetime.now().isoformat()
+        jsonld["semantica:exportedAt"] = utc_now_iso()
         if "metadata" in kg:
             jsonld["semantica:metadata"] = kg["metadata"]
 
@@ -526,11 +529,13 @@ class JSONExporter:
         Returns:
             Dictionary in JSON-LD format representing the entity
         """
-        # Generate @id if not provided
-        entity_id = entity.get("id")
-        if not entity_id:
-            entity_text = entity.get("text") or entity.get("label", "unknown")
-            entity_id = f"semantica:entity/{entity_text}"
+        # Generate @id if not provided. Minted exactly as the RDF serializers
+        # mint it (#1101), so the JSON-LD and Turtle exports of one knowledge
+        # graph name the same entity with the same IRI. Interpolating the raw
+        # text into f"semantica:entity/{text}" produced an invalid IRI for any
+        # text containing a space, and a JSON-LD parser dropped the whole node.
+        entity_text = entity.get("text") or entity.get("label", "unknown")
+        entity_id = entity.get("id") or mint_entity_iri(entity_text)
 
         jsonld = {
             "@id": entity_id,
@@ -545,7 +550,9 @@ class JSONExporter:
 
         return jsonld
 
-    def _relationship_to_jsonld(self, rel: Dict[str, Any]) -> Dict[str, Any]:
+    def _relationship_to_jsonld(
+        self, rel: Dict[str, Any], index: int = 0
+    ) -> Dict[str, Any]:
         """
         Convert relationship to JSON-LD format.
 
@@ -560,16 +567,18 @@ class JSONExporter:
                 - type: Relationship type (optional)
                 - confidence: Confidence score (optional)
                 - metadata: Metadata dictionary (optional)
+            index: Position of the relationship in the exported list, used when
+                minting an IRI for a relationship that arrived without an id
 
         Returns:
             Dictionary in JSON-LD format representing the relationship
         """
-        # Generate @id if not provided
-        rel_id = rel.get("id")
-        if not rel_id:
-            source_id = rel.get("source_id") or rel.get("source", "")
-            target_id = rel.get("target_id") or rel.get("target", "")
-            rel_id = f"semantica:rel/{source_id}_{target_id}"
+        # Generate @id if not provided, from the same mint the RDF serializers
+        # use, including the list index that separates two relationships
+        # sharing a pair of endpoints (#1101).
+        source_id = rel.get("source_id") or rel.get("source", "")
+        target_id = rel.get("target_id") or rel.get("target", "")
+        rel_id = rel.get("id") or mint_relationship_iri(index, source_id, target_id)
 
         jsonld = {
             "@id": rel_id,

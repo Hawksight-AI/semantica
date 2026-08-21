@@ -578,6 +578,11 @@ class CurrencyNormalizer:
             "SEK",
             "NOK",
             "DKK",
+            "RUB",
+            "KRW",
+            "ILS",
+            "NGN",
+            "PKR",
         ]
 
         self.logger.debug("Currency normalizer initialized")
@@ -622,13 +627,15 @@ class CurrencyNormalizer:
         # Check for currency code
         if not currency_code:
             for code in self.currency_codes:
-                if code in currency_input.upper():
+                match = re.search(
+                    rf"(?<![A-Z]){re.escape(code)}(?![A-Z])",
+                    currency_input.upper(),
+                )
+                if match:
                     currency_code = code
                     amount_str = (
-                        currency_input.replace(code, "")
-                        .replace(code.lower(), "")
-                        .strip()
-                    )
+                        currency_input[: match.start()] + currency_input[match.end() :]
+                    ).strip()
                     amount_str = amount_str.replace(",", "").replace(" ", "")
                     try:
                         amount = float(amount_str)
