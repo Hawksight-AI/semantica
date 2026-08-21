@@ -392,6 +392,41 @@ class TestPolicyEngine:
         ):
             with pytest.raises(ProcessingError, match="Compliance check failed"):
                 policy_engine.check_compliance(decision, policy_id)
+
+    def test_check_compliance_raises_on_malformed_rule(
+        self, policy_engine, mock_graph_store
+    ):
+        """A malformed rule value must raise, not be swallowed into False.
+
+        This exercises the real evaluation path (no mocking of
+        ``_evaluate_compliance``): a non-numeric ``min_confidence`` triggers a
+        ``TypeError`` deep inside ``_check_compliance_with_rules``. That helper
+        must let the failure propagate so ``check_compliance`` reports it as a
+        ``ProcessingError`` rather than a spurious non-compliant verdict.
+        """
+        from semantica.context.decision_models import Decision
+        from semantica.utils.exceptions import ProcessingError
+
+        decision = Decision(
+            decision_id="decision_001",
+            category="credit_approval",
+            scenario="Credit limit increase",
+            reasoning="Customer meets all criteria",
+            outcome="approved",
+            confidence=0.9,
+            timestamp=datetime.now(),
+            decision_maker="ai_agent_001",
+        )
+
+        policy_id = "policy_001"
+
+        # min_confidence is malformed (str vs float) -> comparison raises.
+        mock_graph_store.execute_query.return_value = [
+            {"policy_id": policy_id, "rules": {"min_confidence": "high"}}
+        ]
+
+        with pytest.raises(ProcessingError, match="Compliance check failed"):
+            policy_engine.check_compliance(decision, policy_id)
     
     def test_record_policy_application_success(self, policy_engine, mock_graph_store):
         """Test successful policy application recording."""

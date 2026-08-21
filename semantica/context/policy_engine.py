@@ -1017,24 +1017,29 @@ class PolicyEngine:
         decision_data: Dict[str, Any],
         rules: Dict[str, Any]
     ) -> bool:
-        """Check compliance with given rules."""
-        try:
-            if "min_confidence" in rules:
-                if decision_data.get("confidence", 0) < rules["min_confidence"]:
-                    return False
-            
-            if "allowed_outcomes" in rules:
-                if decision_data.get("outcome", "") not in rules["allowed_outcomes"]:
-                    return False
-            
-            if "required_categories" in rules:
-                if decision_data.get("category", "") not in rules["required_categories"]:
-                    return False
-            
-            return True
-            
-        except Exception:
-            return False
+        """Check compliance with given rules.
+
+        Note:
+            Evaluation failures (e.g. malformed rule values such as a
+            non-numeric ``min_confidence``) are intentionally *not* caught
+            here. They propagate to :meth:`check_compliance`, which converts
+            them into a :class:`ProcessingError`, so that an execution failure
+            is never conflated with a legitimate non-compliant (``False``)
+            result.
+        """
+        if "min_confidence" in rules:
+            if decision_data.get("confidence", 0) < rules["min_confidence"]:
+                return False
+
+        if "allowed_outcomes" in rules:
+            if decision_data.get("outcome", "") not in rules["allowed_outcomes"]:
+                return False
+
+        if "required_categories" in rules:
+            if decision_data.get("category", "") not in rules["required_categories"]:
+                return False
+
+        return True
     
     def _dict_to_policy(self, data: Dict[str, Any]) -> Policy:
         """Convert dictionary to Policy object."""
