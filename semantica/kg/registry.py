@@ -39,11 +39,12 @@ Global Instances:
     - method_registry: Global method registry instance
 
 Example Usage:
-    >>> from semantica.kg.registry import method_registry
+    >>> import method_registry
     >>> method_registry.register("build", "custom_method", custom_build_function)
     >>> available = method_registry.list_all("build")
 """
 
+import copy
 from typing import Any, Callable, Dict, List, Optional
 
 
@@ -170,20 +171,33 @@ class AlgorithmRegistry:
     """
     
     def __init__(self):
-        """Initialize the algorithm registry."""
-        self._algorithms = {
-            "embeddings": {},
-            "similarity": {},
-            "path_finding": {},
-            "link_prediction": {},
-            "centrality": {},
-            "community_detection": {}
-        }
-        self._metadata = {}
-        self._capabilities = {}
-        
-        # Register built-in algorithms
-        self._register_builtin_algorithms()
+        """Initialize the algorithm registry.
+
+        Instances start by sharing the module-level built-in catalog built
+        once at import (#1177): the maps are bound by reference, and the
+        first mutation copies them (copy-on-write), so constructing a
+        registry no longer replays the 14 built-in ``register`` calls.
+        """
+        self._algorithms = _BUILTIN_ALGORITHMS
+        self._metadata = _BUILTIN_METADATA
+        self._capabilities = _BUILTIN_CAPABILITIES
+
+    def _ensure_owned_maps(self) -> None:
+        """Copy-on-write: leave the shared built-in catalog before mutating."""
+        # globals().get: the catalog is built once at import time by a
+        # throwaway builder instance whose register() calls arrive here
+        # before the module-level constants exist.
+        if (
+            self._algorithms is globals().get("_BUILTIN_ALGORITHMS")
+            or self._metadata is globals().get("_BUILTIN_METADATA")
+            or self._capabilities is globals().get("_BUILTIN_CAPABILITIES")
+        ):
+            self._algorithms = {
+                category: dict(algorithms)
+                for category, algorithms in self._algorithms.items()
+            }
+            self._metadata = dict(self._metadata)
+            self._capabilities = dict(self._capabilities)
     
     def register(
         self,
@@ -212,7 +226,8 @@ class AlgorithmRegistry:
         if name in self._algorithms[category]:
             raise ValueError(f"Algorithm {name} already registered in category {category}")
         
-        # Register algorithm
+        # Register algorithm (copy-on-write away from the shared built-in catalog)
+        self._ensure_owned_maps()
         self._algorithms[category][name] = algorithm_class
         
         # Store metadata
@@ -292,7 +307,8 @@ class AlgorithmRegistry:
         Returns:
             Metadata dictionary or None if not found
         """
-        return self._metadata.get((category, name))
+        metadata = self._metadata.get((category, name))
+        return copy.deepcopy(metadata) if metadata is not None else None
     
     def get_capabilities(self, category: str, name: str) -> Optional[List[str]]:
         """
@@ -305,7 +321,8 @@ class AlgorithmRegistry:
         Returns:
             List of capabilities or None if not found
         """
-        return self._capabilities.get((category, name))
+        capabilities = self._capabilities.get((category, name))
+        return copy.deepcopy(capabilities) if capabilities is not None else None
     
     def unregister(self, category: str, name: str) -> None:
         """
@@ -316,6 +333,7 @@ class AlgorithmRegistry:
             name: Algorithm name
         """
         if category in self._algorithms and name in self._algorithms[category]:
+            self._ensure_owned_maps()
             del self._algorithms[category][name]
             
             # Clean up metadata and capabilities
@@ -331,6 +349,7 @@ class AlgorithmRegistry:
             category: Algorithm category
         """
         if category in self._algorithms:
+            self._ensure_owned_maps()
             self._algorithms[category].clear()
             
             # Clean up metadata and capabilities
@@ -340,150 +359,205 @@ class AlgorithmRegistry:
                 self._capabilities.pop(key, None)
     
     def clear_all(self) -> None:
-        """Clear all registered algorithms."""
-        for category in self._algorithms:
-            self._algorithms[category].clear()
-        self._metadata.clear()
-        self._capabilities.clear()
+        """Clear all registered algorithms.
+
+        Rebinds to fresh empty owned maps rather than mutating in place, so
+        neither the shared built-in catalog nor other instances are affected.
+        """
+        self._algorithms = {
+            category: {}
+            for category in self._algorithms
+        }
+        self._metadata = {}
+        self._capabilities = {}
     
     def _register_builtin_algorithms(self) -> None:
-        """Register built-in algorithms with metadata."""
-        # Node embeddings
-        self.register(
+        """Rebind to the shared built-in catalog.
+
+        The catalog itself is built once at import (see
+        ``_build_builtin_algorithm_catalog``); the shared maps are never
+        mutated in place — every mutating method copies first — so restoring
+        the built-ins is a plain pointer rebind, used e.g. after ``clear_all``.
+        """
+        self._algorithms = _BUILTIN_ALGORITHMS
+        self._metadata = _BUILTIN_METADATA
+        self._capabilities = _BUILTIN_CAPABILITIES
+
+
+def _register_builtin_algorithms_on(builder: "AlgorithmRegistry") -> None:
+    """Populate ``builder`` with the built-in algorithm catalog.
+
+    The catalog never changes, so this replay runs exactly once at import
+    (see ``_build_builtin_algorithm_catalog``); ``AlgorithmRegistry.__init__``
+    binds the result instead of re-running it (#1177).
+    """
+
+    # Node embeddings
+    builder.register(
+        "embeddings",
+        "node2vec",
+        None,  # Will be imported when needed
+        metadata={
+            "description": "Node2Vec algorithm for node embeddings",
+            "parameters": ["embedding_dimension", "walk_length", "num_walks", "p", "q"],
+            "complexity": "O(V * (L * W + E))",
+            "quality": "High",
+            "use_case": "Structural similarity analysis"
+        },
+        capabilities=["biased_random_walks", "word2vec_training", "embedding_storage"]
+    )
+    
+    # Similarity metrics
+    similarity_metrics = ["cosine", "euclidean", "manhattan", "correlation"]
+    for metric in similarity_metrics:
+        builder.register(
+            "similarity",
+            metric,
+            None,
+            metadata={
+                "description": f"{metric.title()} similarity for embeddings",
+                "parameters": ["normalization"],
+                "complexity": "O(d)" if metric != "correlation" else "O(d)",
+                "quality": "Standard",
+                "use_case": "Embedding comparison"
+            },
+            capabilities=["vector_similarity", "batch_computation"]
+        )
+    
+    # Path finding
+    path_algorithms = {
+        "dijkstra": {
+            "description": "Dijkstra's algorithm for shortest paths",
+            "parameters": ["weight_attribute", "default_weight"],
+            "complexity": "O(E + V log V)",
+            "quality": "Optimal",
+            "use_case": "Weighted shortest path"
+        },
+        "astar": {
+            "description": "A* search with heuristic guidance",
+            "parameters": ["heuristic", "weight_attribute"],
+            "complexity": "O(E) (with good heuristic)",
+            "quality": "Optimal",
+            "use_case": "Guided path finding"
+        },
+        "bfs": {
+            "description": "Breadth-first search for unweighted paths",
+            "parameters": [],
+            "complexity": "O(V + E)",
+            "quality": "Optimal (unweighted)",
+            "use_case": "Unweighted shortest path"
+        }
+    }
+    
+    for name, meta in path_algorithms.items():
+        builder.register(
+            "path_finding",
+            name,
+            None,
+            metadata=meta,
+            capabilities=["shortest_path", "path_reconstruction"]
+        )
+    
+    # Link prediction
+    link_methods = {
+        "preferential_attachment": {
+            "description": "Preferential attachment link prediction",
+            "parameters": [],
+            "complexity": "O(1)",
+            "quality": "Good for scale-free networks",
+            "use_case": "Fast link prediction"
+        },
+        "common_neighbors": {
+            "description": "Common neighbors link prediction",
+            "parameters": [],
+            "complexity": "O(min(deg(u), deg(v)))",
+            "quality": "Good for dense networks",
+            "use_case": "Simple similarity-based prediction"
+        },
+        "jaccard_coefficient": {
+            "description": "Jaccard coefficient link prediction",
+            "parameters": [],
+            "complexity": "O(min(deg(u), deg(v)))",
+            "quality": "Normalized similarity",
+            "use_case": "Normalized link prediction"
+        },
+        "adamic_adar": {
+            "description": "Adamic-Adar index link prediction",
+            "parameters": [],
+            "complexity": "O(min(deg(u), deg(v)))",
+            "quality": "Degree-weighted similarity",
+            "use_case": "Sophisticated link prediction"
+        }
+    }
+    
+    for name, meta in link_methods.items():
+        builder.register(
+            "link_prediction",
+            name,
+            None,
+            metadata=meta,
+            capabilities=["neighbor_analysis", "similarity_scoring"]
+        )
+    
+    # Enhanced centrality
+    builder.register(
+        "centrality",
+        "pagerank",
+        None,
+        metadata={
+            "description": "PageRank centrality calculation",
+            "parameters": ["max_iterations", "damping_factor", "tolerance"],
+            "complexity": "O(E * iterations)",
+            "quality": "Industry standard",
+            "use_case": "Importance ranking"
+        },
+        capabilities=["iterative_computation", "convergence_detection"]
+    )
+    
+    # Enhanced community detection
+    builder.register(
+        "community_detection",
+        "label_propagation",
+        None,
+        metadata={
+            "description": "Label propagation community detection",
+            "parameters": ["max_iterations", "random_seed"],
+            "complexity": "O(E * iterations)",
+            "quality": "Good for large graphs",
+            "use_case": "Fast community detection"
+        },
+        capabilities=["iterative_labeling", "convergence_detection"]
+    )
+
+
+def _build_builtin_algorithm_catalog():
+    """Build the shared built-in algorithm/metadata/capability maps once.
+
+    Returns three structures that instances bind by reference until their
+    first mutation (copy-on-write), so the shared catalog is effectively
+    immutable.
+    """
+    builder = AlgorithmRegistry.__new__(AlgorithmRegistry)
+    builder._algorithms = {
+        category: {}
+        for category in (
             "embeddings",
-            "node2vec",
-            None,  # Will be imported when needed
-            metadata={
-                "description": "Node2Vec algorithm for node embeddings",
-                "parameters": ["embedding_dimension", "walk_length", "num_walks", "p", "q"],
-                "complexity": "O(V * (L * W + E))",
-                "quality": "High",
-                "use_case": "Structural similarity analysis"
-            },
-            capabilities=["biased_random_walks", "word2vec_training", "embedding_storage"]
-        )
-        
-        # Similarity metrics
-        similarity_metrics = ["cosine", "euclidean", "manhattan", "correlation"]
-        for metric in similarity_metrics:
-            self.register(
-                "similarity",
-                metric,
-                None,
-                metadata={
-                    "description": f"{metric.title()} similarity for embeddings",
-                    "parameters": ["normalization"],
-                    "complexity": "O(d)" if metric != "correlation" else "O(d)",
-                    "quality": "Standard",
-                    "use_case": "Embedding comparison"
-                },
-                capabilities=["vector_similarity", "batch_computation"]
-            )
-        
-        # Path finding
-        path_algorithms = {
-            "dijkstra": {
-                "description": "Dijkstra's algorithm for shortest paths",
-                "parameters": ["weight_attribute", "default_weight"],
-                "complexity": "O(E + V log V)",
-                "quality": "Optimal",
-                "use_case": "Weighted shortest path"
-            },
-            "astar": {
-                "description": "A* search with heuristic guidance",
-                "parameters": ["heuristic", "weight_attribute"],
-                "complexity": "O(E) (with good heuristic)",
-                "quality": "Optimal",
-                "use_case": "Guided path finding"
-            },
-            "bfs": {
-                "description": "Breadth-first search for unweighted paths",
-                "parameters": [],
-                "complexity": "O(V + E)",
-                "quality": "Optimal (unweighted)",
-                "use_case": "Unweighted shortest path"
-            }
-        }
-        
-        for name, meta in path_algorithms.items():
-            self.register(
-                "path_finding",
-                name,
-                None,
-                metadata=meta,
-                capabilities=["shortest_path", "path_reconstruction"]
-            )
-        
-        # Link prediction
-        link_methods = {
-            "preferential_attachment": {
-                "description": "Preferential attachment link prediction",
-                "parameters": [],
-                "complexity": "O(1)",
-                "quality": "Good for scale-free networks",
-                "use_case": "Fast link prediction"
-            },
-            "common_neighbors": {
-                "description": "Common neighbors link prediction",
-                "parameters": [],
-                "complexity": "O(min(deg(u), deg(v)))",
-                "quality": "Good for dense networks",
-                "use_case": "Simple similarity-based prediction"
-            },
-            "jaccard_coefficient": {
-                "description": "Jaccard coefficient link prediction",
-                "parameters": [],
-                "complexity": "O(min(deg(u), deg(v)))",
-                "quality": "Normalized similarity",
-                "use_case": "Normalized link prediction"
-            },
-            "adamic_adar": {
-                "description": "Adamic-Adar index link prediction",
-                "parameters": [],
-                "complexity": "O(min(deg(u), deg(v)))",
-                "quality": "Degree-weighted similarity",
-                "use_case": "Sophisticated link prediction"
-            }
-        }
-        
-        for name, meta in link_methods.items():
-            self.register(
-                "link_prediction",
-                name,
-                None,
-                metadata=meta,
-                capabilities=["neighbor_analysis", "similarity_scoring"]
-            )
-        
-        # Enhanced centrality
-        self.register(
+            "similarity",
+            "path_finding",
+            "link_prediction",
             "centrality",
-            "pagerank",
-            None,
-            metadata={
-                "description": "PageRank centrality calculation",
-                "parameters": ["max_iterations", "damping_factor", "tolerance"],
-                "complexity": "O(E * iterations)",
-                "quality": "Industry standard",
-                "use_case": "Importance ranking"
-            },
-            capabilities=["iterative_computation", "convergence_detection"]
-        )
-        
-        # Enhanced community detection
-        self.register(
             "community_detection",
-            "label_propagation",
-            None,
-            metadata={
-                "description": "Label propagation community detection",
-                "parameters": ["max_iterations", "random_seed"],
-                "complexity": "O(E * iterations)",
-                "quality": "Good for large graphs",
-                "use_case": "Fast community detection"
-            },
-            capabilities=["iterative_labeling", "convergence_detection"]
         )
+    }
+    builder._metadata = {}
+    builder._capabilities = {}
+    _register_builtin_algorithms_on(builder)
+    return builder._algorithms, builder._metadata, builder._capabilities
+
+
+_BUILTIN_ALGORITHMS, _BUILTIN_METADATA, _BUILTIN_CAPABILITIES = (
+    _build_builtin_algorithm_catalog()
+)
 
 
 # Global algorithm registry
