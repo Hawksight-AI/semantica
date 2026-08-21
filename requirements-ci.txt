@@ -3693,10 +3693,10 @@ nvidia-nvshmem-cu13==3.4.5 \
     --hash=sha256:290f0a2ee94c9f3687a02502f3b9299a9f9fe826e6d0287ee18482e78d495b80 \
     --hash=sha256:6dc2a197f38e5d0376ad52cd1a2a3617d3cdc150fd5966f4aee9bcebb1d68fe9
     # via torch
-nvidia-nvtx==13.0.85 \
-    --hash=sha256:4936d1d6780fbe68db454f5e72a42ff64d1fd6397df9f363ae786930fd5c1cd4 \
-    --hash=sha256:cb7780edb6b14107373c835bf8b72e7a178bac7367e23da7acb108f973f157a6 \
-    --hash=sha256:d66ea44254dd3c6eacc300047af6e1288d2269dd072b417e0adffbf479e18519
+nvidia-nvtx==13.3.29 \
+    --hash=sha256:4e4f307012748c093dd3d28a0bb0f3da954857754dd79a4e6d2d38790730b64e \
+    --hash=sha256:c54976009b1e86846ee66ab129daae522a25d698971cb074b66e5e7e133a58f0 \
+    --hash=sha256:ee6f2cfcfb5dc037cc40894186c9142a2f9bc25b2ea8fc2d57b51974d777d1bc
     # via cuda-toolkit
 olefile==0.47 \
     --hash=sha256:543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f \
