@@ -5752,9 +5752,9 @@ seaborn==0.13.2 \
     # via
     #   semantica (pyproject.toml)
     #   scatterd
-semchunk==3.2.5 \
-    --hash=sha256:ee15e9a06a69a411937dd8fcf0a25d7ef389c5195863140436872a02c95b0218 \
-    --hash=sha256:fd09cc5f380bd010b8ca773bd81893f7eaf11d37dd8362a83d46cedaf5dae076
+semchunk==4.1.1 \
+    --hash=sha256:acbc535e89824dce954a554e297438b2ee3506b71505f1472eb2bf8057fcba3c \
+    --hash=sha256:f27dc85716a0e9509a3f99c78b961cc476b3120efe711ee9a9a950ed1bd0f8ba
     # via docling-core
 send2trash==2.1.0 \
     --hash=sha256:0da2f112e6d6bb22de6aa6daa7e144831a4febf2a87261451c4ad849fe9a873c \
