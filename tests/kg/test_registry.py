@@ -644,6 +644,49 @@ class TestAlgorithmRegistrySharedCatalog:
         assert registry._owns_catalog is False
         assert registry._algorithms is _BUILTIN_ALGORITHMS
 
+    def test_get_capabilities_returns_a_copy(self):
+        """Mutating returned capabilities must not leak into the shared catalog."""
+        from semantica.kg.registry import _BUILTIN_CAPABILITIES
+
+        r1 = AlgorithmRegistry()
+        caps = r1.get_capabilities("embeddings", "node2vec")
+        caps.append("LEAK")
+
+        r2 = AlgorithmRegistry()
+        assert "LEAK" not in r2.get_capabilities("embeddings", "node2vec")
+        assert "LEAK" not in _BUILTIN_CAPABILITIES[("embeddings", "node2vec")]
+
+    def test_clear_category_does_not_leak_into_other_instances(self):
+        """clear_category on one instance must not affect others or the module."""
+        from semantica.kg.registry import _BUILTIN_ALGORITHMS
+
+        r1 = AlgorithmRegistry()
+        r2 = AlgorithmRegistry()
+
+        r1.clear_category("embeddings")
+
+        assert r1.list_category("embeddings") == []
+        assert "node2vec" in r2.list_category("embeddings")
+        assert "node2vec" in _BUILTIN_ALGORITHMS["embeddings"]
+        assert r2._owns_catalog is False
+
+    def test_shared_builtin_catalog_is_read_only(self):
+        """The shared module maps reject in-place mutation."""
+        import pytest
+
+        from semantica.kg.registry import (
+            _BUILTIN_ALGORITHMS,
+            _BUILTIN_CAPABILITIES,
+            _BUILTIN_METADATA,
+        )
+
+        with pytest.raises(TypeError):
+            _BUILTIN_METADATA[("embeddings", "node2vec")] = {}
+        with pytest.raises(TypeError):
+            _BUILTIN_CAPABILITIES[("embeddings", "node2vec")] = []
+        with pytest.raises(TypeError):
+            _BUILTIN_ALGORITHMS["embeddings"]["x"] = None
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

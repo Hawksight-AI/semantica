@@ -45,6 +45,7 @@ Example Usage:
 """
 
 import copy
+from types import MappingProxyType
 from typing import Any, Callable, Dict, List, Optional
 
 
@@ -308,11 +309,22 @@ def _build_builtin_algorithm_catalog() -> tuple:
 
 # Process-wide built-in catalog, constructed once at import. Shared across
 # AlgorithmRegistry instances (copy-on-write) and never mutated in place.
-(
-    _BUILTIN_ALGORITHMS,
-    _BUILTIN_METADATA,
-    _BUILTIN_CAPABILITIES,
-) = _build_builtin_algorithm_catalog()
+#
+# The shared maps are exposed as read-only ``MappingProxyType`` views so that an
+# accidental attempt to reassign or insert into the process-wide catalog fails
+# loudly instead of silently leaking across every registry. Copy-on-write still
+# works: ``_ensure_owned`` materializes plain, mutable dicts before any change.
+_builtin_algorithms, _builtin_metadata, _builtin_capabilities = (
+    _build_builtin_algorithm_catalog()
+)
+_BUILTIN_ALGORITHMS = MappingProxyType(
+    {
+        category: MappingProxyType(names)
+        for category, names in _builtin_algorithms.items()
+    }
+)
+_BUILTIN_METADATA = MappingProxyType(_builtin_metadata)
+_BUILTIN_CAPABILITIES = MappingProxyType(_builtin_capabilities)
 
 
 class AlgorithmRegistry:
@@ -373,11 +385,17 @@ class AlgorithmRegistry:
         """
         if self._owns_catalog:
             return
+        # Materialize plain, mutable dicts from the (possibly read-only) shared
+        # maps. Iterating works whether the source is a dict or a MappingProxyType.
         self._algorithms = {
             category: dict(names) for category, names in self._algorithms.items()
         }
-        self._metadata = copy.deepcopy(self._metadata)
-        self._capabilities = copy.deepcopy(self._capabilities)
+        self._metadata = {
+            key: copy.deepcopy(value) for key, value in self._metadata.items()
+        }
+        self._capabilities = {
+            key: copy.deepcopy(value) for key, value in self._capabilities.items()
+        }
         self._owns_catalog = True
 
     def register(
@@ -488,11 +506,17 @@ class AlgorithmRegistry:
             name: Algorithm name
             
         Returns:
-            A copy of the metadata dictionary, or None if not found. A copy
-            is returned so callers cannot mutate the shared module catalog.
+            The metadata dictionary, or None if not found. While this registry
+            still shares the immutable module catalog, a deep copy is returned so
+            callers cannot mutate the shared built-ins. Once the catalog is owned
+            (after a mutation), the stored object is returned directly — matching
+            the previous behavior and avoiding a deep copy of arbitrary,
+            possibly non-copyable, user-provided values.
         """
         metadata = self._metadata.get((category, name))
-        return copy.deepcopy(metadata) if metadata is not None else None
+        if metadata is None:
+            return None
+        return metadata if self._owns_catalog else copy.deepcopy(metadata)
     
     def get_capabilities(self, category: str, name: str) -> Optional[List[str]]:
         """
@@ -503,11 +527,17 @@ class AlgorithmRegistry:
             name: Algorithm name
             
         Returns:
-            A copy of the capabilities list, or None if not found. A copy
-            is returned so callers cannot mutate the shared module catalog.
+            The capabilities list, or None if not found. While this registry
+            still shares the immutable module catalog, a deep copy is returned so
+            callers cannot mutate the shared built-ins. Once the catalog is owned
+            (after a mutation), the stored object is returned directly — matching
+            the previous behavior and avoiding a deep copy of arbitrary,
+            possibly non-copyable, user-provided values.
         """
         capabilities = self._capabilities.get((category, name))
-        return copy.deepcopy(capabilities) if capabilities is not None else None
+        if capabilities is None:
+            return None
+        return capabilities if self._owns_catalog else copy.deepcopy(capabilities)
     
     def unregister(self, category: str, name: str) -> None:
         """
