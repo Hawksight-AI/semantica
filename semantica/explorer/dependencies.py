@@ -2,8 +2,9 @@
 Semantica Explorer : FastAPI Dependencies
 
 Provides ``Depends()``-compatible callables for injecting the
-current ``GraphSession`` and ``ConnectionManager`` into route handlers,
-and for enforcing API-key authentication on protected routes.
+current ``GraphSession`` into route handlers, and for enforcing API-key
+authentication on protected routes. WebSocket manager access is handled
+directly via ``app.state.ws_manager``.
 """
 
 import hmac

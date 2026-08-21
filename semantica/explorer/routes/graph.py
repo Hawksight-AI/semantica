@@ -78,28 +78,6 @@ def _parse_bbox(raw_bbox: Optional[str]) -> Optional[tuple[float, float, float, 
     return min_x, min_y, max_x, max_y
 
 
-def _coerce_embedding_vector(value: object) -> Optional[List[float]]:
-    if isinstance(value, dict):
-        # Probe keys in priority order: generic first, then framework-specific.
-        for key in ("embedding", "embeddings", "vector", "values", "node2vec", "semantic"):
-            nested = _coerce_embedding_vector(value.get(key))
-            if nested is not None:
-                return nested
-        return None
-
-    if not isinstance(value, (list, tuple)):
-        return None
-
-    vector: List[float] = []
-    for item in value:
-        try:
-            vector.append(float(item))
-        except (TypeError, ValueError):
-            return None
-
-    return vector if vector else None
-
-
 def _get_cached_embeddings(session: GraphSession) -> dict[str, List[float]]:
     """Get embeddings from session cache for optimal performance."""
     return session.get_cached_embeddings()
