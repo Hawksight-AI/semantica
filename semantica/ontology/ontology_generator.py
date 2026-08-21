@@ -408,8 +408,11 @@ class OntologyGenerator:
                 continue
             if isinstance(value, dict):
                 for alias_key in ("id", "entity_id", "name", "text", "label"):
-                    if alias_key in value and value[alias_key] is not None:
-                        return value[alias_key]
+                    if alias_key not in value:
+                        continue
+                    alias_value = value[alias_key]
+                    if alias_value is not None and alias_value != "":
+                        return alias_value
                 continue
             return value
 

@@ -69,3 +69,30 @@ def test_explicit_relationship_endpoint_types_are_preserved():
     works_for = _object_property(ontology, "worksFor")
     assert works_for["domain"] == ["Employee"]
     assert works_for["range"] == ["Company"]
+
+
+def test_nested_endpoint_alias_skips_empty_id_and_uses_name():
+    entities = [
+        {"id": "p1", "type": "Person", "name": "Alice"},
+        {"id": "o1", "type": "Organization", "name": "Acme"},
+    ]
+    relationships = [
+        {
+            "source": {"id": "", "name": "Alice"},
+            "target": {"id": "", "name": "Acme"},
+            "type": "works_for",
+        },
+        {
+            "source": {"id": "", "name": "Alice"},
+            "target": {"id": "", "name": "Acme"},
+            "type": "works_for",
+        },
+    ]
+
+    ontology = OntologyGenerator().generate_ontology(
+        {"entities": entities, "relationships": relationships}
+    )
+
+    works_for = _object_property(ontology, "worksFor")
+    assert works_for["domain"] == ["Person"]
+    assert works_for["range"] == ["Organization"]
