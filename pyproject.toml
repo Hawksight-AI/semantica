@@ -206,6 +206,19 @@ agno = ["agno>=1.0.0"]
 # duplicate the prebuilt tooling users can install separately.
 crewai = ["crewai>=0.80.0"]
 
+# ---- Verification ----
+# The Oxigraph-backed engine behind integrations/open_ontologies. Pure Python,
+# no Rust toolchain and no service to run. The `shacl` extra of that package is
+# what the shapes half of the check needs; the syntax and closed-world
+# vocabulary checks work without it.
+#
+# The 0.5.0 floor is not cosmetic. Up to 0.4.0 that package declared `mcp` as a
+# a core dependency, and `mcp` pulls a starlette major that `fastapi>=0.109.2`
+# above does not accept, so installing it into this environment UNINSTALLED
+# fastapi and every import of `semantica/explorer` then failed. 0.5.0 moves
+# `mcp` behind a `server` extra, which the library API does not use.
+open-ontologies = ["open-ontologies-lite>=0.5.0"]
+
 # ---- File Watching ----
 watch = ["watchdog>=6.0.0"]
 
