@@ -3671,10 +3671,10 @@ nvidia-cusparse==12.6.3.3 \
     # via
     #   cuda-toolkit
     #   nvidia-cusolver
-nvidia-cusparselt-cu13==0.8.1 \
-    --hash=sha256:4dca476c50bf4780d46cd0bfbd82e2bc10a08e4fef7950917ce8d7578d22a23f \
-    --hash=sha256:786ce87568c303fadb5afcc7102d454cd3040d75f6f8626f5db460d1871f4dd0 \
-    --hash=sha256:dccbd362f91a7b9024d1f55ee9f548ac065027ff15d8c8b0db889ab3a8f31215
+nvidia-cusparselt-cu13==0.9.1 \
+    --hash=sha256:49e54b7cecb049b039381d4cb8389afd2f18d83cdca285ba8231ee0ff4341dc1 \
+    --hash=sha256:514a84d71b4edb8609108253d3d9ea283542162a0861787f600b704ed663e58c \
+    --hash=sha256:a7dd536f0fd2ea7c65395a6d63568bcd98c2522349112e1e61f8b1d19d559528
     # via torch
 nvidia-nccl-cu13==2.29.7 \
     --hash=sha256:674a12383e3c38a1bcccae7d4f3633b37852230b6047883cb2f4c2d1b36d9bf5 \
