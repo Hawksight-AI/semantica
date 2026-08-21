@@ -3772,9 +3772,9 @@ opentelemetry-api==1.43.0 \
     #   opentelemetry-instrumentation
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-instrumentation==0.64b0 \
-    --hash=sha256:133ab7ffca796557aec059bf6be3190a34b6dea987f25be3d9409e230cbdad8b \
-    --hash=sha256:b47d528dead6271d7743114417eb67fc915bd9258111c48dbf9a4951d2efa88d
+opentelemetry-instrumentation==0.65b0 \
+    --hash=sha256:071d9d9eced9bd6460444ec3b0c77229870ed05a881c22c84fdede58e4eed09b \
+    --hash=sha256:ea967a72b9939b5fcfdad572753b4306c59dcb99e3f382d95dae04286805e137
     # via semantica (pyproject.toml)
 opentelemetry-sdk==1.43.0 \
     --hash=sha256:d1323a547c1ce69d6a069a17a44b7da82bb8b332051ecb074041f87642c86823 \
