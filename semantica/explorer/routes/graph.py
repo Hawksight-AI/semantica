@@ -81,7 +81,6 @@ def _parse_bbox(raw_bbox: Optional[str]) -> Optional[tuple[float, float, float, 
 def _coerce_embedding_vector(value: object) -> Optional[List[float]]:
     if isinstance(value, dict):
         # Probe keys in priority order: generic first, then framework-specific.
-        # Must stay aligned with the top-level keys in _extract_node_embeddings.
         for key in ("embedding", "embeddings", "vector", "values", "node2vec", "semantic"):
             nested = _coerce_embedding_vector(value.get(key))
             if nested is not None:
@@ -99,43 +98,6 @@ def _coerce_embedding_vector(value: object) -> Optional[List[float]]:
             return None
 
     return vector if vector else None
-
-
-def _extract_node_embeddings(graph_dict: dict) -> dict[str, List[float]]:
-    """Extract embeddings from graph dictionary."""
-    # Top-level keys to probe on each entity (and its metadata/properties dicts).
-    # Priority: generic names first, then KG-extras-specific names.
-    # Must stay aligned with the inner probe list in _coerce_embedding_vector.
-    embedding_keys = (
-        "embedding",
-        "embeddings",
-        "vector",
-        "node_embedding",
-        "node2vec_embedding",
-        "semantic_embedding",
-        "reasoning_embedding",
-    )
-
-    embeddings: dict[str, List[float]] = {}
-    for entity in graph_dict.get("entities") or graph_dict.get("nodes") or []:
-        if not isinstance(entity, dict):
-            continue
-        node_id = entity.get("id") or entity.get("node_id")
-        if not node_id:
-            continue
-
-        metadata = entity.get("metadata") if isinstance(entity.get("metadata"), dict) else {}
-        properties = entity.get("properties") if isinstance(entity.get("properties"), dict) else {}
-
-        for key in embedding_keys:
-            vector = _coerce_embedding_vector(
-                entity.get(key, metadata.get(key, properties.get(key)))
-            )
-            if vector is not None:
-                embeddings[str(node_id)] = vector
-                break
-
-    return embeddings
 
 
 def _get_cached_embeddings(session: GraphSession) -> dict[str, List[float]]:

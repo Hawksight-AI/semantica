@@ -52,37 +52,6 @@ def _snapshot_collections(snapshot: Dict[str, Any]) -> tuple[List[Any], List[Any
 
     return list(entities or []), list(relationships or [])
 
-def create_graph_snapshot_record(
-    version_id: str,
-    graph_uri: str,
-    author: str = "system",
-    description: str = "Graph snapshot",
-    metadata: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Creates a standardized snapshot metadata record for a named graph.
-
-    Args:
-        version_id: Unique identifier for this snapshot
-        graph_uri: The underlying named graph URI in the triplet store
-        author: Creator of the snapshot
-        description: Purpose or context of the snapshot
-        metadata: Additional tags or pipeline context
-    """
-    
-    record = {
-        "label": version_id,
-        "version_id": version_id,
-        "graph_uri": graph_uri,
-        "timestamp": datetime.now().isoformat(),
-        "author": author,
-        "description": description,
-        "metadata": metadata or {},
-    }
-    
-    record["checksum"] = compute_checksum(record)
-    return record
-
 
 class VersionStorage(ABC):
     """

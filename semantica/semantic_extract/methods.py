@@ -1112,47 +1112,6 @@ Text to extract from:
         return []
 
 
-def _parse_entity_result(result: Any, provider: str, model: Optional[str]) -> List[Entity]:
-    """Helper to parse raw LLM result into Entity objects."""
-    entities = []
-    items = []
-    
-    if isinstance(result, list):
-        items = result
-    elif isinstance(result, dict):
-        # Handle cases where LLM wraps the list in a key
-        for key in ["entities", "data", "results"]:
-            if key in result and isinstance(result[key], list):
-                items = result[key]
-                break
-        if not items and "text" in result: # Single object instead of list
-            items = [result]
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-            
-        text = item.get("text", "")
-        if not text:
-            continue
-            
-        entities.append(
-            Entity(
-                text=text,
-                label=item.get("label", "UNKNOWN"),
-                start_char=item.get("start", 0),
-                end_char=item.get("end", 0),
-                confidence=item.get("confidence", 0.9),
-                metadata={
-                    "provider": provider,
-                    "model": model,
-                    "extraction_method": "llm",
-                },
-            )
-        )
-    return entities
-
-
 def _extract_entities_chunked(
     text: str,
     provider: str,
@@ -2545,48 +2504,6 @@ Text to extract from:
                 raise
             raise ProcessingError(error_msg) from e
         return []
-
-
-def _parse_triplet_result(result: Any, provider: str, model: Optional[str]) -> List[Triplet]:
-    """Helper to parse raw LLM result into Triplet objects."""
-    triplets = []
-    items = []
-    
-    if isinstance(result, list):
-        items = result
-    elif isinstance(result, dict):
-        for key in ["triplets", "data", "results"]:
-            if key in result and isinstance(result[key], list):
-                items = result[key]
-                break
-        if not items and "subject" in result:
-            items = [result]
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-            
-        subject = item.get("subject", "")
-        predicate = item.get("predicate", "")
-        obj = item.get("object", "")
-        
-        if not subject or not predicate or not obj:
-            continue
-            
-        triplets.append(
-            Triplet(
-                subject=str(subject),
-                predicate=str(predicate),
-                object=str(obj),
-                confidence=item.get("confidence", 0.9),
-                metadata={
-                    "provider": provider,
-                    "model": model,
-                    "extraction_method": "llm",
-                },
-            )
-        )
-    return triplets
 
 
 def _extract_triplets_chunked(
