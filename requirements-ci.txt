@@ -403,9 +403,9 @@ boto3==1.43.69 \
     --hash=sha256:4eb494d05b2bd08a7eee61b8ac4c34745c99e9bbce435c91f8d15d372dd8c2db \
     --hash=sha256:76297a0b415849c63575ae08a4f1661b2dc8ee0100f104b86f98aa69b47fa2c7
     # via semantica (pyproject.toml)
-botocore==1.43.69 \
-    --hash=sha256:5caa46b740d9a886137146ffbb69edb691f702bfe74c64e85621947ae00181fd \
-    --hash=sha256:b1f0e01c53d6b84ee9c184ebf3636c3b3aef85e0ae8498c74afb8734ff224f87
+botocore==1.43.73 \
+    --hash=sha256:068433028e011ccbeab1dd7c46b1090c24e378397693c66e67ca571176498daa \
+    --hash=sha256:0fa1e63c24b3531be3e1bc1687a88b3be9e63a430153f24edd93efc162bb1c51
     # via
     #   boto3
     #   s3transfer
