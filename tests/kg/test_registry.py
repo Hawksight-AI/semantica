@@ -557,5 +557,93 @@ class TestAlgorithmRegistryErrorHandling:
         # Should just do nothing
 
 
+class TestAlgorithmRegistrySharedCatalog:
+    """Tests for the shared, copy-on-write built-in catalog."""
+
+    def test_init_binds_shared_catalog(self):
+        """A new registry shares the module catalog and owns nothing yet."""
+        from semantica.kg.registry import (
+            _BUILTIN_ALGORITHMS,
+            _BUILTIN_CAPABILITIES,
+            _BUILTIN_METADATA,
+        )
+
+        registry = AlgorithmRegistry()
+
+        assert registry._owns_catalog is False
+        assert registry._algorithms is _BUILTIN_ALGORITHMS
+        assert registry._metadata is _BUILTIN_METADATA
+        assert registry._capabilities is _BUILTIN_CAPABILITIES
+
+    def test_init_does_not_register_builtins_per_instance(self, monkeypatch):
+        """Construction must not replay register() for the built-ins."""
+        calls = []
+        monkeypatch.setattr(
+            AlgorithmRegistry,
+            "register",
+            lambda self, *args, **kwargs: calls.append(args),
+        )
+
+        AlgorithmRegistry()
+
+        assert calls == []
+
+    def test_register_does_not_leak_into_other_instances(self):
+        """Registering on one instance must not affect others or the module."""
+        from semantica.kg.registry import _BUILTIN_ALGORITHMS, algorithm_registry
+
+        r1 = AlgorithmRegistry()
+        r2 = AlgorithmRegistry()
+
+        r1.register("embeddings", "iso_algo", None, metadata={"k": "v"})
+
+        assert "iso_algo" in r1.list_category("embeddings")
+        assert "iso_algo" not in r2.list_category("embeddings")
+        assert "iso_algo" not in algorithm_registry.list_category("embeddings")
+        assert "iso_algo" not in _BUILTIN_ALGORITHMS["embeddings"]
+        assert r1._owns_catalog is True
+        assert r2._owns_catalog is False
+
+    def test_unregister_does_not_leak_into_other_instances(self):
+        """Unregistering a built-in on one instance must not affect others."""
+        from semantica.kg.registry import _BUILTIN_ALGORITHMS
+
+        r1 = AlgorithmRegistry()
+        r2 = AlgorithmRegistry()
+
+        r1.unregister("embeddings", "node2vec")
+
+        assert "node2vec" not in r1.list_category("embeddings")
+        assert "node2vec" in r2.list_category("embeddings")
+        assert "node2vec" in _BUILTIN_ALGORITHMS["embeddings"]
+
+    def test_get_metadata_returns_a_copy(self):
+        """Mutating returned metadata must not leak into the shared catalog."""
+        from semantica.kg.registry import _BUILTIN_METADATA
+
+        r1 = AlgorithmRegistry()
+        params = r1.get_metadata("embeddings", "node2vec")["parameters"]
+        params.append("LEAK")
+
+        r2 = AlgorithmRegistry()
+        assert "LEAK" not in r2.get_metadata("embeddings", "node2vec")["parameters"]
+        assert "LEAK" not in _BUILTIN_METADATA[("embeddings", "node2vec")]["parameters"]
+
+    def test_register_builtin_algorithms_rebinds_shared_catalog(self):
+        """After clear_all, _register_builtin_algorithms rebinds the shared maps."""
+        from semantica.kg.registry import _BUILTIN_ALGORITHMS
+
+        registry = AlgorithmRegistry()
+        registry.clear_all()
+        assert registry.list_category("embeddings") == []
+        assert registry._owns_catalog is True
+
+        registry._register_builtin_algorithms()
+
+        assert "node2vec" in registry.list_category("embeddings")
+        assert registry._owns_catalog is False
+        assert registry._algorithms is _BUILTIN_ALGORITHMS
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
