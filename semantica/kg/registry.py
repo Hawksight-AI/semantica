@@ -39,12 +39,13 @@ Global Instances:
     - method_registry: Global method registry instance
 
 Example Usage:
-    >>> import method_registry
+    >>> from semantica.kg.registry import method_registry
     >>> method_registry.register("build", "custom_method", custom_build_function)
     >>> available = method_registry.list_all("build")
 """
 
 import copy
+from types import MappingProxyType
 from typing import Any, Callable, Dict, List, Optional
 
 
@@ -192,6 +193,8 @@ class AlgorithmRegistry:
             or self._metadata is globals().get("_BUILTIN_METADATA")
             or self._capabilities is globals().get("_BUILTIN_CAPABILITIES")
         ):
+            # dict(...) unwraps the MappingProxyType guards into fully mutable
+            # owned maps.
             self._algorithms = {
                 category: dict(algorithms)
                 for category, algorithms in self._algorithms.items()
@@ -308,7 +311,17 @@ class AlgorithmRegistry:
             Metadata dictionary or None if not found
         """
         metadata = self._metadata.get((category, name))
-        return copy.deepcopy(metadata) if metadata is not None else None
+        if metadata is None:
+            return None
+        # Only the shared built-in catalog needs the deep guard; a registry
+        # that has copied away from it owns its metadata, and user-registered
+        # metadata may legally contain non-deepcopyable values.
+        if self._metadata is _BUILTIN_METADATA:
+            try:
+                return copy.deepcopy(metadata)
+            except Exception:
+                return metadata.copy()
+        return metadata.copy()
     
     def get_capabilities(self, category: str, name: str) -> Optional[List[str]]:
         """
@@ -322,7 +335,14 @@ class AlgorithmRegistry:
             List of capabilities or None if not found
         """
         capabilities = self._capabilities.get((category, name))
-        return copy.deepcopy(capabilities) if capabilities is not None else None
+        if capabilities is None:
+            return None
+        if self._capabilities is _BUILTIN_CAPABILITIES:
+            try:
+                return copy.deepcopy(capabilities)
+            except Exception:
+                return list(capabilities)
+        return list(capabilities)
     
     def unregister(self, category: str, name: str) -> None:
         """
@@ -558,6 +578,16 @@ def _build_builtin_algorithm_catalog():
 _BUILTIN_ALGORITHMS, _BUILTIN_METADATA, _BUILTIN_CAPABILITIES = (
     _build_builtin_algorithm_catalog()
 )
+# The shared catalog is read-only by contract (every mutating method copies
+# first); MappingProxyType makes that contract structural — a stray in-place
+# mutation through a lingering reference raises instead of silently leaking
+# into every other instance (#1177 review).
+_BUILTIN_ALGORITHMS = MappingProxyType({
+    category: MappingProxyType(algorithms)
+    for category, algorithms in _BUILTIN_ALGORITHMS.items()
+})
+_BUILTIN_METADATA = MappingProxyType(_BUILTIN_METADATA)
+_BUILTIN_CAPABILITIES = MappingProxyType(_BUILTIN_CAPABILITIES)
 
 
 # Global algorithm registry

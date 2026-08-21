@@ -91,6 +91,31 @@ class SharedBuiltinCatalogTests(unittest.TestCase):
         self.assertIs(registry._algorithms, _BUILTIN_ALGORITHMS)
         self.assertEqual(len(registry.list_category("path_finding")), 3)
 
+    def test_shared_catalog_rejects_in_place_mutation(self):
+        # The shared catalog is structurally read-only: a stray in-place
+        # write through a lingering reference raises instead of silently
+        # leaking into every other instance (#1177 review).
+        with self.assertRaises(TypeError):
+            _BUILTIN_ALGORITHMS["embeddings"]["injected"] = None
+
+        registry = AlgorithmRegistry()
+        registry.register("embeddings", "owned", None)
+        registry._algorithms["embeddings"]["owned2"] = None  # owned copy: fine
+        self.assertNotIn("owned2", AlgorithmRegistry().list_category("embeddings"))
+
+    def test_non_deepcopyable_metadata_on_owned_registry_is_readable(self):
+        class NoDeepcopy:
+            def __deepcopy__(self, memo):
+                raise RuntimeError("not deepcopyable")
+
+        registry = AlgorithmRegistry()
+        registry.register(
+            "similarity", "weird", None, metadata={"obj": NoDeepcopy()}
+        )
+
+        metadata = registry.get_metadata("similarity", "weird")
+        self.assertIn("obj", metadata)  # shallow copy, no deepcopy forced
+
     def test_get_metadata_returns_a_copy(self):
         registry = AlgorithmRegistry()
         metadata = registry.get_metadata("embeddings", "node2vec")
