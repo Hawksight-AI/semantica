@@ -779,9 +779,11 @@ def extract_entities_huggingface(
     """
     loader = HuggingFaceModelLoader(device=device)
     # Pass kwargs (like aggregation_strategy) to load_ner_model
-    model_obj = loader.load_ner_model(model, **kwargs)
+    loader_kwargs = {
+        key: value for key, value in kwargs.items() if key != "huggingface_model"
+    }
+    model_obj = loader.load_ner_model(model, **loader_kwargs)
     results = loader.extract_entities(model_obj, text)
-
     entities = []
     
     # Check if manual aggregation is needed (raw IOB tags detected)

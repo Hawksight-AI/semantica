@@ -381,6 +381,45 @@ print(f"Violations after remediation: {report2.violation_count}")
 - **Forgetting RDF serialization**: You must serialize your graph (often via a temporary file using `export_rdf`) before validating it.
 - **Treating validation as a one-time step**: Validation should be integrated as an automated step in your CI/CD pipeline or data ingestion flow, acting as a recurring gatekeeper rather than a one-off script.
 - **Ignoring validation reports**: A graph that does not conform must be remediated. Failing to review the `violation_count` and address the issues negates the purpose of SHACL validation.
+- **Validating `sh:class`/`sh:node` range checks on a property that declares `rdfs:range` with RDFS entailment on**: RDFS is an entailment rule, not a constraint. When pyshacl runs with `inference="rdfs"`, it infers the range class onto every object of the property, so class-based constraints on that property can never fail — the report says `conforms: True` on data that does not conform:
+
+    ```python
+    from pyshacl import validate
+    from rdflib import Graph
+
+    data = Graph()
+    data.parse(
+        data="""
+        @prefix ex: <https://example.org/ns#> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        ex:contains rdfs:domain ex:Container ; rdfs:range ex:Item .
+        ex:box a ex:Container ; ex:contains ex:notAnItem .
+        ex:notAnItem a ex:Fish .
+        """,
+        format="turtle",
+    )
+
+    shapes = Graph()
+    shapes.parse(
+        data="""
+        @prefix ex: <https://example.org/ns#> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:ContainerShape a sh:NodeShape ;
+            sh:targetClass ex:Container ;
+            sh:property [ sh:path ex:contains ; sh:class ex:Item ] .
+        """,
+        format="turtle",
+    )
+
+    for inference in ("none", "rdfs"):
+        conforms, _, _ = validate(data, shacl_graph=shapes, inference=inference)
+        print(inference, conforms)
+    # none  False   <- correct: notAnItem is a Fish, not an Item
+    # rdfs  True    <- the entailment manufactured the type
+    ```
+
+    Mitigations: prefer not to declare `rdfs:range` on properties you intend to constrain with `sh:class`; when class membership is the thing under test, run validation without RDFS entailment (`inference="none"`); or express the check as a constraint the entailment cannot satisfy (for example a literal property constraint). Note the trade-off: with entailment off, `sh:targetClass` no longer reaches subclasses, so subclass hierarchies need explicit typing or inference-aware target selection. Semantica's own `_run_pyshacl` wrapper already calls pyshacl with `inference="none"`, so this pitfall only bites when calling `pyshacl.validate` directly with entailment enabled.
+- **Trusting `conforms: True` without checking the inference mode**: an inference-enabled run can hide the exact violations the shapes were written to catch (see above). Record which inference mode validation ran under alongside the result, and re-run shape sets that contain `sh:class`/`sh:node` with entailment off before treating a pass as authoritative.
 
 ---
 
