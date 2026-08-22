@@ -1,26 +1,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
-import sys
 import numpy as np
 from pathlib import Path
 
 import pytest
-# Mock heavy libraries before importing visualization modules
-sys.modules['matplotlib'] = MagicMock()
-sys.modules['matplotlib.pyplot'] = MagicMock()
-sys.modules['matplotlib.colors'] = MagicMock()
-sys.modules['matplotlib.patches'] = MagicMock()
-sys.modules['plotly'] = MagicMock()
-sys.modules['plotly.express'] = MagicMock()
-sys.modules['plotly.graph_objects'] = MagicMock()
-sys.modules['plotly.subplots'] = MagicMock()
-sys.modules['seaborn'] = MagicMock()
-sys.modules['umap'] = MagicMock()
-sys.modules['sklearn'] = MagicMock()
-sys.modules['sklearn.decomposition'] = MagicMock()
-sys.modules['sklearn.manifold'] = MagicMock()
-sys.modules['networkx'] = MagicMock()
-sys.modules['graphviz'] = MagicMock()
 
 # Import visualizers
 from semantica.visualization.kg_visualizer import KGVisualizer
@@ -52,24 +35,24 @@ class TestVisualizationComprehensive(unittest.TestCase):
             patch('semantica.visualization.analytics_visualizer.get_progress_tracker', return_value=self.mock_tracker),
             patch('semantica.visualization.temporal_visualizer.get_logger', return_value=self.mock_logger),
             patch('semantica.visualization.temporal_visualizer.get_progress_tracker', return_value=self.mock_tracker),
-            # Mock Layouts
-            patch('semantica.visualization.kg_visualizer.ForceDirectedLayout', MagicMock()),
-            patch('semantica.visualization.kg_visualizer.HierarchicalLayout', MagicMock()),
-            patch('semantica.visualization.kg_visualizer.CircularLayout', MagicMock()),
-            patch('semantica.visualization.ontology_visualizer.HierarchicalLayout', MagicMock()),
-            patch('semantica.visualization.semantic_network_visualizer.ForceDirectedLayout', MagicMock()),
+            patch('semantica.visualization.kg_visualizer.go', MagicMock()),
+            patch('semantica.visualization.kg_visualizer.px', MagicMock()),
+            patch('semantica.visualization.ontology_visualizer.go', MagicMock()),
+            patch('semantica.visualization.ontology_visualizer.make_subplots', MagicMock()),
+            patch('semantica.visualization.embedding_visualizer.go', MagicMock()),
+            patch('semantica.visualization.embedding_visualizer.px', MagicMock()),
+            patch('semantica.visualization.semantic_network_visualizer.go', MagicMock()),
+            patch('semantica.visualization.semantic_network_visualizer.px', MagicMock()),
+            patch('semantica.visualization.analytics_visualizer.go', MagicMock()),
+            patch('semantica.visualization.analytics_visualizer.px', MagicMock()),
+            patch('semantica.visualization.analytics_visualizer.make_subplots', MagicMock()),
+            patch('semantica.visualization.temporal_visualizer.go', MagicMock()),
+            patch('semantica.visualization.temporal_visualizer.px', MagicMock()),
         ]
         
         for p in self.patchers:
             p.start()
             
-        # Reset plotly mocks
-        import plotly.graph_objects as go
-        import plotly.express as px
-        go.Figure.reset_mock()
-        px.bar.reset_mock()
-        px.scatter.reset_mock()
-
     def tearDown(self):
         for p in self.patchers:
             p.stop()
@@ -210,8 +193,8 @@ class TestVisualizationComprehensive(unittest.TestCase):
         embeddings = np.random.rand(10, 10)
         
         # Test visualize_2d_projection (mock UMAP/PCA)
-        with patch('semantica.visualization.embedding_visualizer.umap.UMAP') as MockUMAP:
-             MockUMAP.return_value.fit_transform.return_value = np.random.rand(10, 2)
+        with patch('semantica.visualization.embedding_visualizer.umap', MagicMock()) as mock_umap:
+             mock_umap.UMAP.return_value.fit_transform.return_value = np.random.rand(10, 2)
              viz.visualize_2d_projection(embeddings)
              
         # Test visualize_similarity_heatmap
@@ -219,8 +202,8 @@ class TestVisualizationComprehensive(unittest.TestCase):
         
         # Test visualize_clustering
         clusters = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
-        with patch('semantica.visualization.embedding_visualizer.umap.UMAP') as MockUMAP:
-             MockUMAP.return_value.fit_transform.return_value = np.random.rand(10, 2)
+        with patch('semantica.visualization.embedding_visualizer.umap', MagicMock()) as mock_umap:
+             mock_umap.UMAP.return_value.fit_transform.return_value = np.random.rand(10, 2)
              viz.visualize_clustering(embeddings, clusters)
 
 if __name__ == '__main__':
