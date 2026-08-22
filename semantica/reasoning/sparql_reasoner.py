@@ -84,6 +84,9 @@ class SPARQLReasoner:
         self.triplet_store = self.config.get("triplet_store")
         self.enable_inference = self.config.get("enable_inference", True)
 
+        # Reserved for query caching once a triplet-store execution path
+        # lands. execute_query() raises NotImplementedError until then, so
+        # the cache cannot be populated through any public path yet.
         self.query_cache: Dict[str, Any] = {}
 
     def expand_query(self, query: str, **options) -> str:
@@ -330,79 +333,32 @@ class SPARQLReasoner:
         """
         Execute SPARQL query with reasoning.
 
+        Not implemented: no triplet-store execution path exists yet, so the
+        query is refused loudly instead of returning an empty result set
+        that callers would read as "no matches" (issue #1083).
+
         Args:
             query: SPARQL query string
             **options: Additional options
 
-        Returns:
-            Query results
+        Raises:
+            NotImplementedError: always, until a triplet-store execution
+                path lands.
         """
-        tracking_id = self.progress_tracker.start_tracking(
-            module="reasoning",
-            submodule="SPARQLReasoner",
-            message="Executing SPARQL query with reasoning",
+        raise NotImplementedError(
+            "SPARQLReasoner.execute_query() is not implemented: no "
+            "triplet-store execution path exists yet. Returning an empty "
+            "result set would be misread as 'no matches', so the query "
+            "is refused instead."
         )
 
-        try:
-            # Check cache
-            self.progress_tracker.update_tracking(
-                tracking_id, message="Checking query cache..."
-            )
-            if query in self.query_cache:
-                self.logger.debug("Returning cached query result")
-                self.progress_tracker.stop_tracking(
-                    tracking_id,
-                    status="completed",
-                    message="Returned cached query result",
-                )
-                return self.query_cache[query]
-
-            # Expand query
-            self.progress_tracker.update_tracking(
-                tracking_id, message="Expanding query with inference rules..."
-            )
-            expanded_query = self.expand_query(query, **options)
-
-            # Execute query (if triplet store available)
-            self.progress_tracker.update_tracking(
-                tracking_id, message="Executing query..."
-            )
-            if self.triplet_store:
-                # This would call the triplet store's query method
-                # For now, return empty result
-                result = SPARQLQueryResult(bindings=[], variables=[])
-            else:
-                # Mock result for testing
-                result = SPARQLQueryResult(bindings=[], variables=[])
-
-            # Infer additional results
-            if self.enable_inference:
-                self.progress_tracker.update_tracking(
-                    tracking_id, message="Inferring additional results..."
-                )
-                result = self.infer_results(result, **options)
-
-            # Cache result
-            self.progress_tracker.update_tracking(
-                tracking_id, message="Caching query result..."
-            )
-            self.query_cache[query] = result
-
-            self.progress_tracker.stop_tracking(
-                tracking_id,
-                status="completed",
-                message=f"Query executed: {len(result.bindings)} results",
-            )
-            return result
-
-        except Exception as e:
-            self.progress_tracker.stop_tracking(
-                tracking_id, status="failed", message=str(e)
-            )
-            raise
-
     def clear_cache(self) -> None:
-        """Clear query cache."""
+        """Clear query cache.
+
+        Reserved for when a triplet-store execution path lands: until then,
+        ``execute_query()`` raises ``NotImplementedError`` and nothing can
+        populate the cache.
+        """
         self.query_cache.clear()
 
     def add_inference_rule(self, rule_definition: str, **options) -> Rule:
