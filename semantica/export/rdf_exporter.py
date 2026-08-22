@@ -30,6 +30,7 @@ License: MIT
 """
 
 from pathlib import Path
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
@@ -48,6 +49,75 @@ DEFAULT_ENTITY_TYPE = f"{SEMANTICA_NS}Entity"
 
 #: Written when a relationship carries no type of its own. Same reasoning.
 DEFAULT_RELATION_TYPE = f"{SEMANTICA_NS}related_to"
+
+#: The one datatype every serializer writes confidence in.
+#:
+#: The four paths used to disagree: Turtle wrote the value bare, which the
+#: Turtle grammar reads as xsd:decimal, N-Triples typed it xsd:float, RDF/XML
+#: emitted a plain literal with no datatype, and JSON-LD emitted a native
+#: number, which becomes xsd:double. Those are four distinct RDF terms for one
+#: value (issue #1100).
+#:
+#: xsd:decimal is the choice because it is what the Turtle path already
+#: produced, so the most used output is unchanged, and because it is exact:
+#: xsd:float is 32 bit binary, and cannot represent 0.9 or 0.95 at all.
+CONFIDENCE_DATATYPE = "http://www.w3.org/2001/XMLSchema#decimal"
+
+#: Largest power of ten a confidence may carry. xsd:decimal has no exponent
+#: notation, so a value has to be written out in full, and a compact literal
+#: such as "1e100000000" would expand to a hundred million digits.
+MAX_CONFIDENCE_EXPONENT = 100
+
+
+def normalize_confidence(value: Any) -> Optional[str]:
+    """
+    Return the canonical xsd:decimal lexical form of a confidence value.
+
+    Returns None when the value cannot be a decimal, so callers omit the triple
+    rather than writing something the vocabulary contradicts. The Turtle path
+    used to interpolate the raw value, so a confidence of "high" produced
+    `semantica:confidence high .` and made the whole document unparseable
+    (issue #1102).
+
+    Booleans are rejected. `bool` is a subclass of `int` in Python, so True
+    would otherwise silently become a confidence of 1.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+    if not isinstance(value, (int, float, str, Decimal)):
+        return None
+
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+    # NaN and the infinities are Decimal values with no xsd:decimal form.
+    if not decimal_value.is_finite():
+        return None
+
+    # xsd:decimal has no exponent notation, so writing one means expanding it.
+    # "1e100000000" is eleven characters that expand to a hundred million, and
+    # the export path continues past validation errors, so a single malformed
+    # field could exhaust memory. Nothing near this magnitude is a confidence.
+    if not -MAX_CONFIDENCE_EXPONENT <= decimal_value.adjusted() <= MAX_CONFIDENCE_EXPONENT:
+        return None
+
+    # `str(Decimal("0.00001"))` gives "0.00001", but a float that has already
+    # been through repr can arrive as "1e-05", which xsd:decimal does not allow.
+    formatted = format(decimal_value, "f")
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".") or "0"
+
+    # Decimal keeps the sign of zero, so 0.0 and -0.0 would serialise as two
+    # distinct RDF terms and defeat the point of a canonical form.
+    if formatted.lstrip("-").strip("0.") == "":
+        formatted = "0"
+    return formatted
 
 
 def mint_entity_iri(text: str) -> str:
@@ -395,11 +465,20 @@ class RDFSerializer:
 
             entity_type = entity.get("type", DEFAULT_ENTITY_TYPE)
             text = entity.get("text") or entity.get("label", "")
-            confidence = entity.get("confidence", 1.0)
+            confidence = normalize_confidence(entity.get("confidence", 1.0))
 
             lines.append(f"<{entity_id}> a <{entity_type}> ;")
-            lines.append(f'    semantica:text "{text}" ;')
-            lines.append(f"    semantica:confidence {confidence} .")
+            if confidence is None:
+                self.logger.warning(
+                    f"Entity {entity_id} has a confidence that is not a number "
+                    f"({entity.get('confidence')!r}), so no confidence is written"
+                )
+                lines.append(f'    semantica:text "{text}" .')
+            else:
+                lines.append(f'    semantica:text "{text}" ;')
+                lines.append(
+                    f'    semantica:confidence "{confidence}"^^<{CONFIDENCE_DATATYPE}> .'
+                )
             lines.append("")
 
         # Convert relationships to RDF triplets
@@ -414,9 +493,58 @@ class RDFSerializer:
             if include_temporal:
                 owl_lines = self._owl_time_triples_for_rel(rel, idx, time_axis)
                 if owl_lines:
+                    # The interval hangs off the relationship's own IRI, and a
+                    # relationship written as a single triple has no such node
+                    # in the graph. Without this the timestamps are well formed
+                    # and unreachable: no query can get from the edge to its
+                    # validity interval (#1106). The shape matches the JSON-LD
+                    # export, and every term is declared in the vocabulary.
+                    lines.extend(
+                        self._reified_relationship_triples(
+                            rel, idx, source_id, target_id, rel_type
+                        )
+                    )
                     lines.extend(owl_lines)
 
         return "\n".join(lines)
+
+    def _reified_relationship_triples(
+        self,
+        rel: Dict[str, Any],
+        idx: int,
+        source_id: str,
+        target_id: str,
+        rel_type: str,
+    ) -> List[str]:
+        """
+        Emit the reified relationship node that OWL-Time triples hang off.
+
+        The direct triple stays. This adds a subject the interval can attach
+        to, using the same sem:Relationship shape the JSON-LD export already
+        writes, so the two serializations describe relationships the same way.
+        """
+        rel_id = rel.get("id") or mint_relationship_iri(idx, source_id or "", target_id or "")
+
+        # The full predicate, not its local name. Truncating to the fragment
+        # made https://a.example/ns#employs and https://b.example/ns#employs the
+        # same literal, so the temporal node no longer said which predicate it
+        # described, and it disagreed with the direct triple beside it.
+        escaped = (
+            str(rel_type)
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+        )
+
+        predicates = [f"a semantica:Relationship"]
+        if source_id:
+            predicates.append(f"semantica:source <{source_id}>")
+        if target_id:
+            predicates.append(f"semantica:target <{target_id}>")
+        predicates.append(f'semantica:type "{escaped}"')
+
+        return ["", f"<{rel_id}> " + " ;\n    ".join(predicates) + " ."]
 
     def _owl_time_triples_for_rel(
         self, rel: Dict[str, Any], idx: int, time_axis: str
@@ -527,15 +655,22 @@ class RDFSerializer:
 
             entity_type = entity.get("type", DEFAULT_ENTITY_TYPE)
             text = entity.get("text") or entity.get("label", "")
-            confidence = entity.get("confidence", 1.0)
+            confidence = normalize_confidence(entity.get("confidence", 1.0))
 
             # RDF/XML syntax: rdf:Description with rdf:about
             lines.append(f'  <rdf:Description rdf:about="{entity_id}">')
             lines.append(f'    <rdf:type rdf:resource="{entity_type}"/>')
             lines.append(f"    <semantica:text>{text}</semantica:text>")
-            lines.append(
-                f"    <semantica:confidence>{confidence}</semantica:confidence>"
-            )
+            if confidence is None:
+                self.logger.warning(
+                    f"Entity {entity_id} has a confidence that is not a number "
+                    f"({entity.get('confidence')!r}), so no confidence is written"
+                )
+            else:
+                lines.append(
+                    f'    <semantica:confidence rdf:datatype="{CONFIDENCE_DATATYPE}">'
+                    f"{confidence}</semantica:confidence>"
+                )
             lines.append("  </rdf:Description>")
             lines.append("")
 
@@ -608,14 +743,25 @@ class RDFSerializer:
             # and was dropped in full by a JSON-LD parser, silently.
             entity_id = entity.get("id") or mint_entity_iri(entity.get("text", ""))
 
-            jsonld["@graph"].append(
-                {
-                    "@id": entity_id,
-                    "@type": entity.get("type", "semantica:Entity"),
-                    "semantica:text": entity.get("text") or entity.get("label", ""),
-                    "semantica:confidence": entity.get("confidence", 1.0),
+            node = {
+                "@id": entity_id,
+                "@type": entity.get("type", "semantica:Entity"),
+                "semantica:text": entity.get("text") or entity.get("label", ""),
+            }
+            confidence = normalize_confidence(entity.get("confidence", 1.0))
+            if confidence is None:
+                self.logger.warning(
+                    f"Entity {entity_id} has a confidence that is not a number "
+                    f"({entity.get('confidence')!r}), so no confidence is written"
+                )
+            else:
+                # A native JSON number becomes xsd:double once expanded, so the
+                # value is written as a typed literal instead.
+                node["semantica:confidence"] = {
+                    "@value": confidence,
+                    "@type": CONFIDENCE_DATATYPE,
                 }
-            )
+            jsonld["@graph"].append(node)
 
         # Convert relationships to JSON-LD
         relationships = rdf_data.get("relationships", [])
@@ -697,11 +843,20 @@ class RDFSerializer:
                     f'{subject} {expand_uri("semantica:text")} "{safe_text}" .'
                 )
 
-            # Confidence property
-            confidence = entity.get("confidence")
-            if confidence is not None:
+            # Confidence property. The default matches the other serializers,
+            # which have always written one; omitting it here was half of why
+            # Turtle and N-Triples of one KG were different graphs (#1100).
+            raw_confidence = entity.get("confidence", 1.0)
+            confidence = normalize_confidence(raw_confidence)
+            if confidence is None:
+                self.logger.warning(
+                    f"Entity {entity.get('id')} has a confidence that is not a "
+                    f"number ({raw_confidence!r}), so no confidence is written"
+                )
+            else:
                 lines.append(
-                    f'{subject} {expand_uri("semantica:confidence")} "{confidence}"^^<http://www.w3.org/2001/XMLSchema#float> .'
+                    f'{subject} {expand_uri("semantica:confidence")} '
+                    f'"{confidence}"^^<{CONFIDENCE_DATATYPE}> .'
                 )
 
         # Convert relationships

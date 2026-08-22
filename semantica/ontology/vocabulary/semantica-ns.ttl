@@ -53,16 +53,17 @@ this IRI.""" ;
 
 sem:confidence a owl:DatatypeProperty ;
     rdfs:label "confidence" ;
+    rdfs:range xsd:decimal ;
     rdfs:comment """Extractor confidence in the assertion, on the unit interval.
 Emitted for both entities and relationships, so the domain is left open rather
 than tied to sem:Entity.
 
-No rdfs:range is declared, deliberately. The Turtle serializer writes the value
-bare, which the Turtle grammar reads as xsd:decimal, while the N-Triples
-serializer types it xsd:float explicitly, and those two datatypes are disjoint.
-Declaring either one would make the vocabulary contradict one of the exporters.
-Issue #1100 tracks the disagreement; a range belongs here once the serializers
-agree on one.""" ;
+The range was left undeclared when this vocabulary first shipped, because the
+four serializers disagreed: Turtle wrote the value bare, which the Turtle
+grammar reads as xsd:decimal, N-Triples typed it xsd:float, RDF/XML wrote a
+plain literal, and JSON-LD wrote a native number, which expands to xsd:double.
+Declaring any one of them would have contradicted three exporters. Issue #1100
+settled that on xsd:decimal, which every serializer now writes.""" ;
     rdfs:isDefinedBy <https://semantica.dev/ns> .
 
 sem:metadata a owl:AnnotationProperty ;
