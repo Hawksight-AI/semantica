@@ -512,10 +512,13 @@ class RDFSerializer:
     @staticmethod
     def _escape_turtle_string(value: Any) -> str:
         """Escape characters that have syntax meaning in Turtle short strings."""
-        return str(value).translate(
-            str.maketrans(
-                {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
-            )
+        return (
+            str(value)
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
         )
 
     def _reified_relationship_triples(
