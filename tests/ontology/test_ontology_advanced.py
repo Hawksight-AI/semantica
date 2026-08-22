@@ -293,19 +293,32 @@ class TestSHACLHierarchicalAndValidation(unittest.TestCase):
                              f"Duplicate paths in {node_shape.target_class}: {paths}")
 
     # 21
-    def test_no_domain_property_attaches_to_all_shapes(self):
-        onto = {
-            "classes": [{"name": "A"}, {"name": "B"}],
-            "properties": [
-                {"name": "globalProp", "type": "datatype", "range": "string"}
-                # no domain
-            ],
-        }
-        gen = self._make_gen()
-        graph = gen.generate(onto)
+    _NO_DOMAIN_ONTOLOGY = {
+        "classes": [{"name": "A"}, {"name": "B"}],
+        "properties": [
+            {"name": "globalProp", "type": "datatype", "range": "string"}
+            # no domain
+        ],
+    }
+
+    def test_no_domain_property_attaches_to_all_shapes_when_opted_in(self):
+        """attach_domainless_properties=True keeps the pre-0.6.6 behaviour."""
+        gen = self._make_gen(attach_domainless_properties=True)
+        graph = gen.generate(self._NO_DOMAIN_ONTOLOGY)
         for node_shape in graph.node_shapes:
             paths = {ps.path for ps in node_shape.property_shapes}
             self.assertIn("globalProp", paths)
+
+    def test_no_domain_property_is_not_attached_by_default(self):
+        """
+        Attaching states a constraint the ontology does not (#1105). This test
+        previously asserted the opposite, which pinned the defect in place.
+        """
+        gen = self._make_gen()
+        graph = gen.generate(self._NO_DOMAIN_ONTOLOGY)
+        for node_shape in graph.node_shapes:
+            paths = {ps.path for ps in node_shape.property_shapes}
+            self.assertNotIn("globalProp", paths)
 
     # 22
     def test_empty_classes_produces_no_shapes(self):
