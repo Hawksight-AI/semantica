@@ -1,4 +1,6 @@
 import unittest
+
+from semantica.utils.exceptions import ValidationError
 from semantica.normalize.number_normalizer import (
     NumberNormalizer,
     UnitConverter,
@@ -36,6 +38,14 @@ class TestUnitConverter(unittest.TestCase):
         # Aliases are part of the documented API, not just parsing syntax.
         self.assertEqual(self.converter.convert_units(1, "feet", "m"), 0.3048)
         self.assertEqual(self.converter.convert_units(1, "gal", "liter"), 3.78541)
+
+    def test_convert_rejects_mismatched_categories_even_for_aliases(self):
+        # Both units normalize to canonical names first, so the category
+        # check sees real categories and rejects cross-category conversions.
+        with self.assertRaises(ValidationError):
+            self.converter.convert_units(1, "kg", "ft")
+        with self.assertRaises(ValidationError):
+            self.converter.convert_units(1, "gal", "lb")
 
     def test_normalize_unit(self):
         self.assertEqual(self.converter.normalize_unit("km"), "kilometer")
