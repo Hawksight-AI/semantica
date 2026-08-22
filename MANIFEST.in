@@ -1,1 +1,2 @@
 recursive-include semantica/static *
+recursive-include semantica/ontology/vocabulary *.ttl

@@ -28,7 +28,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from ..utils.helpers import ensure_directory
+from ..utils.helpers import _require_mapping, ensure_directory, normalize_graph_payload
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
@@ -204,17 +204,19 @@ class ArangoAQLExporter:
                 self._generate_collection_creation(vertex_collection, edge_collection)
             )
 
-        # Extract entities and relationships
-        entities = knowledge_graph.get("entities", [])
-        relationships = knowledge_graph.get("relationships", [])
-        nodes = knowledge_graph.get("nodes", entities)
-        edges = knowledge_graph.get("edges", relationships)
+        # A non-mapping payload cannot reach normalize_graph_payload(): it
+        # raises ValidationError for that case, which would leave this
+        # exporter alone in raising a different exception type than the YAML
+        # and Neo4j exporters raise for the identical mistake.
+        _require_mapping(
+            knowledge_graph, ("entities", "relationships", "nodes", "edges")
+        )
 
-        # Use nodes/edges if entities/relationships are empty
-        if not entities and nodes:
-            entities = nodes
-        if not relationships and edges:
-            relationships = edges
+        # Accept either vocabulary; resolution is centralized so every
+        # exporter agrees on what a given payload means.
+        normalized = normalize_graph_payload(knowledge_graph)
+        entities = normalized["entities"]
+        relationships = normalized["relationships"]
 
         # Generate vertex INSERT statements
         vertex_statements = self._generate_vertex_inserts(entities, vertex_collection)

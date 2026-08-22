@@ -102,6 +102,7 @@
             "group": "Integrations",
             "pages": [
               "integrations/agno",
+              "integrations/crewai",
               "integrations/docling",
               "integrations/snowflake",
               "integrations/databricks"

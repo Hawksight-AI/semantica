@@ -407,6 +407,69 @@ class TestTemporalGraphQuery(unittest.TestCase):
 
         self.assertEqual(result["num_relationships"], 1)
 
+    def test_analyze_evolution_stability_is_mean_duration_seconds(self):
+        day = 86400.0
+        graph = {
+            "relationships": [
+                {
+                    "source": "1",
+                    "target": "2",
+                    "type": "a",
+                    "valid_from": "2024-01-01",
+                    "valid_until": "2024-01-02",  # 1 day
+                },
+                {
+                    "source": "2",
+                    "target": "3",
+                    "type": "b",
+                    "valid_from": "2024-01-01",
+                    "valid_until": "2024-01-04",  # 3 days
+                },
+            ]
+        }
+
+        result = self.query_engine.analyze_evolution(graph, metrics=["stability"])
+
+        # Mean of 1-day and 3-day durations == 2 days in seconds.
+        self.assertAlmostEqual(result["stability"], 2 * day)
+
+    def test_analyze_evolution_stability_skips_unbounded_intervals(self):
+        graph = {
+            "relationships": [
+                {
+                    "source": "1",
+                    "target": "2",
+                    "type": "bounded",
+                    "valid_from": "2024-01-01",
+                    "valid_until": "2024-01-02",
+                },
+                {
+                    "source": "2",
+                    "target": "3",
+                    "type": "open",
+                    "valid_from": "2024-01-01",
+                    "valid_until": TemporalBound.OPEN,
+                },
+                {
+                    "source": "3",
+                    "target": "4",
+                    "type": "no-start",
+                    "valid_until": "2024-06-01",
+                },
+            ]
+        }
+
+        result = self.query_engine.analyze_evolution(graph, metrics=["stability"])
+
+        # Only the fully bounded relationship contributes (1 day).
+        self.assertAlmostEqual(result["stability"], 86400.0)
+
+    def test_analyze_evolution_stability_empty_is_zero(self):
+        result = self.query_engine.analyze_evolution(
+            {"relationships": []}, metrics=["stability"]
+        )
+        self.assertEqual(result["stability"], 0)
+
     def test_query_at_time_legacy_transaction_axis_uses_valid_from_when_recorded_missing(self):
         graph = {
             "relationships": [

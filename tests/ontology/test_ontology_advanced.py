@@ -293,19 +293,32 @@ class TestSHACLHierarchicalAndValidation(unittest.TestCase):
                              f"Duplicate paths in {node_shape.target_class}: {paths}")
 
     # 21
-    def test_no_domain_property_attaches_to_all_shapes(self):
-        onto = {
-            "classes": [{"name": "A"}, {"name": "B"}],
-            "properties": [
-                {"name": "globalProp", "type": "datatype", "range": "string"}
-                # no domain
-            ],
-        }
-        gen = self._make_gen()
-        graph = gen.generate(onto)
+    _NO_DOMAIN_ONTOLOGY = {
+        "classes": [{"name": "A"}, {"name": "B"}],
+        "properties": [
+            {"name": "globalProp", "type": "datatype", "range": "string"}
+            # no domain
+        ],
+    }
+
+    def test_no_domain_property_attaches_to_all_shapes_when_opted_in(self):
+        """attach_domainless_properties=True keeps the pre-0.6.6 behaviour."""
+        gen = self._make_gen(attach_domainless_properties=True)
+        graph = gen.generate(self._NO_DOMAIN_ONTOLOGY)
         for node_shape in graph.node_shapes:
             paths = {ps.path for ps in node_shape.property_shapes}
             self.assertIn("globalProp", paths)
+
+    def test_no_domain_property_is_not_attached_by_default(self):
+        """
+        Attaching states a constraint the ontology does not (#1105). This test
+        previously asserted the opposite, which pinned the defect in place.
+        """
+        gen = self._make_gen()
+        graph = gen.generate(self._NO_DOMAIN_ONTOLOGY)
+        for node_shape in graph.node_shapes:
+            paths = {ps.path for ps in node_shape.property_shapes}
+            self.assertNotIn("globalProp", paths)
 
     # 22
     def test_empty_classes_produces_no_shapes(self):
@@ -413,6 +426,103 @@ class TestSHACLHierarchicalAndValidation(unittest.TestCase):
         report.explain_violations()
         self.assertIsNotNone(v.explanation)
         self.assertIn("https://example.com/john", v.explanation)
+
+    # 32b
+    def test_explain_violations_uses_real_constraint_values(self):
+        """explain_violations must render the real min/max/datatype/class values,
+        not hardcoded placeholders (regression for PR #318)."""
+        from semantica.ontology.ontology_validator import (
+            SHACLValidationReport,
+            SHACLViolation,
+        )
+
+        max_v = SHACLViolation(
+            focus_node="https://example.com/john",
+            result_path="ex:age",
+            constraint="MaxCountConstraintComponent",
+            max_count=3,
+        )
+        dt_v = SHACLViolation(
+            focus_node="https://example.com/john",
+            result_path="ex:age",
+            constraint="DatatypeConstraintComponent",
+            value="abc",
+            datatype="http://www.w3.org/2001/XMLSchema#integer",
+        )
+        cls_v = SHACLViolation(
+            focus_node="https://example.com/john",
+            result_path="ex:knows",
+            constraint="ClassConstraintComponent",
+            value="https://example.com/thing",
+            class_="https://example.com/Person",
+        )
+        report = SHACLValidationReport(
+            conforms=False, violations=[max_v, dt_v, cls_v]
+        )
+        report.explain_violations()
+        # MaxCount must show the real limit (3), not the hardcoded 1.
+        self.assertIn("3", max_v.explanation)
+        self.assertNotIn("At most 1 value", max_v.explanation)
+        # Datatype must show the real datatype IRI, not the message.
+        self.assertIn(
+            "http://www.w3.org/2001/XMLSchema#integer", dt_v.explanation
+        )
+        # Class must show the real class IRI.
+        self.assertIn("https://example.com/Person", cls_v.explanation)
+
+    # 32c
+    def test_run_pyshacl_extracts_constraint_values_from_shape(self):
+        """_run_pyshacl must back-reference sh:sourceShape to populate the real
+        constraint parameters on each violation."""
+        try:
+            import pyshacl  # noqa: F401
+            import rdflib  # noqa: F401
+        except ImportError:
+            self.skipTest("pyshacl/rdflib not installed")
+        from semantica.ontology.ontology_validator import _run_pyshacl
+
+        shacl = """
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://example.com/> .
+        @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+        ex:PersonShape a sh:NodeShape ;
+            sh:targetClass ex:Person ;
+            sh:property [
+                sh:path ex:age ;
+                sh:datatype xsd:integer ;
+                sh:maxCount 2 ;
+            ] .
+        """
+        data = """
+        @prefix ex: <http://example.com/> .
+        ex:john a ex:Person ;
+            ex:age "not-a-number" ;
+            ex:age 1 ;
+            ex:age 2 ;
+            ex:age 3 .
+        """
+        report = _run_pyshacl(data, shacl)
+        self.assertFalse(report.conforms)
+        # Datatype violation should carry the real xsd:integer datatype.
+        dt = [
+            v
+            for v in report.violations
+            if v.constraint == "DatatypeConstraintComponent"
+        ]
+        self.assertTrue(dt)
+        self.assertTrue(
+            dt[0].datatype.endswith("integer"),
+            f"expected integer datatype, got {dt[0].datatype}",
+        )
+        # MaxCount violation should carry the real max_count == 2.
+        mc = [
+            v
+            for v in report.violations
+            if v.constraint == "MaxCountConstraintComponent"
+        ]
+        if mc:
+            self.assertEqual(mc[0].max_count, 2)
 
     # 33
     def test_shacl_violation_to_dict(self):

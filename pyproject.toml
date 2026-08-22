@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "semantica"
-version = "0.6.5"
-description = "Accountability and context layer for AI agents. Context graphs, decision intelligence, full provenance tracking, and explainable reasoning engines — every AI decision traceable, every output auditable."
+version = "0.6.6"
+description = "Graph-Native Infrastructure for Context and Accountable AI Systems: context graphs, decision intelligence, full provenance tracking, and explainable reasoning engines — every AI decision traceable, every output auditable."
 readme = "README.md"
 license = { text = "MIT" }
 
@@ -103,7 +103,7 @@ Discord       = "https://discord.gg/sV34vps5hH"
 llm-openai = ["openai>=1.0.0"]
 llm-groq = ["groq>=0.4.0"]
 llm-gemini = ["google-genai>=0.1.0"]
-llm-anthropic = ["anthropic>=0.18.0"]
+llm-anthropic = ["anthropic>=0.122.0"]
 llm-ollama = ["ollama>=0.1.0"]
 llm-deepseek = ["openai>=1.0.0"]
 llm-litellm = ["litellm>=1.83.9"]
@@ -201,6 +201,10 @@ gpu = [
 
 # ---- Agentic Framework Integrations ----
 agno = ["agno>=1.0.0"]
+# crewai core provides BaseTool and BaseKnowledgeSource; crewai-tools is not
+# needed (it pulls vulnerable transitive deps like chromadb) and would only
+# duplicate the prebuilt tooling users can install separately.
+crewai = ["crewai>=0.80.0"]
 
 # ---- File Watching ----
 watch = ["watchdog>=6.0.0"]
@@ -242,6 +246,10 @@ explorer-lite = [
 ]
 
 # Everything (cross-platform — gpu excluded; install semantica[gpu] separately on Linux)
+# NOTE: the ``crewai`` extra is intentionally NOT in ``all``: crewai hard-requires
+# ``chromadb~=1.1.0``, which carries a pre-authentication code-injection advisory
+# (CVE-2026-45829) with no fixed release — including it here would fail the CI
+# dependency-audit/security gates.  Install it explicitly via ``semantica[crewai]``.
 all = [
   "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,explorer]",
   "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno]"
@@ -263,7 +271,7 @@ include = ["semantica*", "integrations*"]
 [tool.setuptools.package-data]
 # Explicit patterns are more reliable than **/* across setuptools versions.
 # static/* covers index.html / favicon; static/assets/* covers all JS/CSS chunks.
-"semantica" = ["static/*", "static/assets/*"]
+"semantica" = ["static/*", "static/assets/*", "ontology/vocabulary/*.ttl"]
 
 [tool.black]
 line-length = 88

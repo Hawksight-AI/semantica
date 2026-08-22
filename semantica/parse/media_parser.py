@@ -243,6 +243,14 @@ class MediaParser:
         try:
             import subprocess
 
+            # ffprobe's own argument parser doesn't reliably honor a bare
+            # "--" end-of-options marker, so a filename starting with "-"
+            # could otherwise be parsed as an option; neutralize that by
+            # forcing a relative-path prefix ffprobe can't mistake for a flag.
+            ffprobe_path = str(file_path)
+            if ffprobe_path.startswith("-"):
+                ffprobe_path = f"./{ffprobe_path}"
+
             result = subprocess.run(
                 [
                     "ffprobe",
@@ -252,7 +260,7 @@ class MediaParser:
                     "json",
                     "-show_format",
                     "-show_streams",
-                    str(file_path),
+                    ffprobe_path,
                 ],
                 capture_output=True,
                 text=True,
