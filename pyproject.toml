@@ -103,7 +103,7 @@ Discord       = "https://discord.gg/sV34vps5hH"
 llm-openai = ["openai>=1.0.0"]
 llm-groq = ["groq>=0.4.0"]
 llm-gemini = ["google-genai>=0.1.0"]
-llm-anthropic = ["anthropic>=0.18.0"]
+llm-anthropic = ["anthropic>=0.122.0"]
 llm-ollama = ["ollama>=0.1.0"]
 llm-deepseek = ["openai>=1.0.0"]
 llm-litellm = ["litellm>=1.83.9"]
