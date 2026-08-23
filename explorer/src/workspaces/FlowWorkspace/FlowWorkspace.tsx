@@ -617,8 +617,8 @@ export function FlowWorkspace() {
       <style>{FLOW_CSS}</style>
       <aside className="flow-sidebar">
         <div className="flow-sidebar-header">
-          <div className="flow-sidebar-kicker">Node catalog</div>
-          <div className="flow-sidebar-title">Graph Engineering</div>
+          <div className="flow-sidebar-kicker">Logic blocks</div>
+          <div className="flow-sidebar-title">AIP Logic</div>
         </div>
         <div className="flow-sidebar-body">
           {catalog.map((item) => (
@@ -637,13 +637,13 @@ export function FlowWorkspace() {
         <div className="flow-banner">
           <Shield size={14} />
           <span>
-            Authorized bug bounty case flow — scope gates, evidence graph, triage, and report composition.
+            Authorized AIP Logic function — Ontology scope gates, evidence provenance, triage actions, report compose.
             <strong> No exploit execution.</strong>
           </span>
         </div>
         <div className="flow-toolbar">
           <Workflow size={16} />
-          <div className="flow-toolbar-title">{flow?.name || "Bug Bounty Hunting"}</div>
+          <div className="flow-toolbar-title">{flow?.name || "Bug Bounty Hunting Logic"}</div>
           <button type="button" onClick={() => void load()} disabled={busy}>
             <RefreshCw size={14} /> Reload
           </button>

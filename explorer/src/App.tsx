@@ -87,13 +87,13 @@ const PREVIEW_DOTS = Array.from({ length: 42 }, (_, i) => ({
 }));
 
 const navItems: NavItem[] = [
-  { id: 'explore', label: 'Knowledge Explorer', hint: 'Graph and vocabulary browsing', icon: Database },
-  { id: 'analyze', label: 'Analyze', hint: 'Query and inspect the dataset', icon: FileSearch },
-  { id: 'decisions', label: 'Decisions', hint: 'Decision chains and precedent review', icon: Scale },
-  { id: 'flows', label: 'Flow Studio', hint: 'n8n-style bug bounty graph workflows', icon: Workflow },
+  { id: 'explore', label: 'Object Explorer', hint: 'Ontology objects, links, and neighborhoods', icon: Database },
+  { id: 'analyze', label: 'Analyze', hint: 'Reasoning, SPARQL, and inference', icon: FileSearch },
+  { id: 'decisions', label: 'Decisions', hint: 'Decision chains, actions, and precedents', icon: Scale },
+  { id: 'flows', label: 'AIP Logic', hint: 'Block pipelines for agents and automations', icon: Workflow },
   { id: 'enrich', label: 'Enrich', hint: 'Import, export, and merge workflows', icon: GitBranchPlus },
-  { id: 'manage', label: 'Manage', hint: 'Lineage and governance tooling', icon: Settings2 },
-  { id: 'ontology-hub', label: 'Ontology Hub', hint: 'Schema governance, registry, and vocabulary management', icon: GitMerge },
+  { id: 'manage', label: 'Manage', hint: 'Lineage, provenance, and governance', icon: Settings2 },
+  { id: 'ontology-hub', label: 'Ontology Manager', hint: 'Schema, registry, and vocabulary governance', icon: GitMerge },
 ];
 
 const shellStyles = `
@@ -1583,8 +1583,8 @@ function WelcomeScreen({
       onClick: onOpenDecisions,
     },
     {
-      label: 'Flow Studio',
-      description: 'Bug bounty graph flows',
+      label: 'AIP Logic',
+      description: 'Bug bounty Logic flows',
       icon: Workflow,
       onClick: onOpenFlows,
     },
@@ -1896,9 +1896,9 @@ export default function App() {
     if (activeWorkspace === 'flows') {
       return (
         <WorkspaceShell
-          title="Flow Studio"
-          subtitle="n8n-style graph workflows for authorized bug bounty case management."
-          kicker="Graph Engineering"
+          title="AIP Logic"
+          subtitle="Palantir-style Logic blocks for authorized bug bounty automations on the Ontology."
+          kicker="Logic Function"
           compact
         >
           <ErrorBoundary key="flows">
@@ -1948,7 +1948,9 @@ export default function App() {
     if (activeWorkspace === 'ontology-hub') {
       return (
         <WorkspaceShell
-          title="Ontology Hub"
+          title="Ontology Manager"
+          subtitle="Govern object types, link types, vocabulary, and schema constraints."
+          kicker="Ontology"
           subtitle="Load, browse, edit, and govern ontologies and vocabularies."
           kicker="Schema Governance"
           compact
