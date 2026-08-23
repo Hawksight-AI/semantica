@@ -6,9 +6,9 @@ accelerate==1.14.0 \
     # via
     #   docling-ibm-models
     #   docling-slim
-agno==2.8.7 \
-    --hash=sha256:6a2763eb469163f7b79ab1da6ca2f22d8619f6b9d614574f975d9c12bb4323ea \
-    --hash=sha256:d49396a2062ee6994ca82695b9bd1e1b95667fec432c544afa38133e564bf090
+agno==2.9.0 \
+    --hash=sha256:7777674b3931b341fad4fcf02a61b185a08588c509101348facf87feb2144c0c \
+    --hash=sha256:7d9c134703e3c2798023cd57dcb9caa8e1174f6914813f9b130becfc3521a46f
     # via semantica (pyproject.toml)
 agnoctl==0.1.3 \
     --hash=sha256:6fce1d2482b1f2e0a3d14b0a7c12fbd49d8df4f0bf0a4fd9fd91753cbff5efdc \
@@ -403,9 +403,9 @@ boto3==1.43.69 \
     --hash=sha256:4eb494d05b2bd08a7eee61b8ac4c34745c99e9bbce435c91f8d15d372dd8c2db \
     --hash=sha256:76297a0b415849c63575ae08a4f1661b2dc8ee0100f104b86f98aa69b47fa2c7
     # via semantica (pyproject.toml)
-botocore==1.43.69 \
-    --hash=sha256:5caa46b740d9a886137146ffbb69edb691f702bfe74c64e85621947ae00181fd \
-    --hash=sha256:b1f0e01c53d6b84ee9c184ebf3636c3b3aef85e0ae8498c74afb8734ff224f87
+botocore==1.43.73 \
+    --hash=sha256:068433028e011ccbeab1dd7c46b1090c24e378397693c66e67ca571176498daa \
+    --hash=sha256:0fa1e63c24b3531be3e1bc1687a88b3be9e63a430153f24edd93efc162bb1c51
     # via
     #   boto3
     #   s3transfer
@@ -1731,9 +1731,9 @@ google-crc32c==1.8.0 \
     # via
     #   google-cloud-storage
     #   google-resumable-media
-google-genai==2.17.0 \
-    --hash=sha256:6b640a2390c82b4a240873eddb9f518c6d2c33244b2de16ed3d14526a6da7f57 \
-    --hash=sha256:a4835563c60aee646c9c4b261c507aa4a624710d25017012d20dc65abf3d9a54
+google-genai==2.18.1 \
+    --hash=sha256:36a5949233e64a60f6cc4521bff7a76b7c569d0aa227bbe9fa642213b8a3a3b2 \
+    --hash=sha256:a1e2be75c16234adc6641afd1ad4dd44218c9eec005d938bdc428585a048918a
     # via semantica (pyproject.toml)
 google-resumable-media==2.10.1 \
     --hash=sha256:224975032ddb73f7ed9e2f0f4cc08ed1b06874c52d48cc8533e3eb72980b21a0 \
