@@ -31,6 +31,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import warnings
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,50 @@ def _snapshot_collections(snapshot: Dict[str, Any]) -> tuple[List[Any], List[Any
         relationships = snapshot.get("edges", [])
 
     return list(entities or []), list(relationships or [])
+
+def create_graph_snapshot_record(
+    version_id: str,
+    graph_uri: str,
+    author: str = "system",
+    description: str = "Graph snapshot",
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Creates a standardized snapshot metadata record for a named graph.
+
+    .. deprecated::
+        ``create_graph_snapshot_record()`` is deprecated and will be removed in
+        a future major version. It has no callers inside Semantica; build the
+        record inline and checksum it with
+        :func:`semantica.change_management.compute_checksum` instead.
+
+    Args:
+        version_id: Unique identifier for this snapshot
+        graph_uri: The underlying named graph URI in the triplet store
+        author: Creator of the snapshot
+        description: Purpose or context of the snapshot
+        metadata: Additional tags or pipeline context
+    """
+    warnings.warn(
+        "create_graph_snapshot_record() is deprecated and will be removed in a "
+        "future major version. Build the snapshot record inline and use "
+        "semantica.change_management.compute_checksum() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    
+    record = {
+        "label": version_id,
+        "version_id": version_id,
+        "graph_uri": graph_uri,
+        "timestamp": datetime.now().isoformat(),
+        "author": author,
+        "description": description,
+        "metadata": metadata or {},
+    }
+    
+    record["checksum"] = compute_checksum(record)
+    return record
 
 
 class VersionStorage(ABC):
