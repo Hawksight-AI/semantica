@@ -49,6 +49,16 @@ from typing import Any, Dict, List, Optional
 
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from ._graph_view import build_adjacency, build_graph_view
+
+
+def _is_hashable(value: Any) -> bool:
+    """Return whether a community identifier can be used in a set."""
+    try:
+        hash(value)
+    except TypeError:
+        return False
+    return True
 
 
 class CommunityDetector:
@@ -157,17 +167,18 @@ class CommunityDetector:
 
                     nx_graph = self._to_networkx(graph)
                     
-                    # Check if graph is empty or has no edges
+                    # An empty graph has no communities. A graph with nodes but
+                    # no edges still has singleton communities.
                     num_nodes = nx_graph.number_of_nodes()
                     num_edges = nx_graph.number_of_edges()
                     self.logger.debug(f"Graph stats: nodes={num_nodes}, edges={num_edges}")
 
-                    if num_nodes == 0 or num_edges == 0:
-                        self.logger.warning("Graph is empty or has no edges, returning 0 communities")
+                    if num_nodes == 0:
+                        self.logger.warning("Graph is empty, returning 0 communities")
                         self.progress_tracker.stop_tracking(
                             tracking_id,
                             status="completed",
-                            message="Detected 0 communities (empty graph/no edges)",
+                            message="Detected 0 communities (empty graph)",
                         )
                         return {
                             "communities": [],
@@ -350,17 +361,7 @@ class CommunityDetector:
 
         adjacency = self._build_adjacency(graph)
 
-        # Extract community structure
-        if isinstance(communities, dict):
-            node_communities = communities
-        elif isinstance(communities, dict) and "node_assignments" in communities:
-            node_communities = communities["node_assignments"]
-        else:
-            # Convert list of communities to node assignments
-            node_communities = {}
-            for i, community in enumerate(communities):
-                for node in community:
-                    node_communities[node] = i
+        node_communities = self._to_node_assignments(communities)
 
         # Calculate metrics
         num_communities = len(set(node_communities.values()))
@@ -408,16 +409,7 @@ class CommunityDetector:
 
         metrics = self.calculate_community_metrics(graph, communities)
 
-        # Extract node assignments
-        if isinstance(communities, dict) and "node_assignments" in communities:
-            node_communities = communities["node_assignments"]
-        elif isinstance(communities, dict):
-            node_communities = communities
-        else:
-            node_communities = {}
-            for i, community in enumerate(communities):
-                for node in community:
-                    node_communities[node] = i
+        node_communities = self._to_node_assignments(communities)
 
         # Analyze connectivity between communities
         adjacency = self._build_adjacency(graph)
@@ -439,6 +431,32 @@ class CommunityDetector:
             "inter_community_edges": inter_community_edges,
             "edge_ratio": intra_community_edges / (inter_community_edges + 1),
         }
+
+    @staticmethod
+    def _to_node_assignments(communities: Any) -> Dict[Any, Any]:
+        """Normalize community results to a node-to-community mapping."""
+        if isinstance(communities, dict):
+            assignments = communities.get("node_assignments")
+            if isinstance(assignments, dict):
+                return assignments
+
+            detected_communities = communities.get("communities")
+            if isinstance(detected_communities, (list, tuple)):
+                communities = detected_communities
+            elif "communities" in communities:
+                raise ValueError("Community results must contain a list of communities")
+            elif not all(_is_hashable(value) for value in communities.values()):
+                raise ValueError(
+                    "Community assignments must map nodes to hashable community IDs"
+                )
+            else:
+                return communities
+
+        node_assignments: Dict[Any, Any] = {}
+        for community_id, community in enumerate(communities or []):
+            for node in community:
+                node_assignments[node] = community_id
+        return node_assignments
 
     def detect_communities(
         self, graph: Any, algorithm: str = "louvain", method: str = None, **options
@@ -478,57 +496,7 @@ class CommunityDetector:
 
     def _build_adjacency(self, graph) -> Dict[str, List[str]]:
         """Build adjacency list from graph."""
-        from collections import defaultdict
-
-        adjacency = defaultdict(list)
-
-        # Extract relationships
-        relationships = []
-        raw_edges = []  # flat (u, v) tuples
-        if hasattr(graph, "relationships"):
-            relationships = graph.relationships
-        elif hasattr(graph, "get_relationships"):
-            relationships = graph.get_relationships()
-        elif isinstance(graph, dict):
-            relationships = graph.get("relationships", [])
-            # Also handle 'edges' key (list of tuples or dicts)
-            for edge in graph.get("edges", []):
-                if isinstance(edge, (list, tuple)) and len(edge) >= 2:
-                    raw_edges.append((str(edge[0]), str(edge[1])))
-                elif isinstance(edge, dict):
-                    relationships.append(edge)
-
-        # Add raw (u, v) edges
-        for u, v in raw_edges:
-            if u and v:
-                adjacency[u].append(v)
-                adjacency[v].append(u)
-
-        # Build adjacency
-        for rel in relationships:
-            source = rel.get("source") or rel.get("subject")
-            target = rel.get("target") or rel.get("object")
-
-            # Extract IDs if objects are passed
-            if source and not isinstance(source, (str, int, float)):
-                if isinstance(source, dict):
-                    source = source.get("id") or source.get("entity_id") or source.get("text") or str(source)
-                else:
-                    source = getattr(source, "id", getattr(source, "text", str(source)))
-            
-            if target and not isinstance(target, (str, int, float)):
-                if isinstance(target, dict):
-                    target = target.get("id") or target.get("entity_id") or target.get("text") or str(target)
-                else:
-                    target = getattr(target, "id", getattr(target, "text", str(target)))
-
-            if source and target:
-                if target not in adjacency[source]:
-                    adjacency[source].append(target)
-                if source not in adjacency[target]:
-                    adjacency[target].append(source)
-
-        return dict(adjacency)
+        return build_adjacency(graph)
 
     def _to_networkx(self, graph):
         """Convert graph to NetworkX format."""
@@ -536,12 +504,11 @@ class CommunityDetector:
         if hasattr(graph, 'nodes') and hasattr(graph, 'edges') and hasattr(graph, 'number_of_nodes'):
             return graph
 
-        adjacency = self._build_adjacency(graph)
+        view = build_graph_view(graph)
         nx_graph = self.nx.Graph()
 
-        for source, targets in adjacency.items():
-            for target in targets:
-                nx_graph.add_edge(source, target)
+        nx_graph.add_nodes_from(view.nodes)
+        nx_graph.add_edges_from(view.edges)
 
         return nx_graph
 

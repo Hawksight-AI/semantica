@@ -29,13 +29,121 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import re
 from pathlib import Path
+from decimal import Decimal, InvalidOperation
+from html import escape as xml_escape
 from typing import Any, Dict, List, Optional, Set, Union
+from urllib.parse import quote, urlsplit
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory
+from ..utils.helpers import ensure_directory, hash_data
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
+
+SEMANTICA_NS = "https://semantica.dev/ns#"
+
+#: Written when an entity carries no type of its own. A full IRI rather than the
+#: prefixed form, because the Turtle serializer writes it inside angle brackets,
+#: where `semantica:Entity` would be read as an IRI in the scheme `semantica`
+#: rather than as the prefix expansion (issue #1101).
+DEFAULT_ENTITY_TYPE = f"{SEMANTICA_NS}Entity"
+
+#: Written when a relationship carries no type of its own. Same reasoning.
+DEFAULT_RELATION_TYPE = f"{SEMANTICA_NS}related_to"
+
+#: The one datatype every serializer writes confidence in.
+#:
+#: The four paths used to disagree: Turtle wrote the value bare, which the
+#: Turtle grammar reads as xsd:decimal, N-Triples typed it xsd:float, RDF/XML
+#: emitted a plain literal with no datatype, and JSON-LD emitted a native
+#: number, which becomes xsd:double. Those are four distinct RDF terms for one
+#: value (issue #1100).
+#:
+#: xsd:decimal is the choice because it is what the Turtle path already
+#: produced, so the most used output is unchanged, and because it is exact:
+#: xsd:float is 32 bit binary, and cannot represent 0.9 or 0.95 at all.
+CONFIDENCE_DATATYPE = "http://www.w3.org/2001/XMLSchema#decimal"
+
+#: Largest power of ten a confidence may carry. xsd:decimal has no exponent
+#: notation, so a value has to be written out in full, and a compact literal
+#: such as "1e100000000" would expand to a hundred million digits.
+MAX_CONFIDENCE_EXPONENT = 100
+
+
+def normalize_confidence(value: Any) -> Optional[str]:
+    """
+    Return the canonical xsd:decimal lexical form of a confidence value.
+
+    Returns None when the value cannot be a decimal, so callers omit the triple
+    rather than writing something the vocabulary contradicts. The Turtle path
+    used to interpolate the raw value, so a confidence of "high" produced
+    `semantica:confidence high .` and made the whole document unparseable
+    (issue #1102).
+
+    Booleans are rejected. `bool` is a subclass of `int` in Python, so True
+    would otherwise silently become a confidence of 1.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+    if not isinstance(value, (int, float, str, Decimal)):
+        return None
+
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+    # NaN and the infinities are Decimal values with no xsd:decimal form.
+    if not decimal_value.is_finite():
+        return None
+
+    # xsd:decimal has no exponent notation, so writing one means expanding it.
+    # "1e100000000" is eleven characters that expand to a hundred million, and
+    # the export path continues past validation errors, so a single malformed
+    # field could exhaust memory. Nothing near this magnitude is a confidence.
+    if (
+        not -MAX_CONFIDENCE_EXPONENT
+        <= decimal_value.adjusted()
+        <= MAX_CONFIDENCE_EXPONENT
+    ):
+        return None
+
+    # `str(Decimal("0.00001"))` gives "0.00001", but a float that has already
+    # been through repr can arrive as "1e-05", which xsd:decimal does not allow.
+    formatted = format(decimal_value, "f")
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".") or "0"
+
+    # Decimal keeps the sign of zero, so 0.0 and -0.0 would serialise as two
+    # distinct RDF terms and defeat the point of a canonical form.
+    if formatted.lstrip("-").strip("0.") == "":
+        formatted = "0"
+    return formatted
+
+
+def mint_entity_iri(text: str) -> str:
+    """Mint a stable IRI for an entity that arrived without an id.
+
+    Python's builtin ``hash()`` is randomised per process (PYTHONHASHSEED), so
+    minting from it gave the same entity a different IRI on every run: exports
+    could not be diffed, deduplicated against an earlier load, or joined to a
+    provenance record written by an earlier process. SHA-256 is stable across
+    runs and machines, which is what an identifier has to be.
+    """
+    digest = hash_data(str(text))[:16]
+    return f"{SEMANTICA_NS}entity_{digest}"
+
+
+def mint_relationship_iri(index: int, source: Any, target: Any) -> str:
+    """Mint a stable IRI for a relationship that arrived without an id."""
+    digest = hash_data(f"{source}\x00{target}")[:16]
+    return f"{SEMANTICA_NS}rel_{index}_{digest}"
 
 
 class NamespaceManager:
@@ -294,6 +402,66 @@ class RDFSerializer:
 
     # OWL-Time namespace URI
     _OWL_TIME_NS = "http://www.w3.org/2006/time#"
+    _SEMANTICA_NS = "https://semantica.dev/ns#"
+
+    # Matches an already-valid percent-escape so it can be passed through
+    # unchanged instead of being re-encoded into e.g. %2520.
+    _PERCENT_ESCAPE_RE = re.compile(r"%[0-9A-Fa-f]{2}")
+
+    @classmethod
+    def _quote_preserving_escapes(cls, value: str, safe: str) -> str:
+        """quote() that leaves existing valid %XX escapes untouched.
+
+        Blanket-quoting an absolute IRI double-encodes any percent-escape it
+        already carries (%20 -> %2520), which changes the identity of every
+        previously-valid IRI containing one. Only the spans between existing
+        valid escapes are quoted; a bare '%' that isn't part of a valid
+        escape (e.g. "%zz") still gets encoded to %25, keeping the malformed
+        case handled.
+        """
+        parts = []
+        pos = 0
+        for match in cls._PERCENT_ESCAPE_RE.finditer(value):
+            parts.append(quote(value[pos : match.start()], safe=safe))
+            parts.append(match.group(0))
+            pos = match.end()
+        parts.append(quote(value[pos:], safe=safe))
+        return "".join(parts)
+
+    def _as_turtle_iri(
+        self, value: Any, namespaces: Optional[Dict[str, str]] = None
+    ) -> str:
+        """Return an absolute, safely encoded IRI for a Turtle resource."""
+        value = str(value)
+        try:
+            parsed = urlsplit(value)
+        except ValueError:
+            parsed = urlsplit("")
+        if parsed.scheme:
+            prefix, separator, local_name = value.partition(":")
+            # Built-in namespaces (semantica:, rdf:, rdfs:, owl:, ...) must
+            # always be resolvable, not only when the caller passes no
+            # namespaces of its own — otherwise a value like "semantica:Foo"
+            # resolves fine with no @context but stops resolving the moment
+            # any @context is present, since callers pass extract_namespaces()
+            # (context-only) here without merging in the built-ins.
+            effective_namespaces = {
+                **self.namespace_manager.namespaces,
+                **(namespaces or {}),
+            }
+            namespace = effective_namespaces.get(prefix)
+            if namespace and separator:
+                return self._quote_preserving_escapes(
+                    namespace + local_name, safe=":/?#[]@!$&'()*+,;="
+                )
+            # A scheme with at least two characters is an absolute IRI,
+            # including opaque forms such as mailto:foo and isbn:0451450523.
+            # Keep one-character schemes as the existing Windows drive-path case.
+            if len(prefix) >= 2:
+                return self._quote_preserving_escapes(
+                    value, safe=":/?#[]@!$&'()*+,;="
+                )
+        return self._SEMANTICA_NS + quote(value, safe="")
 
     # Design decision — TemporalBound.OPEN in RDF:
     # OWL-Time has no standard predicate for "no known end date." We use
@@ -360,15 +528,27 @@ class RDFSerializer:
             entity_id = entity.get("id")
             if not entity_id:
                 entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity_{hash(entity_text)}"
+                entity_id = mint_entity_iri(entity_text)
 
-            entity_type = entity.get("type", "semantica:Entity")
+            entity_type = entity.get("type", DEFAULT_ENTITY_TYPE)
             text = entity.get("text") or entity.get("label", "")
-            confidence = entity.get("confidence", 1.0)
+            confidence = normalize_confidence(entity.get("confidence", 1.0))
 
-            lines.append(f"<{entity_id}> a <{entity_type}> ;")
-            lines.append(f'    semantica:text "{text}" ;')
-            lines.append(f"    semantica:confidence {confidence} .")
+            lines.append(
+                f"<{self._as_turtle_iri(entity_id, merged_namespaces)}> a "
+                f"<{self._as_turtle_iri(entity_type, merged_namespaces)}> ;"
+            )
+            if confidence is None:
+                self.logger.warning(
+                    f"Entity {entity_id} has a confidence that is not a number "
+                    f"({entity.get('confidence')!r}), so no confidence is written"
+                )
+                lines.append(f'    semantica:text "{text}" .')
+            else:
+                lines.append(f'    semantica:text "{text}" ;')
+                lines.append(
+                    f'    semantica:confidence "{confidence}"^^<{CONFIDENCE_DATATYPE}> .'
+                )
             lines.append("")
 
         # Convert relationships to RDF triplets
@@ -376,19 +556,87 @@ class RDFSerializer:
         for idx, rel in enumerate(relationships):
             source_id = rel.get("source_id") or rel.get("source")
             target_id = rel.get("target_id") or rel.get("target")
-            rel_type = rel.get("type", "semantica:related_to")
+            rel_type = rel.get("type", DEFAULT_RELATION_TYPE)
 
-            lines.append(f"<{source_id}> <{rel_type}> <{target_id}> .")
+            lines.append(
+                f"<{self._as_turtle_iri(source_id, merged_namespaces)}> "
+                f"<{self._as_turtle_iri(rel_type, merged_namespaces)}> "
+                f"<{self._as_turtle_iri(target_id, merged_namespaces)}> ."
+            )
 
             if include_temporal:
-                owl_lines = self._owl_time_triples_for_rel(rel, idx, time_axis)
+                owl_lines = self._owl_time_triples_for_rel(
+                    rel, idx, time_axis, merged_namespaces
+                )
                 if owl_lines:
+                    # The interval hangs off the relationship's own IRI, and a
+                    # relationship written as a single triple has no such node
+                    # in the graph. Without this the timestamps are well formed
+                    # and unreachable: no query can get from the edge to its
+                    # validity interval (#1106). The shape matches the JSON-LD
+                    # export, and every term is declared in the vocabulary.
+                    lines.extend(
+                        self._reified_relationship_triples(
+                            rel, idx, source_id, target_id, rel_type, merged_namespaces
+                        )
+                    )
                     lines.extend(owl_lines)
 
         return "\n".join(lines)
 
+    def _reified_relationship_triples(
+        self,
+        rel: Dict[str, Any],
+        idx: int,
+        source_id: str,
+        target_id: str,
+        rel_type: str,
+        namespaces: Optional[Dict[str, str]] = None,
+    ) -> List[str]:
+        """
+        Emit the reified relationship node that OWL-Time triples hang off.
+
+        The direct triple stays. This adds a subject the interval can attach
+        to, using the same sem:Relationship shape the JSON-LD export already
+        writes, so the two serializations describe relationships the same way.
+        """
+        rel_id = self._as_turtle_iri(
+            rel.get("id")
+            or mint_relationship_iri(idx, source_id or "", target_id or ""),
+            namespaces,
+        )
+
+        # The full predicate, not its local name. Truncating to the fragment
+        # made https://a.example/ns#employs and https://b.example/ns#employs the
+        # same literal, so the temporal node no longer said which predicate it
+        # described, and it disagreed with the direct triple beside it.
+        escaped = (
+            str(rel_type)
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+        )
+
+        predicates = ["a semantica:Relationship"]
+        if source_id:
+            predicates.append(
+                f"semantica:source <{self._as_turtle_iri(source_id, namespaces)}>"
+            )
+        if target_id:
+            predicates.append(
+                f"semantica:target <{self._as_turtle_iri(target_id, namespaces)}>"
+            )
+        predicates.append(f'semantica:type "{escaped}"')
+
+        return ["", f"<{rel_id}> " + " ;\n    ".join(predicates) + " ."]
+
     def _owl_time_triples_for_rel(
-        self, rel: Dict[str, Any], idx: int, time_axis: str
+        self,
+        rel: Dict[str, Any],
+        idx: int,
+        time_axis: str,
+        namespaces: Optional[Dict[str, str]] = None,
     ) -> List[str]:
         """
         Emit OWL-Time Turtle triples for a relationship that carries temporal metadata.
@@ -403,7 +651,7 @@ class RDFSerializer:
         def _is_open(v: Any) -> bool:
             if v is None:
                 return False
-            if hasattr(v, "value"):          # TemporalBound enum
+            if hasattr(v, "value"):  # TemporalBound enum
                 return v.value == _OPEN_SENTINEL
             return str(v).strip().upper() == _OPEN_SENTINEL
 
@@ -413,9 +661,16 @@ class RDFSerializer:
         if time_axis in ("transaction", "both"):
             axes.append(("tx", rel.get("recorded_at"), rel.get("superseded_at")))
 
-        rel_base_id = (
-            rel.get("id")
-            or f"semantica:rel_{idx}_{hash(str(rel.get('source_id', '')) + str(rel.get('target_id', '')))}"
+        # Resolve endpoints the same way serialize_to_turtle does: both
+        # representations are accepted upstream, and minting from source_id
+        # alone hashes empty strings for every relationship that uses source,
+        # so unrelated relationships at the same index would collide on a
+        # deterministic IRI.
+        source_id = rel.get("source_id") or rel.get("source") or ""
+        target_id = rel.get("target_id") or rel.get("target") or ""
+        rel_base_id = self._as_turtle_iri(
+            rel.get("id") or mint_relationship_iri(idx, source_id, target_id),
+            namespaces,
         )
 
         lines = [""]  # blank separator
@@ -431,9 +686,7 @@ class RDFSerializer:
             lines.append(f"    time:hasBeginning <{begin_id}> ;")
 
             if _is_open(until_val):
-                lines.append(
-                    '    semantica:openEndedInterval "true"^^xsd:boolean .'
-                )
+                lines.append('    semantica:openEndedInterval "true"^^xsd:boolean .')
             elif until_val is not None:
                 end_id = f"{rel_base_id}__{axis_name}_end"
                 lines.append(f"    time:hasEnd <{end_id}> .")
@@ -442,7 +695,9 @@ class RDFSerializer:
                     f'    time:inXSDDateTimeStamp "{until_val}"^^xsd:dateTimeStamp .'
                 )
             else:
-                lines[-1] = lines[-1].rstrip(" ;") + " ."  # close interval without hasEnd
+                lines[-1] = (
+                    lines[-1].rstrip(" ;") + " ."
+                )  # close interval without hasEnd
 
             lines.append(f"<{begin_id}> a time:Instant ;")
             lines.append(
@@ -481,6 +736,8 @@ class RDFSerializer:
         lines.append('         xmlns:semantica="https://semantica.dev/ns#">')
         lines.append("")
 
+        namespaces = self.namespace_manager.extract_namespaces(rdf_data)
+
         # Convert entities to RDF/XML
         entities = rdf_data.get("entities", [])
         for entity in entities:
@@ -488,19 +745,32 @@ class RDFSerializer:
             entity_id = entity.get("id")
             if not entity_id:
                 entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity_{hash(entity_text)}"
+                entity_id = mint_entity_iri(entity_text)
 
-            entity_type = entity.get("type", "semantica:Entity")
+            entity_type = entity.get("type") or DEFAULT_ENTITY_TYPE
             text = entity.get("text") or entity.get("label", "")
-            confidence = entity.get("confidence", 1.0)
+            confidence = normalize_confidence(entity.get("confidence", 1.0))
 
             # RDF/XML syntax: rdf:Description with rdf:about
-            lines.append(f'  <rdf:Description rdf:about="{entity_id}">')
-            lines.append(f'    <rdf:type rdf:resource="{entity_type}"/>')
-            lines.append(f"    <semantica:text>{text}</semantica:text>")
-            lines.append(
-                f"    <semantica:confidence>{confidence}</semantica:confidence>"
+            entity_iri = xml_escape(
+                self._as_turtle_iri(entity_id, namespaces), quote=True
             )
+            entity_type_iri = xml_escape(
+                self._as_turtle_iri(entity_type, namespaces), quote=True
+            )
+            lines.append(f'  <rdf:Description rdf:about="{entity_iri}">')
+            lines.append(f'    <rdf:type rdf:resource="{entity_type_iri}"/>')
+            lines.append(f"    <semantica:text>{text}</semantica:text>")
+            if confidence is None:
+                self.logger.warning(
+                    f"Entity {entity_id} has a confidence that is not a number "
+                    f"({entity.get('confidence')!r}), so no confidence is written"
+                )
+            else:
+                lines.append(
+                    f'    <semantica:confidence rdf:datatype="{CONFIDENCE_DATATYPE}">'
+                    f"{confidence}</semantica:confidence>"
+                )
             lines.append("  </rdf:Description>")
             lines.append("")
 
@@ -509,11 +779,19 @@ class RDFSerializer:
         for rel in relationships:
             source_id = rel.get("source_id") or rel.get("source")
             target_id = rel.get("target_id") or rel.get("target")
-            rel_type = rel.get("type", "semantica:related_to")
+            # RDF/XML predicates are emitted as QNames, unlike resource
+            # attributes which use the shared absolute-IRI normalizer.
+            rel_type = rel.get("type") or "semantica:related_to"
 
             # Relationship as property on source entity
-            lines.append(f'  <rdf:Description rdf:about="{source_id}">')
-            lines.append(f'    <{rel_type} rdf:resource="{target_id}"/>')
+            source_iri = xml_escape(
+                self._as_turtle_iri(source_id, namespaces), quote=True
+            )
+            target_iri = xml_escape(
+                self._as_turtle_iri(target_id, namespaces), quote=True
+            )
+            lines.append(f'  <rdf:Description rdf:about="{source_iri}">')
+            lines.append(f'    <{rel_type} rdf:resource="{target_iri}"/>')
             lines.append("  </rdf:Description>")
             lines.append("")
 
@@ -565,41 +843,52 @@ class RDFSerializer:
         # Convert entities to JSON-LD
         entities = rdf_data.get("entities", [])
         for entity in entities:
-            # Generate @id if not provided
-            entity_id = entity.get("id")
-            if not entity_id:
-                entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity/{entity_text}"
+            # Generate @id if not provided. Minted the same way the Turtle and
+            # N-Triples paths mint it (#1101), so one knowledge graph carries
+            # the same node identity whichever serializer wrote it. The former
+            # f"semantica:entity/{text}" interpolated the raw text into an IRI:
+            # any entity whose text contained a space produced an invalid IRI
+            # and was dropped in full by a JSON-LD parser, silently.
+            entity_id = entity.get("id") or mint_entity_iri(entity.get("text", ""))
 
-            jsonld["@graph"].append(
-                {
-                    "@id": entity_id,
-                    "@type": entity.get("type", "semantica:Entity"),
-                    "semantica:text": entity.get("text") or entity.get("label", ""),
-                    "semantica:confidence": entity.get("confidence", 1.0),
+            node = {
+                "@id": entity_id,
+                "@type": entity.get("type", "semantica:Entity"),
+                "semantica:text": entity.get("text") or entity.get("label", ""),
+            }
+            confidence = normalize_confidence(entity.get("confidence", 1.0))
+            if confidence is None:
+                self.logger.warning(
+                    f"Entity {entity_id} has a confidence that is not a number "
+                    f"({entity.get('confidence')!r}), so no confidence is written"
+                )
+            else:
+                # A native JSON number becomes xsd:double once expanded, so the
+                # value is written as a typed literal instead.
+                node["semantica:confidence"] = {
+                    "@value": confidence,
+                    "@type": CONFIDENCE_DATATYPE,
                 }
-            )
+            jsonld["@graph"].append(node)
 
         # Convert relationships to JSON-LD
         relationships = rdf_data.get("relationships", [])
-        for rel in relationships:
-            # Generate @id if not provided
-            rel_id = rel.get("id")
-            if not rel_id:
-                source_id = rel.get("source_id", "")
-                target_id = rel.get("target_id", "")
-                rel_id = f"semantica:rel/{source_id}_{target_id}"
+        for index, rel in enumerate(relationships):
+            # Endpoints are resolved both ways, as serialize_to_turtle resolves
+            # them: a relationship carrying source/target rather than
+            # source_id/target_id used to hash into f"semantica:rel/_", so every
+            # such relationship in an export collapsed onto one node and their
+            # types and endpoints merged.
+            source = rel.get("source_id") or rel.get("source", "")
+            target = rel.get("target_id") or rel.get("target", "")
+            rel_id = rel.get("id") or mint_relationship_iri(index, source, target)
 
             jsonld["@graph"].append(
                 {
                     "@id": rel_id,
                     "@type": "semantica:Relationship",
-                    "semantica:source": {
-                        "@id": rel.get("source_id") or rel.get("source")
-                    },
-                    "semantica:target": {
-                        "@id": rel.get("target_id") or rel.get("target")
-                    },
+                    "semantica:source": {"@id": source},
+                    "semantica:target": {"@id": target},
                     "semantica:type": rel.get("type", "related_to"),
                 }
             )
@@ -622,20 +911,12 @@ class RDFSerializer:
         """
         lines = []
 
+        namespaces = self.namespace_manager.extract_namespaces(rdf_data)
+
         def expand_uri(uri: str) -> str:
             if not uri:
                 return ""
-            if uri.startswith("http"):
-                return f"<{uri}>"
-            if uri.startswith("semantica:"):
-                return f"<https://semantica.dev/ns#{uri.split(':', 1)[1]}>"
-            if uri.startswith("rdf:"):
-                return f"<http://www.w3.org/1999/02/22-rdf-syntax-ns#{uri.split(':', 1)[1]}>"
-            if uri.startswith("rdfs:"):
-                return f"<http://www.w3.org/2000/01/rdf-schema#{uri.split(':', 1)[1]}>"
-            if ":" in uri:
-                return f"<{uri}>"
-            return f"<https://semantica.dev/ns#{uri}>"
+            return f"<{self._as_turtle_iri(uri, namespaces)}>"
 
         # Convert entities
         entities = rdf_data.get("entities", [])
@@ -644,12 +925,12 @@ class RDFSerializer:
             entity_id = entity.get("id")
             if not entity_id:
                 entity_text = entity.get("text", "")
-                entity_id = f"semantica:entity_{hash(entity_text)}"
+                entity_id = mint_entity_iri(entity_text)
 
             subject = expand_uri(entity_id)
 
             # Type triple
-            entity_type = entity.get("type", "semantica:Entity")
+            entity_type = entity.get("type") or DEFAULT_ENTITY_TYPE
             lines.append(
                 f"{subject} <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> {expand_uri(entity_type)} ."
             )
@@ -662,11 +943,20 @@ class RDFSerializer:
                     f'{subject} {expand_uri("semantica:text")} "{safe_text}" .'
                 )
 
-            # Confidence property
-            confidence = entity.get("confidence")
-            if confidence is not None:
+            # Confidence property. The default matches the other serializers,
+            # which have always written one; omitting it here was half of why
+            # Turtle and N-Triples of one KG were different graphs (#1100).
+            raw_confidence = entity.get("confidence", 1.0)
+            confidence = normalize_confidence(raw_confidence)
+            if confidence is None:
+                self.logger.warning(
+                    f"Entity {entity.get('id')} has a confidence that is not a "
+                    f"number ({raw_confidence!r}), so no confidence is written"
+                )
+            else:
                 lines.append(
-                    f'{subject} {expand_uri("semantica:confidence")} "{confidence}"^^<http://www.w3.org/2001/XMLSchema#float> .'
+                    f'{subject} {expand_uri("semantica:confidence")} '
+                    f'"{confidence}"^^<{CONFIDENCE_DATATYPE}> .'
                 )
 
         # Convert relationships
@@ -674,7 +964,7 @@ class RDFSerializer:
         for rel in relationships:
             source_id = rel.get("source_id") or rel.get("source")
             target_id = rel.get("target_id") or rel.get("target")
-            rel_type = rel.get("type", "semantica:related_to")
+            rel_type = rel.get("type") or DEFAULT_RELATION_TYPE
 
             if source_id and target_id:
                 lines.append(

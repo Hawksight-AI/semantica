@@ -72,9 +72,9 @@ Example Usage:
     ...                    node_embeddings=True)
     >>> 
     >>> # Basic graph operations
-    >>> graph.add_node("Python", type="language", properties={"popularity": "high"})
-    >>> graph.add_node("Programming", type="concept")
-    >>> graph.add_edge("Python", "Programming", type="related_to")
+    >>> graph.add_node("Python", "language", popularity="high")
+    >>> graph.add_node("Programming", "concept")
+    >>> graph.add_edge("Python", "Programming", "related_to")
     >>> centrality = graph.get_node_centrality("Python")
     >>> similar = graph.find_similar_nodes("Python", similarity_type="content")
     >>> analysis = graph.analyze_graph_with_kg()
@@ -88,7 +88,7 @@ Example Usage:
     ...     confidence=0.95,
     ...     entities=["customer_123", "property_456"]
     ... )
-    >>> precedents = graph.find_precedents("loan_approval", limit=5)
+    >>> precedents = graph.find_precedents(decision_id, limit=5)
     >>> influence = graph.analyze_decision_influence(decision_id)
     >>> insights = graph.get_decision_insights()
     >>> causality = graph.trace_decision_causality(decision_id)
@@ -105,27 +105,82 @@ Production Use Cases:
     - Business: Workflow decisions, policy compliance, audit trails
 """
 
+import copy
+import errno
+import hashlib
+import itertools
+import json
+import os
+import re
+import shutil
+import stat
+import tempfile
+import threading
+import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-import json
-import threading
-import itertools
+from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
-import uuid
 
+import yaml
+
+from ..utils.helpers import classify_path_distance
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from ..utils.helpers import classify_path_distance
 from ..utils.skos import is_skos_hierarchy_edge, validate_skos_hierarchy
+from ._markdown_filesystem import find_filesystem_link
 from .entity_linker import EntityLinker
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects ambiguous duplicate mapping keys."""
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeySafeLoader, node: yaml.MappingNode, deep: bool = False
+) -> Dict[Any, Any]:
+    loader.flatten_mapping(node)
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as exc:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                "found an unhashable key",
+                key_node.start_mark,
+            ) from exc
+        if duplicate:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate key {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping
+)
+
 
 # Optional imports for advanced features
 try:
     from ..kg import (
-        GraphBuilder, GraphAnalyzer, CentralityCalculator, CommunityDetector,
-        PathFinder, NodeEmbedder, SimilarityCalculator, LinkPredictor,
-        ConnectivityAnalyzer
+        CentralityCalculator,
+        CommunityDetector,
+        ConnectivityAnalyzer,
+        GraphAnalyzer,
+        GraphBuilder,
+        LinkPredictor,
+        NodeEmbedder,
+        PathFinder,
+        SimilarityCalculator,
     )
     KG_AVAILABLE = True
 except ImportError:
@@ -438,6 +493,23 @@ _ATTRS_MISSING = object()
 #: entities and timestamps.
 _CAUSAL_EDGE_TYPES = ("CAUSED", "INFLUENCED", "PRECEDENT_FOR")
 
+# Causal edges circulate under two vocabularies: this module's canonical
+# spellings above, and the present-tense spellings CausalChainAnalyzer also
+# accepts ("causes", "influences", "leads_to", "supports"). The present-tense
+# forms normalize onto the canonical types for storage; traversal accepts
+# both vocabularies so an edge recorded either way is never invisible.
+_CAUSAL_EDGE_ALIASES = {
+    "CAUSES": "CAUSED",
+    "CAUSED": "CAUSED",
+    "INFLUENCES": "INFLUENCED",
+    "INFLUENCED": "INFLUENCED",
+    "PRECEDES": "PRECEDENT_FOR",
+    "PRECEDENT_FOR": "PRECEDENT_FOR",
+}
+_CAUSAL_TRAVERSAL_TYPES = frozenset(_CAUSAL_EDGE_ALIASES) | {
+    "LEADS_TO", "LEAD_TO", "SUPPORTS", "SUPPORT",
+}
+
 
 class ContextGraph:
     """
@@ -452,6 +524,12 @@ class ContextGraph:
     
     Perfect for building intelligent AI agents that can learn from decisions!
     """
+
+    _MARKDOWN_FORMAT = "semantica-context-graph"
+    _MARKDOWN_VERSION = 1
+    _MARKDOWN_MANIFEST = "graph.md"
+    _MARKDOWN_NODES_DIRECTORY = "nodes"
+    _MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, **kwargs):
         """
@@ -1084,14 +1162,21 @@ class ContextGraph:
                 )
             )
 
-    def save_to_file(self, path: str) -> None:
+    def save_to_file(
+        self, path: Union[str, Path], format: str = "json"
+    ) -> None:
         """
-        Save context graph to file (JSON format).
+        Save the context graph in JSON or Markdown format.
 
         Args:
-            path: File path to save to
+            path: JSON file path or Markdown export directory
+            format: Persistence format (``json`` or ``markdown``)
         """
-        import json
+        normalized_format = self._normalize_persistence_format(format)
+        if normalized_format == "markdown":
+            self._save_markdown_directory(Path(path))
+            self.logger.info(f"Saved context graph Markdown to {path}")
+            return
 
         with self._lock:
     
@@ -1118,15 +1203,31 @@ class ContextGraph:
 
         self.logger.info(f"Saved context graph to {path}")
 
-    def load_from_file(self, path: str) -> None:
+    def load_from_file(
+        self, path: Union[str, Path], format: str = "json"
+    ) -> None:
         """
-        Load context graph from file (JSON format).
+        Load the context graph from JSON or Markdown.
 
         Args:
-            path: File path to load from
+            path: JSON file path or Markdown export directory
+            format: Persistence format (``json`` or ``markdown``)
         """
-        import json
-        import os
+        normalized_format = self._normalize_persistence_format(format)
+        if normalized_format == "markdown":
+            markdown_path = Path(path)
+            linked_component = find_filesystem_link(markdown_path)
+            if linked_component is not None:
+                raise ValueError(
+                    "Refusing to import Markdown symbolic link or junction: "
+                    f"{linked_component}"
+                )
+            if not markdown_path.exists():
+                self.logger.warning(f"File not found: {path}")
+                return
+            self._load_markdown_directory(markdown_path)
+            self.logger.info(f"Loaded context graph Markdown from {path}")
+            return
 
         if not os.path.exists(path):
             self.logger.warning(f"File not found: {path}")
@@ -1156,6 +1257,7 @@ class ContextGraph:
             self.edge_type_index.clear()
             self._linked_graphs.clear()
             self._unresolved_links.clear()
+            self._analytics_cache.clear()
             # Deletion metadata belongs to the graph being replaced; keeping it
             # would make entities in the loaded graph read as already retracted.
             self._retractions.clear()
@@ -1190,6 +1292,798 @@ class ContextGraph:
                     self._unresolved_links[link_id] = link_meta
 
         self.logger.info(f"Loaded context graph from {path}")
+
+    @staticmethod
+    def _normalize_persistence_format(format: str) -> str:
+        if not isinstance(format, str) or not format.strip():
+            raise ValueError("Context graph persistence format must be a string.")
+        normalized = format.strip().lower()
+        if normalized not in {"json", "markdown"}:
+            raise ValueError(
+                f"Unsupported context graph persistence format: {format!r}. "
+                "Expected 'json' or 'markdown'."
+            )
+        return normalized
+
+    def _save_markdown_directory(self, destination: Path) -> None:
+        if not destination.name:
+            raise ValueError("Markdown export destination cannot be a filesystem root.")
+        linked_component = find_filesystem_link(destination)
+        if linked_component is not None:
+            raise ValueError(
+                "Refusing to replace Markdown symbolic link or junction: "
+                f"{linked_component}"
+            )
+        if destination.exists() and not destination.is_dir():
+            raise ValueError(
+                f"Markdown export destination is not a directory: {destination}"
+            )
+        if destination.exists() and any(destination.iterdir()):
+            try:
+                self._parse_markdown_directory(
+                    destination, require_canonical_layout=True
+                )
+            except (FileNotFoundError, ValueError):
+                is_managed = False
+            else:
+                is_managed = True
+            if not is_managed:
+                raise ValueError(
+                    "Refusing to replace a non-empty directory that is not a "
+                    f"managed ContextGraph export: {destination}"
+                )
+
+        manifest_document, node_documents = self._markdown_documents()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        linked_component = find_filesystem_link(destination.parent)
+        if linked_component is not None:
+            raise ValueError(
+                "Refusing to export through Markdown symbolic link or junction: "
+                f"{linked_component}"
+            )
+        staging_path = Path(
+            tempfile.mkdtemp(
+                dir=str(destination.parent), prefix=f".{destination.name}.staging-"
+            )
+        )
+        backup_path: Optional[Path] = None
+        try:
+            nodes_path = staging_path / self._MARKDOWN_NODES_DIRECTORY
+            nodes_path.mkdir()
+            self._write_staged_markdown(
+                staging_path / self._MARKDOWN_MANIFEST, manifest_document
+            )
+            for filename, document in node_documents:
+                self._write_staged_markdown(nodes_path / filename, document)
+
+            if destination.exists():
+                backup_path = destination.parent / (
+                    f".{destination.name}.backup-{uuid.uuid4().hex}"
+                )
+                os.replace(destination, backup_path)
+            try:
+                os.replace(staging_path, destination)
+                staging_path = None
+            except BaseException as publish_error:
+                if backup_path is not None and not destination.exists():
+                    try:
+                        os.replace(backup_path, destination)
+                    except BaseException as restore_error:
+                        self.logger.error(
+                            "Failed to restore previous ContextGraph Markdown "
+                            "export from %s after publish failure; preserving "
+                            "the original publish error",
+                            backup_path,
+                            exc_info=(
+                                type(restore_error),
+                                restore_error,
+                                restore_error.__traceback__,
+                            ),
+                        )
+                        add_note = getattr(publish_error, "add_note", None)
+                        if add_note is not None:
+                            add_note(
+                                "Restoring the previous ContextGraph Markdown "
+                                f"export also failed: {restore_error}"
+                            )
+                    else:
+                        backup_path = None
+                raise
+
+            if backup_path is not None:
+                shutil.rmtree(backup_path)
+                backup_path = None
+        finally:
+            if staging_path is not None:
+                shutil.rmtree(staging_path, ignore_errors=True)
+            if backup_path is not None and backup_path.exists():
+                self.logger.warning(
+                    "ContextGraph export left backup directory %s", backup_path
+                )
+
+    @staticmethod
+    def _write_staged_markdown(path: Path, document: str) -> None:
+        with path.open("x", encoding="utf-8") as output:
+            output.write(document)
+            output.flush()
+            os.fsync(output.fileno())
+
+    def _markdown_documents(self) -> Tuple[str, List[Tuple[str, str]]]:
+        with self._lock:
+            nodes = [
+                {
+                    "id": node.node_id,
+                    "type": node.node_type,
+                    "properties": copy.deepcopy(node.properties),
+                    "metadata": copy.deepcopy(node.metadata),
+                    "valid_from": node.valid_from,
+                    "valid_until": node.valid_until,
+                    "content": node.content,
+                }
+                for node in self.nodes.values()
+            ]
+            edges = [
+                {
+                    "id": edge.edge_id,
+                    "family_id": edge.family_id or edge.edge_id,
+                    "source": edge.source_id,
+                    "target": edge.target_id,
+                    "type": edge.edge_type,
+                    "weight": edge.weight,
+                    "metadata": copy.deepcopy(edge.metadata),
+                    "valid_from": edge.valid_from,
+                    "valid_until": edge.valid_until,
+                }
+                for edge in self.edges
+            ]
+            graph_id = self.graph_id
+            links_by_id = {
+                link_id: copy.deepcopy(link)
+                for link_id, link in self._unresolved_links.items()
+            }
+            for link_id, (
+                other_graph,
+                source_node_id,
+                target_node_id,
+            ) in self._linked_graphs.items():
+                links_by_id[link_id] = {
+                    "link_id": link_id,
+                    "source_node_id": source_node_id,
+                    "target_node_id": target_node_id,
+                    "other_graph_id": other_graph.graph_id,
+                }
+
+        edges.sort(
+            key=lambda edge: (
+                str(edge["id"]),
+                str(edge["source"]),
+                str(edge["target"]),
+                str(edge["type"]),
+            )
+        )
+        seen_edge_ids: Set[str] = set()
+        duplicate_edge_ids: Set[str] = set()
+        for edge in edges:
+            edge_id = edge["id"]
+            if not isinstance(edge_id, str) or not edge_id.strip():
+                raise ValueError(
+                    "Cannot export ContextGraph: every edge must have a string ID."
+                )
+            if edge_id in seen_edge_ids:
+                duplicate_edge_ids.add(edge_id)
+            seen_edge_ids.add(edge_id)
+        if duplicate_edge_ids:
+            duplicates = ", ".join(
+                repr(edge_id) for edge_id in sorted(duplicate_edge_ids)
+            )
+            raise ValueError(
+                f"Cannot export ContextGraph: duplicate edge ID(s): {duplicates}."
+            )
+        links = sorted(
+            links_by_id.values(), key=lambda link: str(link.get("link_id", ""))
+        )
+        manifest = {
+            "format": self._MARKDOWN_FORMAT,
+            "version": self._MARKDOWN_VERSION,
+            "graph_id": graph_id,
+            "edges": edges,
+            "links": links,
+        }
+        manifest_body = (
+            "# Context Graph\n\n"
+            "Graph relationships are stored in frontmatter. Node content is in "
+            "the `nodes` directory.\n"
+        )
+        manifest_document = self._render_markdown_document(
+            manifest, manifest_body, "graph manifest"
+        )
+
+        node_documents = []
+        filenames = set()
+        for node in sorted(nodes, key=lambda item: str(item["id"])):
+            filename = self._node_markdown_filename(node["id"])
+            normalized_filename = filename.casefold()
+            if normalized_filename in filenames:
+                raise ValueError(
+                    f"Cannot export ContextGraph: duplicate filename {filename!r}."
+                )
+            filenames.add(normalized_filename)
+            content = node.pop("content")
+            node_documents.append(
+                (
+                    filename,
+                    self._render_markdown_document(
+                        node, content, f"node {node['id']!r}"
+                    ),
+                )
+            )
+        return manifest_document, node_documents
+
+    @staticmethod
+    def _node_markdown_filename(node_id: Any) -> str:
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("Cannot export a ContextGraph node without a string ID.")
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "-", node_id)
+        slug = re.sub(r"-+", "-", slug).strip("._-")[:80].rstrip("._-")
+        slug = slug or "node"
+        digest = hashlib.sha256(node_id.encode("utf-8")).hexdigest()[:12]
+        return f"{slug}--{digest}.md"
+
+    @classmethod
+    def _render_markdown_document(
+        cls, frontmatter: Dict[str, Any], body: str, source: str
+    ) -> str:
+        if not isinstance(body, str):
+            raise ValueError(f"Cannot export {source}: Markdown body must be a string.")
+        canonical = cls._canonical_markdown_value(frontmatter, source)
+        try:
+            yaml_text = yaml.safe_dump(
+                canonical,
+                sort_keys=False,
+                allow_unicode=True,
+                default_flow_style=False,
+            )
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"Cannot export {source}: metadata is not YAML serializable."
+            ) from exc
+        return f"---\n{yaml_text}---\n\n{body}"
+
+    @classmethod
+    def _canonical_markdown_value(
+        cls, value: Any, source: str, ancestors: Optional[Set[int]] = None
+    ) -> Any:
+        ancestors = set() if ancestors is None else ancestors
+        if isinstance(value, dict):
+            if any(not isinstance(key, str) for key in value):
+                raise ValueError(
+                    f"Invalid Markdown metadata in {source}: "
+                    "mapping keys must be strings."
+                )
+            identity = id(value)
+            if identity in ancestors:
+                raise ValueError(
+                    f"Invalid Markdown metadata in {source}: "
+                    "values cannot contain cycles."
+                )
+            ancestors.add(identity)
+            try:
+                return {
+                    key: cls._canonical_markdown_value(
+                        value[key], source, ancestors
+                    )
+                    for key in sorted(value)
+                }
+            finally:
+                ancestors.remove(identity)
+        if isinstance(value, list):
+            identity = id(value)
+            if identity in ancestors:
+                raise ValueError(
+                    f"Invalid Markdown metadata in {source}: "
+                    "values cannot contain cycles."
+                )
+            ancestors.add(identity)
+            try:
+                return [
+                    cls._canonical_markdown_value(item, source, ancestors)
+                    for item in value
+                ]
+            finally:
+                ancestors.remove(identity)
+        if isinstance(value, tuple) or isinstance(value, set):
+            raise ValueError(
+                f"Invalid Markdown metadata in {source}: "
+                "tuples and sets are not supported."
+            )
+        return value
+
+    def _load_markdown_directory(self, source: Path) -> None:
+        parsed_state = self._parse_markdown_directory(source)
+        graph_id, nodes_by_id, edges, unresolved_links = parsed_state
+
+        adjacency: Dict[str, List[ContextEdge]] = defaultdict(list)
+        edge_index: Dict[str, ContextEdge] = {}
+        node_type_index: Dict[str, Set[str]] = defaultdict(set)
+        edge_type_index: Dict[str, List[ContextEdge]] = defaultdict(list)
+        for node in nodes_by_id.values():
+            node_type_index[node.node_type].add(node.node_id)
+        for edge in edges:
+            edge_index[edge.edge_id] = edge
+            adjacency[edge.source_id].append(edge)
+            edge_type_index[edge.edge_type].append(edge)
+
+        with self._lock:
+            self.graph_id = graph_id
+            self.nodes.clear()
+            self.nodes.update(nodes_by_id)
+            self.edges.clear()
+            self.edges.extend(edges)
+            self._edge_index.clear()
+            self._edge_index.update(edge_index)
+            self._adjacency.clear()
+            self._adjacency.update(adjacency)
+            self.node_type_index.clear()
+            self.node_type_index.update(node_type_index)
+            self.edge_type_index.clear()
+            self.edge_type_index.update(edge_type_index)
+            self._linked_graphs.clear()
+            self._unresolved_links.clear()
+            self._unresolved_links.update(unresolved_links)
+            self._analytics_cache.clear()
+            self._retractions.clear()
+            self._tombstones.clear()
+
+        if self.mutation_callback and not self._suspend_mutation_callback:
+            mutation_events = [
+                ("ADD_NODE", node.node_id, node.to_dict())
+                for node in nodes_by_id.values()
+            ]
+            mutation_events.extend(
+                ("ADD_EDGE", edge.edge_id, edge.to_dict()) for edge in edges
+            )
+            for operation, entity_id, payload in mutation_events:
+                try:
+                    self.mutation_callback(operation, entity_id, payload)
+                except Exception as exc:
+                    self.logger.warning(
+                        "Audit trail callback failed for Markdown graph load "
+                        "%s %s: %s",
+                        operation,
+                        entity_id,
+                        exc,
+                    )
+
+    def _parse_markdown_directory(
+        self, source: Path, require_canonical_layout: bool = False
+    ) -> Tuple[
+        str,
+        Dict[str, ContextNode],
+        List[ContextEdge],
+        Dict[str, Dict[str, str]],
+    ]:
+        manifest_document, node_documents = self._read_markdown_directory(
+            source, require_canonical_layout=require_canonical_layout
+        )
+        manifest, _ = self._parse_markdown_document(
+            manifest_document, str(source / self._MARKDOWN_MANIFEST)
+        )
+        graph_id, edges, links = self._parse_markdown_manifest(manifest, source)
+
+        nodes_by_id: Dict[str, ContextNode] = {}
+        for node_source, document in node_documents:
+            frontmatter, body = self._parse_markdown_document(document, node_source)
+            node = self._parse_markdown_node(frontmatter, body, node_source)
+            if node.node_id in nodes_by_id:
+                raise ValueError(
+                    f"Duplicate Markdown node ID {node.node_id!r} in {node_source}."
+                )
+            node_filename = Path(node_source).name
+            if (
+                require_canonical_layout
+                and node_filename != self._node_markdown_filename(node.node_id)
+            ):
+                raise ValueError(
+                    "Invalid managed ContextGraph export: node file "
+                    f"{node_filename!r} is not the canonical filename "
+                    f"for node {node.node_id!r}."
+                )
+            nodes_by_id[node.node_id] = node
+
+        missing_endpoints = sorted(
+            {
+                endpoint
+                for edge in edges
+                for endpoint in (edge.source_id, edge.target_id)
+                if endpoint not in nodes_by_id
+            }
+        )
+        if missing_endpoints and require_canonical_layout:
+            missing = ", ".join(repr(endpoint) for endpoint in missing_endpoints)
+            raise ValueError(
+                "Invalid managed ContextGraph export: edge endpoint(s) "
+                f"{missing} do not have node files."
+            )
+        for endpoint in missing_endpoints:
+            nodes_by_id[endpoint] = ContextNode(endpoint, "entity", endpoint)
+
+        hierarchy_edges = [
+            {
+                "source": edge.source_id,
+                "target": edge.target_id,
+                "type": edge.edge_type,
+            }
+            for edge in edges
+            if is_skos_hierarchy_edge(edge.to_dict())
+        ]
+        if hierarchy_edges:
+            validate_skos_hierarchy(hierarchy_edges, [])
+
+        unresolved_links = {}
+        for link in links:
+            link_id = link["link_id"]
+            if link_id in unresolved_links:
+                raise ValueError(
+                    f"Duplicate cross-graph link ID {link_id!r} in graph manifest."
+                )
+            if link["source_node_id"] not in nodes_by_id:
+                raise ValueError(
+                    f"Cross-graph link {link_id!r} references missing source node "
+                    f"{link['source_node_id']!r}."
+                )
+            unresolved_links[link_id] = link
+        return graph_id, nodes_by_id, edges, unresolved_links
+
+    def _read_markdown_directory(
+        self, source: Path, require_canonical_layout: bool = False
+    ) -> Tuple[str, List[Tuple[str, str]]]:
+        linked_component = find_filesystem_link(source)
+        if linked_component is not None:
+            raise ValueError(
+                "Refusing to import Markdown symbolic link or junction: "
+                f"{linked_component}"
+            )
+        if not source.exists():
+            raise FileNotFoundError(
+                f"ContextGraph Markdown import path does not exist: {source}"
+            )
+        if not source.is_dir():
+            raise ValueError(
+                f"ContextGraph Markdown import path is not a directory: {source}"
+            )
+
+        if require_canonical_layout:
+            expected_entries = {
+                self._MARKDOWN_MANIFEST,
+                self._MARKDOWN_NODES_DIRECTORY,
+            }
+            actual_entries = {path.name for path in source.iterdir()}
+            if actual_entries != expected_entries:
+                unexpected = sorted(actual_entries - expected_entries)
+                missing = sorted(expected_entries - actual_entries)
+                details = []
+                if unexpected:
+                    details.append(f"unexpected entries: {unexpected!r}")
+                if missing:
+                    details.append(f"missing entries: {missing!r}")
+                raise ValueError(
+                    "Invalid managed ContextGraph export layout ("
+                    + "; ".join(details)
+                    + ")."
+                )
+
+        manifest_path = source / self._MARKDOWN_MANIFEST
+        manifest_document = self._read_markdown_file(manifest_path)
+        nodes_path = source / self._MARKDOWN_NODES_DIRECTORY
+        linked_component = find_filesystem_link(nodes_path)
+        if linked_component is not None:
+            raise ValueError(
+                "Refusing to import Markdown symbolic link or junction: "
+                f"{linked_component}"
+            )
+        if not nodes_path.is_dir():
+            raise ValueError(
+                f"ContextGraph Markdown nodes directory is missing: {nodes_path}"
+            )
+
+        node_paths = []
+        for path in nodes_path.iterdir():
+            linked_component = find_filesystem_link(path)
+            if linked_component is not None:
+                raise ValueError(
+                    "Refusing to import Markdown symbolic link or junction: "
+                    f"{linked_component}"
+                )
+            if path.suffix.lower() not in self._MARKDOWN_EXTENSIONS:
+                if require_canonical_layout:
+                    raise ValueError(
+                        "Invalid managed ContextGraph export: unexpected node "
+                        f"entry {path.name!r}."
+                    )
+                continue
+            if not path.is_file():
+                raise ValueError(f"Markdown node path is not a regular file: {path}")
+            node_paths.append(path)
+        linked_component = find_filesystem_link(nodes_path)
+        if linked_component is not None:
+            raise ValueError(
+                "Refusing to import Markdown symbolic link or junction: "
+                f"{linked_component}"
+            )
+        node_paths.sort(key=lambda path: (path.name.casefold(), path.name))
+        return manifest_document, [
+            (str(path), self._read_markdown_file(path)) for path in node_paths
+        ]
+
+    @staticmethod
+    def _read_markdown_file(path: Path) -> str:
+        linked_component = find_filesystem_link(path)
+        if linked_component is not None:
+            raise ValueError(
+                "Refusing to import Markdown symbolic link or junction: "
+                f"{linked_component}"
+            )
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as exc:
+            linked_component = find_filesystem_link(path)
+            if exc.errno == errno.ELOOP or linked_component is not None:
+                raise ValueError(
+                    "Refusing to import Markdown symbolic link or junction: "
+                    f"{linked_component or path}"
+                ) from exc
+            if exc.errno == errno.ENOENT:
+                raise FileNotFoundError(f"Markdown file is missing: {path}") from exc
+            raise OSError(
+                exc.errno,
+                f"Failed to read Markdown file {path}: {exc.strerror or str(exc)}",
+                exc.filename or str(path),
+            ) from exc
+
+        try:
+            linked_component = find_filesystem_link(path)
+            if linked_component is not None:
+                raise ValueError(
+                    "Refusing to import Markdown symbolic link or junction: "
+                    f"{linked_component}"
+                )
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise ValueError(f"Markdown path is not a regular file: {path}")
+            with os.fdopen(descriptor, "r", encoding="utf-8") as input_file:
+                descriptor = None
+                return input_file.read()
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+
+    @staticmethod
+    def _parse_markdown_document(
+        document: str, source: str
+    ) -> Tuple[Dict[str, Any], str]:
+        lines = document.splitlines(keepends=True)
+        if not lines or lines[0].rstrip("\r\n") != "---":
+            raise ValueError(
+                f"Invalid Markdown frontmatter in {source}: "
+                "document must start with '---'."
+            )
+        closing_index = next(
+            (
+                index
+                for index, line in enumerate(lines[1:], start=1)
+                if line.rstrip("\r\n") == "---"
+            ),
+            None,
+        )
+        if closing_index is None:
+            raise ValueError(
+                f"Invalid Markdown frontmatter in {source}: missing closing '---'."
+            )
+        try:
+            loaded = yaml.load(
+                "".join(lines[1:closing_index]), Loader=_UniqueKeySafeLoader
+            )
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"Invalid Markdown frontmatter in {source}: {exc}"
+            ) from exc
+        frontmatter = {} if loaded is None else loaded
+        if not isinstance(frontmatter, dict):
+            raise ValueError(
+                f"Invalid Markdown frontmatter in {source}: expected a YAML mapping."
+            )
+        if any(not isinstance(key, str) for key in frontmatter):
+            raise ValueError(
+                f"Invalid Markdown frontmatter in {source}: "
+                "field names must be strings."
+            )
+
+        body = "".join(lines[closing_index + 1 :])
+        if body.startswith("\r\n"):
+            body = body[2:]
+        elif body.startswith("\n"):
+            body = body[1:]
+        return frontmatter, body
+
+    def _parse_markdown_manifest(
+        self, manifest: Dict[str, Any], source: Path
+    ) -> Tuple[str, List[ContextEdge], List[Dict[str, str]]]:
+        manifest_source = str(source / self._MARKDOWN_MANIFEST)
+        if manifest.get("format") != self._MARKDOWN_FORMAT:
+            raise ValueError(
+                f"Invalid ContextGraph Markdown manifest in {manifest_source}: "
+                f"'format' must be {self._MARKDOWN_FORMAT!r}."
+            )
+        version = manifest.get("version")
+        if isinstance(version, bool) or version != self._MARKDOWN_VERSION:
+            raise ValueError(
+                f"Unsupported ContextGraph Markdown version {version!r} in "
+                f"{manifest_source}; expected {self._MARKDOWN_VERSION}."
+            )
+        graph_id = self._required_markdown_string(
+            manifest.get("graph_id"), "graph_id", manifest_source
+        )
+
+        raw_edges = manifest.get("edges", [])
+        if not isinstance(raw_edges, list):
+            raise ValueError(
+                f"Invalid ContextGraph Markdown manifest in {manifest_source}: "
+                "'edges' must be a list."
+            )
+        edges = []
+        edge_ids = set()
+        for index, raw_edge in enumerate(raw_edges):
+            edge_source = f"{manifest_source} edge[{index}]"
+            edge = self._parse_markdown_edge(raw_edge, edge_source)
+            if edge.edge_id in edge_ids:
+                raise ValueError(
+                    f"Duplicate Markdown edge ID {edge.edge_id!r} in {edge_source}."
+                )
+            edge_ids.add(edge.edge_id)
+            edges.append(edge)
+
+        raw_links = manifest.get("links", [])
+        if not isinstance(raw_links, list):
+            raise ValueError(
+                f"Invalid ContextGraph Markdown manifest in {manifest_source}: "
+                "'links' must be a list."
+            )
+        links = [
+            self._parse_markdown_link(link, f"{manifest_source} link[{index}]")
+            for index, link in enumerate(raw_links)
+        ]
+        return graph_id, edges, links
+
+    def _parse_markdown_node(
+        self, frontmatter: Dict[str, Any], body: str, source: str
+    ) -> ContextNode:
+        node_id = self._required_markdown_string(frontmatter.get("id"), "id", source)
+        node_type = self._required_markdown_string(
+            frontmatter.get("type"), "type", source
+        )
+        properties = self._markdown_mapping(
+            frontmatter.get("properties", {}), "properties", source
+        )
+        metadata = self._markdown_mapping(
+            frontmatter.get("metadata", {}), "metadata", source
+        )
+        return ContextNode(
+            node_id=node_id,
+            node_type=node_type,
+            content=body,
+            properties=properties,
+            metadata=metadata,
+            valid_from=self._markdown_temporal_value(
+                frontmatter.get("valid_from"), "valid_from", source
+            ),
+            valid_until=self._markdown_temporal_value(
+                frontmatter.get("valid_until"), "valid_until", source
+            ),
+        )
+
+    def _parse_markdown_edge(self, raw_edge: Any, source: str) -> ContextEdge:
+        if not isinstance(raw_edge, dict):
+            raise ValueError(f"Invalid Markdown edge in {source}: expected a mapping.")
+        edge_id = self._required_markdown_string(raw_edge.get("id"), "id", source)
+        family_value = raw_edge.get("family_id", raw_edge.get("familyId", edge_id))
+        family_id = self._required_markdown_string(family_value, "family_id", source)
+        source_id = self._required_markdown_string(
+            raw_edge.get("source"), "source", source
+        )
+        target_id = self._required_markdown_string(
+            raw_edge.get("target"), "target", source
+        )
+        edge_type = self._required_markdown_string(raw_edge.get("type"), "type", source)
+        weight = raw_edge.get("weight", 1.0)
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+            raise ValueError(
+                f"Invalid Markdown edge in {source}: 'weight' must be a number."
+            )
+        metadata = self._markdown_mapping(
+            raw_edge.get("metadata", {}), "metadata", source
+        )
+        return ContextEdge(
+            edge_id=edge_id,
+            family_id=family_id,
+            source_id=source_id,
+            target_id=target_id,
+            edge_type=edge_type,
+            weight=float(weight),
+            metadata=metadata,
+            valid_from=self._markdown_temporal_value(
+                raw_edge.get("valid_from"), "valid_from", source
+            ),
+            valid_until=self._markdown_temporal_value(
+                raw_edge.get("valid_until"), "valid_until", source
+            ),
+        )
+
+    def _parse_markdown_link(self, raw_link: Any, source: str) -> Dict[str, str]:
+        if not isinstance(raw_link, dict):
+            raise ValueError(
+                f"Invalid cross-graph link in {source}: expected a mapping."
+            )
+        return {
+            field_name: self._required_markdown_string(
+                raw_link.get(field_name), field_name, source
+            )
+            for field_name in (
+                "link_id",
+                "source_node_id",
+                "target_node_id",
+                "other_graph_id",
+            )
+        }
+
+    @staticmethod
+    def _required_markdown_string(value: Any, field_name: str, source: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"Invalid Markdown frontmatter in {source}: "
+                f"'{field_name}' must be a non-empty string."
+            )
+        return value
+
+    @classmethod
+    def _markdown_mapping(
+        cls, value: Any, field_name: str, source: str
+    ) -> Dict[str, Any]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"Invalid Markdown frontmatter in {source}: "
+                f"'{field_name}' must be a mapping."
+            )
+        canonical = cls._canonical_markdown_value(value, source)
+        return dict(canonical)
+
+    @staticmethod
+    def _markdown_temporal_value(
+        value: Any, field_name: str, source: str
+    ) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return _normalize_temporal_input(value)
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, str) and value.strip():
+            try:
+                _normalize_temporal_input(value)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid Markdown frontmatter in {source}: "
+                    f"'{field_name}' must be a valid ISO-8601 string."
+                ) from exc
+            return value
+        raise ValueError(
+            f"Invalid Markdown frontmatter in {source}: "
+            f"'{field_name}' must be a valid ISO-8601 string."
+        )
+
 
     def find_node(self, node_id: str) -> Optional[Dict[str, Any]]:
         """Return a dict representation of the node identified by *node_id*.
@@ -2399,8 +3293,9 @@ class ContextGraph:
 
     def _load_conversation(self, file_path: str) -> Dict[str, Any]:
         """Load conversation from file."""
-        from ..utils.helpers import read_json_file
         from pathlib import Path
+
+        from ..utils.helpers import read_json_file
 
         return read_json_file(Path(file_path))
 
@@ -2446,6 +3341,97 @@ class ContextGraph:
                 "statistics": {
                     "node_count": len(self.nodes),
                     "edge_count": len(self.edges),
+                },
+            }
+
+    def to_kg_dict(self, entities_only: bool = False) -> Dict[str, Any]:
+        """Export graph in the canonical knowledge-graph shape.
+
+        This is the official adapter that converts the ContextGraph's internal
+        ``{"nodes", "edges"}`` / ``source`` representation into the
+        ``{"entities", "relationships"}`` / ``source_id`` shape expected by
+        downstream consumers such as
+        :class:`~semantica.export.rdf_exporter.RDFExporter` and
+        :meth:`~semantica.kg.temporal_query.TemporalGraphQuery.query_time_range`.
+
+        Users no longer need to hand-map field names between APIs.
+
+        Args:
+            entities_only: If True, only nodes whose ``node_type`` is
+                ``"entity"`` are exported as entities. When False (default),
+                every node is exported. Relationships whose endpoints are not
+                in the exported entity set are dropped to avoid dangling
+                references in downstream consumers.
+
+        Returns:
+            dict: A knowledge-graph dictionary with:
+                - ``entities``: list of ``{"id", "text", "type", "properties",
+                  "metadata"}`` (plus ``valid_from`` / ``valid_until`` when set)
+                - ``relationships``: list of ``{"source_id", "target_id",
+                  "type", "weight", "id", "familyId"}`` (plus ``metadata`` and
+                  ``valid_from`` / ``valid_until`` when set)
+                - ``statistics``: ``{"entity_count", "relationship_count"}``
+        """
+        with self._lock:
+            entities_out = []
+            for n in self.nodes.values():
+                if entities_only and n.node_type != "entity":
+                    continue
+                # Normalize the entity id to ``str`` so it matches ContextEdge,
+                # which coerces its endpoints to ``str`` in ``__post_init__``.
+                # Without this, non-string node ids (e.g. numeric ids loaded via
+                # ``from_dict``) would fail the ``valid_ids`` membership check
+                # below and silently drop otherwise-valid relationships.
+                entity_id = str(n.node_id)
+                entity: Dict[str, Any] = {
+                    "id": entity_id,
+                    "text": n.content,
+                    "type": n.node_type,
+                    # ``properties`` / ``metadata`` may be ``None`` when a node
+                    # was loaded from JSON containing an explicit ``null``;
+                    # guard with ``or {}`` so ``dict(...)`` never raises.
+                    "properties": dict(n.properties or {}),
+                    "metadata": dict(n.metadata or {}),
+                }
+                if n.valid_from is not None:
+                    entity["valid_from"] = n.valid_from
+                if n.valid_until is not None:
+                    entity["valid_until"] = n.valid_until
+                entities_out.append(entity)
+
+            # When only entity nodes are exported, drop relationships whose
+            # endpoints were filtered out so downstream consumers never see a
+            # source_id/target_id that is absent from ``entities``.
+            valid_ids = {e["id"] for e in entities_out} if entities_only else None
+
+            relationships_out = []
+            for e in self.edges:
+                if valid_ids is not None and (
+                    e.source_id not in valid_ids or e.target_id not in valid_ids
+                ):
+                    continue
+                rel: Dict[str, Any] = {
+                    "id": e.edge_id,
+                    "familyId": e.family_id or e.edge_id,
+                    "source_id": e.source_id,
+                    "target_id": e.target_id,
+                    "type": e.edge_type,
+                    "weight": e.weight,
+                }
+                if e.metadata:
+                    rel["metadata"] = dict(e.metadata)
+                if e.valid_from is not None:
+                    rel["valid_from"] = e.valid_from
+                if e.valid_until is not None:
+                    rel["valid_until"] = e.valid_until
+                relationships_out.append(rel)
+
+            return {
+                "entities": entities_out,
+                "relationships": relationships_out,
+                "statistics": {
+                    "entity_count": len(entities_out),
+                    "relationship_count": len(relationships_out),
                 },
             }
 
@@ -2654,9 +3640,15 @@ class ContextGraph:
             target_decision_id: Target decision ID
             relationship_type: Type of relationship (CAUSED, INFLUENCED, PRECEDENT_FOR)
         """
-        valid_types = ["CAUSED", "INFLUENCED", "PRECEDENT_FOR"]
-        if relationship_type not in valid_types:
-            raise ValueError(f"Relationship type must be one of: {valid_types}")
+        # Normalize so callers may use either vocabulary's spelling
+        # ("causes" from CausalChainAnalyzer, or "CAUSED" from this module's
+        # canonical constant); the stored form is always canonical. Invalid
+        # inputs keep raising ValueError rather than AttributeError.
+        if not isinstance(relationship_type, str):
+            raise ValueError(f"Relationship type must be one of: {_CAUSAL_EDGE_TYPES}")
+        relationship_type = _CAUSAL_EDGE_ALIASES.get(relationship_type.strip().upper())
+        if relationship_type is None:
+            raise ValueError(f"Relationship type must be one of: {_CAUSAL_EDGE_TYPES}")
         
         # Check if decisions exist - if not, skip adding relationship
         if source_decision_id not in self.nodes or target_decision_id not in self.nodes:
@@ -2748,11 +3740,11 @@ class ContextGraph:
             # Find connected decisions
             for edge in self.edges:
                 if direction == "upstream":
-                    if edge.target_id == current_id and edge.edge_type in ["CAUSED", "INFLUENCED", "PRECEDENT_FOR"]:
+                    if edge.target_id == current_id and edge.edge_type.upper() in _CAUSAL_TRAVERSAL_TYPES:
                         if edge.source_id not in visited and depth < max_depth:
                             queue.append((edge.source_id, depth + 1))
                 else:  # downstream
-                    if edge.source_id == current_id and edge.edge_type in ["CAUSED", "INFLUENCED", "PRECEDENT_FOR"]:
+                    if edge.source_id == current_id and edge.edge_type.upper() in _CAUSAL_TRAVERSAL_TYPES:
                         if edge.target_id not in visited and depth < max_depth:
                             queue.append((edge.target_id, depth + 1))
         
@@ -2775,10 +3767,13 @@ class ContextGraph:
         Returns:
             List of precedent decisions
         """
-        # Find decisions connected via PRECEDENT_FOR relationships
+        # Find decisions connected via PRECEDENT_FOR relationships, accepting
+        # the analyzer vocabulary's "precedes" spelling as well (issue #1184).
         precedent_ids = []
         for edge in self.edges:
-            if edge.target_id == decision_id and edge.edge_type == "PRECEDENT_FOR":
+            if edge.target_id == decision_id and edge.edge_type.upper() in {
+                "PRECEDENT_FOR", "PRECEDES",
+            }:
                 precedent_ids.append(edge.source_id)
         
         # Convert to Decision objects
@@ -3113,7 +4108,7 @@ class ContextGraph:
         """
         import uuid
         from datetime import datetime
-        
+
         # Input validation
         if not isinstance(category, str) or not category.strip():
             raise ValueError("Category must be a non-empty string")
@@ -3339,8 +4334,13 @@ class ContextGraph:
 
         # Explicit causal relationships recorded via add_causal_relationship() are
         # ground truth and always count as direct influence, in either direction.
-        for edge_type in _CAUSAL_EDGE_TYPES:
-            for edge in self.edge_type_index.get(edge_type, []):
+        # The index is keyed by the raw edge_type string ("causes" and "CAUSED"
+        # are separate keys), so filter by normalized type instead of iterating
+        # a fixed spelling list.
+        for edge_type, edges in self.edge_type_index.items():
+            if edge_type.upper() not in _CAUSAL_TRAVERSAL_TYPES:
+                continue
+            for edge in edges:
                 if edge.source_id == decision_id and edge.target_id in self._decisions:
                     direct_influence.add(edge.target_id)
                 elif edge.target_id == decision_id and edge.source_id in self._decisions:
@@ -3486,8 +4486,12 @@ class ContextGraph:
             # record_decision() (e.g. a graph restored via from_dict), so only
             # causes with a known decision record are kept.
             incoming_causal_edges = defaultdict(list)
-            for edge_type in _CAUSAL_EDGE_TYPES:
-                for edge in self.edge_type_index.get(edge_type, []):
+            # The index is keyed by the raw edge_type string ("causes" and
+            # "CAUSED" are separate keys), so filter by normalized type.
+            for edge_type, edges in self.edge_type_index.items():
+                if edge_type.upper() not in _CAUSAL_TRAVERSAL_TYPES:
+                    continue
+                for edge in edges:
                     if edge.source_id in self._decisions:
                         incoming_causal_edges[edge.target_id].append(edge)
 
