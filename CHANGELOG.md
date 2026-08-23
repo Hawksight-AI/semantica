@@ -400,7 +400,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Entities and relationships round-trip as memory-local provenance only — Markdown import intentionally does not write into `ContextGraph`, matching the MVP scope agreed on in #765
   - Documented the file contract and workflow in `docs/reference/context.md`; 43 new tests in `tests/context/test_agent_memory_markdown.py` cover round-trip losslessness, idempotency, validation errors, rollback on failure, and vector-store sync ordering
 
+- **Markdown directory round trips for `ContextGraph`** (#852) by @SaurabhScripts
+  - `ContextGraph.save_to_file(..., format="markdown")` and `load_from_file(..., format="markdown")` persist a deterministic `graph.md` relationship manifest plus one human-editable Markdown file per node, preserving graph, node, edge, family, temporal, and cross-graph link identities
+  - Imports validate the complete directory before replacing graph state, rebuild indexes and analytics state atomically, create JSON-compatible stub nodes for dangling edge endpoints, and emit the same granular node/edge audit events as JSON loading
+  - Existing exports are replaced atomically only after their complete canonical layout is validated; untracked files, renamed node files, symlinks, Windows directory junctions, and other reparse points cause a fail-closed error instead of authorizing directory deletion
+  - Added 30 focused tests covering deterministic round trips, manual edits, validation rollback, managed-directory identity, publish rollback, audit-manager compatibility, stale-cache clearing, mocked and real Windows junctions, and missing-path behavior
+
 ### Fixed
+
+- **Markdown import followed filesystem links even though Markdown export already refused to overwrite them** (#851, follow-up to #765, #786) by @SaurabhScripts
+  - `AgentMemory._read_markdown_path()` now rejects symlink files, broken symlinks, symlinked directories, Windows directory junctions, and other Windows reparse points supplied directly; linked entries discovered inside an otherwise valid directory are safely skipped, preserving the current directory-import contract
+  - `_read_markdown_file_content()` re-checks the file and parent directory immediately before and after opening, uses `O_NOFOLLOW` where available, and verifies the resulting descriptor is a regular file via `fstat`/`S_ISREG`, so link swaps are rejected rather than silently followed
+  - Junction detection uses `os.path.isjunction()` where available and falls back to the Windows reparse-point file attribute on older Python versions; export applies the same link check before replacing a Markdown file
+  - Documented the import restriction in `docs/reference/context.md`; added 11 tests to `tests/context/test_agent_memory_markdown.py` covering file/directory/broken-symlink rejection, simulated open races, mocked and real Windows junctions, and the reparse-point fallback
+  - Any additional review follow-up commits land in this same PR/entry rather than as a separate changelog item
 
 - **`PipelineWithProvenance` raised `ModuleNotFoundError` on import and `AttributeError` on `.run()`** (#858, closes #858) by @Karunasagar12
   - `from .pipeline import Pipeline` failed because `semantica/pipeline/pipeline.py` does not exist; corrected to `from .pipeline_builder import Pipeline`
