@@ -790,3 +790,7 @@ def register_builtin_nodes(registry: NodeRegistry) -> None:
     ]
     for spec in specs:
         registry.register(spec)
+
+    from .integrations import register_integration_nodes
+
+    register_integration_nodes(registry)

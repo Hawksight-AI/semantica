@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from semantica.flow import (
+    DEFAULT_VERIFIABLE_RULES,
     FlowEngine,
     FlowGraph,
     FlowNode,
@@ -24,7 +25,11 @@ def test_registry_includes_bug_bounty_nodes():
     assert "scope_check" in types
     assert "finding_record" in types
     assert "submission_gate" in types
+    assert "verifiable_rules" in types
+    assert "self_verify" in types
+    assert "ship_loop" in types
     assert "bug_bounty" in registry.categories()
+    assert "agent_os" in registry.categories()
 
 
 def test_bug_bounty_template_structure():
@@ -52,6 +57,10 @@ def test_bug_bounty_flow_executes_successfully():
     assert run.context.get("report")
     assert run.context.get("submission_gate", {}).get("ready") is True
     assert run.context.get("exported_graph", {}).get("nodes")
+    assert run.context.get("verification", {}).get("accepted") is True
+    assert run.context.get("verifiable_rules", {}).get("passed") is True
+    assert run.context.get("ship_loop", {}).get("source") == "cyrilxbt/24h-ship"
+    assert len(DEFAULT_VERIFIABLE_RULES) == 8
 
 
 def test_scope_gate_blocks_out_of_scope_target():

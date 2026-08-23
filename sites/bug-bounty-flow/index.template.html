@@ -491,6 +491,7 @@
         <button class="top-tab" data-view="ontology">Ontology</button>
         <button class="top-tab" data-view="logic">Logic</button>
         <button class="top-tab" data-view="workshop">Workshop</button>
+        <button class="top-tab" data-view="integrations">Integrations</button>
         <button class="top-tab" data-view="compare">AIP Map</button>
       </nav>
       <div class="top-meta">
@@ -507,6 +508,7 @@
         <button class="nav-btn" data-view="ontology"><span class="nav-ico">오브</span><span class="label">Object Explorer</span></button>
         <button class="nav-btn" data-view="logic"><span class="nav-ico">λ</span><span class="label">AIP Logic</span></button>
         <button class="nav-btn" data-view="workshop"><span class="nav-ico">▣</span><span class="label">Workshop</span></button>
+        <button class="nav-btn" data-view="integrations"><span class="nav-ico">✦</span><span class="label">X integrations</span></button>
         <button class="nav-btn" data-view="compare"><span class="nav-ico">⇄</span><span class="label">vs Palantir AIP</span></button>
 
         <div class="catalog">
@@ -534,6 +536,7 @@
           <div id="graph" class="hidden"></div>
           <div class="logic-board hidden" id="logic"></div>
           <div class="workshop-grid hidden" id="workshop"></div>
+          <section class="landing hidden" id="view-integrations"></section>
           <section class="landing hidden" id="view-compare"></section>
         </div>
       </main>
@@ -566,7 +569,11 @@
       ["Duplicate Check", "Semantic near-dupe detection", "logic"],
       ["Severity Triage", "Policy evaluation / action routing", "logic"],
       ["Report Compose", "Structured submission draft", "logic"],
+      ["Sample Candidates", "Jacky: sample 5 drafts for verify-scaling", "logic"],
+      ["Self-Verify", "Jacky: 1–20 scores, pick expected-best", "logic"],
+      ["Verifiable Rules", "Voxyz: 8 checkable instruction blocks", "action"],
       ["Submission Gate", "Human review readiness checklist", "action"],
+      ["24h Ship Loop", "Cyril: smallest live product + hard tests", "action"],
       ["Graph Export", "Export Ontology case package", "data"],
     ];
 
@@ -609,6 +616,7 @@
       ontology: ["Object Explorer", "Browse Ontology objects, link types, and case-graph neighborhoods."],
       logic: ["AIP Logic · bug_bounty_hunting", "Block pipeline: authorize → map surface → record finding → triage → submit."],
       workshop: ["Workshop · Hunt Ops", "Operator module for scope, findings, submission readiness, and audit export."],
+      integrations: ["X integrations", "Cyril 24h ship loop · Voxyz verifiable rules · Jacky self-verification."],
       compare: ["Semantica ↔ Palantir AIP", "Capability map: same ontology-first architecture, open-source and self-hostable."],
     };
 
@@ -623,6 +631,7 @@
       document.getElementById("graph").classList.toggle("hidden", view !== "ontology");
       document.getElementById("logic").classList.toggle("hidden", view !== "logic");
       document.getElementById("workshop").classList.toggle("hidden", view !== "workshop");
+      document.getElementById("view-integrations").classList.toggle("hidden", view !== "integrations");
       document.getElementById("view-compare").classList.toggle("hidden", view !== "compare");
       if (view === "ontology" && window.__network) {
         setTimeout(() => window.__network.fit({ animation: true }), 50);
@@ -646,6 +655,46 @@
             </article>
           `).join("")}
         </div>
+      `;
+    }
+
+    function renderIntegrations() {
+      document.getElementById("view-integrations").innerHTML = `
+        <h1>Integrated from X</h1>
+        <p class="sub">Three public threads folded into Semantica Logic as first-class blocks — not slogans, runnable checks on the Ontology.</p>
+        <div class="cap-grid">
+          <article class="cap">
+            <div class="pal">@cyrilXBT · 24h ship</div>
+            <h3>Smallest live product</h3>
+            <p>Pick one mechanic. Build the one return feature. Test the hidden hard problem (races / retries). Keep the stack boring. Ship. Live: this Workshop.</p>
+            <p style="margin-top:8px"><a href="https://x.com/cyrilxbt/status/2091331618979905582" target="_blank" rel="noreferrer" style="color:#9ec3f5">source →</a></p>
+          </article>
+          <article class="cap">
+            <div class="pal">@Voxyz_ai · instruction OS</div>
+            <h3>8 verifiable rules</h3>
+            <p>No more “never hallucinate.” Every rule states behavior, how to check it, and what to do when evidence is missing. Fail-closed on scope, evidence, provenance, writeback.</p>
+            <p style="margin-top:8px"><a href="https://x.com/voxyz_ai/status/2091206257042452830" target="_blank" rel="noreferrer" style="color:#9ec3f5">source →</a></p>
+          </article>
+          <article class="cap">
+            <div class="pal">@jackyk02 · LLM-as-a-Verifier</div>
+            <h3>Sample 5 → rank 1–20</h3>
+            <p>Generate candidate reports, score criteria (evidence, severity, completeness, no-payload, scope), take the expected score, ship only the winner.</p>
+            <p style="margin-top:8px"><a href="https://x.com/jackyk02/status/2089421448784023553" target="_blank" rel="noreferrer" style="color:#9ec3f5">source →</a></p>
+          </article>
+        </div>
+        <table class="map-table" style="margin-top:22px">
+          <thead><tr><th>Rule id</th><th>Behavior</th><th>Check</th><th>On missing</th></tr></thead>
+          <tbody>
+            <tr><td>scope_bound</td><td>In-scope only</td><td>last_scope_check.allowed</td><td>fail-closed</td></tr>
+            <tr><td>evidence_required</td><td>Hashed evidence required</td><td>len(evidence) ≥ 1</td><td>block record</td></tr>
+            <tr><td>cite_or_drop</td><td>Claims cite evidence ids</td><td>intersection nonempty</td><td>strip claims</td></tr>
+            <tr><td>no_payloads</td><td>Impact notes only</td><td>disclaimer + no payload markers</td><td>refuse compose</td></tr>
+            <tr><td>idempotent_writes</td><td>Retries don’t duplicate</td><td>unique Ontology ids</td><td>re-run dedupe</td></tr>
+            <tr><td>human_writeback</td><td>Submit needs gate</td><td>submission_gate.ready</td><td>keep draft</td></tr>
+            <tr><td>provenance_complete</td><td>Evidence→finding→report</td><td>EVIDENCES / INCLUDES_FINDING</td><td>quarantine</td></tr>
+            <tr><td>self_verify_before_ship</td><td>Winner above min score</td><td>expected_score ≥ 12</td><td>sample more</td></tr>
+          </tbody>
+        </table>
       `;
     }
 
@@ -839,6 +888,7 @@ Result: PASS</pre>
 
     renderOverview();
     renderCompare();
+    renderIntegrations();
     renderLogic();
     renderWorkshop();
     renderRight();

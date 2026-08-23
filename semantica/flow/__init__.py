@@ -18,6 +18,7 @@ from .models import (
     NodeStatus,
 )
 from .registry import NodeRegistry, NodeTypeSpec, get_default_registry
+from .integrations import DEFAULT_VERIFIABLE_RULES
 from .templates import FlowTemplateManager, build_bug_bounty_hunting_flow
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "NodeRegistry",
     "NodeStatus",
     "NodeTypeSpec",
+    "DEFAULT_VERIFIABLE_RULES",
     "build_bug_bounty_hunting_flow",
     "get_default_registry",
 ]
