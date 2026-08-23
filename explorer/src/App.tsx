@@ -14,6 +14,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -31,8 +32,9 @@ const EntityResolutionTab = lazy(() => import('./workspaces/EnrichWorkspace/Enti
 const KGOverviewTab = lazy(() => import('./workspaces/ManageWorkspace/KGOverviewTab').then((module) => ({ default: module.KGOverviewTab })));
 const OntologySummaryTab = lazy(() => import('./workspaces/ManageWorkspace/OntologySummaryTab').then((module) => ({ default: module.OntologySummaryTab })));
 const OntologyWorkspace = lazy(() => import('./workspaces/OntologyWorkspace').then((module) => ({ default: module.OntologyWorkspace })));
+const FlowWorkspace = lazy(() => import('./workspaces/FlowWorkspace/FlowWorkspace').then((module) => ({ default: module.FlowWorkspace })));
 
-type WorkspaceId = 'welcome' | 'explore' | 'analyze' | 'decisions' | 'enrich' | 'manage' | 'ontology-hub';
+type WorkspaceId = 'welcome' | 'explore' | 'analyze' | 'decisions' | 'enrich' | 'manage' | 'ontology-hub' | 'flows';
 type ExploreView = 'graph' | 'vocabulary';
 type AnalyzeView = 'sparql' | 'reasoning';
 type EnrichView = 'import' | 'merge' | 'registry' | 'resolve';
@@ -88,6 +90,7 @@ const navItems: NavItem[] = [
   { id: 'explore', label: 'Knowledge Explorer', hint: 'Graph and vocabulary browsing', icon: Database },
   { id: 'analyze', label: 'Analyze', hint: 'Query and inspect the dataset', icon: FileSearch },
   { id: 'decisions', label: 'Decisions', hint: 'Decision chains and precedent review', icon: Scale },
+  { id: 'flows', label: 'Flow Studio', hint: 'n8n-style bug bounty graph workflows', icon: Workflow },
   { id: 'enrich', label: 'Enrich', hint: 'Import, export, and merge workflows', icon: GitBranchPlus },
   { id: 'manage', label: 'Manage', hint: 'Lineage and governance tooling', icon: Settings2 },
   { id: 'ontology-hub', label: 'Ontology Hub', hint: 'Schema governance, registry, and vocabulary management', icon: GitMerge },
@@ -1508,6 +1511,7 @@ function WelcomeScreen({
   onOpenReasoning,
   onOpenImport,
   onOpenDecisions,
+  onOpenFlows,
   onOpenManage,
 }: {
   onOpenNetwork: () => void;
@@ -1515,6 +1519,7 @@ function WelcomeScreen({
   onOpenReasoning: () => void;
   onOpenImport: () => void;
   onOpenDecisions: () => void;
+  onOpenFlows: () => void;
   onOpenManage: () => void;
 }) {
   const [stats, setStats] = useState<{ nodes: number | null; edges: number | null; status: ConnectionStatus }>({
@@ -1576,6 +1581,12 @@ function WelcomeScreen({
       description: 'Chains and precedents',
       icon: Scale,
       onClick: onOpenDecisions,
+    },
+    {
+      label: 'Flow Studio',
+      description: 'Bug bounty graph flows',
+      icon: Workflow,
+      onClick: onOpenFlows,
     },
     {
       label: 'Enrich',
@@ -1802,6 +1813,7 @@ export default function App() {
             setEnrichView('import');
           }}
           onOpenDecisions={() => setActiveWorkspace('decisions')}
+          onOpenFlows={() => setActiveWorkspace('flows')}
           onOpenManage={() => setActiveWorkspace('manage')}
         />
       );
@@ -1875,6 +1887,23 @@ export default function App() {
           <ErrorBoundary key="decisions">
             <Suspense fallback={<WorkspaceFallback />}>
               <DecisionWorkspace />
+            </Suspense>
+          </ErrorBoundary>
+        </WorkspaceShell>
+      );
+    }
+
+    if (activeWorkspace === 'flows') {
+      return (
+        <WorkspaceShell
+          title="Flow Studio"
+          subtitle="n8n-style graph workflows for authorized bug bounty case management."
+          kicker="Graph Engineering"
+          compact
+        >
+          <ErrorBoundary key="flows">
+            <Suspense fallback={<WorkspaceFallback />}>
+              <FlowWorkspace />
             </Suspense>
           </ErrorBoundary>
         </WorkspaceShell>

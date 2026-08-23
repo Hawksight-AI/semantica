@@ -353,6 +353,7 @@ def test_template_manager_defaults(template_manager):
     assert "document_processing" in templates
     assert "rag_pipeline" in templates
     assert "kg_construction" in templates
+    assert "bug_bounty_hunting" in templates
 
 def test_template_manager_get_template(template_manager):
     template = template_manager.get_template("document_processing")
