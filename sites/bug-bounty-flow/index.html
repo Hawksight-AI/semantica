@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Semantica — Bug Bounty Flow Graph</title>
+  <meta name="description" content="Semantica Flow Studio case graph for authorized bug bounty hunting." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Manrope:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    :root {
+      --ink: #14201c;
+      --mist: #e8f0ea;
+      --paper: #f3f7f4;
+      --teal: #0f766e;
+      --teal-bright: #14b8a6;
+      --amber: #c27803;
+      --line: rgba(20, 32, 28, 0.12);
+      --muted: rgba(20, 32, 28, 0.62);
+      --panel: rgba(243, 247, 244, 0.82);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: "Manrope", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse 80% 55% at 12% -10%, rgba(20, 184, 166, 0.22), transparent 55%),
+        radial-gradient(ellipse 70% 50% at 100% 0%, rgba(194, 120, 3, 0.14), transparent 50%),
+        linear-gradient(160deg, #eef5f0 0%, #d9e8df 42%, #e7eef5 100%);
+      overflow: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(20, 32, 28, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(20, 32, 28, 0.035) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(circle at 50% 30%, #000 20%, transparent 78%);
+    }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .top {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 28px 36px 18px;
+      animation: rise 700ms ease both;
+    }
+
+    .brand-block { max-width: 720px; }
+    .brand {
+      font-family: "Syne", sans-serif;
+      font-weight: 800;
+      font-size: clamp(2.4rem, 5vw, 4.2rem);
+      line-height: 0.92;
+      letter-spacing: -0.04em;
+      margin: 0 0 12px;
+    }
+    .brand span {
+      display: inline-block;
+      background: linear-gradient(120deg, var(--ink) 20%, var(--teal) 70%, var(--amber));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .headline {
+      font-family: "Syne", sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+      margin: 0 0 8px;
+      letter-spacing: -0.02em;
+    }
+    .lede {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.98rem;
+      max-width: 46ch;
+      line-height: 1.45;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      padding-bottom: 4px;
+      animation: rise 900ms ease both;
+    }
+    .btn {
+      appearance: none;
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--paper);
+      font: 600 0.85rem/1 "Manrope", sans-serif;
+      padding: 12px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 160ms ease, background 160ms ease;
+    }
+    .btn:hover { transform: translateY(-1px); background: #0c1613; }
+    .btn.ghost {
+      background: transparent;
+      color: var(--ink);
+    }
+    .btn.ghost:hover { background: rgba(20, 32, 28, 0.06); }
+
+    .stage {
+      position: relative;
+      margin: 0 18px 18px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      overflow: hidden;
+      min-height: 0;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0.18)),
+        rgba(243, 247, 244, 0.55);
+      box-shadow: 0 30px 80px rgba(20, 32, 28, 0.08);
+      animation: bloom 1100ms ease both;
+    }
+
+    #graph {
+      width: 100%;
+      height: 100%;
+      min-height: 520px;
+    }
+
+    .hud {
+      position: absolute;
+      left: 18px;
+      bottom: 18px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      max-width: min(720px, calc(100% - 36px));
+      pointer-events: none;
+    }
+    .chip {
+      pointer-events: none;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+
+    .inspector {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: min(320px, calc(100% - 36px));
+      padding: 16px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+      transform: translateY(8px);
+      opacity: 0;
+      transition: opacity 200ms ease, transform 200ms ease;
+      pointer-events: none;
+    }
+    .inspector.show {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .inspector h2 {
+      margin: 0 0 6px;
+      font-family: "Syne", sans-serif;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+    .inspector .type {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 11px;
+      color: var(--teal);
+      margin-bottom: 10px;
+    }
+    .inspector pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+      max-height: 240px;
+      overflow: auto;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes bloom {
+      from { opacity: 0; transform: translateY(18px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @media (max-width: 860px) {
+      body { overflow: auto; }
+      .shell { min-height: 100%; height: auto; }
+      .top {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 22px 18px 12px;
+      }
+      .stage {
+        margin: 0 12px 12px;
+        height: 70vh;
+        min-height: 480px;
+      }
+      .inspector {
+        position: static;
+        width: auto;
+        margin: 12px;
+        opacity: 1;
+        transform: none;
+      }
+      .inspector:not(.show) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="top">
+      <div class="brand-block">
+        <h1 class="brand"><span>Semantica</span></h1>
+        <p class="headline">Bug bounty hunting as a living case graph.</p>
+        <p class="lede">
+          Scope gates, assets, evidence, findings, and reports — orchestrated as an n8n-style flow, then projected into one accountable knowledge graph.
+        </p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="fitBtn" type="button">Fit graph</button>
+        <a class="btn ghost" href="https://github.com/semantica-agi/semantica/pull/1190" target="_blank" rel="noreferrer">View PR</a>
+      </div>
+    </header>
+
+    <section class="stage" aria-label="Case graph canvas">
+      <div id="graph"></div>
+      <div class="hud" id="hud"></div>
+      <aside class="inspector" id="inspector">
+        <h2 id="inspTitle">Node</h2>
+        <div class="type" id="inspType"></div>
+        <pre id="inspBody"></pre>
+      </aside>
+    </section>
+  </div>
+
+  <script>
+    const GRAPH = {
+  "nodes": [
+    {
+      "id": "program:acme-public-bb",
+      "type": "BugBountyProgram",
+      "label": "acme-public-bb",
+      "properties": {
+        "program_name": "acme-public-bb",
+        "in_scope": [
+          "*.acme.example",
+          "acme.example"
+        ],
+        "out_of_scope": [
+          "blog.acme.example"
+        ],
+        "rules": [
+          "Only test assets listed as in-scope",
+          "No DoS, no social engineering, no data destruction",
+          "Report via the program channel with clear impact"
+        ],
+        "max_severity": "critical",
+        "loaded_at": "2026-08-23T08:53:51.344231+00:00"
+      }
+    },
+    {
+      "id": "target:app.acme.example",
+      "type": "Target",
+      "label": "app.acme.example",
+      "properties": {
+        "target": "app.acme.example",
+        "normalized": "app.acme.example",
+        "in_scope": true,
+        "allowed": true,
+        "checked_at": "2026-08-23T08:53:51.344276+00:00"
+      }
+    },
+    {
+      "id": "asset:app.acme.example",
+      "type": "Asset",
+      "label": "app.acme.example",
+      "properties": {
+        "id": "asset:app.acme.example",
+        "host": "app.acme.example",
+        "kind": "web",
+        "tags": [
+          "primary"
+        ],
+        "notes": "",
+        "registered_at": "2026-08-23T08:53:51.344299+00:00"
+      }
+    },
+    {
+      "id": "asset:api.acme.example",
+      "type": "Asset",
+      "label": "api.acme.example",
+      "properties": {
+        "id": "asset:api.acme.example",
+        "host": "api.acme.example",
+        "kind": "api",
+        "tags": [
+          "backend"
+        ],
+        "notes": "",
+        "registered_at": "2026-08-23T08:53:51.344307+00:00"
+      }
+    },
+    {
+      "id": "asset:auth.acme.example",
+      "type": "Asset",
+      "label": "auth.acme.example",
+      "properties": {
+        "id": "asset:auth.acme.example",
+        "host": "auth.acme.example",
+        "kind": "identity",
+        "tags": [
+          "auth"
+        ],
+        "notes": "",
+        "registered_at": "2026-08-23T08:53:51.344312+00:00"
+      }
+    },
+    {
+      "id": "evidence:2b0e2d3c87d48791",
+      "type": "Evidence",
+      "label": "Research notes",
+      "properties": {
+        "id": "evidence:2b0e2d3c87d48791",
+        "title": "Research notes",
+        "text": "Authorized research notes / response metadata (no PII).",
+        "source": "researcher",
+        "collected_at": "2026-08-23T08:53:51.344359+00:00",
+        "hash": "2b0e2d3c87d48791"
+      }
+    },
+    {
+      "id": "surface:root",
+      "type": "AttackSurface",
+      "label": "Attack Surface Map",
+      "properties": {
+        "built_at": "2026-08-23T08:53:51.344378+00:00",
+        "asset_count": 3
+      }
+    },
+    {
+      "id": "finding:44a8fb25eb",
+      "type": "Finding",
+      "label": "Broken access control on project export",
+      "properties": {
+        "id": "finding:44a8fb25eb",
+        "title": "Broken access control on project export",
+        "severity": "high",
+        "description": "Export endpoint accepted another tenant project id under authorized testing.",
+        "asset": "app.acme.example",
+        "cwe": "CWE-284",
+        "evidence_ids": [
+          "evidence:2b0e2d3c87d48791"
+        ],
+        "status": "draft",
+        "recorded_at": "2026-08-23T08:53:51.344502+00:00",
+        "program": "acme-public-bb"
+      }
+    },
+    {
+      "id": "decision:finding:44a8fb25eb",
+      "type": "Decision",
+      "label": "Record: Broken access control on project export",
+      "properties": {
+        "id": "decision:finding:44a8fb25eb",
+        "category": "bug_bounty_finding",
+        "scenario": "Broken access control on project export",
+        "reasoning": "Export endpoint accepted another tenant project id under authorized testing.",
+        "outcome": "recorded",
+        "confidence": 0.75,
+        "metadata": {
+          "id": "finding:44a8fb25eb",
+          "title": "Broken access control on project export",
+          "severity": "high",
+          "description": "Export endpoint accepted another tenant project id under authorized testing.",
+          "asset": "app.acme.example",
+          "cwe": "CWE-284",
+          "evidence_ids": [
+            "evidence:2b0e2d3c87d48791"
+          ],
+          "status": "draft",
+          "recorded_at": "2026-08-23T08:53:51.344502+00:00",
+          "program": "acme-public-bb"
+        }
+      }
+    },
+    {
+      "id": "report:d8f48f6c91",
+      "type": "Report",
+      "label": "acme-public-bb \u2014 draft submission",
+      "properties": {
+        "id": "report:d8f48f6c91"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e:scope:app.acme.example",
+      "source": "program:acme-public-bb",
+      "target": "target:app.acme.example",
+      "type": "IN_SCOPE"
+    },
+    {
+      "id": "e:owns:asset:app.acme.example",
+      "source": "program:acme-public-bb",
+      "target": "asset:app.acme.example",
+      "type": "OWNS"
+    },
+    {
+      "id": "e:owns:asset:api.acme.example",
+      "source": "program:acme-public-bb",
+      "target": "asset:api.acme.example",
+      "type": "OWNS"
+    },
+    {
+      "id": "e:owns:asset:auth.acme.example",
+      "source": "program:acme-public-bb",
+      "target": "asset:auth.acme.example",
+      "type": "OWNS"
+    },
+    {
+      "id": "e:surface:asset:app.acme.example",
+      "source": "surface:root",
+      "target": "asset:app.acme.example",
+      "type": "INCLUDES"
+    },
+    {
+      "id": "e:surface:asset:api.acme.example",
+      "source": "surface:root",
+      "target": "asset:api.acme.example",
+      "type": "INCLUDES"
+    },
+    {
+      "id": "e:surface:asset:auth.acme.example",
+      "source": "surface:root",
+      "target": "asset:auth.acme.example",
+      "type": "INCLUDES"
+    },
+    {
+      "id": "e:rel:8b5741a0",
+      "source": "asset:app.acme.example",
+      "target": "asset:api.acme.example",
+      "type": "CALLS"
+    },
+    {
+      "id": "e:rel:62ae4f86",
+      "source": "asset:app.acme.example",
+      "target": "asset:auth.acme.example",
+      "type": "AUTHENTICATES_VIA"
+    },
+    {
+      "id": "e:dec:finding:44a8fb25eb",
+      "source": "decision:finding:44a8fb25eb",
+      "target": "finding:44a8fb25eb",
+      "type": "RECORDS"
+    },
+    {
+      "id": "e:aff:finding:44a8fb25eb",
+      "source": "finding:44a8fb25eb",
+      "target": "asset:app.acme.example",
+      "type": "AFFECTS"
+    },
+    {
+      "id": "e:fe:finding:44a8fb25eb:evidence:2b0e2d3c87d48791",
+      "source": "evidence:2b0e2d3c87d48791",
+      "target": "finding:44a8fb25eb",
+      "type": "EVIDENCES"
+    },
+    {
+      "id": "e:rep:report:d8f48f6c91:finding:44a8fb25eb",
+      "source": "report:d8f48f6c91",
+      "target": "finding:44a8fb25eb",
+      "type": "INCLUDES_FINDING"
+    }
+  ],
+  "exported_at": "2026-08-23T08:53:51.344696+00:00",
+  "format": "semantica_case_graph"
+};
+
+    const COLORS = {
+      BugBountyProgram: "#0f766e",
+      Target: "#0ea5a0",
+      Asset: "#1d4ed8",
+      Evidence: "#a16207",
+      AttackSurface: "#15803d",
+      Finding: "#b45309",
+      Decision: "#92400e",
+      Report: "#047857",
+    };
+
+    const hud = document.getElementById("hud");
+    const counts = GRAPH.nodes.reduce((acc, n) => {
+      acc[n.type] = (acc[n.type] || 0) + 1;
+      return acc;
+    }, {});
+    hud.innerHTML = [
+      `<span class="chip">${GRAPH.nodes.length} nodes</span>`,
+      `<span class="chip">${GRAPH.edges.length} edges</span>`,
+      ...Object.entries(counts).map(([k, v]) => `<span class="chip">${k} ${v}</span>`),
+    ].join("");
+
+    const nodes = new vis.DataSet(
+      GRAPH.nodes.map((n) => ({
+        id: n.id,
+        label: n.label,
+        group: n.type,
+        title: `${n.type}\n${n.id}`,
+        color: {
+          background: COLORS[n.type] || "#334155",
+          border: "rgba(20,32,28,0.25)",
+          highlight: { background: "#14201c", border: "#14b8a6" },
+          hover: { background: COLORS[n.type] || "#334155", border: "#14b8a6" },
+        },
+        font: { color: "#f3f7f4", face: "Manrope", size: 13, bold: true },
+        shape: "box",
+        margin: 14,
+        widthConstraint: { maximum: 180 },
+        raw: n,
+      }))
+    );
+
+    const edges = new vis.DataSet(
+      GRAPH.edges.map((e) => ({
+        id: e.id,
+        from: e.source,
+        to: e.target,
+        label: e.type,
+        arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+        color: { color: "rgba(20,32,28,0.35)", highlight: "#0f766e" },
+        font: { color: "#3f5a4f", size: 10, strokeWidth: 0, face: "IBM Plex Mono" },
+        smooth: { type: "cubicBezier", forceDirection: "vertical", roundness: 0.4 },
+      }))
+    );
+
+    const network = new vis.Network(
+      document.getElementById("graph"),
+      { nodes, edges },
+      {
+        interaction: { hover: true, tooltipDelay: 80, multiselect: false },
+        physics: {
+          enabled: true,
+          barnesHut: {
+            gravitationalConstant: -16000,
+            springLength: 130,
+            springConstant: 0.03,
+            damping: 0.4,
+          },
+          stabilization: { iterations: 120 },
+        },
+        layout: { improvedLayout: true },
+      }
+    );
+
+    const inspector = document.getElementById("inspector");
+    network.on("click", (params) => {
+      if (!params.nodes.length) {
+        inspector.classList.remove("show");
+        return;
+      }
+      const node = nodes.get(params.nodes[0]);
+      document.getElementById("inspTitle").textContent = node.label;
+      document.getElementById("inspType").textContent = node.group;
+      document.getElementById("inspBody").textContent = JSON.stringify(node.raw.properties || {}, null, 2);
+      inspector.classList.add("show");
+    });
+
+    document.getElementById("fitBtn").addEventListener("click", () => network.fit({ animation: true }));
+    network.once("stabilizationIterationsDone", () => {
+      network.setOptions({ physics: false });
+      network.fit({ animation: false });
+    });
+  </script>
+</body>
+</html>

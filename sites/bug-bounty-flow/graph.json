@@ -1,0 +1,241 @@
+{
+  "nodes": [
+    {
+      "id": "program:acme-public-bb",
+      "type": "BugBountyProgram",
+      "label": "acme-public-bb",
+      "properties": {
+        "program_name": "acme-public-bb",
+        "in_scope": [
+          "*.acme.example",
+          "acme.example"
+        ],
+        "out_of_scope": [
+          "blog.acme.example"
+        ],
+        "rules": [
+          "Only test assets listed as in-scope",
+          "No DoS, no social engineering, no data destruction",
+          "Report via the program channel with clear impact"
+        ],
+        "max_severity": "critical",
+        "loaded_at": "2026-08-23T08:53:51.344231+00:00"
+      }
+    },
+    {
+      "id": "target:app.acme.example",
+      "type": "Target",
+      "label": "app.acme.example",
+      "properties": {
+        "target": "app.acme.example",
+        "normalized": "app.acme.example",
+        "in_scope": true,
+        "allowed": true,
+        "checked_at": "2026-08-23T08:53:51.344276+00:00"
+      }
+    },
+    {
+      "id": "asset:app.acme.example",
+      "type": "Asset",
+      "label": "app.acme.example",
+      "properties": {
+        "id": "asset:app.acme.example",
+        "host": "app.acme.example",
+        "kind": "web",
+        "tags": [
+          "primary"
+        ],
+        "notes": "",
+        "registered_at": "2026-08-23T08:53:51.344299+00:00"
+      }
+    },
+    {
+      "id": "asset:api.acme.example",
+      "type": "Asset",
+      "label": "api.acme.example",
+      "properties": {
+        "id": "asset:api.acme.example",
+        "host": "api.acme.example",
+        "kind": "api",
+        "tags": [
+          "backend"
+        ],
+        "notes": "",
+        "registered_at": "2026-08-23T08:53:51.344307+00:00"
+      }
+    },
+    {
+      "id": "asset:auth.acme.example",
+      "type": "Asset",
+      "label": "auth.acme.example",
+      "properties": {
+        "id": "asset:auth.acme.example",
+        "host": "auth.acme.example",
+        "kind": "identity",
+        "tags": [
+          "auth"
+        ],
+        "notes": "",
+        "registered_at": "2026-08-23T08:53:51.344312+00:00"
+      }
+    },
+    {
+      "id": "evidence:2b0e2d3c87d48791",
+      "type": "Evidence",
+      "label": "Research notes",
+      "properties": {
+        "id": "evidence:2b0e2d3c87d48791",
+        "title": "Research notes",
+        "text": "Authorized research notes / response metadata (no PII).",
+        "source": "researcher",
+        "collected_at": "2026-08-23T08:53:51.344359+00:00",
+        "hash": "2b0e2d3c87d48791"
+      }
+    },
+    {
+      "id": "surface:root",
+      "type": "AttackSurface",
+      "label": "Attack Surface Map",
+      "properties": {
+        "built_at": "2026-08-23T08:53:51.344378+00:00",
+        "asset_count": 3
+      }
+    },
+    {
+      "id": "finding:44a8fb25eb",
+      "type": "Finding",
+      "label": "Broken access control on project export",
+      "properties": {
+        "id": "finding:44a8fb25eb",
+        "title": "Broken access control on project export",
+        "severity": "high",
+        "description": "Export endpoint accepted another tenant project id under authorized testing.",
+        "asset": "app.acme.example",
+        "cwe": "CWE-284",
+        "evidence_ids": [
+          "evidence:2b0e2d3c87d48791"
+        ],
+        "status": "draft",
+        "recorded_at": "2026-08-23T08:53:51.344502+00:00",
+        "program": "acme-public-bb"
+      }
+    },
+    {
+      "id": "decision:finding:44a8fb25eb",
+      "type": "Decision",
+      "label": "Record: Broken access control on project export",
+      "properties": {
+        "id": "decision:finding:44a8fb25eb",
+        "category": "bug_bounty_finding",
+        "scenario": "Broken access control on project export",
+        "reasoning": "Export endpoint accepted another tenant project id under authorized testing.",
+        "outcome": "recorded",
+        "confidence": 0.75,
+        "metadata": {
+          "id": "finding:44a8fb25eb",
+          "title": "Broken access control on project export",
+          "severity": "high",
+          "description": "Export endpoint accepted another tenant project id under authorized testing.",
+          "asset": "app.acme.example",
+          "cwe": "CWE-284",
+          "evidence_ids": [
+            "evidence:2b0e2d3c87d48791"
+          ],
+          "status": "draft",
+          "recorded_at": "2026-08-23T08:53:51.344502+00:00",
+          "program": "acme-public-bb"
+        }
+      }
+    },
+    {
+      "id": "report:d8f48f6c91",
+      "type": "Report",
+      "label": "acme-public-bb \u2014 draft submission",
+      "properties": {
+        "id": "report:d8f48f6c91"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e:scope:app.acme.example",
+      "source": "program:acme-public-bb",
+      "target": "target:app.acme.example",
+      "type": "IN_SCOPE"
+    },
+    {
+      "id": "e:owns:asset:app.acme.example",
+      "source": "program:acme-public-bb",
+      "target": "asset:app.acme.example",
+      "type": "OWNS"
+    },
+    {
+      "id": "e:owns:asset:api.acme.example",
+      "source": "program:acme-public-bb",
+      "target": "asset:api.acme.example",
+      "type": "OWNS"
+    },
+    {
+      "id": "e:owns:asset:auth.acme.example",
+      "source": "program:acme-public-bb",
+      "target": "asset:auth.acme.example",
+      "type": "OWNS"
+    },
+    {
+      "id": "e:surface:asset:app.acme.example",
+      "source": "surface:root",
+      "target": "asset:app.acme.example",
+      "type": "INCLUDES"
+    },
+    {
+      "id": "e:surface:asset:api.acme.example",
+      "source": "surface:root",
+      "target": "asset:api.acme.example",
+      "type": "INCLUDES"
+    },
+    {
+      "id": "e:surface:asset:auth.acme.example",
+      "source": "surface:root",
+      "target": "asset:auth.acme.example",
+      "type": "INCLUDES"
+    },
+    {
+      "id": "e:rel:8b5741a0",
+      "source": "asset:app.acme.example",
+      "target": "asset:api.acme.example",
+      "type": "CALLS"
+    },
+    {
+      "id": "e:rel:62ae4f86",
+      "source": "asset:app.acme.example",
+      "target": "asset:auth.acme.example",
+      "type": "AUTHENTICATES_VIA"
+    },
+    {
+      "id": "e:dec:finding:44a8fb25eb",
+      "source": "decision:finding:44a8fb25eb",
+      "target": "finding:44a8fb25eb",
+      "type": "RECORDS"
+    },
+    {
+      "id": "e:aff:finding:44a8fb25eb",
+      "source": "finding:44a8fb25eb",
+      "target": "asset:app.acme.example",
+      "type": "AFFECTS"
+    },
+    {
+      "id": "e:fe:finding:44a8fb25eb:evidence:2b0e2d3c87d48791",
+      "source": "evidence:2b0e2d3c87d48791",
+      "target": "finding:44a8fb25eb",
+      "type": "EVIDENCES"
+    },
+    {
+      "id": "e:rep:report:d8f48f6c91:finding:44a8fb25eb",
+      "source": "report:d8f48f6c91",
+      "target": "finding:44a8fb25eb",
+      "type": "INCLUDES_FINDING"
+    }
+  ],
+  "exported_at": "2026-08-23T08:53:51.344696+00:00",
+  "format": "semantica_case_graph"
+}
