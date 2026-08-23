@@ -85,3 +85,49 @@ if __name__ == '__main__':
         runner = unittest.TextTestRunner(stream=f, verbosity=2)
         unittest.main(testRunner=runner, exit=False)
 
+
+class TestMethodDispatchRecursion(unittest.TestCase):
+    """#994: built-in aliases are registered in the method registry onto the
+    wrapper functions themselves, so dispatching through the registry called a
+    wrapper back into itself with the same default method — a recursion storm
+    that surfaced as `maximum recursion depth exceeded` during model loading."""
+
+    def test_generate_embeddings_default_does_not_self_recurse(self):
+        from semantica.embeddings.methods import generate_embeddings
+        emb = generate_embeddings("recursion probe")
+        self.assertIsNotNone(emb)
+
+    def test_embed_text_default_does_not_self_recurse(self):
+        from semantica.embeddings.methods import embed_text
+        emb = embed_text("recursion probe", method="sentence_transformers")
+        self.assertIsNotNone(emb)
+
+    def test_custom_registered_method_still_wins(self):
+        from semantica.embeddings.methods import method_registry
+        calls = []
+
+        def spy(data, *a, **k):
+            calls.append(data)
+            return {"custom": True}
+
+        method_registry.register("generation", "my_custom_gen", spy)
+        try:
+            from semantica.embeddings.methods import generate_embeddings
+            out = generate_embeddings("payload", method="my_custom_gen")
+            self.assertEqual(out, {"custom": True})
+            self.assertEqual(calls, ["payload"])
+        finally:
+            method_registry.unregister("generation", "my_custom_gen")
+
+    def test_provenance_wrapper_missing_generator_raises_attribute_error(self):
+        # Partially-initialised wrappers (failed __init__, pickle/copy probes)
+        # must raise AttributeError, not RecursionError via __getattr__.
+        from semantica.embeddings.embeddings_provenance import (
+            EmbeddingGeneratorWithProvenance,
+        )
+        bare = EmbeddingGeneratorWithProvenance.__new__(
+            EmbeddingGeneratorWithProvenance
+        )
+        with self.assertRaises(AttributeError):
+            getattr(bare, "model")
+

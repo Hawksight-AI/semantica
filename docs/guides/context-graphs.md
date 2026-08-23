@@ -436,6 +436,35 @@ d = graph.to_dict()
 # d["statistics"] → {"node_count": int, "edge_count": int}
 ```
 
+For a human-editable, version-control-friendly representation, save a Markdown
+directory instead:
+
+```python
+graph.save_to_file("context_graph/", format="markdown")
+
+restored = ContextGraph(advanced_analytics=True)
+restored.load_from_file("context_graph/", format="markdown")
+```
+
+The directory contains a versioned `graph.md` manifest for graph identity,
+relationships, and cross-graph link descriptors, plus one file per node under
+`nodes/`. A node's content is its Markdown body; its ID, type, properties,
+metadata, and temporal validity are YAML frontmatter. Node, edge, family, graph,
+and cross-graph link IDs are preserved across round trips.
+
+Markdown loading uses replacement semantics, like `from_dict()`: it parses and
+validates the complete directory before replacing the current graph. Invalid YAML,
+duplicate IDs, unsupported versions, and unsafe filesystem links fail without
+partially mutating the graph. As with JSON loading, an edge endpoint without a node
+file creates an `entity` stub node. Symlinks, Windows directory junctions, and other
+Windows reparse points are rejected.
+
+Re-exporting to an existing managed directory atomically replaces it, removing stale
+node files. Before replacement, Semantica validates the complete canonical export
+layout, not just the manifest header. Untracked files, assets, extra directories, or
+renamed node files therefore cause the export to fail closed instead of being deleted.
+Keep attachments and hand-written indexes outside the managed export directory.
+
 If the graph had cross-graph links created with `link_graph()`, call `resolve_links()` after loading to restore live navigation — object references cannot be serialized, so they must be reconnected manually:
 
 ```python
