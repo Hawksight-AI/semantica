@@ -36,7 +36,12 @@ import threading
 from .schemas import ProvenanceEntry, SourceReference, AgentRecord, ActivityRecord
 from .storage import ProvenanceStorage, InMemoryStorage, SQLiteStorage
 from .integrity import compute_checksum, verify_checksum
+from ..utils.helpers import to_utc_datetime, utc_now_iso
 from ..utils.logging import get_logger
+
+#: Sort key for an entry whose timestamp cannot be read as one, so an
+#: unreadable value orders first instead of raising during a sort.
+_EPOCH = datetime(1, 1, 1, tzinfo=timezone.utc)
 
 # Issue #825, Part B Tier 3 — configurable base URI for export_prov(), shared
 # with RDFExporter's NamespaceManager "semantica" entry (semantica/export/
@@ -44,50 +49,6 @@ from ..utils.logging import get_logger
 # entity_id co-resolve to the same namespace instead of two different
 # placeholder domains.
 DEFAULT_BASE_URI = "https://semantica.dev/ns#"
-
-
-# Timestamps written before #946 used ``datetime.utcnow().isoformat()``, which
-# is UTC with no offset; timestamps written after use
-# ``datetime.now(timezone.utc).isoformat()``, which carries "+00:00". Both name
-# the same instant, but comparing them as raw strings does not: the longer
-# offset-bearing form sorts above a naive bound at the identical instant, so a
-# record lands outside a range that should contain it. Every comparison of a
-# stored timestamp therefore goes through _parse_timestamp() first. This
-# mirrors ProvenanceTracker._parse_dt() in kg/provenance_tracker.py, the class
-# ProvenanceManager replaces, so both sides of the migration answer a range
-# query the same way.
-_MIN_UTC = datetime.min.replace(tzinfo=timezone.utc)
-
-
-def _parse_timestamp(value: Any) -> datetime:
-    """Parse a datetime or ISO 8601 string into an aware UTC datetime.
-
-    Naive values are treated as UTC rather than local time, because that is
-    what the naive stamps in existing stores mean.
-
-    Args:
-        value: ``datetime`` or ISO 8601 string. A trailing "Z" is accepted and
-            normalized, since ``datetime.fromisoformat`` does not parse it
-            before Python 3.11 and this project supports 3.8+.
-
-    Returns:
-        A timezone-aware ``datetime`` in UTC.
-
-    Raises:
-        ValueError: if a string value is not a parseable ISO 8601 timestamp.
-        TypeError: if value is neither a ``datetime`` nor a string.
-    """
-    if isinstance(value, datetime):
-        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-    if not isinstance(value, str):
-        raise TypeError(
-            f"Expected a datetime or ISO 8601 string, got {type(value).__name__}"
-        )
-    text = value.strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    parsed = datetime.fromisoformat(text)
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
 @contextmanager
@@ -407,12 +368,8 @@ class ProvenanceManager:
                     source_quote=kwargs.get("source_quote"),
                     confidence=kwargs.get("confidence", 1.0),
                     metadata=metadata or {},
-                    first_seen=(
-                        existing.first_seen
-                        if existing
-                        else datetime.now(timezone.utc).isoformat()
-                    ),
-                    last_updated=datetime.now(timezone.utc).isoformat(),
+                    first_seen=existing.first_seen if existing else utc_now_iso(),
+                    last_updated=utc_now_iso(),
                     parent_entity_id=parent_id,
                     used_entities=list(kwargs.get("used_entities", [])),
                     activity_started_at_time=activity_info["activity_started_at_time"],
@@ -503,8 +460,8 @@ class ProvenanceManager:
             source_location=kwargs.get("source_location"),
             confidence=kwargs.get("confidence", 1.0),
             metadata=metadata or {},
-            first_seen=datetime.now(timezone.utc).isoformat(),
-            last_updated=datetime.now(timezone.utc).isoformat(),
+            first_seen=utc_now_iso(),
+            last_updated=utc_now_iso(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
             acted_on_behalf_of=kwargs.get("acted_on_behalf_of"),
@@ -582,7 +539,7 @@ class ProvenanceManager:
             # split (issue #825, Part A item 4).
             derived_from_id=parent_chunk_id,
             metadata=metadata,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=utc_now_iso(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
         )
@@ -652,7 +609,7 @@ class ProvenanceManager:
                 **metadata,
                 **source.metadata
             },
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=utc_now_iso(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
         )
@@ -1000,44 +957,35 @@ class ProvenanceManager:
         gap for kg.ProvenanceTracker.query_recorded_between() documented in
         docs/migration/kg-provenance-tracker.md.
 
-        Bounds and stored timestamps are compared as instants, not as strings:
-        a naive value on either side is read as UTC, so a store holding both
-        pre-#946 naive stamps and offset-bearing ones answers consistently.
-
         Args:
-            start: Start of range, ISO 8601 string or datetime (inclusive)
-            end: End of range, ISO 8601 string or datetime (inclusive)
+            start: Start of range, ISO 8601 string (inclusive)
+            end: End of range, ISO 8601 string (inclusive)
 
         Returns:
             List of matching entries as dicts, sorted by timestamp ascending.
-            Entries whose timestamp is missing or unparseable are skipped.
-
-        Raises:
-            ValueError: if start or end is not a parseable ISO 8601 timestamp.
         """
-        start_dt = _parse_timestamp(start)
-        end_dt = _parse_timestamp(end)
+        # Compare instants, not spellings. Since #1114 new entries carry a
+        # +00:00 offset while entries written earlier do not, and a raw string
+        # comparison orders those two by length: an inclusive naive bound equal
+        # to a stored offset-bearing timestamp would sort below it and drop the
+        # record. A bound in another offset was mis-ordered the same way.
+        start_at = to_utc_datetime(start)
+        end_at = to_utc_datetime(end)
+        entries = [e for e in self.storage.retrieve_all() if e.timestamp]
 
-        matches = []
-        for entry in self.storage.retrieve_all():
-            if not entry.timestamp:
-                continue
-            try:
-                recorded = _parse_timestamp(entry.timestamp)
-            except (ValueError, TypeError):
-                self.logger.warning(
-                    "Skipping entry %r in query_recorded_between(): timestamp %r "
-                    "is not a parseable ISO 8601 value",
-                    getattr(entry, "entity_id", "<unknown>"),
-                    entry.timestamp,
-                )
-                continue
-            if start_dt <= recorded <= end_dt:
-                matches.append((recorded, entry))
-        # Key on the parsed instant only; ProvenanceEntry is not orderable, so
-        # sorting the pairs directly would raise on any tie.
-        matches.sort(key=lambda pair: pair[0])
-        return [entry.to_dict() for _, entry in matches]
+        if start_at is None or end_at is None:
+            # A bound this module cannot read as a timestamp keeps the historical
+            # string comparison rather than raising on a call that used to work.
+            matches = [e for e in entries if start <= e.timestamp <= end]
+        else:
+            matches = [
+                e for e in entries
+                if (at := to_utc_datetime(e.timestamp)) is not None
+                and start_at <= at <= end_at
+            ]
+
+        matches.sort(key=lambda e: (to_utc_datetime(e.timestamp) or _EPOCH, e.timestamp))
+        return [e.to_dict() for e in matches]
 
     def get_all_sources(self, entity_id: str) -> List[Dict[str, Any]]:
         """
@@ -1144,7 +1092,7 @@ class ProvenanceManager:
 
             entry = copy.deepcopy(existing)
             entry.invalidated = True
-            entry.invalidated_at_time = datetime.now(timezone.utc).isoformat()
+            entry.invalidated_at_time = utc_now_iso()
             entry.invalidated_by = agent_id
             entry.invalidation_reason = reason
             entry.previous_version_id = history_id
@@ -1227,44 +1175,31 @@ class ProvenanceManager:
         """
         Export audit log of provenance entries.
 
-        `since` and the stored timestamps are compared as instants, not as
-        strings, so a naive bound still matches offset-bearing records written
-        after #946 (and vice versa) at the same instant.
-
         Args:
-            since: Optional ISO 8601 date string or datetime filter (inclusive)
+            since: Optional ISO 8601 date string filter
             format: Output format ('table', 'csv', 'json')
 
         Returns:
-            Formatted audit log as string or list of dicts. Entries with a
-            missing or unparseable timestamp sort first and are excluded
-            whenever `since` is given.
-
-        Raises:
-            ValueError: if since is not a parseable ISO 8601 timestamp.
+            Formatted audit log as string or list of dicts
         """
-        since_dt = _parse_timestamp(since) if since else None
-
-        keyed = []
-        for entry in self.storage.retrieve_all():
-            raw = getattr(entry, "timestamp", "")
-            recorded = None
-            if raw:
-                try:
-                    recorded = _parse_timestamp(raw)
-                except (ValueError, TypeError):
-                    self.logger.warning(
-                        "Entry %r has an unparseable timestamp %r; it sorts first "
-                        "in the audit log and is excluded from any 'since' filter",
-                        getattr(entry, "entity_id", "<unknown>"),
-                        raw,
-                    )
-            if since_dt is not None and (recorded is None or recorded < since_dt):
-                continue
-            keyed.append((recorded or _MIN_UTC, entry))
-        # Key on the parsed instant only; ProvenanceEntry is not orderable.
-        keyed.sort(key=lambda pair: pair[0])
-        entries = [entry for _, entry in keyed]
+        entries = self.storage.retrieve_all()
+        if since:
+            since_at = to_utc_datetime(since)
+            if since_at is None:
+                entries = [e for e in entries
+                           if getattr(e, "timestamp", "") >= since]
+            else:
+                entries = [
+                    e for e in entries
+                    if (at := to_utc_datetime(getattr(e, "timestamp", None)))
+                    is not None and at >= since_at
+                ]
+        entries.sort(
+            key=lambda e: (
+                to_utc_datetime(getattr(e, "timestamp", None)) or _EPOCH,
+                getattr(e, "timestamp", ""),
+            )
+        )
 
         if format == "json":
             return [

@@ -31,6 +31,21 @@ class TestHelpers(unittest.TestCase):
         dict2 = {"b": {"d": 3}, "e": 4}
         merged = helpers.merge_dicts(dict1, dict2, deep=True)
         self.assertEqual(merged, {"a": 1, "b": {"c": 2, "d": 3}, "e": 4})
+    def test_flatten_dict(self):
+        data = {"a": {"b": 1, "c": 2}}
+        result = helpers.flatten_dict(data)
+        self.assertEqual(result, {"a.b": 1, "a.c": 2})
+
+    def test_flatten_dict_key_collision(self):
+        data = {
+            "a.b": 1,
+            "a": {
+                "b": 2
+            }
+        }
+
+        with self.assertRaises(ValueError):
+            helpers.flatten_dict(data)
 
     def test_safe_import_returns_module_and_flag(self):
         module, available = helpers.safe_import("json")

@@ -639,7 +639,7 @@ Every `ProvenanceEntry` maps directly to W3C PROV-O terms. If your compliance te
 | — | `previous_version_id` | This entry corrects/replaces a prior version of the *same* fact |
 | `prov:wasDerivedFrom` | `derived_from_id` | This entry was derived from a *different* source entity |
 | `prov:used` | `used_entities` | Entity IDs consumed to produce this one |
-| `prov:generatedAtTime` | `timestamp` | ISO datetime, auto-set to `datetime.now(timezone.utc)` at write time |
+| `prov:generatedAtTime` | `timestamp` | ISO datetime, auto-set to `utc_now_iso()` at write time |
 | `prov:qualifiedInvalidation` | `invalidated`, `invalidated_at_time`, `invalidated_by`, `invalidation_reason` | A retraction/correction recorded as a tombstone via `ProvenanceManager.invalidate()`, never a hard delete |
 | `prov:startedAtTime` / `prov:endedAtTime` | `activity_started_at_time`, `activity_ended_at_time` | Typed Activity timing — pass an `ActivityRecord` via the `activity=` kwarg to set these together with `activity_id` |
 | `prov:qualifiedGeneration`/`Generation`, `qualifiedUsage`/`Usage`, `qualifiedDerivation`/`Derivation` | (derived from the fields above) | Additive qualified forms of `wasGeneratedBy`/`used`/`wasDerivedFrom`, emitted automatically alongside the plain triples |

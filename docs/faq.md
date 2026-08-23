@@ -17,7 +17,7 @@ icon: "circle-question"
 | API key required? | Optional: pattern extraction works with no keys |
 | Works with LangChain / LlamaIndex? | Yes: Semantica is a layer on top, not a replacement |
 | Production-ready? | Yes: 1,000+ tests, v0.5.0 ships with 12 security fixes |
-| Latest version? | **v0.6.5** (August 2026) |
+| Latest version? | **v0.6.6** (August 2026) |
 | Local LLMs? | Yes: Ollama via LiteLLM, HuggingFaceLLM for air-gapped |
 
 
@@ -49,6 +49,16 @@ It's not a replacement for LangChain or LlamaIndex. It's the **accountability la
 Most frameworks stop at retrieval or generation. Semantica adds an **accountability layer**: every decision is recorded, every fact links to a source, and every reasoning step is explainable. It's designed for environments where you need to audit *why* an AI reached a conclusion: not just what it said.
 
 Semantica works alongside these frameworks, not against them.
+
+</Accordion>
+
+<Accordion title="Does Semantica explain an LLM's internal reasoning or chain-of-thought?" icon="triangle-exclamation">
+
+No. This is **system-level explainability, not foundation-model explainability**. Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system.
+
+What Semantica explains is *outside* the model: what context and data were used, what decision was produced, the provenance behind it, the relevant relationships, the policies applied, and the resulting decision trail.
+
+In short: Semantica explains and audits *what the AI system did* — not the foundation model's private internal reasoning.
 
 </Accordion>
 

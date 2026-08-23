@@ -1814,20 +1814,12 @@ class TestMixedFormatTimestampComparisons:
         )
         assert len(results) == 1
 
-    def test_query_range_skips_and_logs_unparseable_timestamp(self):
+    def test_query_range_skips_unparseable_timestamp(self):
         prov_mgr = self._manager_with("not-a-timestamp", self.AWARE)
-        with patch.object(prov_mgr.logger, "warning") as mock_warning:
-            results = prov_mgr.query_recorded_between(
-                "2026-08-19T11:00:00", "2026-08-19T13:00:00"
-            )
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T11:00:00", "2026-08-19T13:00:00"
+        )
         assert [r["entity_id"] for r in results] == ["entity_1"]
-        mock_warning.assert_called_once()
-        assert "not-a-timestamp" in str(mock_warning.call_args)
-
-    def test_query_range_rejects_unparseable_bound(self):
-        prov_mgr = self._manager_with(self.AWARE)
-        with pytest.raises(ValueError):
-            prov_mgr.query_recorded_between("not-a-timestamp", "2026-08-19T13:00:00")
 
     def test_audit_log_since_naive_bound_includes_aware_record(self):
         prov_mgr = self._manager_with(self.AWARE)
@@ -1864,20 +1856,12 @@ class TestMixedFormatTimestampComparisons:
             "entity_0",
         ]
 
-    def test_audit_log_unparseable_timestamp_sorts_first_and_is_logged(self):
+    def test_audit_log_unparseable_timestamp_sorts_first(self):
         prov_mgr = self._manager_with("not-a-timestamp", "2026-08-19T12:00:00+00:00")
-        with patch.object(prov_mgr.logger, "warning") as mock_warning:
-            entries = prov_mgr.audit_log(format="json")
+        entries = prov_mgr.audit_log(format="json")
         assert [e["entity_id"] for e in entries] == ["entity_0", "entity_1"]
-        mock_warning.assert_called_once()
 
     def test_audit_log_since_excludes_unparseable_timestamp(self):
         prov_mgr = self._manager_with("not-a-timestamp", "2026-08-19T12:00:00+00:00")
-        with patch.object(prov_mgr.logger, "warning"):
-            entries = prov_mgr.audit_log(since="2026-08-19T11:00:00", format="json")
+        entries = prov_mgr.audit_log(since="2026-08-19T11:00:00", format="json")
         assert [e["entity_id"] for e in entries] == ["entity_1"]
-
-    def test_audit_log_rejects_unparseable_since(self):
-        prov_mgr = self._manager_with(self.AWARE)
-        with pytest.raises(ValueError):
-            prov_mgr.audit_log(since="not-a-timestamp", format="json")

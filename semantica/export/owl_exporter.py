@@ -22,8 +22,10 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import re
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 from typing import Any, Dict, List, Optional, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
@@ -36,6 +38,9 @@ from ..utils.progress_tracker import get_progress_tracker
 # NamespaceManager "semantica" entry, so ontology URIs, KG instance URIs, and
 # PROV-exported URIs co-resolve under one shared namespace by default.
 from ..provenance.manager import DEFAULT_BASE_URI
+
+#: Module-level logger, for the classmethod helpers that have no instance.
+logger = get_logger("owl_exporter")
 
 
 class OWLExporter:
@@ -225,6 +230,7 @@ class OWLExporter:
         Returns:
             String containing OWL-XML serialization
         """
+        esc_xml = self._escape_xml
         ontology_uri = ontology.get("uri") or self.ontology_uri
         ontology_name = ontology.get("name", "SemanticaOntology")
         version = ontology.get("version") or self.version
@@ -237,103 +243,348 @@ class OWLExporter:
         lines.append("")
 
         # Ontology declaration
-        lines.append(f'  <owl:Ontology rdf:about="{ontology_uri}">')
-        lines.append(f"    <rdfs:label>{ontology_name}</rdfs:label>")
-        lines.append(f"    <owl:versionInfo>{version}</owl:versionInfo>")
+        lines.append(f'  <owl:Ontology rdf:about="{esc_xml(ontology_uri)}">')
+        lines.append(f"    <rdfs:label>{esc_xml(ontology_name)}</rdfs:label>")
+        lines.append(f"    <owl:versionInfo>{esc_xml(version)}</owl:versionInfo>")
         if ontology.get("description"):
             lines.append(
-                f'    <rdfs:comment>{ontology.get("description")}</rdfs:comment>'
+                f'    <rdfs:comment>{esc_xml(ontology.get("description"))}</rdfs:comment>'
             )
         lines.append("  </owl:Ontology>")
         lines.append("")
 
+        class_index = self._class_iri_index(ontology, ontology_uri)
+        object_properties, data_properties = self._split_properties(ontology)
+
+        def _as_list(value):
+            if value is None:
+                return []
+            return value if isinstance(value, list) else [value]
+
         # Classes
-        classes = ontology.get("classes", [])
-        for cls in classes:
-            class_uri = cls.get("uri") or cls.get("id", "")
+        for cls in ontology.get("classes", []) or []:
+            if not isinstance(cls, dict):
+                continue
+            class_uri = self._term_iri(cls, ontology_uri)
+            if not class_uri:
+                self.logger.warning(
+                    "Skipping a class with no name, uri or id: it would serialise "
+                    "as an empty rdf:about"
+                )
+                continue
             class_name = cls.get("name") or cls.get("label", "")
 
-            lines.append(f'  <owl:Class rdf:about="{class_uri}">')
-            lines.append(f"    <rdfs:label>{class_name}</rdfs:label>")
+            lines.append(f'  <owl:Class rdf:about="{esc_xml(class_uri)}">')
+            lines.append(f"    <rdfs:label>{esc_xml(class_name)}</rdfs:label>")
 
-            if cls.get("comment"):
-                lines.append(f'    <rdfs:comment>{cls.get("comment")}</rdfs:comment>')
+            comment = cls.get("comment") or cls.get("description")
+            if comment:
+                lines.append(f"    <rdfs:comment>{esc_xml(comment)}</rdfs:comment>")
 
             # Subclass relationships
-            if cls.get("subClassOf"):
-                parent = cls.get("subClassOf")
-                lines.append(f'    <rdfs:subClassOf rdf:resource="{parent}"/>')
+            for parent in _as_list(cls.get("subClassOf") or cls.get("parent")):
+                parent_iri = self._resolve_class_ref(parent, ontology_uri, class_index)
+                if parent_iri:
+                    lines.append(
+                        f'    <rdfs:subClassOf rdf:resource="{esc_xml(parent_iri)}"/>'
+                    )
 
             # Equivalent classes
-            if cls.get("equivalentClass"):
-                equiv = cls.get("equivalentClass")
-                lines.append(f'    <owl:equivalentClass rdf:resource="{equiv}"/>')
+            for equiv in _as_list(cls.get("equivalentClass")):
+                equiv_iri = self._resolve_class_ref(equiv, ontology_uri, class_index)
+                if equiv_iri:
+                    lines.append(
+                        f'    <owl:equivalentClass rdf:resource="{esc_xml(equiv_iri)}"/>'
+                    )
 
             lines.append("  </owl:Class>")
             lines.append("")
 
         # Object properties
-        object_properties = ontology.get("object_properties", [])
         for prop in object_properties:
-            prop_uri = prop.get("uri") or prop.get("id", "")
+            prop_uri = self._term_iri(prop, ontology_uri)
+            if not prop_uri:
+                self.logger.warning(
+                    "Skipping an object property with no name, uri or id"
+                )
+                continue
             prop_name = prop.get("name") or prop.get("label", "")
 
-            lines.append(f'  <owl:ObjectProperty rdf:about="{prop_uri}">')
-            lines.append(f"    <rdfs:label>{prop_name}</rdfs:label>")
+            lines.append(f'  <owl:ObjectProperty rdf:about="{esc_xml(prop_uri)}">')
+            lines.append(f"    <rdfs:label>{esc_xml(prop_name)}</rdfs:label>")
 
-            if prop.get("comment"):
-                lines.append(f'    <rdfs:comment>{prop.get("comment")}</rdfs:comment>')
+            comment = prop.get("comment") or prop.get("description")
+            if comment:
+                lines.append(f"    <rdfs:comment>{esc_xml(comment)}</rdfs:comment>")
 
-            # Domain
-            if prop.get("domain"):
-                domain = prop.get("domain")
-                if isinstance(domain, list):
-                    for d in domain:
-                        lines.append(f'    <rdfs:domain rdf:resource="{d}"/>')
-                else:
-                    lines.append(f'    <rdfs:domain rdf:resource="{domain}"/>')
+            for domain in _as_list(prop.get("domain")):
+                domain_iri = self._resolve_class_ref(domain, ontology_uri, class_index)
+                if domain_iri:
+                    lines.append(
+                        f'    <rdfs:domain rdf:resource="{esc_xml(domain_iri)}"/>'
+                    )
 
-            # Range
-            if prop.get("range"):
-                range_val = prop.get("range")
-                if isinstance(range_val, list):
-                    for r in range_val:
-                        lines.append(f'    <rdfs:range rdf:resource="{r}"/>')
-                else:
-                    lines.append(f'    <rdfs:range rdf:resource="{range_val}"/>')
+            for range_val in _as_list(prop.get("range")):
+                range_iri = self._resolve_class_ref(range_val, ontology_uri, class_index)
+                if range_iri:
+                    lines.append(
+                        f'    <rdfs:range rdf:resource="{esc_xml(range_iri)}"/>'
+                    )
 
             lines.append("  </owl:ObjectProperty>")
             lines.append("")
 
         # Data properties
-        data_properties = ontology.get("data_properties", [])
         for prop in data_properties:
-            prop_uri = prop.get("uri") or prop.get("id", "")
+            prop_uri = self._term_iri(prop, ontology_uri)
+            if not prop_uri:
+                self.logger.warning("Skipping a data property with no name, uri or id")
+                continue
             prop_name = prop.get("name") or prop.get("label", "")
 
-            lines.append(f'  <owl:DatatypeProperty rdf:about="{prop_uri}">')
-            lines.append(f"    <rdfs:label>{prop_name}</rdfs:label>")
+            lines.append(f'  <owl:DatatypeProperty rdf:about="{esc_xml(prop_uri)}">')
+            lines.append(f"    <rdfs:label>{esc_xml(prop_name)}</rdfs:label>")
 
-            if prop.get("comment"):
-                lines.append(f'    <rdfs:comment>{prop.get("comment")}</rdfs:comment>')
+            comment = prop.get("comment") or prop.get("description")
+            if comment:
+                lines.append(f"    <rdfs:comment>{esc_xml(comment)}</rdfs:comment>")
 
-            # Domain
-            if prop.get("domain"):
-                domain = prop.get("domain")
-                lines.append(f'    <rdfs:domain rdf:resource="{domain}"/>')
+            for domain in _as_list(prop.get("domain")):
+                domain_iri = self._resolve_class_ref(domain, ontology_uri, class_index)
+                if domain_iri:
+                    lines.append(
+                        f'    <rdfs:domain rdf:resource="{esc_xml(domain_iri)}"/>'
+                    )
 
-            # Range
-            if prop.get("range"):
-                range_type = prop.get("range", "xsd:string")
-                lines.append(
-                    f'    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#{range_type}"/>'
-                )
+            for range_val in _as_list(prop.get("range")):
+                range_iri = self._resolve_datatype_iri(range_val)
+                if range_iri:
+                    lines.append(
+                        f'    <rdfs:range rdf:resource="{esc_xml(range_iri)}"/>'
+                    )
 
             lines.append("  </owl:DatatypeProperty>")
             lines.append("")
 
         lines.append("</rdf:RDF>")
         return "\n".join(lines)
+
+    # ── Ontology-dict normalisation ───────────────────────────────────────────
+    #
+    # OntologyGenerator emits a single `properties` list tagged with
+    # type/@type, while hand-authored ontologies use `object_properties` and
+    # `data_properties`. Both shapes are accepted; everything below works from
+    # the normalised view so the two cannot drift apart again (#1103).
+
+    _XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+
+    #: Prefixes the generator and hand-authored ontologies actually use. A
+    #: prefixed name is not an absolute IRI: `owl:Thing` matches the generic
+    #: scheme grammar, so treating it as one produced <owl:Thing> as a domain,
+    #: which is a different term from http://www.w3.org/2002/07/owl#Thing.
+    _KNOWN_PREFIXES = {
+        "owl": "http://www.w3.org/2002/07/owl#",
+        "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+        "xsd": _XSD_NS,
+        "skos": "http://www.w3.org/2004/02/skos/core#",
+        "dc": "http://purl.org/dc/elements/1.1/",
+        "dcterms": "http://purl.org/dc/terms/",
+        "foaf": "http://xmlns.com/foaf/0.1/",
+        "sem": "https://semantica.dev/ns#",
+        "semantica": "https://semantica.dev/ns#",
+    }
+
+    #: Schemes that really do introduce an absolute IRI without `//`.
+    _ABSOLUTE_SCHEMES = ("urn:", "doi:", "mailto:", "tag:", "uuid:")
+
+    @classmethod
+    def _is_absolute_iri(cls, value: str) -> bool:
+        if not isinstance(value, str):
+            return False
+        value = value.strip()
+        if "://" in value:
+            return bool(re.match(r"^[A-Za-z][A-Za-z0-9+.\-]*://", value))
+        return value.lower().startswith(cls._ABSOLUTE_SCHEMES)
+
+    @classmethod
+    def _expand_prefixed_name(cls, value: str) -> str:
+        """Expand a known prefixed name, or return "" when it cannot be expanded."""
+        prefix, _, local = value.partition(":")
+        namespace = cls._KNOWN_PREFIXES.get(prefix)
+        return f"{namespace}{local}" if namespace and local else ""
+
+    @staticmethod
+    def _iri_safe(local: str) -> str:
+        """
+        Percent-encode a local name so it can sit inside <>.
+
+        A name is free text. "Customer Account" pasted onto a base gives an IRI
+        with a space in it, which rdflib only warns about and Oxigraph rejects
+        with "Invalid IRI code point".
+        """
+        return quote(local.strip(), safe="~._-!$&'()*+,;=:@/?")
+
+    @classmethod
+    def _join_iri(cls, base: str, local: str) -> str:
+        """Append a local name to a base IRI, respecting hash and slash bases."""
+        if not base:
+            return ""
+        local = cls._iri_safe(local)
+        if not local:
+            return ""
+        separator = "" if base.endswith(("#", "/", ":")) else "#"
+        return f"{base}{separator}{local}"
+
+    @classmethod
+    def _term_iri(cls, term: Dict[str, Any], base: str) -> str:
+        """
+        Resolve the IRI of a class or property.
+
+        Returns "" when the term carries nothing usable, so the caller can skip
+        it. Interpolating an empty string into <> silently resolves against the
+        parser's base — under rdflib that is the current working directory — and
+        collapses every such term onto one subject.
+        """
+        for key in ("uri", "iri", "id"):
+            value = term.get(key)
+            if isinstance(value, str) and value.strip():
+                value = value.strip()
+                return value if cls._is_absolute_iri(value) else cls._join_iri(base, value)
+
+        name = term.get("name") or term.get("label")
+        if isinstance(name, str) and name.strip():
+            return cls._join_iri(base, name.strip())
+        return ""
+
+    @classmethod
+    def _class_iri_index(cls, ontology: Dict[str, Any], base: str) -> Dict[str, str]:
+        """Map class name and label to the IRI that class is actually exported under."""
+        index: Dict[str, str] = {}
+        for class_def in ontology.get("classes", []) or []:
+            if not isinstance(class_def, dict):
+                continue
+            iri = cls._term_iri(class_def, base)
+            if not iri:
+                continue
+            for key in (class_def.get("name"), class_def.get("label")):
+                if isinstance(key, str) and key.strip():
+                    index.setdefault(key.strip(), iri)
+        return index
+
+    @classmethod
+    def _resolve_class_ref(cls, value: Any, base: str, index: Dict[str, str]) -> str:
+        """
+        Resolve a domain/range reference to an absolute IRI.
+
+        The generator writes bare class names here. Looking the name up in the
+        class index first means a reference always lands on the IRI that class
+        was exported under, rather than on a re-derived guess.
+        """
+        if not isinstance(value, str) or not value.strip():
+            return ""
+        value = value.strip()
+        if cls._is_absolute_iri(value):
+            return value
+        if value in index:
+            return index[value]
+        if ":" in value:
+            return cls._expand_prefixed_name(value)
+        return cls._join_iri(base, value)
+
+    @classmethod
+    def _resolve_datatype_iri(cls, value: Any) -> str:
+        """
+        Resolve a data property range to an absolute datatype IRI.
+
+        Accepts "string", "xsd:string" and a full IRI alike. The previous
+        `xsd:{range}` interpolation doubled the prefix whenever the generator
+        had already written "xsd:string".
+        """
+        if not isinstance(value, str) or not value.strip():
+            return ""
+        value = value.strip()
+        if value.startswith(("xsd:", "XSD:")):
+            return cls._XSD_NS + value.split(":", 1)[1]
+        if cls._is_absolute_iri(value):
+            return value
+        return cls._XSD_NS + value
+
+    @classmethod
+    def _ttl_datatype_ref(cls, value: Any) -> str:
+        """
+        Render a data property range for Turtle.
+
+        XSD datatypes are written with the xsd: prefix the header already
+        declares; anything else is written as a full IRI. Both are the same
+        term, this only keeps the compact style the module was written in.
+        """
+        iri = cls._resolve_datatype_iri(value)
+        if not iri:
+            return ""
+        if iri.startswith(cls._XSD_NS):
+            return f"xsd:{iri[len(cls._XSD_NS):]}"
+        return f"<{iri}>"
+
+    @classmethod
+    def _split_properties(
+        cls, ontology: Dict[str, Any]
+    ) -> "tuple[List[Dict[str, Any]], List[Dict[str, Any]]]":
+        """
+        Return (object_properties, data_properties) across both dict shapes.
+
+        A property listed under an explicit key keeps that key's kind. A
+        property from the generator's combined `properties` list is classified
+        by its own type/@type, defaulting to a data property.
+        """
+        object_props: List[Dict[str, Any]] = []
+        data_props: List[Dict[str, Any]] = []
+
+        for prop in ontology.get("object_properties", []) or []:
+            if isinstance(prop, dict):
+                object_props.append(prop)
+        for prop in ontology.get("data_properties", []) or []:
+            if isinstance(prop, dict):
+                data_props.append(prop)
+
+        skipped = 0
+        untyped = []
+        for prop in ontology.get("properties", []) or []:
+            if not isinstance(prop, dict):
+                skipped += 1
+                continue
+            kind = str(prop.get("type") or "").strip().lower()
+            owl_type = str(prop.get("@type") or "").strip().lower()
+            if kind in ("object", "objectproperty") or owl_type.endswith("objectproperty"):
+                object_props.append(prop)
+            else:
+                if not kind and not owl_type:
+                    untyped.append(prop.get("name") or prop.get("uri") or "<unnamed>")
+                data_props.append(prop)
+
+        if skipped:
+            logger.warning(
+                f"Skipped {skipped} entr(y/ies) in 'properties' that are not "
+                "dictionaries and cannot be exported"
+            )
+        if untyped:
+            logger.warning(
+                "Exported as data properties because they declare no type or "
+                f"@type: {', '.join(str(name) for name in untyped)}"
+            )
+
+        return object_props, data_props
+
+    @staticmethod
+    def _escape_xml(value: Any) -> str:
+        """Escape a value for safe embedding in XML text or an attribute value."""
+        return (
+            str(value)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
 
     @staticmethod
     def _escape_ttl_str(value: str) -> str:
@@ -387,62 +638,83 @@ class OWLExporter:
         lines.append(self._ttl_block(ontology_uri, "owl:Ontology", onto_predicates))
         lines.append("")
 
+        class_index = self._class_iri_index(ontology, ontology_uri)
+        object_properties, data_properties = self._split_properties(ontology)
+
+        def _as_list(value):
+            if value is None:
+                return []
+            return value if isinstance(value, list) else [value]
+
         # Classes
-        for cls in ontology.get("classes", []):
-            class_uri = cls.get("uri") or cls.get("id", "")
+        for cls in ontology.get("classes", []) or []:
+            if not isinstance(cls, dict):
+                continue
+            class_uri = self._term_iri(cls, ontology_uri)
+            if not class_uri:
+                self.logger.warning(
+                    "Skipping a class with no name, uri or id: it would serialise as <>"
+                )
+                continue
             class_name = cls.get("name") or cls.get("label", "")
             predicates = [f'rdfs:label "{esc(class_name)}"']
-            comment = cls.get("comment")
+            comment = cls.get("comment") or cls.get("description")
             if comment:
                 predicates.append(f'rdfs:comment "{esc(comment)}"')
-            sub_class = cls.get("subClassOf")
-            if sub_class:
-                predicates.append(f"rdfs:subClassOf <{sub_class}>")
-            equiv = cls.get("equivalentClass")
-            if equiv:
-                predicates.append(f"owl:equivalentClass <{equiv}>")
+            for parent in _as_list(cls.get("subClassOf") or cls.get("parent")):
+                parent_iri = self._resolve_class_ref(parent, ontology_uri, class_index)
+                if parent_iri:
+                    predicates.append(f"rdfs:subClassOf <{parent_iri}>")
+            for equiv in _as_list(cls.get("equivalentClass")):
+                equiv_iri = self._resolve_class_ref(equiv, ontology_uri, class_index)
+                if equiv_iri:
+                    predicates.append(f"owl:equivalentClass <{equiv_iri}>")
             lines.append(self._ttl_block(class_uri, "owl:Class", predicates))
             lines.append("")
 
         # Object properties
-        for prop in ontology.get("object_properties", []):
-            prop_uri = prop.get("uri") or prop.get("id", "")
+        for prop in object_properties:
+            prop_uri = self._term_iri(prop, ontology_uri)
+            if not prop_uri:
+                self.logger.warning(
+                    "Skipping an object property with no name, uri or id"
+                )
+                continue
             prop_name = prop.get("name") or prop.get("label", "")
             predicates = [f'rdfs:label "{esc(prop_name)}"']
-            comment = prop.get("comment")
+            comment = prop.get("comment") or prop.get("description")
             if comment:
                 predicates.append(f'rdfs:comment "{esc(comment)}"')
-            domain = prop.get("domain")
-            if domain:
-                if isinstance(domain, list):
-                    for d in domain:
-                        predicates.append(f"rdfs:domain <{d}>")
-                else:
-                    predicates.append(f"rdfs:domain <{domain}>")
-            range_val = prop.get("range")
-            if range_val:
-                if isinstance(range_val, list):
-                    for r in range_val:
-                        predicates.append(f"rdfs:range <{r}>")
-                else:
-                    predicates.append(f"rdfs:range <{range_val}>")
+            for domain in _as_list(prop.get("domain")):
+                domain_iri = self._resolve_class_ref(domain, ontology_uri, class_index)
+                if domain_iri:
+                    predicates.append(f"rdfs:domain <{domain_iri}>")
+            for range_val in _as_list(prop.get("range")):
+                range_iri = self._resolve_class_ref(range_val, ontology_uri, class_index)
+                if range_iri:
+                    predicates.append(f"rdfs:range <{range_iri}>")
             lines.append(self._ttl_block(prop_uri, "owl:ObjectProperty", predicates))
             lines.append("")
 
         # Data properties
-        for prop in ontology.get("data_properties", []):
-            prop_uri = prop.get("uri") or prop.get("id", "")
+        for prop in data_properties:
+            prop_uri = self._term_iri(prop, ontology_uri)
+            if not prop_uri:
+                self.logger.warning("Skipping a data property with no name, uri or id")
+                continue
             prop_name = prop.get("name") or prop.get("label", "")
             predicates = [f'rdfs:label "{esc(prop_name)}"']
-            comment = prop.get("comment")
+            comment = prop.get("comment") or prop.get("description")
             if comment:
                 predicates.append(f'rdfs:comment "{esc(comment)}"')
-            domain = prop.get("domain")
-            if domain:
-                predicates.append(f"rdfs:domain <{domain}>")
-            range_type = prop.get("range")
-            if range_type:
-                predicates.append(f"rdfs:range xsd:{range_type}")
+            for domain in _as_list(prop.get("domain")):
+                domain_iri = self._resolve_class_ref(domain, ontology_uri, class_index)
+                if domain_iri:
+                    predicates.append(f"rdfs:domain <{domain_iri}>")
+            for range_val in _as_list(prop.get("range")):
+                range_ref = self._ttl_datatype_ref(range_val)
+                if range_ref:
+                    predicates.append(f"rdfs:range {range_ref}")
             lines.append(self._ttl_block(prop_uri, "owl:DatatypeProperty", predicates))
             lines.append("")
 

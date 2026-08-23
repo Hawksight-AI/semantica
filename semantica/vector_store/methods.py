@@ -297,7 +297,11 @@ def create_index(
     config = vector_store_config.get_all()
     backend = config.get("default_backend", "faiss")
     dimension = config.get("dimension", 768)
-    indexer = VectorIndexer(backend=backend, dimension=dimension, **config)
+    # backend/dimension are already passed explicitly; drop them from the
+    # forwarded config so VectorIndexer(..., **remaining_config) doesn't
+    # receive duplicate keyword arguments.
+    remaining_config = {k: v for k, v in config.items() if k not in ("default_backend", "dimension")}
+    indexer = VectorIndexer(backend=backend, dimension=dimension, **remaining_config)
     return indexer.create_index(vectors, ids, **options)
 
 
