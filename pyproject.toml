@@ -85,7 +85,8 @@ dependencies = [
   "loguru>=0.7.3",
   "structlog>=22.1.0",
   "gensim>=4.4.0",
-  "httpx<0.29.0"
+  "httpx<0.29.0",
+  "pyarrow>=14.0.0"
 ]
 
 [project.urls]

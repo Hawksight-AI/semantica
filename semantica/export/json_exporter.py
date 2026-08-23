@@ -28,10 +28,33 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
-from ..utils.helpers import ensure_directory, utc_now_iso, write_json_file
+from ..utils.helpers import ensure_directory, hash_data, utc_now_iso, write_json_file
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .rdf_exporter import SEMANTICA_NS, mint_entity_iri, mint_relationship_iri
+
+
+def _content_iri(prefix: str, payload: Any) -> str:
+    """Mint a document IRI from what was exported, not when.
+
+    Minting from ``utc_now_iso()`` gave every export of the same graph a new
+    identity a few microseconds apart, so re-exporting an unchanged graph was
+    never idempotent and merging exports duplicated every node (#1147). This
+    mirrors ``mint_entity_iri`` (#1109): identical content hashes to the same
+    IRI, and any change to the content changes it too. ``default=str`` keeps
+    the hash defined for values ``json.dumps`` would otherwise reject, such as
+    ``datetime`` objects a caller may have left in the graph.
+
+    Args:
+        prefix: IRI prefix the digest is appended to
+        payload: JSON-serializable value whose content determines the digest
+
+    Returns:
+        A stable IRI of the form ``{prefix}{16-hex-char digest}``
+    """
+    canonical = json.dumps(payload, sort_keys=True, default=str)
+    digest = hash_data(canonical)[:16]
+    return f"{prefix}{digest}"
 
 
 def _is_jsonld_document(data: Dict[str, Any]) -> bool:
@@ -230,7 +253,10 @@ class JSONExporter:
                 - statistics: Statistics dictionary (optional)
             file_path: Output JSON file path
             format: Export format - 'json' or 'json-ld' (default: self.format)
-            **options: Additional options passed to conversion methods
+            **options: Additional options passed to conversion methods:
+                - graph_uri: Caller-supplied IRI for the graph node when
+                  format='json-ld', overriding the default content-derived
+                  IRI (see #1147)
 
         Example:
             >>> kg = {
@@ -401,7 +427,9 @@ class JSONExporter:
             data: Data to convert (dict, list, or any value)
             include_metadata: Whether to include metadata (default: True)
             include_provenance: Whether to include provenance (default: True)
-            **options: Additional options passed to knowledge graph conversion
+            **options: Additional options passed to knowledge graph conversion:
+                - document_uri: Caller-supplied IRI for the document node,
+                  overriding the default content-derived IRI (see #1147)
 
         Returns:
             Dictionary in JSON-LD format with @context, @graph/@value, and metadata
@@ -451,13 +479,17 @@ class JSONExporter:
 
         # Add metadata and provenance if requested
         if include_metadata:
-            self._attach_document_metadata(jsonld, include_provenance)
+            self._attach_document_metadata(
+                jsonld, include_provenance, options.get("document_uri")
+            )
 
         return jsonld
 
     @staticmethod
     def _attach_document_metadata(
-        jsonld: Dict[str, Any], include_provenance: bool
+        jsonld: Dict[str, Any],
+        include_provenance: bool,
+        document_uri: Optional[str] = None,
     ) -> None:
         """
         Attach the export's own metadata without naming the graph.
@@ -473,6 +505,9 @@ class JSONExporter:
         Args:
             jsonld: Document being built, modified in place
             include_provenance: Whether to record how and when it was exported
+            document_uri: Caller-supplied IRI for the document node. Falls back
+                to a content-derived IRI (#1147) so re-exporting unchanged data
+                is idempotent instead of minting a new identity every time.
         """
         # A caller may hand us a document that is deliberately a named graph.
         # That name is theirs to keep, but our own statements must not end up
@@ -483,7 +518,10 @@ class JSONExporter:
         # Do not overwrite an identifier the payload already carries: the
         # knowledge-graph conversion names its own document node.
         if "@id" not in jsonld or payload_is_named_graph:
-            document["@id"] = f"https://semantica.dev/data/{utc_now_iso()}"
+            content = {key: value for key, value in jsonld.items() if key != "@context"}
+            document["@id"] = document_uri or _content_iri(
+                "https://semantica.dev/data/", content
+            )
         if include_provenance:
             document["semantica:exportedAt"] = utc_now_iso()
             document["semantica:format"] = "json-ld"
@@ -553,7 +591,9 @@ class JSONExporter:
                 - entities: List of entity dictionaries
                 - relationships: List of relationship dictionaries
                 - metadata: Metadata dictionary (optional)
-            **options: Additional options (unused)
+            **options: Additional options:
+                - graph_uri: Caller-supplied IRI for the graph node,
+                  overriding the default content-derived IRI (see #1147)
 
         Returns:
             Dictionary in JSON-LD format with @context, @id, @type, and graph data
@@ -566,7 +606,11 @@ class JSONExporter:
                 "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
                 "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
             },
-            "@id": f"https://semantica.dev/graph/{utc_now_iso()}",
+            # Minted from the graph's own content rather than the wall clock
+            # (#1147): re-exporting an unchanged graph must produce the same
+            # subject, or merging repeated exports duplicates every node.
+            "@id": options.get("graph_uri")
+            or _content_iri("https://semantica.dev/graph/", kg),
             "@type": "semantica:KnowledgeGraph",
         }
 

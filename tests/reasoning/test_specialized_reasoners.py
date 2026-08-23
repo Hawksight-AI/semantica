@@ -30,6 +30,29 @@ class TestSpecializedReasoners(unittest.TestCase):
         binding_types = [b.get("x_type") for b in inferred.bindings]
         self.assertIn("Human", binding_types)
 
+    def test_execute_query_raises_not_implemented(self):
+        """Empty results must not pass as a valid answer (issue #1083).
+
+        Both branches returned ``SPARQLQueryResult(bindings=[], variables=[])``
+        -- with or without a triplet store -- so callers that trust an empty
+        result as "no matches" silently drew wrong conclusions. Until a real
+        execution path lands, refusing loudly is safer.
+        """
+        reasoner = SPARQLReasoner()
+        with self.assertRaises(NotImplementedError):
+            reasoner.execute_query("SELECT ?s ?p ?o WHERE { ?s ?p ?o }")
+
+    def test_execute_query_with_triplet_store_raises_not_implemented(self):
+        reasoner = SPARQLReasoner(triplet_store=object())
+        with self.assertRaises(NotImplementedError):
+            reasoner.execute_query("SELECT ?s ?p ?o WHERE { ?s ?p ?o }")
+
+    def test_execute_query_error_explains_why_the_query_is_refused(self):
+        reasoner = SPARQLReasoner()
+        with self.assertRaises(NotImplementedError) as ctx:
+            reasoner.execute_query("SELECT ?s WHERE { ?s ?p ?o }")
+        self.assertIn("not implemented", str(ctx.exception))
+
     def test_abductive_reasoner_generate_hypotheses(self):
         reasoner = AbductiveReasoner()
         reasoner.reasoner.add_rule("IF Disease(Flu) THEN Symptom(Fever)")
