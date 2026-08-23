@@ -203,10 +203,10 @@ class ErasureCoordinator:
                 carry the same instant. Accepts anything ``ContextGraph``
                 accepts -- an ISO string, a ``datetime``, or epoch seconds --
                 and defaults to now, UTC.
-            vector_ids: Explicit vector ids to remove. Defaults to
-                ``[entity_id]``, which covers entity-keyed embeddings written
-                by something other than ``AgentMemory``; vectors owned by
-                memory items are removed by the memory leg's own cascade.
+            vector_ids: Explicit vector ids to remove, in addition to the
+                ids owned by the entity's memory items, which are always
+                included. Defaults to ``[entity_id]``, covering entity-keyed
+                embeddings written by something other than ``AgentMemory``.
 
         Returns:
             An :class:`ErasureReceipt`. Check :attr:`ErasureReceipt.complete`
@@ -220,7 +220,17 @@ class ErasureCoordinator:
         stores: Dict[str, Dict[str, Any]] = {}
 
         # Outward-in: vectors, then memory, then the graph last.
-        stores["vectors"] = self._erase_vectors(entity_id, vector_ids)
+        #
+        # The vector leg must also cover the embeddings owned by memory items.
+        # AgentMemory.delete_memory() deletes an item's vectors best-effort: it
+        # catches a vector-store failure, logs it, and still returns True, so
+        # the memory leg cannot tell a full erasure from one that left the
+        # embedding behind. Deleting those ids here instead puts them behind
+        # the one leg that reports honestly. Collected before anything is
+        # deleted, while the items still exist to be enumerated.
+        stores["vectors"] = self._erase_vectors(
+            entity_id, self._all_vector_ids(entity_id, vector_ids)
+        )
         stores["memory"] = self._erase_memory(entity_id)
         stores["graph"] = self._erase_graph(entity_id, reason, erased_at)
 
@@ -263,6 +273,41 @@ class ErasureCoordinator:
         ]
 
     # Store legs
+
+    def _all_vector_ids(
+        self, entity_id: str, vector_ids: Optional[Sequence[str]]
+    ) -> List[str]:
+        """Caller-supplied vector ids plus the ids owned by memory items.
+
+        Best-effort by design: if memory cannot be enumerated here, the memory
+        leg makes the same call moments later and reports the failure, so the
+        receipt is still incomplete. Swallowing it there instead would be the
+        bug this method exists to fix.
+        """
+        ids: List[str] = list(vector_ids) if vector_ids is not None else [entity_id]
+        if self.memory is None:
+            return ids
+
+        seen = set(ids)
+        try:
+            for item in self.memory.find_by_entity(
+                entity_id, limit=_MEMORY_SWEEP_BATCH
+            ):
+                memory_id = _memory_item_id(item)
+                if not memory_id:
+                    continue
+                for vector_id in self.memory.vector_ids_for(memory_id):
+                    if vector_id not in seen:
+                        seen.add(vector_id)
+                        ids.append(vector_id)
+        except Exception as exc:
+            self.logger.warning(
+                "Could not enumerate memory-owned vector ids for %r: %s; "
+                "the memory leg will report the same failure",
+                entity_id,
+                exc,
+            )
+        return ids
 
     def _erase_vectors(
         self, entity_id: str, vector_ids: Optional[Sequence[str]]

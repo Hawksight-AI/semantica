@@ -599,5 +599,110 @@ class TestBackendDeleteResults(unittest.TestCase):
         )
 
 
+class _SelectiveDeleteStore:
+    """Deletes some ids and refuses others, tracking what is still live.
+
+    Models the case that matters: the entity-keyed id deletes fine while the
+    embedding an ``AgentMemory`` item owns does not.
+    """
+
+    backend = "qdrant"
+
+    def __init__(self, refuse=()):
+        self._refuse = set(refuse)
+        self.live = set()
+        self.attempts = []
+
+    def store_vectors(self, vectors, metadata=None, **options):
+        ids = [f"vec-{len(self.live) + index}" for index in range(len(vectors))]
+        self.live.update(ids)
+        return ids
+
+    def delete_vectors(self, vector_ids, **options):
+        self.attempts.append(list(vector_ids))
+        if any(vector_id in self._refuse for vector_id in vector_ids):
+            return False
+        self.live.difference_update(vector_ids)
+        return True
+
+
+def _memory_with_embedding(entity_id, store):
+    memory = AgentMemory(vector_store=store)
+    memory.store(
+        f"note about {entity_id}",
+        entities=[{"id": entity_id, "name": entity_id}],
+        embedding=np.zeros(4),
+        skip_graph=True,
+    )
+    return memory
+
+
+class TestMemoryOwnedVectorsAreReported(unittest.TestCase):
+    """A memory item's embedding must not survive a `complete` receipt.
+
+    ``AgentMemory.delete_memory()`` deletes an item's vectors best-effort: it
+    catches a vector-store failure, logs a warning, and still returns ``True``.
+    The coordinator therefore cannot learn from the memory leg whether those
+    embeddings actually went away, so it deletes them through its own vector
+    leg, which reports honestly.
+    """
+
+    def test_refused_memory_owned_vector_makes_the_receipt_incomplete(self):
+        store = _SelectiveDeleteStore(refuse={"vec-0"})
+        memory = _memory_with_embedding("customer-4471", store)
+        self.assertEqual(
+            memory.vector_ids_for(next(iter(memory.memory_items))), ["vec-0"]
+        )
+
+        receipt = ErasureCoordinator(graph=_graph(), memory=memory).erase_entity(
+            "customer-4471"
+        )
+
+        # The embedding is demonstrably still there ...
+        self.assertIn("vec-0", store.live)
+        # ... so the receipt must not claim the erasure is done.
+        self.assertFalse(receipt.complete)
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_FAILED)
+        self.assertEqual(receipt.incomplete_stores, ["vectors"])
+
+    def test_memory_owned_vector_ids_are_sent_to_the_vector_store(self):
+        store = _SelectiveDeleteStore()
+        memory = _memory_with_embedding("customer-4471", store)
+
+        receipt = ErasureCoordinator(graph=_graph(), memory=memory).erase_entity(
+            "customer-4471"
+        )
+
+        # The coordinator's own leg must have attempted the memory-owned id,
+        # not just the entity-keyed one.
+        self.assertIn("vec-0", store.attempts[0])
+        self.assertIn("customer-4471", store.attempts[0])
+        self.assertNotIn("vec-0", store.live)
+        self.assertTrue(receipt.complete)
+
+    def test_explicit_vector_ids_do_not_displace_memory_owned_ids(self):
+        store = _SelectiveDeleteStore()
+        memory = _memory_with_embedding("customer-4471", store)
+
+        ErasureCoordinator(graph=_graph(), memory=memory).erase_entity(
+            "customer-4471", vector_ids=["extra-1"]
+        )
+
+        self.assertIn("extra-1", store.attempts[0])
+        self.assertIn("vec-0", store.attempts[0])
+
+    def test_vector_ids_for_falls_back_to_the_memory_id(self):
+        """An item stored without tracked vector ids is keyed by its own id."""
+        memory = AgentMemory()
+        memory.store(
+            "note about customer-4471",
+            entities=[{"id": "customer-4471", "name": "customer-4471"}],
+            skip_graph=True,
+        )
+        memory_id = next(iter(memory.memory_items))
+        self.assertEqual(memory.vector_ids_for(memory_id), [memory_id])
+        self.assertEqual(memory.vector_ids_for("no-such-item"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
