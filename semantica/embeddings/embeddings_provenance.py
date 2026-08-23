@@ -69,6 +69,15 @@ class EmbeddingGeneratorWithProvenance:
         return embeddings
     
     def __getattr__(self, name):
+        # __getattr__ only runs when normal lookup fails. Accessing
+        # self._generator by attribute syntax HERE would re-enter
+        # __getattr__ for ever when _generator itself is missing — the shape
+        # pickle/copy protocol probes hit when __init__ never completed
+        # (#994's RecursionError family). Fail fast on private probes.
+        if name.startswith("_"):
+            raise AttributeError(
+                f"{type(self).__name__!r} object has no attribute {name!r}"
+            )
         return getattr(self._generator, name)
 
 

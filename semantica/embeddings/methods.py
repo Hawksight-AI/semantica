@@ -117,9 +117,9 @@ def generate_embeddings(
         >>> emb = generate_embeddings("Hello world", method="default")
         >>> embs = generate_embeddings(["text1", "text2"], method="text")
     """
-    # Check for custom method in registry
+    # Check for custom method in registry, skip self-reference
     custom_method = method_registry.get("generation", method)
-    if custom_method:
+    if custom_method and custom_method is not generate_embeddings:
         fallback = kwargs.pop("fallback_on_custom_error", False)
         result = call_custom_method(
             logger, method, custom_method, data, data_type=data_type, fallback_on_custom_error=fallback, **kwargs
@@ -165,9 +165,9 @@ def embed_text(
         >>> emb = embed_text("Hello world", method="sentence_transformers")
         >>> embs = embed_text(["text1", "text2"], method="sentence_transformers")
     """
-    # Check for custom method in registry
+    # Check for custom method in registry, skip self-reference
     custom_method = method_registry.get("text", method)
-    if custom_method:
+    if custom_method and custom_method is not embed_text:
         fallback = kwargs.pop("fallback_on_custom_error", False)
         result = call_custom_method(
             logger, method, custom_method, text, fallback_on_custom_error=fallback, **kwargs
@@ -225,9 +225,9 @@ def calculate_similarity(
         >>> similarity = calculate_similarity(emb1, emb2, method="cosine")
         >>> print(f"Similarity: {similarity:.3f}")
     """
-    # Check for custom method in registry
+    # Check for custom method in registry, skip self-reference
     custom_method = method_registry.get("similarity", method)
-    if custom_method:
+    if custom_method and custom_method is not calculate_similarity:
         fallback = kwargs.pop("fallback_on_custom_error", False)
         result = call_custom_method(
             logger, method, custom_method, embedding1, embedding2, fallback_on_custom_error=fallback, **kwargs
@@ -272,9 +272,9 @@ def pool_embeddings(
         >>> pooled = pool_embeddings(embeddings, method="mean")
         >>> attention_pooled = pool_embeddings(embeddings, method="attention")
     """
-    # Check for custom method in registry
+    # Check for custom method in registry, skip self-reference
     custom_method = method_registry.get("pooling", method)
-    if custom_method:
+    if custom_method and custom_method is not pool_embeddings:
         fallback = kwargs.pop("fallback_on_custom_error", False)
         result = call_custom_method(
             logger, method, custom_method, embeddings, fallback_on_custom_error=fallback, **kwargs

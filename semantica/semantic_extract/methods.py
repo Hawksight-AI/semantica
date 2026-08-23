@@ -281,6 +281,8 @@ def find_best_match_index(text: str, candidates: List[str]) -> Tuple[int, float]
     Find the best matching candidate index and score.
     Uses hybrid similarity approach: Exact -> Synonym -> Substring -> Embeddings -> Vector -> Fuzzy.
     Optimized for batch processing to avoid redundant embedding calculations.
+    Embedding/vector similarity stages are best-effort; if they fail, matching falls back
+    to remaining strategies instead of raising.
     
     Returns:
         Tuple[int, float]: (best_candidate_index, best_score). Index is -1 if no candidates.
@@ -404,10 +406,12 @@ def find_best_match_index(text: str, candidates: List[str]) -> Tuple[int, float]
         vector_idx = -1
         
         if nlp and nlp.vocab.vectors.shape[0] > 0:
+            failing_candidate_idx = -1
             try:
                 doc = nlp(text)
                 if doc.vector_norm:
                     for i, candidate in enumerate(candidates):
+                        failing_candidate_idx = i
                         if not candidate: continue
                         cand_doc = nlp(candidate)
                         if cand_doc.vector_norm:
@@ -416,7 +420,13 @@ def find_best_match_index(text: str, candidates: List[str]) -> Tuple[int, float]
                                 vector_score = score
                                 vector_idx = i
             except Exception:
-                pass
+                logger.debug(
+                    "Vector similarity calculation failed at candidate index %s; continuing with fallback scoring.",
+                    failing_candidate_idx if failing_candidate_idx >= 0 else "N/A",
+                    exc_info=True,
+                )
+                vector_score = 0.0
+                vector_idx = -1
         
         if vector_score > best_score:
             best_score = vector_score
@@ -779,9 +789,11 @@ def extract_entities_huggingface(
     """
     loader = HuggingFaceModelLoader(device=device)
     # Pass kwargs (like aggregation_strategy) to load_ner_model
-    model_obj = loader.load_ner_model(model, **kwargs)
+    loader_kwargs = {
+        key: value for key, value in kwargs.items() if key != "huggingface_model"
+    }
+    model_obj = loader.load_ner_model(model, **loader_kwargs)
     results = loader.extract_entities(model_obj, text)
-
     entities = []
     
     # Check if manual aggregation is needed (raw IOB tags detected)
