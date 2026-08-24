@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -582,6 +583,38 @@ class TestConflictsModule(unittest.TestCase):
         # returned as the original list.
         self.assertEqual(result.resolved_value, val_b)
         self.assertIsInstance(result.resolved_value, list)
+
+    def test_voting_does_not_alias_struct_with_its_json_text(self):
+        """A dict and a string equal to its JSON text must not be merged.
+
+        Regression for PR #1208 review: type-tagged keys must keep a
+        serialized structure distinct from a scalar string that happens to
+        equal that serialization, so the majority string wins instead of the
+        single dict.
+        """
+        resolver = ConflictResolver()
+
+        struct = {"a": 1}
+        json_text = json.dumps(struct, sort_keys=True)  # '{"a": 1}'
+        conflict = Conflict(
+            conflict_id="c_alias_vote",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="payload",
+            conflicting_values=[struct, json_text, json_text],
+            sources=[
+                {"document": "doc1", "confidence": 0.9},
+                {"document": "doc2", "confidence": 0.8},
+                {"document": "doc3", "confidence": 0.7},
+            ],
+        )
+
+        result = resolver.resolve_conflict(conflict, strategy="voting")
+        self.assertTrue(result.resolved)
+        # The two identical json_text strings are the true majority; they must
+        # not be aliased with the dict.
+        self.assertEqual(result.resolved_value, json_text)
+        self.assertIsInstance(result.resolved_value, str)
 
 
 if __name__ == "__main__":

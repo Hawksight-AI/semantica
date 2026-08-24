@@ -73,18 +73,23 @@ def _hashable_key(value: Any) -> Any:
 
     Conflicting values may be unhashable (e.g. ``dict`` or ``list``), which
     breaks :class:`collections.Counter` and dict-key based aggregation used by
-    the voting and credibility-weighted strategies. Hashable values are returned
-    unchanged so existing behavior is preserved; unhashable values are mapped to
-    a stable JSON string key.
+    the voting and credibility-weighted strategies.
+
+    The key is *type-tagged* so that a serialized structure can never alias a
+    scalar value: e.g. the dict ``{"a": 1}`` and the string ``'{"a": 1}'`` map
+    to distinct keys instead of colliding. Hashable values keep their original
+    identity within the ``"h"`` tag (so equal scalars still aggregate together);
+    unhashable values are serialized to a stable JSON string under the ``"j"``
+    tag, falling back to ``repr()`` under the ``"r"`` tag when JSON fails.
     """
     try:
         hash(value)
-        return value
+        return ("h", type(value).__name__, value)
     except TypeError:
         try:
-            return json.dumps(value, sort_keys=True, default=str)
+            return ("j", json.dumps(value, sort_keys=True, default=str))
         except (TypeError, ValueError):
-            return repr(value)
+            return ("r", repr(value))
 
 
 class ResolutionStrategy(str, Enum):
