@@ -35,7 +35,7 @@ This page is intentionally conservative: it distinguishes between an adapter exi
 | FalkorDB | LPG | Yes | Yes | Partial | Partial | Redis-based; provenance depends on node/edge properties, and multi-graph isolation depends on the selected graph name. |
 | Amazon Neptune | LPG | Yes | Yes | Partial | Partial | Use the property-graph endpoint; AWS auth, VPC, and endpoint configuration can affect local tests. Provenance depends on node/edge properties. |
 | Apache AGE | LPG | Yes | Yes | Partial | Partial | Runs through PostgreSQL/AGE; Cypher compatibility and property handling can differ from standalone LPG engines. |
-| RDF4J | RDF | Yes | Partial | Partial | Partial | Context separation relies on named graphs; triple-level provenance may require reification or graph-level metadata. `RDF4JStore(repository_id=...)` currently has no effect — the constructor always connects to the `"default"` repository regardless of the value passed; track a fix separately. |
+| RDF4J | RDF | Yes | Partial | Partial | Partial | Context separation relies on named graphs; triple-level provenance may require reification or graph-level metadata. |
 | Apache Jena | RDF | Yes | Partial | Partial | Partial | Named graphs are needed for context separation; backend configuration and transaction behavior matter. |
 | Blazegraph | RDF | Yes | Partial | Partial | Partial | Use quads/named graphs for context; IRI stability and graph naming matter for provenance. |
 | Anzo | RDF | Yes | Partial | Partial | Partial | Anzo deployments are environment-specific; validate `dataset_uri`/graphmart naming, named-graph support, and provenance mapping. |
@@ -107,7 +107,7 @@ from semantica.triplet_store import RDF4JStore
 
 store = RDF4JStore(
     endpoint='http://localhost:8080/rdf4j-server',
-    repository_id='semantica'  # currently has no effect; connects to "default" (see Known limitations)
+    repository_id='semantica'
 )
 ```
 

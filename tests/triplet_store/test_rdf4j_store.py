@@ -22,6 +22,71 @@ def _make_connected_store():
 CONSTRUCT_QUERY = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
 
 
+class TestRDF4JStoreInitialization(unittest.TestCase):
+
+    def test_explicit_repository_id_selects_repository(self):
+        response = MagicMock(status_code=200)
+
+        with patch(
+            "semantica.triplet_store.rdf4j_store.requests.get",
+            return_value=response,
+        ) as mock_get:
+            store = RDF4JStore(
+                endpoint="http://localhost:8080/rdf4j-server/",
+                repository_id="semantica",
+            )
+
+        self.assertEqual(store.repository_id, "semantica")
+        mock_get.assert_called_once_with(
+            "http://localhost:8080/rdf4j-server/repositories/semantica",
+            timeout=30,
+            auth=None,
+        )
+
+    def test_repository_id_is_encoded_as_a_single_url_path_segment(self):
+        response = MagicMock(status_code=200)
+
+        with patch(
+            "semantica.triplet_store.rdf4j_store.requests.get",
+            return_value=response,
+        ) as mock_get:
+            store = RDF4JStore(
+                endpoint="http://localhost:8080/rdf4j-server",
+                repository_id="team/repo ?#",
+            )
+
+        self.assertEqual(store.repository_id, "team/repo ?#")
+        mock_get.assert_called_once_with(
+            "http://localhost:8080/rdf4j-server/repositories/team%2Frepo%20%3F%23",
+            timeout=30,
+            auth=None,
+        )
+        self.assertEqual(
+            store._get_sparql_endpoint(),
+            "http://localhost:8080/rdf4j-server/repositories/team%2Frepo%20%3F%23",
+        )
+        self.assertEqual(
+            store._get_update_endpoint(),
+            "http://localhost:8080/rdf4j-server/repositories/"
+            "team%2Frepo%20%3F%23/statements",
+        )
+
+        transaction_response = MagicMock()
+        transaction_response.headers = {"Location": "/transactions/tx-1"}
+        with patch(
+            "semantica.triplet_store.rdf4j_store.requests.post",
+            return_value=transaction_response,
+        ) as mock_post:
+            self.assertEqual(store.begin_transaction(), "tx-1")
+
+        mock_post.assert_called_once_with(
+            "http://localhost:8080/rdf4j-server/repositories/"
+            "team%2Frepo%20%3F%23/transactions",
+            timeout=30,
+            auth=None,
+        )
+
+
 class TestRDF4JStoreIsConstructQuery(unittest.TestCase):
     def test_detects_uppercase(self):
         self.assertTrue(_make_connected_store()._is_construct_query(
