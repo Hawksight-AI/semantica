@@ -69,5 +69,5 @@ If you have ideas on how this could be implemented, please share.
 
 ---
 
-**Note**: For feature requests that are ready to be implemented, consider creating a [Feature Request issue](https://github.com/Hawksight-AI/semantica/issues/new?template=feature_request.md) instead.
+**Note**: For feature requests that are ready to be implemented, consider creating a [Feature Request issue](https://github.com/semantica-agi/semantica/issues/new?template=feature_request.md) instead.
 
