@@ -140,6 +140,39 @@ _result_cache = ExtractionCache(
 if not config.get("cache_enabled", True):
     _result_cache.enabled = False
 
+# Generation kwargs that affect provider output and must therefore be part of
+# the cache key. This is the union of all parameters read by _add_if_set across
+# every provider in providers.py. Sensitive values (api_key, token, etc.) are
+# already filtered out by ExtractionCache._generate_key, so they need not be
+# excluded here.
+_GENERATION_CACHE_KEYS = frozenset({
+    "max_tokens",
+    "max_completion_tokens",
+    "temperature",
+    "top_p",
+    "top_k",
+    "seed",
+    "frequency_penalty",
+    "presence_penalty",
+    "stop",
+    "logit_bias",
+    "user",
+})
+
+
+def _generation_cache_params(kwargs: dict) -> dict:
+    """Return the subset of *kwargs* that affects generation output.
+
+    Only keys listed in ``_GENERATION_CACHE_KEYS`` are included so that
+    irrelevant or sensitive caller kwargs do not pollute the cache key.
+    Values that are ``None`` are omitted; a caller passing
+    ``temperature=None`` is equivalent to not passing it at all.
+    """
+    return {
+        k: v for k, v in kwargs.items()
+        if k in _GENERATION_CACHE_KEYS and v is not None
+    }
+
 # Try to import spaCy
 from ..utils.helpers import safe_import
 
@@ -957,6 +990,7 @@ def extract_entities_llm(
         "max_text_length": max_text_length,
         "structured_output_mode": structured_output_mode,
         "entity_types": kwargs.get("entity_types"),
+        **_generation_cache_params(kwargs),
     }
     cached_result = _result_cache.get("entities", text, **cache_params)
     if cached_result is not None:
@@ -1706,7 +1740,8 @@ def extract_relations_llm(
         "relation_types": kwargs.get("relation_types"),
         "extract_temporal_bounds": extract_temporal_bounds,
         # Include entities hash/str in cache key implicitly via **cache_params
-        "entities_hash": hash(tuple(sorted([e.text for e in entities]))) if entities else 0
+        "entities_hash": hash(tuple(sorted([e.text for e in entities]))) if entities else 0,
+        **_generation_cache_params(kwargs),
     }
     cached_result = _result_cache.get("relations", text, **cache_params)
     if cached_result is not None:
@@ -2361,7 +2396,8 @@ def extract_triplets_llm(
         "triplet_types": kwargs.get("triplet_types"),
         # Include entities/relations hash in cache key implicitly via **cache_params
         "entities_hash": hash(tuple(sorted([e.text for e in entities]))) if entities else 0,
-        "relations_hash": hash(tuple(sorted([str(r) for r in relations]))) if relations else 0
+        "relations_hash": hash(tuple(sorted([str(r) for r in relations]))) if relations else 0,
+        **_generation_cache_params(kwargs),
     }
     cached_result = _result_cache.get("triplets", text, **cache_params)
     if cached_result is not None:
