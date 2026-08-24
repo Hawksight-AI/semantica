@@ -615,8 +615,7 @@ def handle_submission_gate(node: FlowNode, bag: Dict[str, Any], context: Dict[st
     checks = {
         "has_scope": bool(scope.get("in_scope")),
         "has_report": bool(report),
-        "has_accepted_finding": any(f.get("triage_action", "accept") == "accept" for f in findings)
-        or bool(findings),
+        "has_accepted_finding": any(f.get("triage_action") == "accept" for f in findings),
         "no_scope_violations": not bool(context.get("scope_violations")),
         "has_evidence": bool(context.get("evidence")),
     }

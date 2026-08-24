@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from ...flow.models import FlowGraph, FlowRun
+from ..flow.models import FlowGraph, FlowRun
 
 
 class FlowStore:

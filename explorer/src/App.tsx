@@ -1951,8 +1951,6 @@ export default function App() {
           title="Ontology Manager"
           subtitle="Govern object types, link types, vocabulary, and schema constraints."
           kicker="Ontology"
-          subtitle="Load, browse, edit, and govern ontologies and vocabularies."
-          kicker="Schema Governance"
           compact
         >
           <ErrorBoundary key="ontology-hub">

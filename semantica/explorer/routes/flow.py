@@ -86,11 +86,6 @@ def create_bug_bounty_flow(body: BugBountyTemplateRequest) -> Dict[str, Any]:
 def list_flows() -> Dict[str, Any]:
     store = get_flow_store()
     flows = store.list_flows()
-    if not flows:
-        # Seed the default bug bounty template so the canvas is never empty.
-        flow = build_bug_bounty_hunting_flow()
-        store.upsert_flow(flow)
-        flows = [flow]
     return {"flows": [f.to_dict() for f in flows]}
 
 
@@ -146,28 +141,17 @@ def execute_flow(flow_id: str, body: FlowExecuteRequest) -> Dict[str, Any]:
     if flow is None:
         raise HTTPException(status_code=404, detail="Flow not found")
 
+    # Execute a copy so last-run status/results stay on the response, not the saved definition.
+    working = FlowGraph.from_dict(flow.to_dict())
     engine = FlowEngine()
     try:
-        run = engine.execute(flow, context=body.context, dry_run=body.dry_run)
+        run = engine.execute(working, context=body.context, dry_run=body.dry_run)
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Flow execution failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    store.save_run(run)
-    # Persist node statuses back onto the flow definition for the canvas.
-    status_map = run.node_status
-    for node in flow.nodes:
-        if node.id in status_map:
-            from ...flow.models import NodeStatus
-
-            try:
-                node.status = NodeStatus(status_map[node.id])
-            except ValueError:
-                pass
-            node.result = run.node_results.get(node.id)
-            err = run.node_results.get(node.id, {}).get("error")
-            node.error = err
-    store.upsert_flow(flow)
+    if not body.dry_run:
+        store.save_run(run)
     return run.to_dict()

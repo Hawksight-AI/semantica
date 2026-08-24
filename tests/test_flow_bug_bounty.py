@@ -111,3 +111,88 @@ def test_pipeline_template_includes_bug_bounty():
     assert template is not None
     assert template.metadata.get("style") == "n8n_graph"
     assert any(step["name"] == "submission_gate" for step in template.steps)
+
+
+def test_submission_gate_rejected_only_fails():
+    from semantica.flow.nodes import handle_submission_gate
+
+    node = FlowNode(id="g", type="submission_gate", label="Gate")
+    context = {
+        "report": {"id": "r1", "title": "t"},
+        "findings": [{"id": "f1", "title": "dup", "triage_action": "reject"}],
+        "triaged_findings": [{"id": "f1", "title": "dup", "triage_action": "reject"}],
+        "scope": {"in_scope": ["example.com"]},
+        "evidence": [{"id": "e1"}],
+        "scope_violations": [],
+    }
+    result = handle_submission_gate(node, {}, context)
+    assert result.output["ready"] is False
+    assert result.output["checks"]["has_accepted_finding"] is False
+    assert "has_accepted_finding" in result.output["failed_checks"]
+
+
+def _reset_flow_store():
+    from semantica.explorer import flow_store
+
+    flow_store._STORE = None
+    return flow_store.get_flow_store()
+
+
+def test_list_flows_does_not_seed():
+    store = _reset_flow_store()
+    from semantica.explorer.routes.flow import list_flows
+
+    payload = list_flows()
+    assert payload["flows"] == []
+    assert store.list_flows() == []
+
+
+def test_upsert_rejects_cycle_with_400():
+    from fastapi import HTTPException
+
+    from semantica.explorer.routes.flow import FlowUpsertRequest, upsert_flow
+
+    _reset_flow_store()
+    body = FlowUpsertRequest(
+        flow={
+            "id": "cyclic",
+            "name": "cyclic",
+            "nodes": [
+                {"id": "a", "type": "trigger", "label": "A"},
+                {"id": "b", "type": "merge", "label": "B"},
+            ],
+            "edges": [
+                {"id": "e1", "source": "a", "target": "b"},
+                {"id": "e2", "source": "b", "target": "a"},
+            ],
+        }
+    )
+    with pytest.raises(HTTPException) as exc:
+        upsert_flow(body)
+    assert exc.value.status_code == 400
+    assert "cycle" in str(exc.value.detail).lower()
+
+
+def test_execute_does_not_write_run_status_onto_saved_flow():
+    from semantica.explorer.routes.flow import FlowExecuteRequest, execute_flow
+
+    store = _reset_flow_store()
+    flow = build_bug_bounty_hunting_flow()
+    store.upsert_flow(flow)
+    before = {n.id: (n.status.value, n.result) for n in store.get_flow(flow.id).nodes}
+    run = execute_flow(flow.id, FlowExecuteRequest(context={}, dry_run=False))
+    assert run.get("id")
+    after = {n.id: (n.status.value, n.result) for n in store.get_flow(flow.id).nodes}
+    assert after == before
+    assert store.get_run(run["id"]) is not None
+
+
+def test_execute_dry_run_does_not_persist_run():
+    from semantica.explorer.routes.flow import FlowExecuteRequest, execute_flow
+
+    store = _reset_flow_store()
+    flow = build_bug_bounty_hunting_flow()
+    store.upsert_flow(flow)
+    run = execute_flow(flow.id, FlowExecuteRequest(context={}, dry_run=True))
+    assert run.get("id")
+    assert store.get_run(run["id"]) is None
