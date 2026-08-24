@@ -116,7 +116,41 @@ class OpenClawKGTool:
     )
 
     def __init__(self, base_url: str = "http://localhost:8000", timeout: int = 30) -> None:
-        self.base_url = base_url.rstrip("/")
+        # Validate base_url at construction time so callers get an immediate,
+        # actionable error rather than a cryptic failure on the first request.
+        # allow_private_ips=True because the documented default (localhost:8000)
+        # is intentionally a local Semantica server; the scheme check and
+        # URL-structure check still apply unconditionally.
+        try:
+            from semantica.ingest.ssrf import validate_url_for_request
+            validate_url_for_request(base_url, allow_private_ips=True)
+        except ImportError:
+            # semantica.ingest not installed in minimal openclaw-only environments;
+            # mirror the structural checks that validate_url_for_request performs
+            # unconditionally (before allow_private_ips is consulted), so the
+            # guarantee in the comment above — "scheme check and URL-structure check
+            # still apply unconditionally" — holds in this path too.
+            from urllib.parse import urlparse as _urlparse
+            if not isinstance(base_url, str) or not base_url.strip():
+                raise ValueError("OpenClawKGTool base_url must be a non-empty string.")
+            _parsed = _urlparse(base_url.strip())
+            _scheme = (_parsed.scheme or "").lower()
+            if _scheme not in ("http", "https"):
+                raise ValueError(
+                    f"OpenClawKGTool base_url scheme '{_parsed.scheme}' is not permitted. "
+                    "Only http and https are allowed."
+                )
+            if not _parsed.netloc:
+                raise ValueError(
+                    f"Invalid OpenClawKGTool base_url '{base_url}': "
+                    "URL must include a netloc (domain or host)."
+                )
+            if not _parsed.hostname:
+                raise ValueError(
+                    f"Invalid OpenClawKGTool base_url '{base_url}': "
+                    "URL must include a hostname."
+                )
+        self.base_url = base_url.strip().rstrip("/")
         self.timeout = timeout
         self._session: Any = None
 

@@ -1531,4 +1531,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-For detailed release notes, see [GitHub Releases](https://github.com/Hawksight-AI/semantica/releases).
+For detailed release notes, see [GitHub Releases](https://github.com/semantica-agi/semantica/releases).

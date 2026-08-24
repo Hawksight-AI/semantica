@@ -1039,6 +1039,6 @@ manager = TemporalVersionManager(storage_path="large_data.db")
 ## Support
 
 For questions or issues:
-- GitHub Issues: https://github.com/Hawksight-AI/semantica/issues
+- GitHub Issues: https://github.com/semantica-agi/semantica/issues
 - Documentation: https://semantica.readthedocs.io
 - Community: https://discord.gg/sV34vps5hH

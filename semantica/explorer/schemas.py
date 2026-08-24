@@ -8,11 +8,6 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from pydantic import BaseModel, Field, field_validator
 
 
-class ErrorResponse(BaseModel):
-    detail: str
-    status_code: int = 500
-
-
 class NodeResponse(BaseModel):
     id: str
     type: str
@@ -187,12 +182,6 @@ class ComplianceResponse(BaseModel):
     violations: List[Dict[str, Any]] = Field(default_factory=list)
 
 
-class TemporalSnapshotResponse(BaseModel):
-    timestamp: str
-    active_nodes: List[NodeResponse]
-    active_node_count: int
-
-
 class TemporalDiffResponse(BaseModel):
     from_time: str
     to_time: str
@@ -256,13 +245,6 @@ class ExportRequest(BaseModel):
     node_ids: Optional[List[str]] = None
 
 
-class ExportResponse(BaseModel):
-    format: str
-    content_type: str
-    filename: str
-    size_bytes: int = 0
-
-
 class ImportResponse(BaseModel):
     status: str = "success"
     message: str = "Import successful"
@@ -270,11 +252,6 @@ class ImportResponse(BaseModel):
     edges_added: int = 0
     nodes_imported: Optional[int] = None
     edges_imported: Optional[int] = None
-
-
-class StandardMessageResponse(BaseModel):
-    status: str
-    message: str
 
 
 class AnnotationCreate(BaseModel):
