@@ -116,6 +116,24 @@ class OpenClawKGTool:
     )
 
     def __init__(self, base_url: str = "http://localhost:8000", timeout: int = 30) -> None:
+        # Validate base_url at construction time so callers get an immediate,
+        # actionable error rather than a cryptic failure on the first request.
+        # allow_private_ips=True because the documented default (localhost:8000)
+        # is intentionally a local Semantica server; the scheme check and
+        # URL-structure check still apply unconditionally.
+        try:
+            from semantica.ingest.ssrf import validate_url_for_request
+            validate_url_for_request(base_url, allow_private_ips=True)
+        except ImportError:
+            # semantica.ingest not installed in minimal openclaw-only environments;
+            # fall back to a basic scheme check so the most obvious misuse is still caught.
+            from urllib.parse import urlparse as _urlparse
+            _scheme = _urlparse(base_url).scheme.lower()
+            if _scheme not in ("http", "https"):
+                raise ValueError(
+                    f"OpenClawKGTool base_url scheme '{_scheme}' is not permitted. "
+                    "Only http and https are allowed."
+                )
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._session: Any = None
