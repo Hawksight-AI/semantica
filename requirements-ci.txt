@@ -399,9 +399,9 @@ blis==1.3.3 \
     --hash=sha256:f20f7ad69aaffd1ce14fe77de557b6df9b61e0c9e582f75a843715d836b5c8af \
     --hash=sha256:f36c0ca84a05ee5d3dbaa38056c4423c1fc29948b17a7923dd2fed8967375d74
     # via thinc
-boto3==1.43.69 \
-    --hash=sha256:4eb494d05b2bd08a7eee61b8ac4c34745c99e9bbce435c91f8d15d372dd8c2db \
-    --hash=sha256:76297a0b415849c63575ae08a4f1661b2dc8ee0100f104b86f98aa69b47fa2c7
+boto3==1.43.76 \
+    --hash=sha256:249f55274aef9fa3b9de6afb6f5b2effbbb15c5263d97c13e7b691f479a62c04 \
+    --hash=sha256:fa4dc85f735bb67d8f82e42ac50af7e1d2c039aeacf40c878067c9046464b6ad
     # via semantica (pyproject.toml)
 botocore==1.43.73 \
     --hash=sha256:068433028e011ccbeab1dd7c46b1090c24e378397693c66e67ca571176498daa \
