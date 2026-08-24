@@ -529,6 +529,60 @@ class TestConflictsModule(unittest.TestCase):
         self.assertEqual(trends[0]["trend"], "insufficient_data")
         self.assertEqual(trends[0]["conflict_count"], 1)
 
+    def test_resolve_by_voting_with_unhashable_values(self):
+        """Voting must handle unhashable values (dict/list) without crashing."""
+        resolver = ConflictResolver()
+
+        val_a = {"city": "New York", "zip": "10001"}
+        val_b = {"city": "Boston", "zip": "02101"}
+        conflict = Conflict(
+            conflict_id="c_unhashable_vote",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="address",
+            conflicting_values=[val_a, val_a, val_b],
+            sources=[
+                {"document": "doc1", "confidence": 0.9},
+                {"document": "doc2", "confidence": 0.8},
+                {"document": "doc3", "confidence": 0.7},
+            ],
+        )
+
+        result = resolver.resolve_conflict(conflict, strategy="voting")
+        self.assertTrue(result.resolved)
+        # The majority value (val_a appears twice) must win and be returned
+        # as the original dict, not a stringified key.
+        self.assertEqual(result.resolved_value, val_a)
+        self.assertIsInstance(result.resolved_value, dict)
+
+    def test_resolve_by_credibility_with_unhashable_values(self):
+        """Credibility-weighted resolution must handle unhashable values."""
+        resolver = ConflictResolver()
+        resolver.source_tracker.set_source_credibility("doc_trusted", 1.0)
+        resolver.source_tracker.set_source_credibility("doc_flaky", 0.1)
+
+        val_a = ["tag1", "tag2"]
+        val_b = ["tag3"]
+        conflict = Conflict(
+            conflict_id="c_unhashable_cred",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="tags",
+            conflicting_values=[val_a, val_a, val_b],
+            sources=[
+                {"document": "doc_flaky", "confidence": 0.9},
+                {"document": "doc_flaky", "confidence": 0.9},
+                {"document": "doc_trusted", "confidence": 0.9},
+            ],
+        )
+
+        result = resolver.resolve_conflict(conflict, strategy="credibility_weighted")
+        self.assertTrue(result.resolved)
+        # doc_trusted has far higher credibility, so val_b should win and be
+        # returned as the original list.
+        self.assertEqual(result.resolved_value, val_b)
+        self.assertIsInstance(result.resolved_value, list)
+
 
 if __name__ == "__main__":
     unittest.main()
