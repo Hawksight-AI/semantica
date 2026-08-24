@@ -1906,13 +1906,10 @@ Entities found in text: {entities_str}"""
                 "[methods.extract_relations_llm] Calling llm.generate_typed (%s/%s)...",
                 provider, model,
             )
-        # Only forward minimal, safe parameters to provider calls
-        call_kwargs = {}
-        if "temperature" in kwargs:
-            call_kwargs["temperature"] = kwargs["temperature"]
-        if "verbose" in kwargs:
-            call_kwargs["verbose"] = kwargs["verbose"]
-
+        # Forward all caller-supplied generation kwargs so they reach
+        # generate_typed and the underlying provider API. max_retries is
+        # always set from the explicit parameter.
+        call_kwargs = kwargs.copy()
         call_kwargs["max_retries"] = max_retries
 
         # Select schema based on whether temporal extraction is requested
