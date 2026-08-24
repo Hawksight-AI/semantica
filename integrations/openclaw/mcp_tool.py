@@ -126,15 +126,31 @@ class OpenClawKGTool:
             validate_url_for_request(base_url, allow_private_ips=True)
         except ImportError:
             # semantica.ingest not installed in minimal openclaw-only environments;
-            # fall back to a basic scheme check so the most obvious misuse is still caught.
+            # mirror the structural checks that validate_url_for_request performs
+            # unconditionally (before allow_private_ips is consulted), so the
+            # guarantee in the comment above — "scheme check and URL-structure check
+            # still apply unconditionally" — holds in this path too.
             from urllib.parse import urlparse as _urlparse
-            _scheme = _urlparse(base_url).scheme.lower()
+            if not isinstance(base_url, str) or not base_url.strip():
+                raise ValueError("OpenClawKGTool base_url must be a non-empty string.")
+            _parsed = _urlparse(base_url.strip())
+            _scheme = (_parsed.scheme or "").lower()
             if _scheme not in ("http", "https"):
                 raise ValueError(
-                    f"OpenClawKGTool base_url scheme '{_scheme}' is not permitted. "
+                    f"OpenClawKGTool base_url scheme '{_parsed.scheme}' is not permitted. "
                     "Only http and https are allowed."
                 )
-        self.base_url = base_url.rstrip("/")
+            if not _parsed.netloc:
+                raise ValueError(
+                    f"Invalid OpenClawKGTool base_url '{base_url}': "
+                    "URL must include a netloc (domain or host)."
+                )
+            if not _parsed.hostname:
+                raise ValueError(
+                    f"Invalid OpenClawKGTool base_url '{base_url}': "
+                    "URL must include a hostname."
+                )
+        self.base_url = base_url.strip().rstrip("/")
         self.timeout = timeout
         self._session: Any = None
 
