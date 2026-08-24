@@ -32,7 +32,7 @@ jobs:
       # meaningful state carried over from a failed attempt.
       - name: Initialize CodeQL (attempt 1)
         id: codeql-init-1
-        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
         continue-on-error: true
         with:
           languages: python
@@ -42,7 +42,7 @@ jobs:
       - name: Initialize CodeQL (attempt 2)
         id: codeql-init-2
         if: steps.codeql-init-1.outcome == 'failure'
-        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
         continue-on-error: true
         with:
           languages: python
@@ -52,17 +52,17 @@ jobs:
       - name: Initialize CodeQL (attempt 3)
         id: codeql-init-3
         if: steps.codeql-init-2.outcome == 'failure'
-        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
         with:
           languages: python
           queries: security-and-quality
           config-file: .github/codeql/codeql-config.yml
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        uses: github/codeql-action/autobuild@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
         with:
           category: "/language:python"
           upload: false
@@ -72,7 +72,7 @@ jobs:
         # Uploads results only when Default Setup is not active.
         # If Default Setup is still enabled, this step skips gracefully
         # instead of failing the workflow with HTTP 409.
-        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
         with:
           sarif_file: ${{ steps.codeql.outputs.sarif-output }}
           category: "/language:python"
