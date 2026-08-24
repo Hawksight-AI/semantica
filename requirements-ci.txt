@@ -3650,9 +3650,9 @@ nvidia-cufft==12.0.0.61 \
     --hash=sha256:2abce5b39d2f5ae12730fb7e5db6696533e36c26e2d3e8fd1750bdd2853364eb \
     --hash=sha256:6c44f692dce8fd5ffd3e3df134b6cdb9c2f72d99cf40b62c32dde45eea9ddad3
     # via cuda-toolkit
-nvidia-cufile==1.15.1.6 \
-    --hash=sha256:08a3ecefae5a01c7f5117351c64f17c7c62efa5fffdbe24fc7d298da19cd0b44 \
-    --hash=sha256:bdc0deedc61f548bddf7733bdc216456c2fdb101d020e1ab4b88d232d5e2f6d1
+nvidia-cufile==1.18.1.6 \
+    --hash=sha256:9ad93e44607facaddabb4bff042f00043caec62d96af8a1f5274ec801ded23f2 \
+    --hash=sha256:c4bc76857335b4615c3906453ff375632466cc48e823b56ec146de4d58f2781c
     # via cuda-toolkit
 nvidia-curand==10.4.0.35 \
     --hash=sha256:133df5a7509c3e292aaa2b477afd0194f06ce4ea24d714d616ff36439cee349a \
