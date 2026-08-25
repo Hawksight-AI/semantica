@@ -77,7 +77,17 @@ Most users won't call utils directly: it's the **shared foundation** for all mod
     export SEMANTICA_LOG_LEVEL=DEBUG
     export SEMANTICA_LOG_FORMAT=json     # "json" | "text"
     export SEMANTICA_DISABLE_PROGRESS=true
+    export SEMANTICA_FORCE_PROGRESS=true
     ```
+
+    <Tip>
+      **Progress bars follow your terminal.** Console progress is written only when
+      stdout is an interactive terminal (or a Jupyter notebook), so piping or
+      redirecting output no longer fills logs with progress bars and escape
+      sequences. Set `SEMANTICA_DISABLE_PROGRESS` to silence progress even in a
+      terminal, or `SEMANTICA_FORCE_PROGRESS` to keep it when stdout is redirected.
+      `SEMANTICA_DISABLE_PROGRESS` wins if both are set.
+    </Tip>
   </Step>
 </Steps>
 

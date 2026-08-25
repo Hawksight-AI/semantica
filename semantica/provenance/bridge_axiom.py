@@ -61,8 +61,9 @@ License: MIT
 
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 import uuid
+
+from ..utils.helpers import utc_now_iso
 
 
 @dataclass
@@ -280,7 +281,7 @@ class TranslationChain:
             "type": layer_type,
             "value": value,
             "source": source,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_iso(),
             **kwargs
         }
         self.layers.append(layer)

@@ -80,7 +80,12 @@ def handle_export_graph(args: dict) -> dict:
         if rdf_fmt:
             try:
                 from semantica.export import RDFExporter
-                rdf_str = RDFExporter().export_to_rdf(graph, format=rdf_fmt)
+                # RDFExporter.export_to_rdf() expects the canonical kg dict
+                # {"entities": [...], "relationships": [...]}, not a ContextGraph
+                # object.  Convert before handing off; passing the raw graph
+                # caused AttributeError: 'ContextGraph' object has no attribute
+                # 'get' on every RDF format.
+                rdf_str = RDFExporter().export_to_rdf(graph.to_kg_dict(), format=rdf_fmt)
                 return {"format": rdf_fmt, "data": rdf_str}
             except Exception as exc:
                 return {"error": f"RDF export failed: {exc}"}

@@ -22,7 +22,6 @@ License: MIT
 """
 
 from collections.abc import Mapping
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -33,6 +32,7 @@ from ..utils.helpers import (
     _require_recognized_keys,
     ensure_directory,
     normalize_graph_payload,
+    utc_now_iso,
 )
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
@@ -216,7 +216,7 @@ class SemanticNetworkYAMLExporter:
             records = normalize_graph_payload(semantic_network)
             yaml_data = {
                 "metadata": {
-                    "exported_at": datetime.now().isoformat(),
+                    "exported_at": utc_now_iso(),
                     "version": "1.0",
                     **semantic_network.get("metadata", {}),
                 },
@@ -309,7 +309,7 @@ class SemanticNetworkYAMLExporter:
 
         if include_metadata:
             yaml_data["metadata"] = {
-                "exported_at": datetime.now().isoformat(),
+                "exported_at": utc_now_iso(),
                 "entity_count": len(entities),
             }
 
@@ -333,7 +333,7 @@ class SemanticNetworkYAMLExporter:
 
         if include_properties:
             yaml_data["metadata"] = {
-                "exported_at": datetime.now().isoformat(),
+                "exported_at": utc_now_iso(),
                 "relationship_count": len(relationships),
             }
 
@@ -370,7 +370,7 @@ class SemanticNetworkYAMLExporter:
         }
 
         yaml_data["metadata"] = {
-            "exported_at": datetime.now().isoformat(),
+            "exported_at": utc_now_iso(),
             "triplet_count": len(triplets),
         }
 
@@ -410,7 +410,7 @@ class SemanticNetworkYAMLExporter:
         yaml_data = {
             "pipeline_stage": pipeline_stage,
             "metadata": {
-                "extracted_at": datetime.now().isoformat(),
+                "extracted_at": utc_now_iso(),
                 **extracted_data.get("metadata", {}),
             },
             "semantic_network": semantic_network,
