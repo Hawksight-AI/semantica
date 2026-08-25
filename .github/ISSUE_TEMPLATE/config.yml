@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: 📚 Documentation
-    url: https://github.com/Hawksight-AI/semantica/tree/main/docs
+    url: https://github.com/semantica-agi/semantica/tree/main/docs
     about: Browse the documentation
   - name: 💬 Discussions
-    url: https://github.com/Hawksight-AI/semantica/discussions
+    url: https://github.com/semantica-agi/semantica/discussions
     about: Ask questions and discuss with the community

@@ -45,6 +45,7 @@ License: MIT
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
+from ..utils.entity_ids import get_entity_id
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
@@ -504,7 +505,7 @@ class EntityMerger:
         # Record source entities
         provenance["merged_from"] = [
             {
-                "id": self._get_entity_value(e, "id"),
+                "id": get_entity_id(e),
                 "name": self._get_entity_value(e, "name"),
                 "source": self._get_entity_value(e, "metadata", {}).get("source") if hasattr(e, "metadata") or isinstance(e, dict) else None,
             }

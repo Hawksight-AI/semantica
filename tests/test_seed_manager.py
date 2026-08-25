@@ -5,6 +5,9 @@ import json
 import csv
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import requests
+
 from semantica.seed.seed_manager import SeedDataManager, SeedDataSource, SeedData
 from semantica.utils.exceptions import ProcessingError
 
@@ -262,6 +265,61 @@ def test_load_from_api_does_not_mutate_empty_headers_dict(mock_guard, seed_manag
     call_kwargs = mock_guard.call_args[1]
     guard_headers = call_kwargs.get("headers", {})
     assert guard_headers.get("Authorization") == "Bearer key"
+
+
+# requests.exceptions.RequestException subclasses OSError, so network failures raised
+# by request_with_ssrf_guard used to be reported as "requests library not available"
+# by the obsolete ImportError / OSError handler. They must surface the real cause.
+@pytest.mark.parametrize(
+    "error",
+    [
+        requests.exceptions.ConnectionError("connection refused"),
+        requests.exceptions.Timeout("timed out"),
+        requests.exceptions.HTTPError("500 Server Error"),
+    ],
+)
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_request_failure_reports_real_cause(mock_guard, error, seed_manager):
+    mock_guard.side_effect = error
+
+    with pytest.raises(ProcessingError) as excinfo:
+        seed_manager.load_from_api(api_url="http://api.example.com", endpoint="users")
+
+    message = str(excinfo.value)
+    assert "Failed to load from API" in message
+    assert str(error) in message
+    assert "requests library not available" not in message
+    assert excinfo.value.__cause__ is error
+
+
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_http_status_error_reports_real_cause(mock_guard, seed_manager):
+    http_error = requests.exceptions.HTTPError("404 Client Error: Not Found")
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = http_error
+    mock_guard.return_value = mock_response
+
+    with pytest.raises(ProcessingError) as excinfo:
+        seed_manager.load_from_api(api_url="http://api.example.com", endpoint="users")
+
+    message = str(excinfo.value)
+    assert "404 Client Error: Not Found" in message
+    assert "requests library not available" not in message
+    mock_response.json.assert_not_called()
+
+
+@patch("semantica.seed.seed_manager.request_with_ssrf_guard")
+def test_load_from_api_invalid_json_reports_real_cause(mock_guard, seed_manager):
+    mock_response = MagicMock()
+    mock_response.json.side_effect = ValueError("Expecting value: line 1 column 1")
+    mock_guard.return_value = mock_response
+
+    with pytest.raises(ProcessingError) as excinfo:
+        seed_manager.load_from_api(api_url="http://api.example.com")
+
+    message = str(excinfo.value)
+    assert "Failed to load from API" in message
+    assert "Expecting value" in message
 
 def test_load_source(seed_manager, temp_data_dir):
     json_file = temp_data_dir / "source.json"

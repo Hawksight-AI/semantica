@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional
 
 from ..deduplication.duplicate_detector import DuplicateDetector, DuplicateGroup
 from ..deduplication.entity_merger import EntityMerger
+from ..utils.entity_ids import get_entity_id
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
@@ -240,9 +241,7 @@ class EntityResolver:
     @staticmethod
     def _get_entity_id(entity: Any) -> Any:
         """Return an entity ID while supporting dictionary and object inputs."""
-        if isinstance(entity, dict):
-            return entity.get("id") or entity.get("entity_id")
-        return getattr(entity, "id", None) or getattr(entity, "entity_id", None)
+        return get_entity_id(entity)
 
     @staticmethod
     def _get_entity_name(entity: Any) -> Optional[str]:
@@ -279,13 +278,13 @@ class EntityResolver:
         processed_ids = set()
         for op in merge_operations:
             for source_entity in op.source_entities:
-                entity_id = source_entity.get("id") or source_entity.get("entity_id")
-                if entity_id:
+                entity_id = get_entity_id(source_entity)
+                if entity_id is not None:
                     processed_ids.add(entity_id)
 
         for entity in entities:
-            entity_id = entity.get("id") or entity.get("entity_id")
-            if entity_id and entity_id not in processed_ids:
+            entity_id = get_entity_id(entity)
+            if entity_id is not None and entity_id not in processed_ids:
                 merged_entities.append(entity)
 
         self.logger.info(f"Merged to {len(merged_entities)} entities")

@@ -320,6 +320,65 @@ def format_timestamp(
     return dt.strftime(format_str)
 
 
+def utc_now() -> datetime:
+    """
+    Current instant as a timezone-aware UTC datetime.
+
+    ``datetime.now()`` reads the local clock and ``datetime.utcnow()`` reads UTC,
+    but both return a naive datetime, and the two are indistinguishable once
+    serialized: a consumer cannot tell which zone the value belongs to, and an
+    RDF timestamp without an offset is not comparable against one that has an
+    offset (a SPARQL FILTER drops it rather than reporting an error). Use this
+    for any timestamp that leaves the process.
+
+    Returns:
+        Current UTC time, timezone-aware
+    """
+    return datetime.now(timezone.utc)
+
+
+def utc_now_iso() -> str:
+    """
+    Current instant as an ISO 8601 string carrying an explicit UTC offset.
+
+    Returns:
+        Timestamp string such as ``2026-08-19T14:19:04.229937+00:00``, which is
+        a valid ``xsd:dateTimeStamp`` and orders correctly against timestamps
+        written in any other timezone
+    """
+    return utc_now().isoformat()
+
+
+def to_utc_datetime(value: Union[str, datetime, None]) -> Optional[datetime]:
+    """
+    Read an ISO 8601 timestamp as a timezone-aware UTC instant.
+
+    Timestamps written before #1114 carry no offset. They were produced by
+    ``datetime.utcnow()``, so a missing offset is read as UTC: that keeps a
+    stored naive value and the same instant written with an offset comparing
+    equal, instead of ordering by how the timestamp happens to be spelled.
+
+    Args:
+        value: ISO 8601 string or datetime. ``Z`` is accepted as the offset.
+
+    Returns:
+        Timezone-aware UTC datetime, or None if the value cannot be read as a
+        timestamp, so callers can fall back rather than raise on stored data
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def parse_timestamp(timestamp_str: str, format_str: Optional[str] = None) -> datetime:
     """
     Parse timestamp string to datetime.
@@ -621,6 +680,35 @@ _TRIPLET_KEYS = ("triplets",)
 # 'metadata' and 'count'.
 _CONTEXT_KEYS = ("metadata", "statistics", "count")
 
+# Validation errors below interpolate caller-controlled keys. A pathological
+# key (megabytes long) would otherwise size the exception string and, through
+# the export wrappers that log the full exception, the log entry. The display
+# keeps the offending key recognizable while bounding the message.
+_MAX_KEY_DISPLAY = 64
+
+
+def _truncate_key(key: Any) -> str:
+    """Render a mapping key for an error message, bounded in length."""
+    value = str(key)
+    if len(value) > _MAX_KEY_DISPLAY:
+        return value[:_MAX_KEY_DISPLAY] + "…"
+    return value
+
+
+# Truncating each key bounds the per-key cost; capping the count of keys
+# shown bounds the total, so a payload carrying many unknown keys cannot
+# size the message (or the log entry that records it) either.
+_MAX_KEYS_DISPLAY = 8
+
+
+def _truncate_key_list(keys: Iterable[Any]) -> str:
+    """Render keys for an error message, bounded in count and length."""
+    rendered = [_truncate_key(key) for key in keys]
+    if len(rendered) <= _MAX_KEYS_DISPLAY:
+        return ", ".join(f"'{key}'" for key in rendered)
+    shown = ", ".join(f"'{key}'" for key in rendered[:_MAX_KEYS_DISPLAY])
+    return f"{shown}, and {len(rendered) - _MAX_KEYS_DISPLAY} more"
+
 
 def _require_recognized_keys(
     payload: Mapping, recognized_keys: Sequence[str], *, what: str
@@ -643,7 +731,7 @@ def _require_recognized_keys(
     if not payload or any(key in payload for key in recognized_keys):
         return
 
-    supplied = ", ".join(f"'{key}'" for key in sorted(map(str, payload)))
+    supplied = _truncate_key_list(sorted(map(str, payload)))
     expected = ", ".join(f"'{key}'" for key in recognized_keys)
     raise ValidationError(
         f"{what} has no recognized key. Supplied: {supplied}. "
@@ -694,7 +782,7 @@ def _require_nothing_dropped(
     if not dropped:
         return
 
-    named = ", ".join(f"'{key}'" for key in dropped)
+    named = _truncate_key_list(dropped)
     expected = ", ".join(f"'{key}'" for key in recognized_keys)
     raise ValidationError(
         f"{what} resolved to nothing, but {named} still holds records. "
