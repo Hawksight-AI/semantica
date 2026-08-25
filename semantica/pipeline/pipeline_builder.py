@@ -276,7 +276,10 @@ class PipelineBuilder:
                 step_name = step_config.get("name")
                 step_type = step_config.get("type")
                 if step_name and step_type:
-                    self.add_step(step_name, step_type, **step_config.get("config", {}))
+                    step_options = dict(step_config.get("config", {}))
+                    if "dependencies" in step_config:
+                        step_options["dependencies"] = step_config["dependencies"]
+                    self.add_step(step_name, step_type, **step_options)
 
             # Set parallelism if specified
             if "parallelism" in pipeline_config:

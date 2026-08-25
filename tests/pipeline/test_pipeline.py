@@ -121,6 +121,18 @@ class TestPipelineModule(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.output, 2)
 
+    def test_step_without_handler_passes_input_through(self):
+        """A step with no explicit or registered handler should be a no-op."""
+        builder = PipelineBuilder()
+        builder.add_step("passthrough", "unregistered")
+
+        result = ExecutionEngine().execute_pipeline(
+            builder.build("handlerless"), data={"value": 1}
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output, {"value": 1})
+
     def test_execution_engine_failure(self):
         """Test pipeline failure handling."""
         def failing_handler(data, **kwargs):
