@@ -456,10 +456,6 @@ class DraftResponse(BaseModel):
     updated_at: str
 
 
-class ProposalState(BaseModel):
-    state: Literal["draft", "proposed", "approved", "published", "rejected"]
-
-
 class ProposalRequest(BaseModel):
     draft_id: str
     ontology_uri: str

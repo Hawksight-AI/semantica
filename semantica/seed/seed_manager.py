@@ -482,8 +482,8 @@ class SeedDataManager:
             List of loaded data records as dictionaries
 
         Raises:
-            ProcessingError: If API request fails, response parsing fails, or
-                requests library is not available
+            ProcessingError: If the API request fails (connection error,
+                timeout, non-2xx status) or the response cannot be parsed
 
         Example:
             >>> records = manager.load_from_api(
@@ -559,10 +559,6 @@ class SeedDataManager:
             self.logger.info(f"Loaded {len(records)} records from API: {full_url}")
             return records
 
-        except (ImportError, OSError):
-            raise ProcessingError(
-                "requests library not available. Install with: pip install requests"
-            )
         except Exception as e:
             raise ProcessingError(f"Failed to load from API: {e}") from e
 

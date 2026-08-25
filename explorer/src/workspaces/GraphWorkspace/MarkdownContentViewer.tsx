@@ -3,30 +3,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, Code2, Eye, ExternalLink, Image as ImageIcon } from "lucide-react";
 import { GRAPH_THEME } from "./graphTheme";
+import { isSafeUrl } from "./markdownUrlSafety";
 
 export interface MarkdownContentViewerProps {
   content?: string | null;
   className?: string;
   defaultMode?: "preview" | "source";
-}
-
-export function isSafeUrl(url?: string): boolean {
-  if (!url) return false;
-  const trimmed = url.trim();
-  // Reject whitespace-only strings — new URL("", base) would resolve to the base
-  // protocol and produce a false positive. This guards direct callers of the exported
-  // function; markdown parsers normalise whitespace-only destinations to "" which
-  // already fails the !url check above.
-  if (!trimmed) return false;
-  if (trimmed.startsWith("//")) return false;
-  if (trimmed.startsWith("#")) return true;
-  if (trimmed.startsWith("/")) return true;
-  try {
-    const parsed = new URL(trimmed, "http://localhost");
-    return ["http:", "https:", "mailto:"].includes(parsed.protocol);
-  } catch {
-    return false;
-  }
 }
 
 export function MarkdownContentViewer({
