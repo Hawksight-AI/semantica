@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useId, type CSSProperties, type KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useId, type CSSProperties, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, Code2, Eye, ExternalLink, Image as ImageIcon } from "lucide-react";
@@ -26,6 +26,26 @@ export function isSafeUrl(url?: string): boolean {
     return ["http:", "https:", "mailto:"].includes(parsed.protocol);
   } catch {
     return false;
+  }
+}
+
+// Exported for unit-testing the roving-tabindex navigation logic without a DOM.
+// Given the ordered list of tab modes and the currently focused mode, returns
+// the mode that should receive focus for a given keyboard key.  Returns null if
+// the key is not a navigation key so callers can handle the default case.
+// eslint-disable-next-line react-refresh/only-export-components
+export function resolveTabNavigation(
+  current: "preview" | "source",
+  key: string,
+): "preview" | "source" | null {
+  const order = ["preview", "source"] as const;
+  const idx = order.indexOf(current);
+  switch (key) {
+    case "ArrowRight": return order[(idx + 1) % order.length];
+    case "ArrowLeft":  return order[(idx - 1 + order.length) % order.length];
+    case "Home":       return order[0];
+    case "End":        return order[order.length - 1];
+    default:           return null;
   }
 }
 
@@ -62,18 +82,40 @@ export function MarkdownContentViewer({
   // Roving tabindex: the tablist is one Tab stop and arrows move focus within it.
   // Focus is tracked separately from selection because activation is manual (see
   // handleTabKeyDown), so a tab can hold focus without being the selected one.
-  const [focusedMode, setFocusedMode] = useState<"preview" | "source">(defaultMode);
+  //
+  // focusedMode is stored in a ref rather than state so that moving focus with
+  // arrow keys does NOT trigger a React re-render. A re-render here is expensive:
+  // react-markdown@10 has no internal memoisation and calls processor.parse() +
+  // processor.runSync() unconditionally on every render — measured at 385ms for a
+  // 1000-row GFM table and 1.4s at 2000 rows (#1118). Using a ref means arrow-key
+  // navigation is free of Markdown re-parses while still keeping the DOM tabIndex
+  // attributes correct via direct mutation (the same pattern used by WAI-ARIA APG
+  // keyboard examples for roving tabindex).
+  //
+  // The JSX tabIndex props use activeMode (not the ref) to satisfy the
+  // react-hooks/refs lint rule that bars ref reads during render. JSX provides the
+  // correct value on initial render and after selectMode() calls (which always keep
+  // focusedModeRef.current === activeMode at React render boundaries). A
+  // useLayoutEffect (see below) corrects any JSX overwrite that occurs when focus
+  // and selection temporarily differ during arrow navigation.
+  const focusedModeRef = useRef<"preview" | "source">(defaultMode);
   const previewTabRef = useRef<HTMLButtonElement>(null);
   const sourceTabRef = useRef<HTMLButtonElement>(null);
 
   const focusTab = (mode: "preview" | "source") => {
-    setFocusedMode(mode);
+    focusedModeRef.current = mode;
+    // Imperatively update tabIndex on both buttons so the roving tabindex
+    // DOM state is correct without scheduling a React re-render.
+    if (previewTabRef.current) previewTabRef.current.tabIndex = mode === "preview" ? 0 : -1;
+    if (sourceTabRef.current) sourceTabRef.current.tabIndex = mode === "source" ? 0 : -1;
     (mode === "preview" ? previewTabRef : sourceTabRef).current?.focus();
   };
 
   const selectMode = (mode: "preview" | "source") => {
+    // Keep the ref in sync before setActiveMode so the upcoming re-render reads
+    // the correct focusedModeRef.current when evaluating JSX tabIndex props.
+    focusedModeRef.current = mode;
     setActiveMode(mode);
-    setFocusedMode(mode);
   };
 
   // Manual activation (APG permits it, and here it is required): arrows move
@@ -81,16 +123,8 @@ export function MarkdownContentViewer({
   // activation would re-run the full markdown parse on every arrow keypress —
   // measured at 385ms for a 1000-row GFM table and 1.4s at 2000 rows (#1118).
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const order = ["preview", "source"] as const;
-    const current = order.indexOf(focusedMode);
-    let next: "preview" | "source";
-    switch (event.key) {
-      case "ArrowRight": next = order[(current + 1) % order.length]; break;
-      case "ArrowLeft": next = order[(current - 1 + order.length) % order.length]; break;
-      case "Home": next = order[0]; break;
-      case "End": next = order[order.length - 1]; break;
-      default: return;
-    }
+    const next = resolveTabNavigation(focusedModeRef.current, event.key);
+    if (next === null) return;
     event.preventDefault();
     focusTab(next);
   };
@@ -105,6 +139,29 @@ export function MarkdownContentViewer({
       }
     };
   }, []);
+
+  // After every render, restore the DOM tabIndex to match focusedModeRef.current.
+  // This is necessary because the JSX tabIndex props derive from activeMode, which
+  // is correct for initial render and for renders triggered by selectMode(). However,
+  // when focus and selection differ (i.e. after arrow-key navigation, before Enter/Space),
+  // any unrelated re-render (copy-button click, parent update, etc.) will reconcile JSX
+  // tabIndex={activeMode === X} and overwrite the imperative tabIndex values set by
+  // focusTab(). useLayoutEffect fires synchronously after React's DOM mutations, before
+  // paint, so it corrects any such overwrite before the user sees it. It does not
+  // schedule another render — the two property writes are pure DOM mutations.
+  // No deps array: intentional. The correction must run after every render, not just mount.
+  // SSR-safe: useLayoutEffect is silently skipped on the server; the JSX tabIndex from
+  // activeMode provides the correct initial value (focusedModeRef.current === activeMode
+  // at mount). Strict Mode: runs twice on remount — both runs write the same values,
+  // no state mutation, no render triggered.
+  useLayoutEffect(() => {
+    if (previewTabRef.current) {
+      previewTabRef.current.tabIndex = focusedModeRef.current === "preview" ? 0 : -1;
+    }
+    if (sourceTabRef.current) {
+      sourceTabRef.current.tabIndex = focusedModeRef.current === "source" ? 0 : -1;
+    }
+  });
 
   const rawContent = typeof content === "string" ? content : "";
   const hasContent = rawContent.trim().length > 0;
@@ -134,7 +191,7 @@ export function MarkdownContentViewer({
             ref={previewTabRef}
             aria-selected={activeMode === "preview"}
             aria-controls={panelId}
-            tabIndex={focusedMode === "preview" ? 0 : -1}
+            tabIndex={activeMode === "preview" ? 0 : -1}
             onClick={() => selectMode("preview")}
             onKeyDown={handleTabKeyDown}
             style={{ ...tabBtnStyle, ...(activeMode === "preview" ? activeTabBtnStyle : {}) }}
@@ -149,7 +206,7 @@ export function MarkdownContentViewer({
             ref={sourceTabRef}
             aria-selected={activeMode === "source"}
             aria-controls={panelId}
-            tabIndex={focusedMode === "source" ? 0 : -1}
+            tabIndex={activeMode === "source" ? 0 : -1}
             onClick={() => selectMode("source")}
             onKeyDown={handleTabKeyDown}
             style={{ ...tabBtnStyle, ...(activeMode === "source" ? activeTabBtnStyle : {}) }}
