@@ -141,10 +141,11 @@ if not config.get("cache_enabled", True):
     _result_cache.enabled = False
 
 # Generation kwargs that affect provider output and must therefore be part of
-# the cache key. This is the union of all parameters read by _add_if_set across
-# every provider in providers.py. Sensitive values (api_key, token, etc.) are
-# already filtered out by ExtractionCache._generate_key, so they need not be
-# excluded here.
+# the cache key. This is the union of every generation-affecting parameter
+# read across providers.py, including params picked up outside _add_if_set
+# (e.g. AnthropicProvider's manual pass-through loop). Sensitive values
+# (api_key, token, etc.) are already filtered out by
+# ExtractionCache._generate_key, so they need not be excluded here.
 _GENERATION_CACHE_KEYS = frozenset({
     "max_tokens",
     "max_completion_tokens",
@@ -155,8 +156,15 @@ _GENERATION_CACHE_KEYS = frozenset({
     "frequency_penalty",
     "presence_penalty",
     "stop",
+    "stop_sequences",  # Anthropic/Gemini spelling of "stop"
     "logit_bias",
     "user",
+    "system",  # Anthropic system prompt
+    "metadata",  # Anthropic request metadata
+    "candidate_count",  # Gemini
+    "repeat_penalty",  # Ollama
+    "num_ctx",  # Ollama
+    "context_window",  # Ollama alias for num_ctx
 })
 
 

@@ -234,5 +234,101 @@ class TestCacheKeyIncludesGenerationParams(unittest.TestCase):
         self.assertEqual(mock_llm.generate_typed.call_count, 2)
 
 
+class TestCacheKeyIncludesProviderSpecificGenerationParams(unittest.TestCase):
+    """Regression tests for provider-specific generation params that aren't part
+    of the common OpenAI-shaped kwargs (max_tokens, temperature, etc.) but still
+    change provider output and must therefore also change the cache key.
+
+    See providers.py: AnthropicProvider.generate/generate_structured read
+    'system' and 'stop_sequences' via a manual pass-through loop (not
+    _add_if_set); GeminiProvider.generate reads 'candidate_count' and
+    'stop_sequences'; OllamaProvider._build_options reads 'repeat_penalty' and
+    'num_ctx'/'context_window'.
+    """
+
+    def _make_mock_llm(self):
+        mock_llm = MagicMock()
+        mock_llm.is_available.return_value = True
+        resp = MagicMock()
+        resp.relations = []
+        mock_llm.generate_typed.return_value = resp
+        return mock_llm
+
+    @patch("semantica.semantic_extract.methods.create_provider")
+    def test_relations_different_system_prompt_bypass_cache(self, mock_create_provider):
+        """Anthropic 'system' prompt changes output; must not share a cache entry."""
+        from semantica.semantic_extract.methods import _result_cache
+        _result_cache.clear("relations")
+
+        mock_llm = self._make_mock_llm()
+        mock_create_provider.return_value = mock_llm
+
+        entities = [Entity(text="Foo", label="ORG", start_char=0, end_char=3)]
+
+        extract_relations_llm(
+            text="some text", entities=entities,
+            provider="anthropic", model="claude-3-sonnet-20240229",
+            system="Extract only ORG relations."
+        )
+        extract_relations_llm(
+            text="some text", entities=entities,
+            provider="anthropic", model="claude-3-sonnet-20240229",
+            system="Extract only PERSON relations."
+        )
+
+        self.assertEqual(
+            mock_llm.generate_typed.call_count, 2,
+            "Different 'system' prompts must produce different cache keys."
+        )
+
+    @patch("semantica.semantic_extract.methods.create_provider")
+    def test_relations_different_stop_sequences_bypass_cache(self, mock_create_provider):
+        """Anthropic/Gemini 'stop_sequences' must also be part of the cache key."""
+        from semantica.semantic_extract.methods import _result_cache
+        _result_cache.clear("relations")
+
+        mock_llm = self._make_mock_llm()
+        mock_create_provider.return_value = mock_llm
+
+        entities = [Entity(text="Foo", label="ORG", start_char=0, end_char=3)]
+
+        extract_relations_llm(
+            text="some text", entities=entities,
+            provider="anthropic", model="claude-3-sonnet-20240229",
+            stop_sequences=["\n\n"]
+        )
+        extract_relations_llm(
+            text="some text", entities=entities,
+            provider="anthropic", model="claude-3-sonnet-20240229",
+            stop_sequences=["STOP"]
+        )
+
+        self.assertEqual(mock_llm.generate_typed.call_count, 2)
+
+    @patch("semantica.semantic_extract.methods.create_provider")
+    def test_relations_different_repeat_penalty_bypass_cache(self, mock_create_provider):
+        """Ollama 'repeat_penalty' must also be part of the cache key."""
+        from semantica.semantic_extract.methods import _result_cache
+        _result_cache.clear("relations")
+
+        mock_llm = self._make_mock_llm()
+        mock_create_provider.return_value = mock_llm
+
+        entities = [Entity(text="Foo", label="ORG", start_char=0, end_char=3)]
+
+        extract_relations_llm(
+            text="some text", entities=entities,
+            provider="ollama", model="llama2",
+            repeat_penalty=1.0
+        )
+        extract_relations_llm(
+            text="some text", entities=entities,
+            provider="ollama", model="llama2",
+            repeat_penalty=1.5
+        )
+
+        self.assertEqual(mock_llm.generate_typed.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
