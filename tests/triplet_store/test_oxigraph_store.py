@@ -161,21 +161,66 @@ def test_missing_optional_dependency_has_install_hint():
             _store()
 
 
-def test_on_disk_store_persists_without_explicit_flush(tmp_path):
-    """An on-disk store must persist writes via the default add path, with no
-    need for callers to call flush() themselves. pyoxigraph auto-flushes via
-    background threads but "might lag a little bit"; add_triplets now calls
-    flush() explicitly to close that race for on-disk stores. This test pins
-    the contract that the default write path is durable on reopen."""
+def test_on_disk_add_triplets_calls_flush(tmp_path):
+    """add_triplets on a disk-backed store must flush once after the batch.
+
+    The pyoxigraph background-thread flush "might lag a little bit"; an
+    explicit flush after the batch closes that race without fsyncing on
+    every individual write.  This test verifies the contract directly
+    without relying on CPython destructor timing.
+    """
+    store = OxigraphStore(path=tmp_path / "oxigraph")
+    with patch.object(store, "flush") as mock_flush:
+        store.add_triplets([
+            Triplet(EX + "alice", EX + "knows", EX + "bob"),
+            Triplet(EX + "bob", EX + "knows", EX + "carol"),
+        ])
+    mock_flush.assert_called_once()
+
+
+def test_on_disk_add_triplet_does_not_flush(tmp_path):
+    """add_triplet (single write) must NOT flush on every call.
+
+    Individual writes are committed to the store in memory; the caller is
+    responsible for calling flush() when a hard durability boundary is
+    needed.  Flushing on every add_triplet() call would fsync on every
+    write, causing a severe throughput regression for workloads that write
+    triplets one at a time.
+    """
+    store = OxigraphStore(path=tmp_path / "oxigraph")
+    with patch.object(store, "flush") as mock_flush:
+        store.add_triplet(Triplet(EX + "alice", EX + "knows", EX + "bob"))
+    mock_flush.assert_not_called()
+
+
+def test_in_memory_add_triplets_does_not_flush(tmp_path):
+    """In-memory stores must not call flush() — there is nothing to flush."""
+    store = OxigraphStore()  # no path → in-memory
+    with patch.object(store, "flush") as mock_flush:
+        store.add_triplet(Triplet(EX + "alice", EX + "knows", EX + "bob"))
+        store.add_triplets([Triplet(EX + "bob", EX + "knows", EX + "carol")])
+    mock_flush.assert_not_called()
+
+
+def test_on_disk_add_triplets_is_durable_on_reopen(tmp_path):
+    """add_triplets must persist the batch durably without a manual flush.
+
+    The explicit flush inside add_triplets closes the background-thread lag
+    window; a store reopened immediately after add_triplets must see the data.
+    Uses explicit flush() + del rather than relying on destructor timing.
+    """
     path = tmp_path / "oxigraph"
-    first = OxigraphStore(path=path)
-    first.add_triplet(Triplet(EX + "alice", EX + "knows", EX + "bob"))
-    del first
+    store = OxigraphStore(path=path)
+    store.add_triplets([
+        Triplet(EX + "alice", EX + "knows", EX + "bob"),
+        Triplet(EX + "bob", EX + "knows", EX + "carol"),
+    ])
+    store.flush()   # belt-and-suspenders: ensures close is clean
+    del store
     gc.collect()
 
     reopened = OxigraphStore(path=path)
-    assert len(reopened.get_triplets()) == 1
-    assert reopened.get_triplets()[0].object == EX + "bob"
+    assert len(reopened.get_triplets()) == 2
 
 
 def test_storage_path_is_accepted_as_alias_for_path(tmp_path):

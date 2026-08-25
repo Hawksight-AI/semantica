@@ -78,31 +78,64 @@ class OxigraphStore:
             ) from exc
 
     def add_triplet(self, triplet: Triplet, **options) -> Dict[str, Any]:
-        """Add one triplet to the default graph or ``options['graph']``."""
-        return self.add_triplets([triplet], **options)
+        """Add one triplet to the default graph or ``options['graph']``.
 
-    def add_triplets(self, triplets: List[Triplet], **options) -> Dict[str, Any]:
-        """Add triplets in one native Oxigraph batch."""
+        The write is committed to the store's in-memory state immediately.
+        pyoxigraph's background threads will persist it to disk shortly
+        afterward; call :meth:`flush` explicitly if you need a synchronous
+        durability guarantee before reopening or crashing.
+        """
         try:
             graph_name = self._graph_name(options.get("graph"))
-            quads = [self._to_quad(triplet, graph_name) for triplet in triplets]
-            self.store.extend(quads)
-            # pyoxigraph persists via background threads but, per its docs,
-            # "flushes are automatically done using background threads but
-            # might lag a little bit." That lag is a race: reopening or
-            # crashing immediately after add_triplets can observe fewer
-            # triples than were written. An explicit flush() closes that
-            # window for on-disk stores. Skip for in-memory stores (no path).
-            if self.path is not None:
-                self.flush()
+            self.store.extend([self._to_quad(triplet, graph_name)])
             return {
                 "success": True,
-                "triplets_loaded": len(triplets),
+                "triplets_loaded": 1,
                 "graph": options.get("graph"),
             }
         except Exception as exc:
             self.logger.error(f"Oxigraph load failed: {exc}")
             raise ProcessingError(f"Oxigraph load failed: {exc}") from exc
+
+    def add_triplets(self, triplets: List[Triplet], **options) -> Dict[str, Any]:
+        """Add triplets in one native Oxigraph batch.
+
+        The batch is written transactionally and then explicitly flushed to
+        disk before returning.  This makes the full batch durable without
+        requiring a separate :meth:`flush` call.  In-memory stores skip the
+        flush (there is nothing to sync).
+
+        For high-volume imports the :class:`~.bulk_loader.BulkLoader` splits
+        work into chunks and calls this method once per chunk, so each chunk
+        lands as one atomic, durable unit.
+        """
+        try:
+            graph_name = self._graph_name(options.get("graph"))
+            quads = [self._to_quad(triplet, graph_name) for triplet in triplets]
+            self.store.extend(quads)
+        except Exception as exc:
+            self.logger.error(f"Oxigraph load failed: {exc}")
+            raise ProcessingError(f"Oxigraph load failed: {exc}") from exc
+
+        # Flush is kept outside the write try/except so that a flush I/O error
+        # does not produce a misleading "load failed" message when extend()
+        # already committed the batch successfully.
+        if self.path is not None:
+            try:
+                self.flush()
+            except OSError as exc:
+                self.logger.warning(
+                    f"Oxigraph flush failed after successful write: {exc}"
+                )
+                raise ProcessingError(
+                    f"Oxigraph flush failed after successful write: {exc}"
+                ) from exc
+
+        return {
+            "success": True,
+            "triplets_loaded": len(triplets),
+            "graph": options.get("graph"),
+        }
 
     def bulk_load(self, triplets: List[Triplet], **options) -> Dict[str, Any]:
         """Load a batch of triplets using Oxigraph's native bulk operation."""
