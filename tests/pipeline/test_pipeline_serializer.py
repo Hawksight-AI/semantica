@@ -1,3 +1,4 @@
+import copy
 import json
 
 import pytest
@@ -72,5 +73,31 @@ def test_deserialization_ignores_legacy_stringified_handler():
 
     restored = PipelineSerializer().deserialize_pipeline(serialized)
 
+    assert restored.steps[0].handler is None
+    assert restored.steps[0].config == {"batch_size": 10}
+
+
+def test_deserialization_does_not_mutate_caller_owned_dict():
+    payload = {
+        "name": "legacy-handler-pipeline",
+        "steps": [
+            {
+                "name": "extract",
+                "type": "source",
+                "config": {
+                    "handler": "<function extract at 0x1234>",
+                    "batch_size": 10,
+                },
+                "dependencies": [],
+            }
+        ],
+    }
+    snapshot = copy.deepcopy(payload)
+
+    restored = PipelineSerializer().deserialize_pipeline(payload)
+
+    assert payload == snapshot
+    assert "handler" in payload["steps"][0]["config"]
+    assert payload is not snapshot
     assert restored.steps[0].handler is None
     assert restored.steps[0].config == {"batch_size": 10}
