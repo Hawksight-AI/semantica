@@ -269,7 +269,7 @@ print("Loaded {} facts from graph".format(count))
 
 ## Step 5 — SPARQL queries over enriched working memory
 
-After forward chaining has derived new facts, `SPARQLReasoner` lets you query the enriched working memory using SPARQL triple-pattern matching with optional inference expansion:
+After forward chaining has derived new facts, `SPARQLReasoner` prepares SPARQL queries over the enriched working memory with optional inference expansion:
 
 ```python
 from semantica.reasoning import SPARQLReasoner
@@ -288,21 +288,12 @@ query = """
     }
 """
 
-# execute_query() runs: expansion → inference → deduplication
-result = sparql.execute_query(query)
-
-for binding in result.bindings:
-    print("Actor: {:15s}  CVE: {}".format(
-        binding.get("actor", "?"),
-        binding.get("cve", "?"),
-    ))
-
-# metadata shows how many results came from inference vs ground facts
-print("Original: {}  Inferred: {}".format(
-    result.metadata.get("original_count", 0),
-    result.metadata.get("inferred_count", 0),
-))
+# expand_query() applies inference rules to the query text:
+expanded = sparql.expand_query(query)
+print(expanded)
 ```
+
+`execute_query()` is not implemented yet: no triplet-store execution path exists, so it raises `NotImplementedError` rather than returning an empty result set that callers would misread as "no matches". Until execution lands, run the expanded query against your RDF store directly (for example with `rdflib`).
 
 Inspect the expanded query before running it:
 

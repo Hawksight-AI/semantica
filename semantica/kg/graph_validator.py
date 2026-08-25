@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import networkx as nx
 
+from ..utils.entity_ids import get_entity_id
 from ..utils.logging import get_logger
 
 class ValidationSeverity(Enum):
@@ -147,29 +148,42 @@ class GraphValidator:
         # 2. Entity Validation
         entity_ids = set()
         for entity in entities:
+            eid = get_entity_id(entity)
+
             # Check required fields
             missing = self.required_entity_fields - set(entity.keys())
+            missing.discard("id")
+            if eid is None:
+                missing.add("id or entity_id")
             if missing:
                 issues.append(ValidationIssue(
                     code="MISSING_FIELD",
                     message=f"Entity missing required fields: {missing}",
                     severity=ValidationSeverity.ERROR,
-                    element_id=entity.get("id", "unknown"),
+                    element_id=eid or "unknown",
                     element_type="entity"
                 ))
             
             # Check ID uniqueness
-            eid = entity.get("id")
             if eid:
-                if eid in entity_ids:
+                try:
+                    if eid in entity_ids:
+                        issues.append(ValidationIssue(
+                            code="DUPLICATE_ID",
+                            message=f"Duplicate entity ID found: {eid}",
+                            severity=ValidationSeverity.CRITICAL,
+                            element_id=eid,
+                            element_type="entity"
+                        ))
+                    entity_ids.add(eid)
+                except TypeError:
                     issues.append(ValidationIssue(
-                        code="DUPLICATE_ID",
-                        message=f"Duplicate entity ID found: {eid}",
-                        severity=ValidationSeverity.CRITICAL,
-                        element_id=eid,
+                        code="INVALID_ID",
+                        message=f"Entity ID is not hashable: {eid}",
+                        severity=ValidationSeverity.ERROR,
+                        element_id=str(eid),
                         element_type="entity"
                     ))
-                entity_ids.add(eid)
             
             # Schema Check (if schema provided)
             if self.schema and "entity_types" in self.schema:
@@ -183,18 +197,29 @@ class GraphValidator:
                         element_type="entity"
                     ))
 
+        def get_relationship_endpoint(rel, field, alias):
+            endpoint = rel.get(field)
+            if endpoint is None:
+                endpoint = rel.get(alias)
+            return endpoint
+
+        def is_valid_id(node_id):
+            if node_id is None:
+                return False
+            try:
+                return node_id in entity_ids
+            except TypeError:
+                # Not hashable, so it can't be in the set of string IDs
+                return False
+
         # 3. Relationship Validation
         for i, rel in enumerate(relationships):
             # Endpoints may use either the legacy ``source``/``target`` keys or
             # the canonical ``source_id``/``target_id`` keys emitted by
             # ``ContextGraph.to_kg_dict()``. Accept either variant so both
             # representations validate consistently.
-            src = rel.get("source")
-            if src is None:
-                src = rel.get("source_id")
-            tgt = rel.get("target")
-            if tgt is None:
-                tgt = rel.get("target_id")
+            src = get_relationship_endpoint(rel, "source", "source_id")
+            tgt = get_relationship_endpoint(rel, "target", "target_id")
 
             # Check required fields: ``type`` plus a resolvable source/target.
             missing = set()
@@ -215,15 +240,6 @@ class GraphValidator:
                 continue
             
             # Check Dangling Edges
-            def is_valid_id(node_id):
-                if node_id is None:
-                    return False
-                try:
-                    return node_id in entity_ids
-                except TypeError:
-                    # Not hashable, so it can't be in the set of string IDs
-                    return False
-
             if not is_valid_id(src):
                 issues.append(ValidationIssue(
                     code="DANGLING_EDGE",
@@ -259,7 +275,11 @@ class GraphValidator:
         try:
             nx_graph = nx.DiGraph()
             nx_graph.add_nodes_from(entity_ids)
-            nx_graph.add_edges_from([(r["source"], r["target"]) for r in relationships if r.get("source") in entity_ids and r.get("target") in entity_ids])
+            for relationship in relationships:
+                src = get_relationship_endpoint(relationship, "source", "source_id")
+                tgt = get_relationship_endpoint(relationship, "target", "target_id")
+                if is_valid_id(src) and is_valid_id(tgt):
+                    nx_graph.add_edge(src, tgt)
             
             # Check for cycles
             try:
