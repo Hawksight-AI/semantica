@@ -203,11 +203,15 @@ def test_in_memory_add_triplets_does_not_flush(tmp_path):
 
 
 def test_on_disk_add_triplets_is_durable_on_reopen(tmp_path):
-    """add_triplets must persist the batch durably without a manual flush.
+    """End-to-end durability: a batch written via add_triplets and closed
+    cleanly survives a reopen.
 
-    The explicit flush inside add_triplets closes the background-thread lag
-    window; a store reopened immediately after add_triplets must see the data.
-    Uses explicit flush() + del rather than relying on destructor timing.
+    This is an integration test for the full add_triplets → flush → close →
+    reopen lifecycle.  The durability contract here is provided by the
+    explicit ``store.flush()`` call before deletion; the internal flush
+    inside add_triplets reduces (but does not eliminate) the crash-window
+    race.  The authoritative unit test for the internal flush behaviour is
+    ``test_on_disk_add_triplets_calls_flush``.
     """
     path = tmp_path / "oxigraph"
     store = OxigraphStore(path=path)
