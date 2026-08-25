@@ -53,7 +53,7 @@ plugins/
 ## Prerequisites
 
 ```bash
-git clone https://github.com/Hawksight-AI/semantica.git
+git clone https://github.com/semantica-agi/semantica.git
 cd semantica
 pip install semantica        # Python 3.10+
 ```

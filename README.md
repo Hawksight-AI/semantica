@@ -147,6 +147,8 @@ semantica doctor
 # Config file           pass    ~/.semantica/config.yaml
 ```
 
+**Running in a script or CI?** Progress bars are written only when stdout is an interactive terminal (or a Jupyter notebook), so piping and redirecting stay clean by default. Override with `SEMANTICA_DISABLE_PROGRESS=1` to silence progress everywhere, or `SEMANTICA_FORCE_PROGRESS=1` to keep it when stdout is redirected. `SEMANTICA_DISABLE_PROGRESS` takes precedence.
+
 <div align="center">
 
 If Semantica solves a real problem for you, a star helps others find it.
@@ -1561,11 +1563,11 @@ On-premises deployment · Private cloud · Custom domain implementations · SLA-
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=semantica-agi%2Fsemantica&type=date&legend=top-left">
+<a href="https://star-history.dera.page/#semantica-agi/semantica&amp;type=date&amp;legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=semantica-agi/semantica&amp;type=date&amp;theme=dark&amp;legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=semantica-agi/semantica&amp;type=date&amp;legend=top-left" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=semantica-agi/semantica&amp;type=date&amp;legend=top-left" />
  </picture>
 </a>
 
@@ -1591,6 +1593,23 @@ All contributions are welcome: bug fixes, features, tests, and documentation.
 4. Open a PR and tag `@KaifAhmad1` for review
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
+
+---
+
+## Cite Us
+
+If you use Semantica in your research or production systems, please cite it as:
+
+```bibtex
+@software{semantica2026,
+  title  = {Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems},
+  author = {Semantica},
+  year   = {2026},
+  url    = {https://github.com/semantica-agi/semantica}
+}
+```
+
+All citation formats (APA, MLA, Chicago, IEEE) live on the [Citation](https://docs.getsemantica.ai/citation) page — every format attributes authorship to **Semantica**, not individual contributors.
 
 ---
 

@@ -160,7 +160,7 @@ def test_a_url_valued_context_is_not_thrown_away(tmp_path):
     context = json.loads(path.read_text())["@context"]
 
     flattened = context if isinstance(context, list) else [context]
-    assert "https://schema.org/" in flattened, (
+    assert any(entry == "https://schema.org/" for entry in flattened), (
         "the caller's context was replaced by Semantica's defaults, "
         "which silently changes how every term expands"
     )

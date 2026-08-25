@@ -474,6 +474,77 @@ class TestIsRecordBoundary(unittest.TestCase):
                     )
 
 
+class TestKeyDisplayBounds(unittest.TestCase):
+    """Exception messages must not scale with caller-controlled keys (#1001).
+
+    The validation boundary interpolates supplied keys straight into error
+    messages, so an extremely large key produced an equally large exception
+    string -- and, through the export wrappers that log the full exception,
+    an equally large log entry. The displayed key is truncated to a bounded
+    length while the supplied payload itself is never modified.
+    """
+
+    def test_unrecognized_key_display_is_bounded(self):
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload({"x" * 1_000_000: [ENTITY]})
+
+        message = str(ctx.exception)
+        self.assertLess(len(message), 300)
+        self.assertIn("x" * 64 + "…", message)
+        # Truncating the supplied key must not cost the actionable part.
+        self.assertIn("no recognized key", message)
+        self.assertIn("entities", message)
+
+    def test_dropped_record_key_display_is_bounded(self):
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload({"entities": [], "y" * 1_000_000: [ENTITY]})
+
+        message = str(ctx.exception)
+        self.assertLess(len(message), 300)
+        self.assertIn("y" * 64 + "…", message)
+        self.assertIn("holds records", message)
+
+    def test_short_keys_are_displayed_in_full(self):
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload({"short_key": [ENTITY]})
+
+        self.assertIn("'short_key'", str(ctx.exception))
+
+    def test_bounded_display_does_not_mutate_the_payload(self):
+        big_key = "z" * 1_000_000
+        payload = {big_key: [ENTITY]}
+
+        with self.assertRaises(ValidationError):
+            normalize_graph_payload(payload)
+
+        self.assertEqual(list(payload), [big_key])
+        self.assertEqual(payload[big_key], [ENTITY])
+
+    def test_many_unrecognized_keys_are_summarized(self):
+        """Per-key truncation does not bound the number of keys shown.
+
+        A payload carrying many short unrecognized keys would still size the
+        message (and the log entry that records it), so the count of
+        displayed keys is bounded too.
+        """
+        payload = {f"key_{i}": [ENTITY] for i in range(100)}
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload(payload)
+
+        message = str(ctx.exception)
+        self.assertLess(len(message), 500)
+        self.assertIn("and 92 more", message)
+
+    def test_many_dropped_record_keys_are_summarized(self):
+        payload = {"entities": [], **{f"data_{i}": [ENTITY] for i in range(100)}}
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_graph_payload(payload)
+
+        message = str(ctx.exception)
+        self.assertLess(len(message), 500)
+        self.assertIn("and 92 more", message)
+
+
 @dataclass
 class _DataclassNode:
     id: str
