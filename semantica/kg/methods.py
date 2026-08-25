@@ -142,6 +142,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ..utils.exceptions import ConfigurationError, ProcessingError
 from ..utils.logging import get_logger
+from ..utils.custom_methods import CUSTOM_METHOD_FELL_BACK, call_custom_method
 from .centrality_calculator import CentralityCalculator
 from .community_detector import CommunityDetector
 from .config import kg_config
@@ -189,12 +190,12 @@ def build_kg(
     # Check for custom method in registry
     custom_method = method_registry.get("build", method)
     if custom_method:
-        try:
-            return custom_method(sources, **kwargs)
-        except Exception as e:
-            logger.warning(
-                f"Custom method {method} failed: {e}, falling back to default"
-            )
+        fallback = kwargs.pop("fallback_on_custom_error", False)
+        result = call_custom_method(
+            logger, method, custom_method, sources, fallback_on_custom_error=fallback, **kwargs
+        )
+        if result is not CUSTOM_METHOD_FELL_BACK:
+            return result
 
     try:
         # Get config
@@ -237,12 +238,12 @@ def analyze_graph(
     # Check for custom method in registry
     custom_method = method_registry.get("analyze", method)
     if custom_method:
-        try:
-            return custom_method(graph, **kwargs)
-        except Exception as e:
-            logger.warning(
-                f"Custom method {method} failed: {e}, falling back to default"
-            )
+        fallback = kwargs.pop("fallback_on_custom_error", False)
+        result = call_custom_method(
+            logger, method, custom_method, graph, fallback_on_custom_error=fallback, **kwargs
+        )
+        if result is not CUSTOM_METHOD_FELL_BACK:
+            return result
 
     try:
         # Get config
@@ -441,12 +442,12 @@ def analyze_connectivity(
     # Check for custom method in registry
     custom_method = method_registry.get("connectivity", method)
     if custom_method:
-        try:
-            return custom_method(graph, **kwargs)
-        except Exception as e:
-            logger.warning(
-                f"Custom method {method} failed: {e}, falling back to default"
-            )
+        fallback = kwargs.pop("fallback_on_custom_error", False)
+        result = call_custom_method(
+            logger, method, custom_method, graph, fallback_on_custom_error=fallback, **kwargs
+        )
+        if result is not CUSTOM_METHOD_FELL_BACK:
+            return result
 
     try:
         # Get config

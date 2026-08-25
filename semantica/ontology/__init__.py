@@ -159,6 +159,7 @@ from .ontology_validator import (
     SHACLValidationReport,
     SHACLViolation,
     ValidationResult,
+    run_shacl_validation,
     validate_ontology,
 )
 from .owl_generator import OWLGenerator
@@ -192,6 +193,7 @@ __all__ = [
     "PropertyShape",
     "SHACLValidationReport",
     "SHACLViolation",
+    "run_shacl_validation",
     # OWL/RDF generation
     "OWLGenerator",
     # Requirements and competency questions

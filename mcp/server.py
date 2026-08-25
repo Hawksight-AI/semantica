@@ -17,6 +17,7 @@ import logging
 import sys
 from typing import Any
 
+from mcp import __version__
 from mcp.resources import RESOURCE_DEFINITIONS, handle_resource_read
 from mcp.tools import TOOL_DEFINITIONS
 
@@ -63,7 +64,7 @@ def _handle_initialize(req_id: Any, params: dict) -> dict:
         },
         "serverInfo": {
             "name": "semantica-mcp",
-            "version": "0.4.0",
+            "version": __version__,
         },
     })
 
@@ -92,7 +93,14 @@ def _handle_tools_call(req_id: Any, params: dict) -> dict:
         result = tool["_handler"](args)
     except Exception as exc:
         log.exception("Tool %s raised an exception", name)
-        return _err(req_id, _INTERNAL_ERROR, str(exc))
+        # The exception's class name (e.g. "ValidationError", "TimeoutError")
+        # is safe to surface — unlike str(exc), it never carries paths,
+        # connection strings, or other internal detail — and lets the
+        # client distinguish failure kinds without a full message.
+        return _err(
+            req_id, _INTERNAL_ERROR,
+            f"Tool '{name}' failed ({type(exc).__name__}). See server logs for details.",
+        )
 
     # MCP spec: content must be a list of content items
     return _ok(req_id, {
@@ -170,7 +178,10 @@ class SemanticaMCPServer:
             log.exception("Unhandled error in method %s", method)
             if req_id is None:
                 return None
-            return _err(req_id, _INTERNAL_ERROR, str(exc))
+            return _err(
+                req_id, _INTERNAL_ERROR,
+                f"Method '{method}' failed ({type(exc).__name__}). See server logs for details.",
+            )
 
     # ------------------------------------------------------------------
     def run(self) -> None:

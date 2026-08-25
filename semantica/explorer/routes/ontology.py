@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, UTC
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from typing_extensions import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -454,10 +454,6 @@ class DraftResponse(BaseModel):
     summary: Optional[str] = None
     created_at: str
     updated_at: str
-
-
-class ProposalState(BaseModel):
-    state: Literal["draft", "proposed", "approved", "published", "rejected"]
 
 
 class ProposalRequest(BaseModel):
@@ -978,8 +974,18 @@ def _normalize_format(fmt: Optional[str]) -> str:
     return _FORMAT_ALIASES.get(lower, lower)
 
 
-def _validate_fetch_url(url: str) -> None:
-    """Reject non-HTTP(S) schemes and private/loopback/link-local targets."""
+def _validate_fetch_url(url: str) -> List[str]:
+    """Reject non-HTTP(S) schemes and private/loopback/link-local targets.
+
+    Returns every resolved, validated IP address (deduplicated, in
+    resolution order) so the caller can pin the actual connection to them
+    (see _make_pinned_session) with fallback across all of them — not just
+    the first — since a hostname can have multiple A/AAAA records and the
+    first one isn't guaranteed reachable. Resolving the hostname again at
+    connect time would open a DNS check-then-use window (a low-TTL or
+    rebinding DNS answer could differ between this check and the client's
+    own lookup), which is what pinning to these specific addresses avoids.
+    """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(status_code=422, detail="Only http and https URLs are allowed.")
@@ -990,6 +996,7 @@ def _validate_fetch_url(url: str) -> None:
         addrinfos = socket.getaddrinfo(hostname, None)
     except socket.gaierror as exc:
         raise HTTPException(status_code=422, detail=f"Cannot resolve hostname '{hostname}': {exc}") from exc
+    validated_ips: List[str] = []
     for _family, _type, _proto, _canonname, sockaddr in addrinfos:
         try:
             ip = ipaddress.ip_address(sockaddr[0])
@@ -1000,28 +1007,161 @@ def _validate_fetch_url(url: str) -> None:
                 status_code=422,
                 detail="Fetching from private, loopback, or reserved network addresses is not allowed.",
             )
+        if sockaddr[0] not in validated_ips:
+            validated_ips.append(sockaddr[0])
+    if not validated_ips:
+        raise HTTPException(status_code=422, detail=f"Cannot resolve hostname '{hostname}' to a usable address.")
+    return validated_ips
+
+
+def _make_pinned_session(pinned_ips: List[str], url: str):
+    """Build a requests.Session whose connection is pinned to pinned_ips
+    (tried in order, falling back on connection failure), regardless of
+    what url's hostname resolves to at connect time.
+
+    _validate_fetch_url() resolves and validates the hostname once; letting
+    the HTTP client resolve it again independently at connect time reopens
+    the exact gap that validation exists to close — a low-TTL or rebinding
+    DNS answer can differ between the two lookups. This pins the pool's
+    connect target to the already-validated addresses directly (bypassing
+    DNS resolution for the connection entirely), while keeping the original
+    hostname as the outgoing HTTP Host header and, for HTTPS, the TLS SNI
+    server_hostname / assert_hostname — otherwise the connection would
+    reach the right IP but present the wrong identity, breaking name-based
+    virtual hosting and (for HTTPS) certificate hostname verification.
+
+    Falls back across every validated address (not just the first) so a
+    hostname with multiple A/AAAA records doesn't fail outright just
+    because the first-returned address happens to be unreachable.
+
+    Note: urllib3's Connection.host is a property that reads/writes the
+    same underlying value as `_dns_host` in this version — it is NOT the
+    separate "presented identity" field it is in some older releases, so
+    overriding just `_dns_host` post-construction (as an earlier version of
+    this fix did) actually changes the Host header too. Pinning the pool's
+    `host` directly and restoring the real hostname via an explicit Host
+    header (+ SNI params for HTTPS) is the correct mechanism here.
+    """
+    import requests as _req
+    import urllib3.util.connection as _u3_connection
+    from urllib3.exceptions import NewConnectionError
+
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    port = parsed.port
+    default_port = 443 if parsed.scheme == "https" else 80
+    host_header = hostname if port in (None, default_port) else f"{hostname}:{port}"
+
+    class _MultiIPConnectionMixin:
+        """Overrides _new_conn to fall back across every pinned IP in
+        order, instead of urllib3's default single-host connect."""
+
+        def _new_conn(self):
+            last_exc: Optional[BaseException] = None
+            for ip in pinned_ips:
+                try:
+                    return _u3_connection.create_connection(
+                        (ip, self.port),
+                        self.timeout,
+                        source_address=self.source_address,
+                        socket_options=self.socket_options,
+                    )
+                except OSError as exc:
+                    last_exc = exc
+                    continue
+            raise NewConnectionError(
+                self, f"Failed to establish a connection to any of {pinned_ips}: {last_exc}"
+            )
+
+    class _PinnedIPHTTPAdapter(_req.adapters.HTTPAdapter):
+        def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+            # A proxy would perform its own DNS resolution of the target
+            # host on this process's behalf — a resolution outside this
+            # process's visibility or control, so there is no client-side
+            # pin that closes that race. Proxies are disabled outright for
+            # this SSRF-sensitive fetcher (session.trust_env=False below),
+            # so this should be unreachable via environment proxies; fail
+            # closed rather than silently skip pinning if a proxy is
+            # somehow still configured (e.g. passed explicitly in the
+            # future). _validate_fetch_url's destination classification is
+            # a separate, always-enforced check — this only guards the
+            # secondary DNS-pinning hardening.
+            if _req.utils.select_proxy(request.url, proxies):
+                raise HTTPException(
+                    status_code=502,
+                    detail="Proxied requests are not supported for ontology URL fetching.",
+                )
+            host_params, pool_kwargs = self.build_connection_pool_key_attributes(request, verify, cert)
+            if host_params.get("scheme") == "https":
+                pool_kwargs.setdefault("assert_hostname", hostname)
+                pool_kwargs.setdefault("server_hostname", hostname)
+            host_params["host"] = pinned_ips[0]
+            pool = self.poolmanager.connection_from_host(**host_params, pool_kwargs=pool_kwargs)
+            base_connection_cls = pool.ConnectionCls
+            if not issubclass(base_connection_cls, _MultiIPConnectionMixin):
+                pool.ConnectionCls = type(
+                    "_PinnedConnection", (_MultiIPConnectionMixin, base_connection_cls), {}
+                )
+            return pool
+
+    session = _req.Session()
+    # Never honor HTTP_PROXY/HTTPS_PROXY/NO_PROXY env vars for this
+    # SSRF-sensitive fetcher: a configured proxy would perform its own DNS
+    # resolution of the target host outside this process's control,
+    # silently reopening the DNS check-then-use race pinning exists to
+    # close. See _PinnedIPHTTPAdapter.get_connection_with_tls_context for
+    # the fail-closed backstop if a proxy is somehow still configured.
+    session.trust_env = False
+    session.headers["Host"] = host_header
+    adapter = _PinnedIPHTTPAdapter()
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 
 def _fetch_url_sync(url: str) -> bytes:
-    _validate_fetch_url(url)
-    import requests as _req
+    pinned_ips = _validate_fetch_url(url)
+    _MAX_REDIRECTS = 5
+    current_url = url
     try:
-        resp = _req.get(
-            url,
-            headers={"Accept": "text/turtle, application/rdf+xml, application/ld+json, */*;q=0.1"},
-            timeout=30,
-            stream=True,
-            allow_redirects=True,
-        )
-        resp.raise_for_status()
-        chunks: List[bytes] = []
-        total = 0
-        for chunk in resp.iter_content(65536):
-            total += len(chunk)
-            if total > _MAX_FETCH_BYTES:
-                raise HTTPException(status_code=413, detail="Remote resource exceeds 20 MB limit.")
-            chunks.append(chunk)
-        return b"".join(chunks)
+        for _ in range(_MAX_REDIRECTS + 1):
+            session = _make_pinned_session(pinned_ips, current_url)
+            try:
+                resp = session.get(
+                    current_url,
+                    headers={"Accept": "text/turtle, application/rdf+xml, application/ld+json, */*;q=0.1"},
+                    timeout=30,
+                    stream=True,
+                    allow_redirects=False,  # SECURITY: follow redirects manually
+                )
+                if resp.is_redirect or resp.is_permanent_redirect:
+                    redirect_url = resp.headers.get("Location")
+                    resp.close()  # Release the streamed connection before following the redirect
+                    if not redirect_url:
+                        raise HTTPException(status_code=502, detail="Redirect without Location header.")
+                    # Resolve relative redirects (e.g. /ontology.ttl) against the current URL
+                    redirect_url = urljoin(current_url, redirect_url)
+                    # Re-validate the redirect target to prevent SSRF via
+                    # open-redirect to internal/cloud-metadata endpoints, and
+                    # get fresh pins for the new host.
+                    pinned_ips = _validate_fetch_url(redirect_url)
+                    current_url = redirect_url
+                    continue
+                try:
+                    resp.raise_for_status()
+                    chunks: List[bytes] = []
+                    total = 0
+                    for chunk in resp.iter_content(65536):
+                        total += len(chunk)
+                        if total > _MAX_FETCH_BYTES:
+                            raise HTTPException(status_code=413, detail="Remote resource exceeds 20 MB limit.")
+                        chunks.append(chunk)
+                    return b"".join(chunks)
+                finally:
+                    resp.close()  # Release the streamed connection once fully read (or on error)
+            finally:
+                session.close()
+        raise HTTPException(status_code=502, detail=f"Too many redirects (max {_MAX_REDIRECTS}).")
     except HTTPException:
         raise
     except Exception as exc:

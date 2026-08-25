@@ -1851,3 +1851,126 @@ class TestExitCodes:
             assert "Traceback" not in result.output, (
                 f"Traceback found for {argv}: {result.output}"
             )
+
+
+class TestDoctorEmbeddings:
+    """#994: doctor must surface non-functional embedding backends instead of
+    reporting all green. Default = import-level check; --deep-embeddings (or
+    SEMANTICA_DOCTOR_DEEP_EMBEDDINGS=1) instantiates via TextEmbedder."""
+
+    def _doctor_checks(self, runner, *extra):
+        result = runner.invoke(cli_module.main, ["doctor", "--json", *extra])
+        _ok(result)
+        import json as _json
+        return {c["check"]: c for c in _json.loads(result.output)}
+
+    def _with_fake_st(self, monkeypatch, **embedder_attrs):
+        fake_st = _fake_module(
+            __version__="9.9.9",
+            SentenceTransformer=object,
+        )
+        monkeypatch.setitem(__import__("sys").modules, "sentence_transformers", fake_st)
+
+    def test_doctor_reports_embedding_checks(self, runner):
+        checks = self._doctor_checks(runner)
+        assert "Embeddings (sentence-transformers)" in checks
+        assert "Embeddings (fastembed)" in checks
+
+    def test_import_failure_is_fail_status_with_hint(self, runner, monkeypatch):
+        # Force the 'import sentence_transformers' inside _embedding_backend to
+        # raise ImportError regardless of whether the package is installed on
+        # this machine.  Setting a module entry to None is the standard Python
+        # mechanism: any subsequent 'import <name>' raises
+        # "import of <name> halted; None in sys.modules".
+        monkeypatch.setitem(
+            __import__("sys").modules, "sentence_transformers", None
+        )
+        checks = self._doctor_checks(runner)
+        st = checks["Embeddings (sentence-transformers)"]
+        assert st["status"] == "fail"
+        assert st["hint"] == "pip install sentence-transformers"
+
+    def test_deep_probe_detects_fallback_active(self, runner, monkeypatch):
+        self._with_fake_st(monkeypatch)
+        fake_embedder = types.SimpleNamespace(model=None, fastembed_model=None)
+
+        fake_emb_mod = _fake_module(TextEmbedder=lambda **k: fake_embedder)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.embeddings", fake_emb_mod)
+
+        checks = self._doctor_checks(runner, "--deep-embeddings")
+        st = checks["Embeddings (sentence-transformers)"]
+        assert st["status"] == "fail"
+        assert "hash fallback" in st["note"]
+
+    def test_deep_probe_ok_when_model_loads(self, runner, monkeypatch):
+        self._with_fake_st(monkeypatch)
+        import numpy as np
+        fake_embedder = types.SimpleNamespace(
+            model=object(),
+            fastembed_model=None,
+            embed_text=lambda text: np.zeros(384, dtype=np.float32),
+        )
+        fake_emb_mod = _fake_module(TextEmbedder=lambda **k: fake_embedder)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.embeddings", fake_emb_mod)
+
+        checks = self._doctor_checks(runner, "--deep-embeddings")
+        st = checks["Embeddings (sentence-transformers)"]
+        assert st["status"] == "ok"
+        assert "384-dim" in st["note"]
+
+    def test_env_var_enables_deep_mode(self, runner, monkeypatch):
+        monkeypatch.setenv("SEMANTICA_DOCTOR_DEEP_EMBEDDINGS", "1")
+        self._with_fake_st(monkeypatch)
+        fake_embedder = types.SimpleNamespace(model=None, fastembed_model=None)
+        fake_emb_mod = _fake_module(TextEmbedder=lambda **k: fake_embedder)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.embeddings", fake_emb_mod)
+
+        checks = self._doctor_checks(runner)
+        st = checks["Embeddings (sentence-transformers)"]
+        assert st["status"] == "fail"
+        assert "hash fallback" in st["note"]
+
+
+class TestDoctorEmbeddingHintsAndEnv:
+    """Review follow-ups: deep failures must not carry the pip-install hint,
+    and the env toggle tolerates case/whitespace variants."""
+
+    def _doctor_checks(self, runner, *extra):
+        result = runner.invoke(cli_module.main, ["doctor", "--json", *extra])
+        _ok(result)
+        import json as _json
+        return {c["check"]: c for c in _json.loads(result.output)}
+
+    def _with_fake_st(self, monkeypatch):
+        fake_st = _fake_module(
+            __version__="9.9.9",
+            SentenceTransformer=object,
+        )
+        monkeypatch.setitem(__import__("sys").modules, "sentence_transformers", fake_st)
+
+    def test_deep_failure_hint_is_not_pip_install(self, runner, monkeypatch):
+        self._with_fake_st(monkeypatch)
+        fake_embedder = types.SimpleNamespace(model=None, fastembed_model=None)
+        fake_emb_mod = _fake_module(TextEmbedder=lambda **k: fake_embedder)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.embeddings", fake_emb_mod)
+
+        checks = self._doctor_checks(runner, "--deep-embeddings")
+        st = checks["Embeddings (sentence-transformers)"]
+        assert st["status"] == "fail"
+        assert "pip install" not in (st["hint"] or ""), (
+            "a deep probe failure means the package imported fine — pointing "
+            "users at pip sends them to reinstall for a runtime/model problem"
+        )
+        assert "runtime/model-load" in st["hint"]
+
+    def test_env_var_tolerates_case_and_whitespace(self, runner, monkeypatch):
+        monkeypatch.setenv("SEMANTICA_DOCTOR_DEEP_EMBEDDINGS", "  TRUE ")
+        self._with_fake_st(monkeypatch)
+        fake_embedder = types.SimpleNamespace(model=None, fastembed_model=None)
+        fake_emb_mod = _fake_module(TextEmbedder=lambda **k: fake_embedder)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.embeddings", fake_emb_mod)
+
+        checks = self._doctor_checks(runner)
+        st = checks["Embeddings (sentence-transformers)"]
+        assert st["status"] == "fail"
+        assert "hash fallback" in st["note"], "padded/caps env value must enable deep mode"

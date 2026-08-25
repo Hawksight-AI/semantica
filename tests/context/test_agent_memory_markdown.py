@@ -1,12 +1,19 @@
 import errno
+import os
+import stat
+import subprocess
+import sys
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from semantica.context.agent_memory import AgentMemory
+
+_ERROR_PRIVILEGE_NOT_HELD = 1314
 
 
 class TrackingVectorStore:
@@ -51,6 +58,25 @@ class TrackingConcreteVectorStore:
 def markdown_document(frontmatter, body=""):
     yaml_text = yaml.safe_dump(frontmatter, sort_keys=False, allow_unicode=True)
     return f"---\n{yaml_text}---\n\n{body}"
+
+
+def _require_symlink_support(tmp_path):
+    """Skip the test if this environment cannot create symbolic links.
+
+    Symlink creation can be unavailable even on POSIX (e.g. restricted
+    containers) and commonly requires elevated privilege or Developer Mode
+    on Windows. Probe actual capability instead of assuming based on
+    platform, so these tests still run wherever symlinks genuinely work.
+    """
+    probe_target = tmp_path / ".symlink_probe_target"
+    probe_link = tmp_path / ".symlink_probe_link"
+    probe_target.write_text("", encoding="utf-8")
+    try:
+        probe_link.symlink_to(probe_target)
+    except OSError as exc:
+        pytest.skip(f"environment cannot create symbolic links: {exc}")
+    probe_link.unlink()
+    probe_target.unlink()
 
 
 def required_frontmatter(memory_id="mem_test", **overrides):
@@ -643,7 +669,13 @@ def test_markdown_export_rejects_symlink_without_touching_target(tmp_path):
     outside = tmp_path / "outside.md"
     outside.write_text("do not overwrite", encoding="utf-8")
     output_path = destination / memory._memory_markdown_filename("mem_symlink")
-    output_path.symlink_to(outside)
+    try:
+        output_path.symlink_to(outside)
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
+            pytest.skip("Windows symlink creation requires an unavailable privilege")
+        raise
 
     with pytest.raises(ValueError, match="symbolic link"):
         memory.export(format="markdown", destination=destination)
@@ -698,6 +730,151 @@ def test_markdown_string_path_inspection_errors_are_actionable():
     assert exc_info.value.__cause__ is original_error
 
 
+@pytest.mark.parametrize("use_string_path", [False, True])
+def test_markdown_import_rejects_symlinked_file(tmp_path, use_string_path):
+    _require_symlink_support(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text(
+        markdown_document(required_frontmatter(), "Do not import"),
+        encoding="utf-8",
+    )
+    source = tmp_path / "memory.md"
+    source.symlink_to(outside)
+    payload = str(source) if use_string_path else source
+    memory = AgentMemory()
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        memory.import_data(payload, format="markdown")
+
+    assert memory.count() == 0
+
+
+@pytest.mark.parametrize("use_string_path", [False, True])
+def test_markdown_import_rejects_broken_symlink(tmp_path, use_string_path):
+    _require_symlink_support(tmp_path)
+    source = tmp_path / "missing-memory.md"
+    source.symlink_to(tmp_path / "missing-target.md")
+    payload = str(source) if use_string_path else source
+    memory = AgentMemory()
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        memory.import_data(payload, format="markdown")
+
+    assert memory.count() == 0
+
+
+@pytest.mark.parametrize("use_string_path", [False, True])
+def test_markdown_import_rejects_symlinked_directory(tmp_path, use_string_path):
+    _require_symlink_support(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "memory.md").write_text(
+        markdown_document(required_frontmatter(), "Do not import"),
+        encoding="utf-8",
+    )
+    source = tmp_path / "memory-export"
+    source.symlink_to(outside, target_is_directory=True)
+    payload = str(source) if use_string_path else source
+    memory = AgentMemory()
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        memory.import_data(payload, format="markdown")
+
+    assert memory.count() == 0
+
+
+def test_markdown_import_skips_symlinked_file_in_directory(tmp_path):
+    _require_symlink_support(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text(
+        markdown_document(required_frontmatter(), "Do not import"),
+        encoding="utf-8",
+    )
+    source = tmp_path / "memory-export"
+    source.mkdir()
+    (source / "memory.md").symlink_to(outside)
+    memory = AgentMemory()
+
+    assert memory.import_data(source, format="markdown") == 0
+    assert memory.count() == 0
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="requires O_NOFOLLOW")
+def test_markdown_import_does_not_follow_symlink_raced_before_open(tmp_path):
+    _require_symlink_support(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text(
+        markdown_document(required_frontmatter(), "Do not import"),
+        encoding="utf-8",
+    )
+    source = tmp_path / "memory.md"
+    source.symlink_to(outside)
+
+    with patch.object(Path, "is_symlink", return_value=False):
+        with pytest.raises(ValueError, match="symbolic link"):
+            AgentMemory()._read_markdown_file_content(source)
+
+
+def test_markdown_import_rejects_windows_junction(tmp_path, monkeypatch):
+    source = tmp_path / "junction"
+    source.mkdir()
+    (source / "memory.md").write_text("not read", encoding="utf-8")
+
+    monkeypatch.setattr(
+        os.path,
+        "isjunction",
+        lambda candidate: Path(candidate) == source,
+        raising=False,
+    )
+
+    with pytest.raises(ValueError, match="junction"):
+        AgentMemory().import_data(source, format="markdown")
+
+
+def test_markdown_import_rejects_windows_reparse_point_fallback(tmp_path, monkeypatch):
+    source = tmp_path / "reparse-point"
+    source.mkdir()
+    real_lstat = os.lstat
+
+    class ReparseStat:
+        st_file_attributes = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
+    monkeypatch.delattr(os.path, "isjunction", raising=False)
+    monkeypatch.setattr(Path, "is_symlink", lambda self: False)
+    monkeypatch.setattr(
+        os,
+        "lstat",
+        lambda candidate: (
+            ReparseStat() if Path(candidate) == source else real_lstat(candidate)
+        ),
+    )
+
+    with pytest.raises(ValueError, match="junction"):
+        AgentMemory().import_data(source, format="markdown")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows junctions")
+def test_markdown_import_rejects_real_windows_junction(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "memory.md").write_text("not read", encoding="utf-8")
+    source = tmp_path / "junction"
+    result = subprocess.run(
+        ["cmd.exe", "/c", "mklink", "/J", str(source), str(outside)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"could not create Windows junction: {result.stderr}")
+
+    try:
+        with pytest.raises(ValueError, match="junction"):
+            AgentMemory().import_data(source, format="markdown")
+    finally:
+        os.rmdir(source)
+
+
 def test_legacy_dict_import_behavior_is_unchanged():
     memory = AgentMemory()
     data = {
@@ -724,3 +901,110 @@ def test_markdown_export_destination_must_be_a_directory(tmp_path):
 
     with pytest.raises(ValueError, match="not a directory"):
         AgentMemory().export(format="markdown", destination=destination)
+
+
+def test_markdown_import_file_open_security_rejects_symlink(tmp_path):
+    memory = AgentMemory()
+    target = tmp_path / "secret.txt"
+    target.write_text("secret content", encoding="utf-8")
+    symlink_file = tmp_path / "memory.md"
+    try:
+        symlink_file.symlink_to(target)
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
+            pytest.skip("Windows symlink creation requires an unavailable privilege")
+        raise
+
+    with pytest.raises(ValueError, match="Symlink Markdown import paths are rejected"):
+        memory._read_markdown_file_content(symlink_file)
+
+
+def test_markdown_import_public_api_rejects_symlink(tmp_path):
+    """
+    import_data(..., format="markdown") must propagate the symlink rejection
+    through the full call chain: import_data → _import_markdown_payload →
+    _read_markdown_path → _read_markdown_file_content.
+
+    This complements test_markdown_import_file_open_security_rejects_symlink,
+    which only tests the private helper.  A future refactor that bypasses
+    _read_markdown_file_content would silently stop being protected; this test
+    catches that.
+    """
+    target = tmp_path / "secret.txt"
+    target.write_text("secret content", encoding="utf-8")
+    symlink_file = tmp_path / "memory.md"
+    try:
+        symlink_file.symlink_to(target)
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
+            pytest.skip("Windows symlink creation requires an unavailable privilege")
+        raise
+
+    memory = AgentMemory()
+    with pytest.raises(ValueError, match="Symlink Markdown import paths are rejected"):
+        memory.import_data(symlink_file, format="markdown")
+
+
+def test_markdown_import_directory_silently_skips_symlinked_entries(tmp_path):
+    """
+    When importing a directory, symlink entries must be silently excluded.
+    Only real regular files must be read.
+
+    This tests the filter in _read_markdown_path:
+        not file_path.is_symlink()
+    which was added by PR #932.
+    """
+    # Write a real Markdown file in the directory
+    real_md = tmp_path / "real.md"
+    real_md.write_text(
+        markdown_document(required_frontmatter(memory_id="dir-real"), "Real content"),
+        encoding="utf-8",
+    )
+    # Write the symlink target outside the directory
+    target = tmp_path.parent / "outside.txt"
+    target.write_text("must not be read", encoding="utf-8")
+    link_md = tmp_path / "evil.md"
+    try:
+        link_md.symlink_to(target)
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if sys.platform == "win32" and winerror == _ERROR_PRIVILEGE_NOT_HELD:
+            pytest.skip("Windows symlink creation requires an unavailable privilege")
+        raise
+
+    memory = AgentMemory()
+    # Must succeed, returning only the real file
+    results = memory._read_markdown_path(tmp_path)
+    assert len(results) == 1, (
+        f"Expected 1 result (real.md only), got {len(results)}: "
+        f"{[r[0] for r in results]}"
+    )
+    assert "Real content" in results[0][1]
+
+
+def test_markdown_import_rejects_non_regular_file(tmp_path):
+    """
+    _read_markdown_file_content must raise ValueError when the opened file
+    descriptor does not refer to a regular file (S_ISREG fails).
+
+    This tests the fstat()/S_ISREG guard, which is the defense-in-depth layer
+    that catches special files (FIFOs, character devices) even when the
+    is_symlink() pre-check passes.  The test works on both POSIX and Windows
+    because it mocks os.fstat rather than relying on platform-specific
+    filesystem objects.
+    """
+    import stat as stat_module
+
+    real_file = tmp_path / "not_really_regular.md"
+    real_file.write_text("some data", encoding="utf-8")
+
+    # Build a mock stat result whose st_mode describes a FIFO (S_IFIFO).
+    fake_stat = MagicMock()
+    fake_stat.st_mode = stat_module.S_IFIFO | 0o600  # FIFO with rw permissions
+
+    memory = AgentMemory()
+    with patch("semantica.context.agent_memory.os.fstat", return_value=fake_stat):
+        with pytest.raises(ValueError, match="not a regular file"):
+            memory._read_markdown_file_content(real_file)

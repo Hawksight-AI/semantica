@@ -773,19 +773,21 @@ class TestBuildDecisionContextFAISSBackend:
 
 class TestFilterByMetadataBackendBehavior:
     """
-    Requirement (issue #848 follow-up): verify the chosen behavior of
+    Requirement (issue #848, superseded by #857): verify the behavior of
     _filter_by_metadata when a non-inmemory backend is active.
 
-    The decision: raise NotImplementedError (matching get_vector / get_metadata
-    from #843) rather than silently returning [].
+    #848's original decision was to raise NotImplementedError (matching
+    get_vector / get_metadata from #843) rather than silently return [],
+    because at the time zero backend wrappers implemented
+    filter_by_metadata(filters, limit).
 
-    Rationale documented in the production comment:
-    - Zero backend wrappers implement filter_by_metadata(filters, limit).
-    - The only codebase hit (HybridSearch.filter_by_metadata) has a completely
-      different signature and is never stored in _backend_store.
-    - Returning [] would make filter_decisions(query=None, category="loan")
-      report "zero matches" when the truth is "capability not available" —
-      indistinguishable from a real empty result and therefore wrong.
+    #857 gave every persistent backend (FAISS, Qdrant, Pinecone, Milvus,
+    PgVector, SQLiteVec, Weaviate) a real filter_by_metadata() implementation,
+    so FAISS-backed filter_decisions(query=None, ...) now returns actual
+    filtered results instead of raising. The NotImplementedError path itself
+    is still correct and still covered (see
+    test_filter_by_metadata_backend_not_implemented in test_vector_store.py)
+    for a backend that genuinely lacks the method.
     """
 
     def _make_faiss_store(self):
@@ -809,34 +811,26 @@ class TestFilterByMetadataBackendBehavior:
         )
         return vs, ids
 
-    # ── FAISS backend: NotImplementedError, not AttributeError, not [] ── #
+    # ── FAISS backend: real results, not AttributeError, not [] ── #
 
-    def test_filter_by_metadata_faiss_raises_not_implemented(self):
+    def test_filter_by_metadata_faiss_returns_real_results(self):
         """
         filter_decisions(query=None, category='loan') on a FAISS-backed store
-        must raise NotImplementedError, not AttributeError (old crash) and not
-        silently return [] (the wrong silent-failure fix).
-
-        This test pins the chosen behavior: explicit NotImplementedError matching
-        the get_vector/get_metadata precedent set by issue #843.
+        must return the actual matching decisions, not raise AttributeError
+        (old crash) and not silently return [] (the old NotImplementedError
+        stand-in from #848, superseded once #857 gave FAISSStore a real
+        filter_by_metadata()).
         """
         vs, _ids = self._make_faiss_store()
 
-        with pytest.raises(NotImplementedError) as exc_info:
-            vs.filter_decisions(query=None, category="loan")
+        results = vs.filter_decisions(query=None, category="loan")
 
-        # Message must name the backend and point to the correct alternative
-        msg = str(exc_info.value)
-        assert "FAISSStore" in msg, (
-            f"Error message should name the backend class, got: {msg!r}"
+        assert isinstance(results, list)
+        assert len(results) == 2, (
+            f"Expected 2 loan decisions, got {len(results)}: {results}"
         )
-        assert "filter_decisions" in msg or "filter_by_metadata" in msg, (
-            f"Error message should mention the failing method, got: {msg!r}"
-        )
-        assert "search_decisions" in msg, (
-            f"Error message should suggest search_decisions() as the alternative, "
-            f"got: {msg!r}"
-        )
+        for r in results:
+            assert r["metadata"]["category"] == "loan"
 
     def test_filter_by_metadata_faiss_not_attribute_error(self):
         """

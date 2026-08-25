@@ -28,7 +28,7 @@ License: MIT
 
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 from rdflib import Graph, Literal
@@ -67,7 +67,8 @@ class RDF4JStore:
             self.progress_tracker.enabled = True
 
         self.endpoint = endpoint.rstrip("/")
-        self.repository_id = config.get("repository_id", "default")
+        self.repository_id = repository_id or config.get("repository_id", "default")
+        self._encoded_repository_id = quote(self.repository_id, safe="")
         self.username = config.get("username")
         self.password = config.get("password")
         self.timeout = config.get("timeout", 30)
@@ -79,7 +80,7 @@ class RDF4JStore:
         """Connect to RDF4J server."""
         try:
             # Test connection
-            test_url = f"{self.endpoint}/repositories/{self.repository_id}"
+            test_url = f"{self.endpoint}/repositories/{self._encoded_repository_id}"
             response = requests.get(
                 test_url,
                 timeout=self.timeout,
@@ -100,11 +101,11 @@ class RDF4JStore:
 
     def _get_sparql_endpoint(self) -> str:
         """Get SPARQL query endpoint."""
-        return f"{self.endpoint}/repositories/{self.repository_id}"
+        return f"{self.endpoint}/repositories/{self._encoded_repository_id}"
 
     def _get_update_endpoint(self) -> str:
         """Get SPARQL Update endpoint."""
-        return f"{self.endpoint}/repositories/{self.repository_id}/statements"
+        return f"{self.endpoint}/repositories/{self._encoded_repository_id}/statements"
 
     def _is_construct_query(self, query: str) -> bool:
         """
@@ -163,7 +164,7 @@ class RDF4JStore:
         """
         # RDF4J transaction support
         transaction_url = (
-            f"{self.endpoint}/repositories/{self.repository_id}/transactions"
+            f"{self.endpoint}/repositories/{self._encoded_repository_id}/transactions"
         )
 
         try:
@@ -452,11 +453,11 @@ class RDF4JStore:
         # Build SPARQL query
         where_clauses = []
         if subject:
-            where_clauses.append(f"?s = <{subject}>")
+            where_clauses.append(f"?s = <{sparql_escaping.validate_uri(subject)}>")
         if predicate:
-            where_clauses.append(f"?p = <{predicate}>")
+            where_clauses.append(f"?p = <{sparql_escaping.validate_uri(predicate)}>")
         if object:
-            where_clauses.append(f"?o = <{object}>")
+            where_clauses.append(f"?o = <{sparql_escaping.validate_uri(object)}>")
 
         where_clause = " ".join(where_clauses) if where_clauses else ""
         query = f"SELECT ?s ?p ?o WHERE {{ ?s ?p ?o {where_clause} }}"
@@ -484,8 +485,18 @@ class RDF4JStore:
 
         update_endpoint = self._get_update_endpoint()
 
-        # Use SPARQL DELETE
-        query = f"DELETE DATA {{ <{triplet.subject}> <{triplet.predicate}> <{triplet.object}> }}"
+        # Use SPARQL DELETE.
+        # subject/predicate must be IRIs — validate_uri enforces that and
+        # blocks injection through '>' or other SPARQL metacharacters.
+        # object can be an IRI *or* a literal, so it is routed through
+        # _format_object_for_ntriples (which internally calls validate_uri
+        # for URI-shaped values and escape_literal for strings), matching
+        # the same object-handling semantics used by the add path and by
+        # BlazegraphStore.delete_triplet (GHSA-8vgg-8mr4-r236 regression fix).
+        subject = sparql_escaping.validate_uri(triplet.subject)
+        predicate = sparql_escaping.validate_uri(triplet.predicate)
+        obj_str = self._format_object_for_ntriples(triplet)
+        query = f"DELETE DATA {{ <{subject}> <{predicate}> {obj_str} }}"
 
         try:
             response = requests.post(
@@ -529,11 +540,14 @@ class RDF4JStore:
 
         if self._is_uri_value(obj):
             if obj.startswith("<") and obj.endswith(">"):
-                inner = obj[1:-1]
-                if " " in inner or ">" in inner:
-                    raise ValueError(f"IRI contains invalid characters: {obj!r}")
-                return obj
-            return f"<{obj}>"
+                # Validate the inner IRI with the same disallowed-character
+                # set as the unwrapped branch below — a narrower ad-hoc
+                # check here previously let a pre-wrapped object bypass
+                # validate_uri() entirely (GHSA-8vgg-8mr4-r236 follow-up).
+                inner = sparql_escaping.validate_uri(obj[1:-1])
+                return f"<{inner}>"
+            validated_obj = sparql_escaping.validate_uri(obj)
+            return f"<{validated_obj}>"
 
         escaped = sparql_escaping.escape_literal(obj)
         datatype = metadata.get("datatype") or metadata.get("literal_datatype")
@@ -550,9 +564,17 @@ class RDF4JStore:
         return f'"{escaped}"'
 
     def _triplets_to_ntriples(self, triplets: List[Triplet]) -> str:
-        """Convert triplets to N-Triples format."""
+        """Convert triplets to N-Triples format.
+
+        Validates subject/predicate via sparql_escaping.validate_uri: an
+        unvalidated value containing '>' or a newline could terminate the
+        current triple line early and splice extra triples into the
+        upload stream (GHSA-8vgg-8mr4-r236).
+        """
         lines = []
         for triplet in triplets:
+            subject = sparql_escaping.validate_uri(triplet.subject)
+            predicate = sparql_escaping.validate_uri(triplet.predicate)
             obj_str = self._format_object_for_ntriples(triplet)
-            lines.append(f"<{triplet.subject}> <{triplet.predicate}> {obj_str} .")
+            lines.append(f"<{subject}> <{predicate}> {obj_str} .")
         return "\n".join(lines)

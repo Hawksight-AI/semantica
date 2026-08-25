@@ -38,6 +38,7 @@ from ..utils.exceptions import ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .config import graph_store_config
+from .query_sanitize import sanitize_identifier
 
 
 class NodeManager:
@@ -393,12 +394,12 @@ class GraphAnalytics:
         """
         # Build query based on direction
         if labels:
-            label_str = ":".join(labels)
+            label_str = ":".join(sanitize_identifier(l, "label") for l in labels)
             match = f"MATCH (n:{label_str})"
         else:
             match = "MATCH (n)"
 
-        type_filter = f":{rel_type}" if rel_type else ""
+        type_filter = f":{sanitize_identifier(rel_type, 'relationship type')}" if rel_type else ""
 
         if direction == "out":
             query = f"""
@@ -756,7 +757,7 @@ class GraphStore:
             **options: Additional options
         """
         # Support 'hops' as alias for 'depth' for ContextRetriever compatibility
-        actual_depth = options.get("hops", depth)
+        actual_depth = int(options.get("hops", depth))
         return self._manager.analytics.get_neighbors(
             node_id, rel_type, direction, actual_depth, **options
         )
