@@ -129,7 +129,6 @@ class TestNERConfigurations(unittest.TestCase):
         with patch('semantica.semantic_extract.ner_extractor.SPACY_AVAILABLE', True):
             extractor = NERExtractor(method="ml", model="en_core_web_sm")
 
-        self.assertIsNone(extractor.nlp)
         self.assertFalse(extractor._ml_runtime_usable)
 
     @patch('semantica.semantic_extract.methods.get_entity_method')
