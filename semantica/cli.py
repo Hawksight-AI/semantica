@@ -1732,6 +1732,93 @@ def embed(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
+def _json_default(obj) -> object:
+    """JSON serialiser that converts NumPy scalars/arrays to native Python types.
+
+    Falls back to ``str()`` for everything else so the writer never crashes on
+    unexpected types (e.g. ``datetime``, custom domain objects).
+    """
+    try:
+        import numpy as np  # local import — only needed when result contains numpy
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.generic):
+            return obj.item()
+    except ImportError:
+        pass
+    return str(obj)
+
+
+def _write_result_output(out_path: Path, result) -> None:
+    """Serialize a structured CLI result (dict or list) for ``--output``.
+
+    Domain commands like ``deduplicate`` and ``ontology align`` produce dicts
+    and lists, not numeric matrices — routing them through the embeddings
+    writer rejected their shapes and extensions (.csv is documented for
+    deduplicate). JSON-family formats serialize anything; CSV serializes a
+    list of dicts (or a single dict as one row).
+
+    Accepted extensions: .json, .jsonl, .csv  (no-extension and .txt are
+    rejected so the path reported to the caller always matches the file
+    actually created, consistent with every other --output in the CLI).
+    """
+    import json as _json
+
+    suffix = out_path.suffix.lower()
+
+    # ── JSON ────────────────────────────────────────────────────────────────
+    if suffix == ".json":
+        with open(out_path, "w", encoding="utf-8") as fh:
+            _json.dump(result, fh, indent=2, default=_json_default)
+        return
+
+    # ── JSON Lines ──────────────────────────────────────────────────────────
+    # Every record must occupy exactly one line.  Wrap a bare dict in a list
+    # so callers never need to know whether their result is singular or plural.
+    if suffix == ".jsonl":
+        items = result if isinstance(result, list) else [result]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            for item in items:
+                fh.write(_json.dumps(item, default=_json_default) + "\n")
+        return
+
+    # ── CSV ─────────────────────────────────────────────────────────────────
+    if suffix == ".csv":
+        import pandas as pd
+
+        rows = result if isinstance(result, list) else [result]
+        if not rows:
+            raise click.ClickException(
+                "No results to write — output file not created."
+            )
+        # Normalise numpy scalars/arrays to Python natives so to_csv() does
+        # not fall back to repr() strings for array-valued cells.
+        def _normalise(row):
+            if not isinstance(row, dict):
+                return row
+            out = {}
+            for k, v in row.items():
+                try:
+                    import numpy as np
+                    if isinstance(v, np.ndarray):
+                        v = v.tolist()
+                    elif isinstance(v, np.generic):
+                        v = v.item()
+                except ImportError:
+                    pass
+                out[k] = v
+            return out
+
+        pd.DataFrame([_normalise(r) for r in rows]).to_csv(out_path, index=False)
+        return
+
+    # ── unsupported ─────────────────────────────────────────────────────────
+    display = suffix if suffix else "(no extension)"
+    raise click.ClickException(
+        f"Unsupported output format '{display}'. Use .json, .jsonl, or .csv"
+    )
+
+
 @embed.command("generate")
 @click.argument("input_path")
 @click.option("--model",
@@ -2032,7 +2119,7 @@ def deduplicate(
         except ImportError as exc:
             raise click.ClickException(f"Deduplication module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            _write_result_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
@@ -3156,7 +3243,7 @@ def ontology_align(cli_ctx: CLIContext, source: str, target: str, strategy: str,
         except ImportError as exc:
             raise click.ClickException(f"Ontology module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            _write_result_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"alignments": str(result)})

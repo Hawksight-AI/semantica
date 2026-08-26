@@ -193,6 +193,25 @@ def _escape_literal(value: str) -> str:
     )
 
 
+def _escape_temporal_literal(value: Any) -> str:
+    """Escape a temporal bound for a Turtle ``dateTimeStamp`` literal.
+
+    Bounds are normally strings, but callers may hand us a ``datetime`` or
+    ``None``. ``_escape_literal`` is str-only, so stringify non-str values
+    first instead of calling ``.replace()`` on them; ``None`` yields an empty
+    bound rather than crashing. Datetimes must use ISO 8601 so the
+    ``xsd:dateTimeStamp`` ``T`` separator is preserved — ``str()`` yields a
+    space ("00:00:00+00:00"), which is a lexically invalid timestamp.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return _escape_literal(value)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 #: Turtle/N-Triples IRIREF grammar excludes these unescaped between `<` and
 #: `>`: control characters, space, and <>"{}|^`\. An IRI-valued metadata
 #: value (currently only sem:sourceUri, from the caller-controlled "uri"
@@ -807,7 +826,7 @@ class RDFSerializer:
 
             clauses = [
                 f"a <{self._as_turtle_iri(entity_type, merged_namespaces)}>",
-                f'semantica:text "{text}"',
+                f'semantica:text "{_escape_literal(text)}"',
             ]
             if confidence is None:
                 self.logger.warning(
@@ -999,7 +1018,7 @@ class RDFSerializer:
                 lines.append(f"    time:hasEnd <{end_id}> .")
                 lines.append(f"<{end_id}> a time:Instant ;")
                 lines.append(
-                    f'    time:inXSDDateTimeStamp "{until_val}"^^xsd:dateTimeStamp .'
+                    f'    time:inXSDDateTimeStamp "{_escape_temporal_literal(until_val)}"^^xsd:dateTimeStamp .'
                 )
             else:
                 lines[-1] = (
@@ -1008,7 +1027,7 @@ class RDFSerializer:
 
             lines.append(f"<{begin_id}> a time:Instant ;")
             lines.append(
-                f'    time:inXSDDateTimeStamp "{from_val}"^^xsd:dateTimeStamp .'
+                f'    time:inXSDDateTimeStamp "{_escape_temporal_literal(from_val)}"^^xsd:dateTimeStamp .'
             )
             lines.append("")
 
@@ -1305,7 +1324,7 @@ class RDFSerializer:
             # Text property
             text = entity.get("text") or entity.get("label", "")
             if text:
-                safe_text = text.replace('"', '\\"').replace("\n", "\\n")
+                safe_text = _escape_literal(text)
                 lines.append(
                     f'{subject} {expand_uri("semantica:text")} "{safe_text}" .'
                 )
