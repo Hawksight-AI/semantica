@@ -309,13 +309,15 @@ class OntologyGenerator:
                 concepts[entity_type] = {"instances": [], "relationships": []}
             concepts[entity_type]["instances"].append(entity)
 
+        entity_aliases = self._build_entity_aliases(entities)
+
         # Extract relationships
         normalized_relationships = []
         for rel_item in relationships:
             # Normalize relationship to dictionary
             rel = None
             if isinstance(rel_item, dict):
-                rel = rel_item
+                rel = dict(rel_item)
             elif hasattr(rel_item, "subject") and hasattr(rel_item, "predicate") and hasattr(rel_item, "object"):
                 # Handle Relation object (subject, predicate, object)
                 rel = {
@@ -356,26 +358,12 @@ class OntologyGenerator:
             if not rel:
                 continue
 
-            rel_type = rel.get("type") or rel.get("relationship_type", "relatedTo")
-            source_type = rel.get("source_type")
-            target_type = rel.get("target_type")
-
-            # Try to resolve source/target types if not provided
-            if not source_type or source_type == "Entity":
-                # Look up source in entities list to find its type
-                source_name = rel.get("source")
-                for ent in entities:
-                    if ent.get("name") == source_name or ent.get("text") == source_name:
-                        source_type = ent.get("type") or ent.get("entity_type")
-                        break
-            
-            if not target_type or target_type == "Entity":
-                 # Look up target in entities list to find its type
-                target_name = rel.get("target")
-                for ent in entities:
-                    if ent.get("name") == target_name or ent.get("text") == target_name:
-                        target_type = ent.get("type") or ent.get("entity_type")
-                        break
+            source_type = self._resolve_relationship_endpoint_type(
+                rel, "source", entity_aliases
+            )
+            target_type = self._resolve_relationship_endpoint_type(
+                rel, "target", entity_aliases
+            )
             
             # Update rel with resolved types
             rel["source_type"] = source_type
@@ -391,6 +379,60 @@ class OntologyGenerator:
             "entities": entities,
             "relationships": normalized_relationships,
         }
+
+    @staticmethod
+    def _build_entity_aliases(entities: List[Dict[str, Any]]) -> Dict[str, set]:
+        """Build an unambiguous alias-to-type index for relationship endpoints."""
+        aliases: Dict[str, set] = {}
+        for entity in entities:
+            entity_type = entity.get("type") or entity.get("entity_type")
+            if not entity_type:
+                continue
+
+            for key in ("id", "entity_id", "name", "text", "label"):
+                if key not in entity or entity[key] is None or entity[key] == "":
+                    continue
+                aliases.setdefault(str(entity[key]), set()).add(entity_type)
+
+        return aliases
+
+    @staticmethod
+    def _get_relationship_endpoint(rel: Dict[str, Any], endpoint: str) -> Any:
+        """Return an endpoint value from either ID or legacy relationship fields."""
+        for key in (f"{endpoint}_id", endpoint):
+            if key not in rel:
+                continue
+
+            value = rel[key]
+            if value is None or value == "":
+                continue
+            if isinstance(value, dict):
+                for alias_key in ("id", "entity_id", "name", "text", "label"):
+                    if alias_key not in value:
+                        continue
+                    alias_value = value[alias_key]
+                    if alias_value is not None and alias_value != "":
+                        return alias_value
+                continue
+            return value
+
+        return None
+
+    def _resolve_relationship_endpoint_type(
+        self, rel: Dict[str, Any], endpoint: str, aliases: Dict[str, set]
+    ) -> Optional[str]:
+        """Resolve an endpoint type without treating missing fields as aliases."""
+        explicit_type = rel.get(f"{endpoint}_type")
+        if explicit_type and explicit_type != "Entity":
+            return explicit_type
+
+        endpoint_value = self._get_relationship_endpoint(rel, endpoint)
+        if endpoint_value is not None:
+            candidates = aliases.get(str(endpoint_value), set())
+            if len(candidates) == 1:
+                return next(iter(candidates))
+
+        return explicit_type
 
     def _stage2_yaml_to_definition(
         self, semantic_network: Dict[str, Any], **options
@@ -840,7 +882,16 @@ class SHACLGenerator:
         """
         self.logger = get_logger("ontology_shacl")
         self.progress_tracker = get_progress_tracker()
-        self.base_uri = base_uri.rstrip("/") + "/"
+        # Preserve an RDF namespace that already ends in `#` (the common
+        # convention for vocabularies): `...manufacturing#` must not become
+        # `...manufacturing#/`, or every generated URI lands in the wrong
+        # namespace and SHACL validation silently targets nothing. Matches
+        # the `#`-aware normalization in `generate()`. Slash-terminated
+        # bases are collapsed to a single trailing `/` so redundant runs
+        # (`.../ns////`) cannot leak a different namespace into emitted IRIs.
+        self.base_uri = (
+            base_uri if base_uri.endswith("#") else base_uri.rstrip("/") + "/"
+        )
         self.shapes_uri = shapes_uri or (self.base_uri + "shapes")
         self.include_inherited = include_inherited
         self.severity = severity
