@@ -435,8 +435,8 @@ print("Nodes: {}, Edges: {}".format(stats["node_count"], stats["edge_count"]))
 | `query(query, skip, limit)` | `List[Dict]` | Full-text search over node content |
 | `stats()` | `Dict` | Node/edge counts, type breakdowns, graph density |
 | `density()` | `float` | Graph density score |
-| `save_to_file(path)` | `None` | Persist graph to JSON |
-| `load_from_file(path)` | `None` | Load graph from JSON |
+| `save_to_file(path, format="json")` | `None` | Persist graph as JSON or a Markdown directory |
+| `load_from_file(path, format="json")` | `None` | Replace graph state from JSON or a Markdown directory |
 | `build_from_conversations(conversations, link_entities)` | `Dict` | Build graph from conversation data |
 | `link_graph(other_graph, source_node_id, target_node_id, link_type)` | `str` | Create cross-graph navigation link; returns `link_id` |
 | `navigate_to(link_id)` | `Tuple` | Follow a cross-graph link to `(target_graph, target_node_id)` |
@@ -625,8 +625,10 @@ malformed or duplicate fields before changing memory, and re-importing unchanged
 files is idempotent. Memory-local `entities` and `relationships` are preserved as
 provenance but are not applied to `ContextGraph` by Markdown import. Use a dedicated
 export directory: matching files are overwritten, but unrelated or stale Markdown
-files are not deleted automatically. Export refuses to overwrite symbolic links and
-uses atomic file replacement. Timestamp offsets are preserved in Markdown and
+files are not deleted automatically. Export refuses to overwrite filesystem links and
+uses atomic file replacement; import also refuses symlinks, Windows directory
+junctions, and other Windows reparse points.
+Timestamp offsets are preserved in Markdown and
 normalized to UTC only for comparisons, so aware and local-naive records can be
 queried together safely. Vector-store writes are deferred until the in-memory import
 commits; adapter synchronization remains best-effort and logs failures.

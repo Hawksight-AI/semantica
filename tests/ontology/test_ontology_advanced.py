@@ -293,19 +293,32 @@ class TestSHACLHierarchicalAndValidation(unittest.TestCase):
                              f"Duplicate paths in {node_shape.target_class}: {paths}")
 
     # 21
-    def test_no_domain_property_attaches_to_all_shapes(self):
-        onto = {
-            "classes": [{"name": "A"}, {"name": "B"}],
-            "properties": [
-                {"name": "globalProp", "type": "datatype", "range": "string"}
-                # no domain
-            ],
-        }
-        gen = self._make_gen()
-        graph = gen.generate(onto)
+    _NO_DOMAIN_ONTOLOGY = {
+        "classes": [{"name": "A"}, {"name": "B"}],
+        "properties": [
+            {"name": "globalProp", "type": "datatype", "range": "string"}
+            # no domain
+        ],
+    }
+
+    def test_no_domain_property_attaches_to_all_shapes_when_opted_in(self):
+        """attach_domainless_properties=True keeps the pre-0.6.6 behaviour."""
+        gen = self._make_gen(attach_domainless_properties=True)
+        graph = gen.generate(self._NO_DOMAIN_ONTOLOGY)
         for node_shape in graph.node_shapes:
             paths = {ps.path for ps in node_shape.property_shapes}
             self.assertIn("globalProp", paths)
+
+    def test_no_domain_property_is_not_attached_by_default(self):
+        """
+        Attaching states a constraint the ontology does not (#1105). This test
+        previously asserted the opposite, which pinned the defect in place.
+        """
+        gen = self._make_gen()
+        graph = gen.generate(self._NO_DOMAIN_ONTOLOGY)
+        for node_shape in graph.node_shapes:
+            paths = {ps.path for ps in node_shape.property_shapes}
+            self.assertNotIn("globalProp", paths)
 
     # 22
     def test_empty_classes_produces_no_shapes(self):
@@ -512,6 +525,65 @@ class TestSHACLHierarchicalAndValidation(unittest.TestCase):
             self.assertEqual(mc[0].max_count, 2)
 
     # 33
+    def test_public_run_shacl_validation_api(self):
+        """The public API validates data and retains the legacy alias."""
+        try:
+            import pyshacl  # noqa: F401
+            import rdflib  # noqa: F401
+        except ImportError:
+            self.skipTest("pyshacl/rdflib not installed")
+        from semantica.ontology import run_shacl_validation
+        from semantica.ontology.ontology_validator import _run_pyshacl
+
+        data = "@prefix ex: <http://example.org/> . ex:alice a ex:Person ."
+        shacl = """
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:PersonShape a sh:NodeShape ; sh:targetClass ex:Person ;
+            sh:property [ sh:path ex:name ; sh:minCount 1 ] .
+        """
+        public_report = run_shacl_validation(data, shacl)
+        legacy_report = _run_pyshacl(data, shacl)
+        self.assertFalse(public_report.conforms)
+        self.assertEqual(public_report.violation_count, 1)
+        self.assertEqual(legacy_report.conforms, public_report.conforms)
+        self.assertEqual(legacy_report.violation_count, public_report.violation_count)
+        self.assertEqual(
+            [
+                (v.focus_node, v.result_path, v.constraint, v.severity, v.message)
+                for v in legacy_report.violations
+            ],
+            [
+                (v.focus_node, v.result_path, v.constraint, v.severity, v.message)
+                for v in public_report.violations
+            ],
+        )
+
+    # 34
+    def test_public_run_shacl_validation_conforming_graph(self):
+        """The public API reports a valid graph without violations."""
+        try:
+            import pyshacl  # noqa: F401
+            import rdflib  # noqa: F401
+        except ImportError:
+            self.skipTest("pyshacl/rdflib not installed")
+        from semantica.ontology import run_shacl_validation
+
+        data = """
+        @prefix ex: <http://example.org/> .
+        ex:alice a ex:Person ; ex:name "Alice" .
+        """
+        shacl = """
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:PersonShape a sh:NodeShape ; sh:targetClass ex:Person ;
+            sh:property [ sh:path ex:name ; sh:minCount 1 ] .
+        """
+
+        report = run_shacl_validation(data, shacl)
+
+        self.assertTrue(report.conforms)
+        self.assertEqual(report.violation_count, 0)
     def test_shacl_violation_to_dict(self):
         from semantica.ontology.ontology_validator import SHACLViolation
         v = SHACLViolation(

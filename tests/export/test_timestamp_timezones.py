@@ -107,20 +107,31 @@ def test_exported_timestamp_survives_a_timezone_qualified_sparql_filter():
     assert len(rows) == 1, "the export was dropped by a timezone-qualified filter"
 
 
-def test_document_iri_carrying_an_offset_is_a_valid_iri():
-    """The offset puts '+' and ':' in the @id; both are legal in a path."""
+def test_document_iri_is_a_valid_iri():
+    """The graph @id must be a valid IRI regardless of how it is minted.
+
+    Before #1147, this @id was minted from the offset-carrying timestamp
+    itself (``+00:00`` interpolated straight into the path), so this test
+    asserted the offset survived without breaking IRI validity. #1147 mints
+    the @id from the graph's content instead, so the timestamp no longer
+    appears here at all — it stays in ``semantica:exportedAt`` (still
+    offset-aware, per ``test_jsonld_export_timestamp_is_offset_aware`` above).
+    What's left worth guarding is the general case: whatever the @id is
+    minted from, it has to be a valid IRI that round-trips through RDF.
+    """
     rdflib = pytest.importorskip("rdflib")
 
     document_iri = JSONExporter()._convert_kg_to_jsonld(KG)["@id"]
-    assert "+00:00" in document_iri
     assert rdflib.term._is_valid_uri(document_iri)
 
     graph = rdflib.Graph()
-    graph.add((
-        rdflib.URIRef(document_iri),
-        rdflib.RDF.type,
-        rdflib.URIRef("https://semantica.dev/ns#KnowledgeGraph"),
-    ))
+    graph.add(
+        (
+            rdflib.URIRef(document_iri),
+            rdflib.RDF.type,
+            rdflib.URIRef("https://semantica.dev/ns#KnowledgeGraph"),
+        )
+    )
     reparsed = rdflib.Graph().parse(data=graph.serialize(format="nt"), format="nt")
     assert document_iri in {str(s) for s in reparsed.subjects()}
 

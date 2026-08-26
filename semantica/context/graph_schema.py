@@ -6,6 +6,7 @@ including node labels, relationship types, and indexes for graph databases.
 """
 
 import json
+import warnings
 from typing import Dict, Any, List
 
 from ..graph_store import GraphStore
@@ -460,10 +461,24 @@ def drop_decision_schema(graph_store: GraphStore) -> None:
     """
     Drop decision tracking schema (for cleanup/testing).
     
+    .. deprecated::
+        ``drop_decision_schema()`` is deprecated and will be removed in a future
+        major version. It has no callers inside Semantica; issue the DROP
+        CONSTRAINT / DROP INDEX / DETACH DELETE statements directly against your
+        :class:`~semantica.graph_store.GraphStore` instead.
+
     Args:
         graph_store: Graph database instance
     """
     logger = get_logger(__name__)
+    
+    warnings.warn(
+        "drop_decision_schema() is deprecated and will be removed in a future "
+        "major version. Issue the DROP CONSTRAINT / DROP INDEX / DETACH DELETE "
+        "statements directly against your GraphStore instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     
     try:
         # Drop constraints

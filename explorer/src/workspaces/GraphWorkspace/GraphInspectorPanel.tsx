@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { graph } from "../../store/graphStore";
 import { GRAPH_THEME, withAlpha } from "./graphTheme";
 import type { GraphSelectedNodeKind } from "./types";
+import { MarkdownContentViewer } from "./MarkdownContentViewer";
 
 export type LinkPrediction = {
   target: string;
@@ -364,6 +365,11 @@ export function GraphInspectorPanel({
     ([key]) =>
       !["x","y","valid_from","valid_until","content","source","source_url","pmid","pmids","evidence","provenance","confidence"].includes(key),
   );
+  const nodeContent = (typeof attributes?.content === "string" && attributes.content)
+    ? attributes.content
+    : (typeof properties.content === "string" && properties.content)
+    ? properties.content
+    : "";
 
   return (
     <aside style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
@@ -407,6 +413,20 @@ export function GraphInspectorPanel({
           {attributes?.valid_until ? <div>until: {attributes.valid_until}</div> : null}
         </div>
       ) : null}
+
+      {/* Content Section — only rendered when the node carries actual content.
+           This matches the existing inspector convention: sections that have no
+           data for the current node are either hidden (temporal bounds) or closed
+           by default (Source Attribution, Properties).  Always showing an open
+           empty panel would add noise for every relationship/predicate node. */}
+      {nodeContent && (
+        <details className="node-panel-collapse" open>
+          <summary className="node-panel-summary">Content</summary>
+          <div className="node-panel-body" style={{ marginTop: 8 }}>
+            <MarkdownContentViewer content={nodeContent} />
+          </div>
+        </details>
+      )}
 
       {/* Actions */}
       <section style={sectionStyle}>

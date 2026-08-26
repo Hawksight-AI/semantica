@@ -80,6 +80,6 @@ Deep dive into advanced features, customization, and complex workflows.
   You can also run the cookbook using Docker:
 
   ```bash
-  docker run -p 8888:8888 hawksight/semantica-cookbook
+  docker run -p 8888:8888 semantica/semantica-cookbook
   ```
 </Tip>
