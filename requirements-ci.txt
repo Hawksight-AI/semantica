@@ -5006,9 +5006,9 @@ pypdfium2==5.12.1 \
     --hash=sha256:e10cbf41b21233ec5e20adfc170cf60edd77abead86a97dc708fff55a8a886c7 \
     --hash=sha256:e5358d2ce4ebc5c899aab1df9ca5d215357244e9168aa443225d3c1e649c7eac
     # via docling-slim
-pypickle==2.0.1 \
-    --hash=sha256:0cc1ee65293e4dfa90f0db6435e8021c6a83346be98d0fee81aceb2dad1fb091 \
-    --hash=sha256:894afd81d26443e8589d21361a3cc04bd9f5c1535aaa627c3bee1212b58bdf74
+pypickle==2.0.2 \
+    --hash=sha256:d3307127314465fe3dc8f0162e11777d5e8284f3a29dc48b0f770d364a85d998 \
+    --hash=sha256:d577e39cf501c7c80b1387f6d7dc885cf4efeba65f213df41226d1f24881b1e8
     # via distfit
 pyshacl==0.40.1 \
     --hash=sha256:011e3cf1a68b31747cb762ba3d755ae1bdcc464c8fad0dc212a9adc550719552 \
