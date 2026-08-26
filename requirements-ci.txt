@@ -1325,9 +1325,9 @@ faker==40.36.0 \
     --hash=sha256:754048c76c03afa7de83eee8f4bcee3cf668cbb7d995f54a4e9678db7f110308 \
     --hash=sha256:82b9497d9cfe017048075bcf969298a74b1b6e39f5e4dad1211085d1133f7b62
     # via polyfactory
-falkordb==1.6.2 \
-    --hash=sha256:73dbbd9df61c56f45cf2fe8b9028888ad4892712790ce4e40d7ceabe118609ae \
-    --hash=sha256:b17571ebf4d65dbd3588e8c470b16f0ddfea820e0a15ed73af0dd1a4728b480d
+falkordb==1.7.1 \
+    --hash=sha256:09dd89dfb668c6fe7741c0ec67fcdb5c7a4b009e87f065a644199170f4fa5766 \
+    --hash=sha256:0e62d535edd5abf7b6d35e2493fba71118734313436ff803fcd5d1b20e9e2194
     # via semantica (pyproject.toml)
 fastapi==0.141.1 \
     --hash=sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3 \
