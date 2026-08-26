@@ -1048,6 +1048,7 @@ def extract_entities_llm(
             "gemini": 64000,
             "anthropic": 64000,
             "deepseek": 64000,
+            "orcarouter": 64000,
         }.get(provider.lower(), 32000)
     
     if len(text) > max_text_length:
@@ -1811,6 +1812,7 @@ def extract_relations_llm(
             "gemini": 64000,
             "anthropic": 64000,
             "deepseek": 64000,
+            "orcarouter": 64000,
         }.get(provider.lower(), 32000)
     
     if len(text) > max_text_length:
@@ -2460,6 +2462,7 @@ def extract_triplets_llm(
             "gemini": 64000,
             "anthropic": 64000,
             "deepseek": 64000,
+            "orcarouter": 64000,
         }.get(provider.lower(), 32000)
     
     if len(text) > max_text_length:

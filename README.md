@@ -1148,7 +1148,7 @@ if report.valid:
 | **Graph Databases (LPG)** | Neo4j · FalkorDB · Apache AGE · AWS Neptune |
 | **Triple Stores (RDF)** | Oxigraph (embedded) · Blazegraph · Apache Jena · Eclipse RDF4J · unified `TripletStore` interface · SPARQL query & bulk load |
 | **Enterprise Data Platforms** | Databricks (`DatabricksIngestor`: Unity Catalog + Delta Lake, PAT/OAuth M2M, table/query ingestion, catalog/schema/table/lineage introspection) · Snowflake (`SnowflakeIngestor`: warehouse/database/schema, password/key-pair/OAuth auth) |
-| **LLM Providers** | **All already supported today:** OpenAI (GPT-4o, o1, o3) · Anthropic (Claude) · Google Gemini · Mistral · Meta Llama · Groq · Cohere · Azure OpenAI · AWS Bedrock · Ollama · DeepSeek · Perplexity · Together AI · Fireworks AI · Replicate · HuggingFace · via `semantica.llms` and LiteLLM |
+| **LLM Providers** | **All already supported today:** OpenAI (GPT-4o, o1, o3) · Anthropic (Claude) · Google Gemini · Mistral · Meta Llama · Groq · Cohere · Azure OpenAI · AWS Bedrock · Ollama · DeepSeek · OrcaRouter · Perplexity · Together AI · Fireworks AI · Replicate · HuggingFace · via `semantica.llms` and LiteLLM |
 
 ---
 
@@ -1188,7 +1188,7 @@ Start with `semantica`, verify with `doctor`, build a graph, and explore the com
 
 ## Integrations
 
-Native plugin bundles for Claude Code, Cursor, Codex, Windsurf, Cline, Continue, VS Code, and OpenClaw; a full-featured MCP server for any MCP-compatible client; a comprehensive REST API; and first-class Agno and CrewAI support for agentic frameworks. Every major LLM provider is already supported via `semantica.llms` and LiteLLM: OpenAI, Anthropic, Gemini, Mistral, Llama, Groq, Cohere, Azure, Bedrock, Ollama, DeepSeek, HuggingFace, and more.
+Native plugin bundles for Claude Code, Cursor, Codex, Windsurf, Cline, Continue, VS Code, and OpenClaw; a full-featured MCP server for any MCP-compatible client; a comprehensive REST API; and first-class Agno and CrewAI support for agentic frameworks. Every major LLM provider is already supported via `semantica.llms` and LiteLLM: OpenAI, Anthropic, Gemini, Mistral, Llama, Groq, Cohere, Azure, Bedrock, Ollama, DeepSeek, OrcaRouter, HuggingFace, and more.
 
 MCP setup takes 30 seconds — see [MCP Server](#mcp-server) below.
 

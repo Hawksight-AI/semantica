@@ -107,11 +107,12 @@ llm-gemini = ["google-genai>=0.1.0"]
 llm-anthropic = ["anthropic>=0.122.0"]
 llm-ollama = ["ollama>=0.1.0"]
 llm-deepseek = ["openai>=1.0.0"]
+llm-orcarouter = ["openai>=1.0.0"]
 llm-litellm = ["litellm>=1.83.9"]
 llm-instructor = ["instructor>=1.15.3"]
 
 llm-all = [
-  "semantica[llm-openai,llm-groq,llm-gemini,llm-anthropic,llm-ollama,llm-deepseek,llm-litellm,llm-instructor]"
+  "semantica[llm-openai,llm-groq,llm-gemini,llm-anthropic,llm-ollama,llm-deepseek,llm-orcarouter,llm-litellm,llm-instructor]"
 ]
 
 # ---- Document Parsing ----
