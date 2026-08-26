@@ -198,12 +198,18 @@ def _escape_temporal_literal(value: Any) -> str:
 
     Bounds are normally strings, but callers may hand us a ``datetime`` or
     ``None``. ``_escape_literal`` is str-only, so stringify non-str values
-    first (plain f-string semantics) instead of calling ``.replace()`` on them;
-    ``None`` yields an empty bound rather than crashing.
+    first instead of calling ``.replace()`` on them; ``None`` yields an empty
+    bound rather than crashing. Datetimes must use ISO 8601 so the
+    ``xsd:dateTimeStamp`` ``T`` separator is preserved — ``str()`` yields a
+    space ("00:00:00+00:00"), which is a lexically invalid timestamp.
     """
     if value is None:
         return ""
-    return _escape_literal(value) if isinstance(value, str) else str(value)
+    if isinstance(value, str):
+        return _escape_literal(value)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
 
 
 #: Turtle/N-Triples IRIREF grammar excludes these unescaped between `<` and

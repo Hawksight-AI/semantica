@@ -194,7 +194,12 @@ def test_the_reified_type_matches_the_direct_triples_predicate():
 def test_datetime_bounds_do_not_crash_the_turtle_export():
     """_escape_literal is str-only; datetime bounds must be stringified, not
     run through .replace(). Regression for Qodo high-priority finding #2 on
-    PR #1221."""
+    PR #1221.
+
+    Also asserts the lexical form: xsd:dateTimeStamp requires an ISO 8601 "T"
+    separator (e.g. 2024-01-01T00:00:00+00:00). plain str() emits a space
+    ("2024-01-01 00:00:00+00:00"), which is format-invalid; isoformat() fixes
+    it. Regression for the maintainer review on PR #1221."""
     from datetime import datetime, timezone
 
     kg = {
@@ -216,6 +221,8 @@ def test_datetime_bounds_do_not_crash_the_turtle_export():
         str(o) for o in graph.objects(None, URIRef(TIME + "inXSDDateTimeStamp"))
     }
     assert len(stamps) == 2, stamps
+    assert "2024-01-01T00:00:00+00:00" in stamps, stamps
+    assert "2025-01-01T00:00:00+00:00" in stamps, stamps
 
 
 def test_end_only_interval_does_not_crash_the_turtle_export():
