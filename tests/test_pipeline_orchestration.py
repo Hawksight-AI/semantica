@@ -91,12 +91,11 @@ def test_pipeline_builder_add_step(pipeline_builder):
     assert step.config["foo"] == "bar"
 
 
-def test_registered_handler_is_used_without_control_fields(pipeline_builder, execution_engine):
-    received = {}
-
-    def registered_handler(data, **kwargs):
-        received.update(kwargs)
-        return data
+def test_registered_handler_transforms_result_and_filters_control_fields(
+    pipeline_builder, execution_engine
+):
+    def registered_handler(data):
+        return {**data, "processed": True}
 
     pipeline_builder.register_step_handler("registered", registered_handler)
     pipeline_builder.add_step("step1", "registered", dependencies=[])
@@ -105,9 +104,61 @@ def test_registered_handler_is_used_without_control_fields(pipeline_builder, exe
     result = execution_engine.execute_pipeline(pipeline, {"value": 1})
 
     assert result.success is True
-    assert received == {}
+    assert result.output == {"value": 1, "processed": True}
     assert pipeline.steps[0].handler is registered_handler
     assert pipeline.steps[0].dependencies == []
+    assert "handler" not in pipeline.steps[0].config
+    assert "dependencies" not in pipeline.steps[0].config
+
+
+def test_explicit_handler_takes_precedence_over_registered_handler(
+    pipeline_builder, execution_engine
+):
+    def registered_handler(data):
+        return "registered"
+
+    def explicit_handler(data):
+        return "explicit"
+
+    pipeline_builder.register_step_handler("shared", registered_handler)
+    pipeline_builder.add_step("step1", "shared", handler=explicit_handler)
+    result = execution_engine.execute_pipeline(
+        pipeline_builder.build(), {"value": 1}
+    )
+
+    assert result.success is True
+    assert result.output == "explicit"
+
+
+def test_handlerless_step_passes_input_through(pipeline_builder, execution_engine):
+    pipeline_builder.add_step("step1", "handlerless")
+    result = execution_engine.execute_pipeline(
+        pipeline_builder.build(), {"value": 1}
+    )
+
+    assert result.success is True
+    assert result.output == {"value": 1}
+
+
+def test_falsey_explicit_handler_takes_precedence(
+    pipeline_builder, execution_engine
+):
+    class FalseyHandler:
+        def __bool__(self):
+            return False
+
+        def __call__(self, data):
+            return "explicit"
+
+    explicit_handler = FalseyHandler()
+    pipeline_builder.register_step_handler("shared", lambda data: "registered")
+    pipeline_builder.add_step("step1", "shared", handler=explicit_handler)
+    result = execution_engine.execute_pipeline(
+        pipeline_builder.build(), {"value": 1}
+    )
+
+    assert result.success is True
+    assert result.output == "explicit"
 
 def test_pipeline_builder_connect_steps(pipeline_builder):
     pipeline_builder.add_step("step1", "type1")
