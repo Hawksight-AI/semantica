@@ -899,6 +899,11 @@ class ContextGraph:
                 return
             node.properties.update(attributes)
             node.metadata.update(attributes)
+            # Keep derived decision indexes consistent when a decision node is
+            # mutated so that category / entity / temporal lookups reflect the
+            # new property values without requiring a full graph reload.
+            if (getattr(node, "node_type", None) or "").lower() == "decision":
+                self._sync_decision_from_node(node_id)
 
         if getattr(self, "mutation_callback", None) and not getattr(
             self, "_suspend_mutation_callback", False
@@ -1291,6 +1296,14 @@ class ContextGraph:
                 if link_id:
                     self._unresolved_links[link_id] = link_meta
 
+            # Rebuild all derived decision indexes from the freshly-loaded
+            # nodes so that find_precedents_by_scenario, find_similar_decisions,
+            # and all decision analytics work correctly after a reload.
+            # _rebuild_decision_indexes() unconditionally clears the old indexes
+            # first, so repeated load_from_file calls never accumulate stale
+            # entries from a previous file.
+            self._rebuild_decision_indexes()
+
         self.logger.info(f"Loaded context graph from {path}")
 
     @staticmethod
@@ -1633,6 +1646,8 @@ class ContextGraph:
             self._analytics_cache.clear()
             self._retractions.clear()
             self._tombstones.clear()
+            # Rebuild derived decision indexes from the freshly-loaded nodes.
+            self._rebuild_decision_indexes()
 
         if self.mutation_callback and not self._suspend_mutation_callback:
             mutation_events = [
@@ -2825,6 +2840,12 @@ class ContextGraph:
             self._unresolved_links.clear()
             self._retractions.clear()
             self._tombstones.clear()
+            # Reset derived decision indexes so that decision queries against
+            # a cleared graph return empty results rather than stale data.
+            self._decisions = {}
+            self._decision_index = defaultdict(set)
+            self._entity_index = defaultdict(set)
+            self._temporal_index = []
         self.logger.debug("Graph state fully cleared.")
 
     # --- Internal Helpers ---
@@ -3481,6 +3502,9 @@ class ContextGraph:
                 valid_until=edge_data.get("valid_until"),
             )
             self._add_internal_edge(edge)
+
+        # Rebuild derived decision indexes from the now-populated node store.
+        self._rebuild_decision_indexes()
 
     def state_at(self, timestamp: Union[str, int, float, datetime]) -> Dict[str, Any]:
         """Return a serializable snapshot of graph state valid at the given time."""
@@ -4707,6 +4731,7 @@ class ContextGraph:
                 scenario=decision["scenario"],
                 decision_maker=decision.get("decision_maker", ""),
                 reasoning=decision["reasoning"],
+                recorded_at=decision.get("recorded_at", ""),
                 **safe_metadata,
                 **extra_properties,
             )
@@ -4788,20 +4813,288 @@ class ContextGraph:
             return False
         return True
     
-    def _calculate_decision_content_similarity(self, scenario: str, decision: Dict[str, Any]) -> float:
-        """Calculate content similarity between scenario and decision."""
+    # ── decision-index helpers ────────────────────────────────────────────────
+
+    # Protected set of node properties whose values are *core* decision fields
+    # so that we can distinguish them from user-supplied metadata when
+    # rebuilding the in-memory indexes from a persisted node.
+    _DECISION_CORE_FIELDS: frozenset = frozenset({
+        "id", "category", "scenario", "reasoning", "outcome", "confidence",
+        "entities", "decision_maker", "timestamp", "recorded_at",
+        "valid_from", "valid_until", "content",
+    })
+
+    def _rebuild_decision_indexes(self) -> None:
+        """Rebuild all derived decision indexes from the current node store.
+
+        This method is the single authoritative rebuild path.  It must be
+        called (under the graph lock) after any operation that wholesale
+        replaces ``self.nodes`` — namely ``load_from_file`` (JSON and Markdown
+        paths) and ``from_dict``.
+
+        Contract:
+        - Unconditionally clears ``_decisions``, ``_decision_index``,
+          ``_entity_index``, and ``_temporal_index`` before rebuilding so that
+          repeated calls never accumulate stale entries.
+        - Derives ``_decisions[node_id]["metadata"]`` from the full set of
+          node properties, excluding the protected core fields, so that
+          user-supplied metadata survives the round-trip.
+        - Runs under ``self._lock`` when called from load paths; callers that
+          already hold the lock must invoke ``_rebuild_decision_indexes``
+          inside the lock block.
+        """
+        # Always start fresh so repeated loads don't accumulate stale entries.
+        self._decisions: Dict[str, Any] = {}
+        self._decision_index: Dict[str, set] = defaultdict(set)
+        self._entity_index: Dict[str, set] = defaultdict(set)
+        self._temporal_index: List[Tuple[str, float]] = []
+
+        for node in self.nodes.values():
+            if (getattr(node, "node_type", None) or "").lower() != "decision":
+                continue
+
+            # Merge metadata and properties; properties win on collision.
+            meta: Dict[str, Any] = {}
+            meta.update(getattr(node, "metadata", {}) or {})
+            meta.update(getattr(node, "properties", {}) or {})
+
+            # Timestamp: keep whatever was stored (float epoch or ISO string).
+            # The temporal index uses it for sorting; downstream code handles
+            # both types via _normalize_timestamp.
+            raw_ts = meta.get("timestamp", 0.0)
+            try:
+                sort_ts = float(raw_ts)
+            except (TypeError, ValueError):
+                sort_ts = 0.0
+
+            # Entities may be stored as a list in meta or inferred from
+            # outgoing "involves" edges if the list field is absent/empty.
+            # _add_decision_to_graph creates entity nodes connected via
+            # "involves" edges; it does NOT store the list as a node property.
+            entities = meta.get("entities") or []
+            if not isinstance(entities, list):
+                entities = []
+            if not entities:
+                # Recover entity list from "involves" edges on this decision node
+                for edge in self._adjacency.get(node.node_id, []):
+                    if edge.edge_type == "involves":
+                        entities.append(edge.target_id)
+
+            # Everything that isn't a core field is user-supplied metadata.
+            extra_meta = {
+                k: v
+                for k, v in meta.items()
+                if k not in self._DECISION_CORE_FIELDS
+            }
+
+            decision: Dict[str, Any] = {
+                "id": node.node_id,
+                "category": meta.get("category", ""),
+                "scenario": meta.get("scenario", getattr(node, "content", "") or ""),
+                "reasoning": meta.get("reasoning", ""),
+                "outcome": meta.get("outcome", ""),
+                "confidence": float(meta.get("confidence", 0.0) or 0.0),
+                "entities": entities,
+                "decision_maker": meta.get("decision_maker"),
+                "timestamp": raw_ts,
+                "recorded_at": meta.get("recorded_at", ""),
+                "valid_from": getattr(node, "valid_from", None),
+                "valid_until": getattr(node, "valid_until", None),
+                # Preserve all non-core node properties as decision metadata so
+                # that user-supplied fields survive a save → load round-trip.
+                "metadata": extra_meta,
+            }
+
+            self._decisions[node.node_id] = decision
+
+            category = decision["category"]
+            if category:
+                self._decision_index[category].add(node.node_id)
+
+            for entity in entities:
+                self._entity_index[entity].add(node.node_id)
+
+            self._temporal_index.append((node.node_id, sort_ts))
+
+        self._temporal_index.sort(key=lambda x: x[1], reverse=True)
+
+    def _sync_decision_from_node(self, node_id: str) -> None:
+        """Synchronise a single decision index entry from the node store.
+
+        Called after ``add_node_attribute`` mutates a decision node so that
+        ``_decisions`` and the derived indexes stay consistent without
+        requiring a full rebuild of all decisions.
+        """
+        node = self.nodes.get(node_id)
+        if node is None:
+            return
+        if (getattr(node, "node_type", None) or "").lower() != "decision":
+            return
+
+        if not hasattr(self, "_decisions"):
+            # Indexes don't exist yet — a full rebuild is safer.
+            self._rebuild_decision_indexes()
+            return
+
+        # Remove stale index entries for this decision ID.
+        old = self._decisions.get(node_id)
+        if old:
+            old_cat = old.get("category", "")
+            if old_cat and node_id in self._decision_index.get(old_cat, set()):
+                self._decision_index[old_cat].discard(node_id)
+            for ent in old.get("entities", []):
+                self._entity_index[ent].discard(node_id)
+            self._temporal_index = [
+                (nid, ts) for nid, ts in self._temporal_index if nid != node_id
+            ]
+
+        # Rebuild the entry for this node and re-insert index entries.
+        meta: Dict[str, Any] = {}
+        meta.update(getattr(node, "metadata", {}) or {})
+        meta.update(getattr(node, "properties", {}) or {})
+
+        raw_ts = meta.get("timestamp", 0.0)
         try:
-            # Simple word-based similarity
+            sort_ts = float(raw_ts)
+        except (TypeError, ValueError):
+            sort_ts = 0.0
+
+        entities = meta.get("entities") or []
+        if not isinstance(entities, list):
+            entities = []
+        if not entities:
+            # Recover entity list from "involves" edges
+            for edge in self._adjacency.get(node_id, []):
+                if edge.edge_type == "involves":
+                    entities.append(edge.target_id)
+
+        extra_meta = {
+            k: v for k, v in meta.items() if k not in self._DECISION_CORE_FIELDS
+        }
+
+        decision: Dict[str, Any] = {
+            "id": node_id,
+            "category": meta.get("category", ""),
+            "scenario": meta.get("scenario", getattr(node, "content", "") or ""),
+            "reasoning": meta.get("reasoning", ""),
+            "outcome": meta.get("outcome", ""),
+            "confidence": float(meta.get("confidence", 0.0) or 0.0),
+            "entities": entities,
+            "decision_maker": meta.get("decision_maker"),
+            "timestamp": raw_ts,
+            "recorded_at": meta.get("recorded_at", ""),
+            "valid_from": getattr(node, "valid_from", None),
+            "valid_until": getattr(node, "valid_until", None),
+            "metadata": extra_meta,
+        }
+
+        self._decisions[node_id] = decision
+        if decision["category"]:
+            self._decision_index[decision["category"]].add(node_id)
+        for ent in entities:
+            self._entity_index[ent].add(node_id)
+        self._temporal_index.append((node_id, sort_ts))
+        self._temporal_index.sort(key=lambda x: x[1], reverse=True)
+
+    @staticmethod
+    def _char_bigrams(text: str) -> set:
+        """Character bigrams over whitespace-stripped text (CJK fallback).
+
+        Strips whitespace so CJK characters without word-separating spaces are
+        treated as a contiguous character sequence rather than a single token.
+        """
+        chars = "".join(text.lower().split())
+        return {chars[i:i + 2] for i in range(len(chars) - 1)}
+
+    @staticmethod
+    def _looks_cjk(text: str) -> bool:
+        """True if text contains CJK/Japanese/Korean script characters.
+
+        Used to gate the character-bigram similarity fallback so it only
+        activates for scripts where whitespace tokenisation doesn't work.
+        """
+        for ch in text:
+            code = ord(ch)
+            if (
+                0x4E00 <= code <= 0x9FFF     # CJK Unified Ideographs
+                or 0x3400 <= code <= 0x4DBF  # CJK Extension A
+                or 0x3040 <= code <= 0x30FF  # Hiragana + Katakana
+                or 0xAC00 <= code <= 0xD7A3  # Hangul Syllables
+                or 0x1100 <= code <= 0x11FF  # Hangul Jamo
+            ):
+                return True
+        return False
+
+    def _calculate_decision_content_similarity(self, scenario: str, decision: Dict[str, Any]) -> float:
+        """Calculate content similarity between scenario and decision.
+
+        Uses word-level Jaccard for space-separated languages.  For text where
+        whitespace tokenisation is unreliable (CJK/Japanese/Korean scripts, or
+        a query with no whitespace at all) a character-bigram Jaccard is
+        computed over the *stripped* character sequences instead.
+
+        The bigram fallback only activates when whitespace tokenisation would
+        not help — i.e. the query is CJK-like or has at most one whitespace
+        token — so it never contributes for ordinary multi-word English
+        queries, where incidental bigram overlap between unrelated sentences
+        would otherwise inflate scores.
+
+        The bigram side uses *Jaccard* (|A∩B|/|A∪B|), not the overlap
+        coefficient, so a 2-character query whose single bigram happens to
+        appear anywhere in a long document does not silently receive a score of
+        1.0.  A minimum bigram set size of 3 is required before the bigram
+        signal contributes; this prevents 1- and 2-character English queries
+        from polluting results while still allowing 3-character CJK phrases (2
+        bigrams) to match.
+        """
+        try:
+            decision_text = (
+                f"{decision['scenario']} {decision['reasoning']} "
+                f"{' '.join(decision['entities'])}"
+            )
+
+            # --- word-level Jaccard (primary metric for Latin/space-delimited) ---
             scenario_words = set(scenario.lower().split())
-            decision_text = f"{decision['scenario']} {decision['reasoning']} {' '.join(decision['entities'])}"
             decision_words = set(decision_text.lower().split())
-            
-            intersection = scenario_words.intersection(decision_words)
-            union = scenario_words.union(decision_words)
-            
-            return len(intersection) / len(union) if union else 0.0
-            
-        except Exception as e:
+            word_union = scenario_words | decision_words
+            word_sim = (
+                len(scenario_words & decision_words) / len(word_union)
+                if word_union
+                else 0.0
+            )
+
+            # --- character-bigram Jaccard (CJK / very-short-query fallback) ---
+            # Only used when whitespace tokenisation can't do the job: CJK-like
+            # scripts, or a query that is a single whitespace token (no spaces
+            # to split on).  Ordinary multi-word English queries rely on
+            # word_sim alone, so incidental bigram overlap between unrelated
+            # sentences can never inflate their score.
+            bigram_sim = 0.0
+            needs_bigram_fallback = (
+                self._looks_cjk(scenario) or len(scenario.split()) <= 1
+            )
+            if needs_bigram_fallback:
+                scenario_bigrams = self._char_bigrams(scenario)
+                decision_bigrams = self._char_bigrams(decision_text)
+
+                # Require at least 3 bigrams in the query before the bigram
+                # signal is used.  A 2-char query produces only 1 bigram; that
+                # single bigram is far too likely to appear as a substring of
+                # any English word and would produce a spuriously high overlap
+                # coefficient.  3 bigrams correspond to a 4-char stripped query
+                # (e.g. two CJK characters produce 1 bigram each → need ≥3
+                # chars stripped).
+                if len(scenario_bigrams) >= 3 and decision_bigrams:
+                    bigram_union = scenario_bigrams | decision_bigrams
+                    bigram_sim = (
+                        len(scenario_bigrams & decision_bigrams) / len(bigram_union)
+                        if bigram_union
+                        else 0.0
+                    )
+
+            return max(word_sim, bigram_sim)
+
+        except Exception:
             self.logger.exception("Content similarity calculation failed")
             return 0.0
     

@@ -1974,3 +1974,399 @@ class TestDoctorEmbeddingHintsAndEnv:
         st = checks["Embeddings (sentence-transformers)"]
         assert st["status"] == "fail"
         assert "hash fallback" in st["note"], "padded/caps env value must enable deep mode"
+
+
+class TestEmbedGenerateOutput:
+    """#994: `embed generate --output` must write files `embed index` can read."""
+
+    def _patch_generate(self, monkeypatch, retval):
+        import numpy as np
+        fake_emb = _fake_module(generate_embeddings=lambda *a, **k: np.asarray(retval))
+        monkeypatch.setitem(__import__("sys").modules, "semantica.embeddings", fake_emb)
+
+    def test_writes_valid_parquet(self, runner, monkeypatch, tmp_path):
+        pytest.importorskip("pyarrow", reason="parquet writer regression needs pyarrow")
+        import numpy as np
+        import pandas as pd
+        self._patch_generate(monkeypatch, [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+        out = tmp_path / "embeddings.parquet"
+        result = runner.invoke(cli_module.main, ["embed", "generate", "in.json", "--output", str(out)])
+        _ok(result)
+        df = pd.read_parquet(out)
+        assert "embedding" in df.columns
+        assert len(df) == 2
+        # Use allclose: the writer may store float32 or float64 depending on
+        # the model backend; exact == fails for float32-precision values.
+        assert np.allclose(df["embedding"].iloc[0], [0.1, 0.2, 0.3], atol=1e-6)
+
+    def test_writes_1d_result_as_single_row_parquet(self, runner, monkeypatch, tmp_path):
+        pytest.importorskip("pyarrow", reason="parquet writer regression needs pyarrow")
+        import numpy as np
+        import pandas as pd
+        self._patch_generate(monkeypatch, [0.1, 0.2, 0.3])
+        out = tmp_path / "embeddings.parquet"
+        result = runner.invoke(cli_module.main, ["embed", "generate", "in.json", "--output", str(out)])
+        _ok(result)
+        df = pd.read_parquet(out)
+        assert len(df) == 1
+        assert np.allclose(df["embedding"].iloc[0], [0.1, 0.2, 0.3], atol=1e-6)
+
+    def test_writes_json_records_not_repr_strings(self, runner, monkeypatch, tmp_path):
+        import json as _json
+        import numpy as np
+        import pandas as pd
+        self._patch_generate(monkeypatch, [[0.1, 0.2], [0.3, 0.4]])
+        out = tmp_path / "embeddings.json"
+        result = runner.invoke(cli_module.main, ["embed", "generate", "in.json", "--output", str(out)])
+        _ok(result)
+        records = _json.loads(out.read_text(encoding="utf-8"))
+        assert records == [{"embedding": [0.1, 0.2]}, {"embedding": [0.3, 0.4]}]
+        # Verify embed index can read the file back (round-trip contract).
+        df = pd.read_json(out, orient="records")
+        vector_col = next(
+            (c for c in df.columns if isinstance(df[c].iloc[0], (list, np.ndarray))),
+            None,
+        )
+        assert vector_col == "embedding", (
+            f"embed index would not find a vector column; got columns {list(df.columns)}"
+        )
+
+    def test_rejects_unsupported_output_format(self, runner, monkeypatch, tmp_path):
+        self._patch_generate(monkeypatch, [[0.1, 0.2]])
+        out = tmp_path / "embeddings.txt"
+        result = runner.invoke(cli_module.main, ["embed", "generate", "in.json", "--output", str(out)])
+        assert result.exit_code != 0
+        assert "Unsupported output format" in result.output
+        assert not out.exists()
+
+
+class TestWriteResultOutput:
+    """Unit-level regression tests for _write_result_output().
+
+    Covers every branch: JSON, JSONL, CSV, unsupported extension, no-extension,
+    dict+JSONL, empty list, NumPy scalar/array values, and round-trip readback.
+    """
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+
+    def _write(self, tmp_path, filename, result):
+        """Call _write_result_output and return the output Path."""
+        from semantica.cli import _write_result_output
+        out = tmp_path / filename
+        _write_result_output(out, result)
+        return out
+
+    # ── JSON ─────────────────────────────────────────────────────────────────
+
+    def test_json_dict_produces_valid_json(self, tmp_path):
+        import json
+        out = self._write(tmp_path, "r.json", {"pairs": 3, "score": 0.9})
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data == {"pairs": 3, "score": 0.9}
+
+    def test_json_list_produces_valid_json(self, tmp_path):
+        import json
+        out = self._write(tmp_path, "r.json", [{"a": 1}, {"a": 2}])
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data == [{"a": 1}, {"a": 2}]
+
+    def test_json_numpy_scalar_serialises_as_number_not_repr(self, tmp_path):
+        """np.float32 values must round-trip as JSON numbers, not repr strings."""
+        import json
+        import numpy as np
+        out = self._write(tmp_path, "r.json", {"score": np.float32(0.95)})
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert isinstance(data["score"], float), (
+            f"expected float, got {type(data['score'])}: {data['score']!r}"
+        )
+        assert abs(data["score"] - 0.95) < 1e-4
+
+    def test_json_numpy_array_serialises_as_list_not_repr(self, tmp_path):
+        """np.ndarray values must round-trip as JSON arrays, not '[0.1 0.2]' repr."""
+        import json
+        import numpy as np
+        out = self._write(tmp_path, "r.json", {"vec": np.array([0.1, 0.2, 0.3])})
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert isinstance(data["vec"], list), (
+            f"expected list, got {type(data['vec'])}: {data['vec']!r}"
+        )
+        assert len(data["vec"]) == 3
+
+    # ── JSONL ────────────────────────────────────────────────────────────────
+
+    def test_jsonl_list_writes_one_object_per_line(self, tmp_path):
+        """Each item in a list result must occupy exactly one JSONL line."""
+        import json
+        records = [{"id": "a", "score": 0.9}, {"id": "b", "score": 0.7}]
+        out = self._write(tmp_path, "r.jsonl", records)
+        lines = [l for l in out.read_text(encoding="utf-8").splitlines() if l.strip()]
+        assert len(lines) == 2
+        assert json.loads(lines[0]) == {"id": "a", "score": 0.9}
+        assert json.loads(lines[1]) == {"id": "b", "score": 0.7}
+
+    def test_jsonl_dict_writes_exactly_one_line(self, tmp_path):
+        """A dict result (e.g. ontology_align) must write one JSON object on one line,
+        not a pretty-printed multi-line block that pd.read_json(lines=True) cannot parse."""
+        import json
+        import pandas as pd
+        result = {"total_entities": 10, "duplicate_pairs": 3}
+        out = self._write(tmp_path, "r.jsonl", result)
+        raw = out.read_text(encoding="utf-8")
+        lines = [l for l in raw.splitlines() if l.strip()]
+        # Exactly one line
+        assert len(lines) == 1, (
+            f"Expected 1 JSONL line for dict result, got {len(lines)}:\n{raw!r}"
+        )
+        # That line parses as valid JSON
+        parsed = json.loads(lines[0])
+        assert parsed == result
+        # pd.read_json(lines=True) can read it back
+        df = pd.read_json(out, lines=True)
+        assert list(df.columns) == ["total_entities", "duplicate_pairs"]
+
+    def test_jsonl_numpy_values_are_not_repr_strings(self, tmp_path):
+        """NumPy values inside JSONL lines must be proper JSON, not repr()."""
+        import json
+        import numpy as np
+        records = [{"score": np.float32(0.8), "tag": "x"}]
+        out = self._write(tmp_path, "r.jsonl", records)
+        line = out.read_text(encoding="utf-8").strip()
+        parsed = json.loads(line)
+        assert isinstance(parsed["score"], float)
+
+    # ── CSV ──────────────────────────────────────────────────────────────────
+
+    def test_csv_list_of_dicts_produces_readable_csv(self, tmp_path):
+        import pandas as pd
+        rows = [{"entity_1": "Alice", "entity_2": "Bob", "similarity": 0.87},
+                {"entity_1": "Carol", "entity_2": "Dave", "similarity": 0.72}]
+        out = self._write(tmp_path, "r.csv", rows)
+        df = pd.read_csv(out)
+        assert list(df.columns) == ["entity_1", "entity_2", "similarity"]
+        assert len(df) == 2
+        assert abs(df["similarity"].iloc[0] - 0.87) < 1e-6
+
+    def test_csv_numpy_scalar_becomes_number_not_repr(self, tmp_path):
+        """np.float32 in a result row must not become a repr string in the CSV."""
+        import numpy as np
+        import pandas as pd
+        rows = [{"label": "x", "score": np.float32(0.95)}]
+        out = self._write(tmp_path, "r.csv", rows)
+        df = pd.read_csv(out)
+        # The cell must be a numeric type, not a string like 'np.float32(0.95)'
+        assert df["score"].dtype.kind in ("f", "i"), (
+            f"Expected numeric dtype, got {df['score'].dtype}: {df['score'].iloc[0]!r}"
+        )
+
+    def test_csv_empty_list_raises_clickexception(self, tmp_path):
+        """An empty result list must raise rather than create a headerless newline."""
+        import click
+        from semantica.cli import _write_result_output
+        out = tmp_path / "empty.csv"
+        with pytest.raises(click.ClickException, match="No results to write"):
+            _write_result_output(out, [])
+        assert not out.exists()
+
+    def test_csv_single_dict_written_as_one_row(self, tmp_path):
+        import pandas as pd
+        out = self._write(tmp_path, "r.csv", {"total": 5, "merged": 2})
+        df = pd.read_csv(out)
+        assert len(df) == 1
+        assert df["total"].iloc[0] == 5
+
+    # ── unsupported / no-extension ────────────────────────────────────────────
+
+    def test_unsupported_extension_raises_clickexception(self, tmp_path):
+        import click
+        from semantica.cli import _write_result_output
+        out = tmp_path / "report.txt"
+        with pytest.raises(click.ClickException, match="Unsupported output format"):
+            _write_result_output(out, {"k": "v"})
+        assert not out.exists()
+
+    def test_no_extension_raises_clickexception(self, tmp_path):
+        """No-extension paths must be rejected — not silently renamed to .json —
+        so the path reported to the user always matches the file created."""
+        import click
+        from semantica.cli import _write_result_output
+        out = tmp_path / "report"
+        with pytest.raises(click.ClickException, match="Unsupported output format"):
+            _write_result_output(out, {"k": "v"})
+        assert not out.exists()
+        assert not (tmp_path / "report.json").exists()
+
+    def test_txt_extension_raises_clickexception(self, tmp_path):
+        """.txt is not a documented format and must be rejected, consistent with
+        _write_embeddings_output which also rejects it."""
+        import click
+        from semantica.cli import _write_result_output
+        out = tmp_path / "r.txt"
+        with pytest.raises(click.ClickException, match="Unsupported output format"):
+            _write_result_output(out, {"k": "v"})
+        assert not out.exists()
+
+    def test_uppercase_extension_accepted(self, tmp_path):
+        """Extension matching must be case-insensitive (.CSV == .csv)."""
+        import pandas as pd
+        out = self._write(tmp_path, "r.CSV", [{"a": 1}])
+        df = pd.read_csv(out)
+        assert len(df) == 1
+
+
+class TestDeduplicateOutput:
+    """CLI-level regression tests for deduplicate --output integration.
+
+    Uses the same monkeypatching pattern as TestDeduplicate.test_detect_runtime_path:
+    patch _get_store and get_nodes at the graph_store.methods level, then patch
+    the deduplication module so no real model or DB is needed.
+    """
+
+    _ENTITIES = [
+        {"id": "e1", "name": "Alice", "type": "Person"},
+        {"id": "e2", "name": "Alice", "type": "Person"},
+    ]
+    _DETECT_RESULT = [
+        {"entity_1": "e1", "entity_2": "e2", "similarity": 0.9}
+    ]
+
+    def _patch_dedup(self, monkeypatch):
+        """Wire graph store + deduplication mocks for the detect action."""
+        entities = self._ENTITIES
+        detect_result = self._DETECT_RESULT
+
+        class FakeStore:
+            def get_nodes(self, labels=None, properties=None, limit=100, **opts):
+                return entities
+
+        monkeypatch.setattr(
+            "semantica.graph_store.methods._get_store", lambda: FakeStore()
+        )
+        monkeypatch.setattr(
+            "semantica.graph_store.methods.get_nodes", lambda **kw: entities
+        )
+        monkeypatch.setattr(
+            "semantica.deduplication.methods.detect_duplicates",
+            lambda *a, **k: detect_result,
+            raising=False,
+        )
+        # The CLI imports from .deduplication directly; patch that too.
+        import types
+        fake_dedup = _fake_module(detect_duplicates=lambda *a, **k: detect_result)
+        fake_merger_inst = types.SimpleNamespace(
+            merge_duplicates=lambda *a, **k: detect_result
+        )
+        fake_dedup.entity_merger = types.SimpleNamespace(
+            EntityMerger=lambda: fake_merger_inst
+        )
+        monkeypatch.setitem(
+            __import__("sys").modules, "semantica.deduplication", fake_dedup
+        )
+        monkeypatch.setitem(
+            __import__("sys").modules,
+            "semantica.deduplication.entity_merger",
+            fake_dedup.entity_merger,
+        )
+
+    def test_deduplicate_output_json_is_valid(self, runner, monkeypatch, tmp_path):
+        """deduplicate --output report.json must produce parseable JSON, not a repr."""
+        import json
+        self._patch_dedup(monkeypatch)
+        out = tmp_path / "report.json"
+        result = runner.invoke(
+            cli_module.main,
+            ["deduplicate", "--action", "detect", "--output", str(out)],
+        )
+        _ok(result)
+        assert out.exists(), f"output file not created; output: {result.output!r}"
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert isinstance(data, (list, dict))
+
+    def test_deduplicate_output_csv_is_readable(self, runner, monkeypatch, tmp_path):
+        """deduplicate --output report.csv (documented format) must produce valid CSV."""
+        import pandas as pd
+        self._patch_dedup(monkeypatch)
+        out = tmp_path / "report.csv"
+        result = runner.invoke(
+            cli_module.main,
+            ["deduplicate", "--action", "detect", "--output", str(out)],
+        )
+        _ok(result)
+        assert out.exists(), f"CSV file not created; output: {result.output!r}"
+        df = pd.read_csv(out)
+        assert len(df) >= 1
+
+
+class TestOntologyAlignOutput:
+    """CLI-level regression tests for ontology align --output integration.
+
+    Uses runner.isolated_filesystem() so Click's exists=True source/target
+    validation passes, then patches semantica.ontology at the sys.modules level
+    before the import inside _action() fires — same pattern as
+    TestOntology.test_align_import_error_is_clean.
+    """
+
+    _ALIGN_RESULT = {
+        "alignments": [{"source": "A", "target": "B", "score": 0.8}],
+        "total": 1,
+    }
+
+    def _patch_align(self, monkeypatch, align_result=None):
+        result = align_result if align_result is not None else self._ALIGN_RESULT
+        import types
+        fake_gen = types.SimpleNamespace(align=lambda *a, **k: result)
+        fake_ontology = _fake_module(
+            OntologyGenerator=lambda **k: fake_gen,
+        )
+        monkeypatch.setitem(
+            __import__("sys").modules, "semantica.ontology", fake_ontology
+        )
+
+    def test_ontology_align_output_json_is_valid(self, runner, monkeypatch, tmp_path):
+        """ontology align --output alignments.json must produce parseable JSON."""
+        import json
+        self._patch_align(monkeypatch)
+        out = tmp_path / "alignments.json"
+        with runner.isolated_filesystem():
+            open("s.ttl", "w").close()
+            open("t.ttl", "w").close()
+            result = runner.invoke(
+                cli_module.main,
+                ["ontology", "align",
+                 "--source", "s.ttl", "--target", "t.ttl",
+                 "--output", str(out)],
+            )
+        _ok(result)
+        assert out.exists(), f"output file not created; output: {result.output!r}"
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert isinstance(data, dict)
+        assert "alignments" in data
+
+    def test_ontology_align_output_jsonl_is_readable_by_pandas(
+        self, runner, monkeypatch, tmp_path
+    ):
+        """ontology align --output alignments.jsonl must produce valid JSONL:
+        exactly one JSON object per line, readable by pd.read_json(lines=True).
+        Regression for F2: dict result must NOT be pretty-printed across multiple
+        lines into a .jsonl file."""
+        import pandas as pd
+        self._patch_align(monkeypatch)
+        out = tmp_path / "alignments.jsonl"
+        with runner.isolated_filesystem():
+            open("s.ttl", "w").close()
+            open("t.ttl", "w").close()
+            result = runner.invoke(
+                cli_module.main,
+                ["ontology", "align",
+                 "--source", "s.ttl", "--target", "t.ttl",
+                 "--output", str(out)],
+            )
+        _ok(result)
+        assert out.exists(), f"JSONL file not created; output: {result.output!r}"
+        raw = out.read_text(encoding="utf-8")
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
+        assert len(lines) == 1, (
+            f"Expected exactly 1 JSONL line for a dict result, got {len(lines)}:\n{raw!r}"
+        )
+        # pd.read_json(lines=True) must succeed — this is what the F2 bug broke.
+        df = pd.read_json(out, lines=True)
+        assert "alignments" in df.columns

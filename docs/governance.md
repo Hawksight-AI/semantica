@@ -4,12 +4,12 @@ description: "Project governance model: roles, decision process, release cadence
 icon: "scale-balanced"
 ---
 
-> Semantica is maintained by Hawksight AI with community contributions under an open governance model.
+> Semantica is maintained by the Semantica team with community contributions under an open governance model.
 
 
 ## Roles
 
-- **Maintainers** — Hawksight AI team: review and merge PRs, manage releases and code quality, set project direction and community standards.
+- **Maintainers** — Semantica team: review and merge PRs, manage releases and code quality, set project direction and community standards.
 - **Contributors** — Submit code, documentation, and bug reports. Help with issues and reviews. Recognized in [CONTRIBUTORS.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTORS.md).
 - **Community Members** — Use Semantica, provide feedback, share use cases, and participate in GitHub Discussions and Discord.
 
