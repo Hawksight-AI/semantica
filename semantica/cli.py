@@ -1732,51 +1732,21 @@ def embed(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
-def _write_embeddings_output(out_path: Path, result) -> None:
-    """Serialize ``embed generate`` output in the format ``embed index`` reads.
+def _json_default(obj) -> object:
+    """JSON serialiser that converts NumPy scalars/arrays to native Python types.
 
-    #994: this used to write ``json.dumps(result, default=str)`` regardless of
-    the file extension, so ``--output embeddings.parquet`` produced a plain
-    text file holding the repr of a numpy array and ``embed index`` then failed
-    on the Parquet magic bytes. The writer now mirrors the reader
-    (``pd.read_parquet`` / ``pd.read_json(lines=...)`` with a vector column of
-    lists) and rejects extensions it cannot write correctly.
+    Falls back to ``str()`` for everything else so the writer never crashes on
+    unexpected types (e.g. ``datetime``, custom domain objects).
     """
-    import numpy as np
-
-    vectors = np.asarray(result)
-    if vectors.ndim == 1:
-        vectors = vectors.reshape(1, -1)
-    if vectors.ndim != 2:
-        raise click.ClickException(
-            f"Unexpected embeddings result shape {vectors.shape!r}; "
-            "expected a 1-D or 2-D array"
-        )
-    rows = [v.tolist() for v in vectors]
-    suffix = out_path.suffix.lower()
-    if suffix not in (".parquet", ".json", ".jsonl"):
-        raise click.ClickException(
-            f"Unsupported embeddings output format '{suffix}'. "
-            "Use .parquet, .json, or .jsonl"
-        )
     try:
-        import pandas as pd
-    except ImportError as exc:
-        raise click.ClickException(
-            f"Embeddings output requires pandas: {exc}"
-        ) from exc
-    if suffix == ".parquet":
-        try:
-            pd.DataFrame({"embedding": rows}).to_parquet(out_path)
-        except ImportError as exc:
-            raise click.ClickException(
-                f"Writing Parquet requires pyarrow: {exc}. "
-                "Install it (e.g. pip install pyarrow) or use --output <file>.json."
-            ) from exc
-    else:
-        pd.DataFrame({"embedding": rows}).to_json(
-            out_path, orient="records", lines=(suffix == ".jsonl")
-        )
+        import numpy as np  # local import — only needed when result contains numpy
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.generic):
+            return obj.item()
+    except ImportError:
+        pass
+    return str(obj)
 
 
 def _write_result_output(out_path: Path, result) -> None:
@@ -1787,28 +1757,65 @@ def _write_result_output(out_path: Path, result) -> None:
     writer rejected their shapes and extensions (.csv is documented for
     deduplicate). JSON-family formats serialize anything; CSV serializes a
     list of dicts (or a single dict as one row).
+
+    Accepted extensions: .json, .jsonl, .csv  (no-extension and .txt are
+    rejected so the path reported to the caller always matches the file
+    actually created, consistent with every other --output in the CLI).
     """
     import json as _json
 
     suffix = out_path.suffix.lower()
-    if suffix in (".json", ".jsonl", ".txt", ""):
-        out_path = out_path if suffix else out_path.with_suffix(".json")
-        if suffix == ".jsonl" and isinstance(result, list):
-            with open(out_path, "w", encoding="utf-8") as fh:
-                for item in result:
-                    fh.write(_json.dumps(item, default=str) + "\n")
-        else:
-            with open(out_path, "w", encoding="utf-8") as fh:
-                _json.dump(result, fh, indent=2, default=str)
+
+    # ── JSON ────────────────────────────────────────────────────────────────
+    if suffix == ".json":
+        with open(out_path, "w", encoding="utf-8") as fh:
+            _json.dump(result, fh, indent=2, default=_json_default)
         return
+
+    # ── JSON Lines ──────────────────────────────────────────────────────────
+    # Every record must occupy exactly one line.  Wrap a bare dict in a list
+    # so callers never need to know whether their result is singular or plural.
+    if suffix == ".jsonl":
+        items = result if isinstance(result, list) else [result]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            for item in items:
+                fh.write(_json.dumps(item, default=_json_default) + "\n")
+        return
+
+    # ── CSV ─────────────────────────────────────────────────────────────────
     if suffix == ".csv":
         import pandas as pd
 
         rows = result if isinstance(result, list) else [result]
-        pd.DataFrame(rows).to_csv(out_path, index=False)
+        if not rows:
+            raise click.ClickException(
+                "No results to write — output file not created."
+            )
+        # Normalise numpy scalars/arrays to Python natives so to_csv() does
+        # not fall back to repr() strings for array-valued cells.
+        def _normalise(row):
+            if not isinstance(row, dict):
+                return row
+            out = {}
+            for k, v in row.items():
+                try:
+                    import numpy as np
+                    if isinstance(v, np.ndarray):
+                        v = v.tolist()
+                    elif isinstance(v, np.generic):
+                        v = v.item()
+                except ImportError:
+                    pass
+                out[k] = v
+            return out
+
+        pd.DataFrame([_normalise(r) for r in rows]).to_csv(out_path, index=False)
         return
+
+    # ── unsupported ─────────────────────────────────────────────────────────
+    display = suffix if suffix else "(no extension)"
     raise click.ClickException(
-        f"Unsupported output format '{suffix}'. Use .json, .jsonl, or .csv"
+        f"Unsupported output format '{display}'. Use .json, .jsonl, or .csv"
     )
 
 
