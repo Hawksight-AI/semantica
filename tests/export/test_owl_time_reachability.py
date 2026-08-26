@@ -187,3 +187,52 @@ def test_the_reified_type_matches_the_direct_triples_predicate():
 
     assert set(graph.objects(node, URIRef(NS + "type"))) == {Literal(EMPLOYS)}
     assert (URIRef(E1), URIRef(EMPLOYS), URIRef(E2)) in graph
+
+
+# ── Qodo review: temporal bounds are str-only at the escape helper ─────────
+
+def test_datetime_bounds_do_not_crash_the_turtle_export():
+    """_escape_literal is str-only; datetime bounds must be stringified, not
+    run through .replace(). Regression for Qodo high-priority finding #2 on
+    PR #1221."""
+    from datetime import datetime, timezone
+
+    kg = {
+        "entities": [dict(e) for e in KG["entities"]],
+        "relationships": [
+            {
+                "source_id": E1,
+                "target_id": E2,
+                "type": EMPLOYS,
+                "valid_from": datetime(2024, 1, 1, tzinfo=timezone.utc),
+                "valid_until": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            }
+        ],
+    }
+    turtle = RDFSerializer().serialize_to_turtle(kg, include_temporal=True)
+    graph = Graph()
+    graph.parse(data=turtle, format="turtle")
+    stamps = {
+        str(o) for o in graph.objects(None, URIRef(TIME + "inXSDDateTimeStamp"))
+    }
+    assert len(stamps) == 2, stamps
+
+
+def test_end_only_interval_does_not_crash_the_turtle_export():
+    """A valid_until bound with no valid_from passes None as from_val; it must
+    not be handed to the str-only escaper. Regression for Qodo finding #2."""
+    kg = {
+        "entities": [dict(e) for e in KG["entities"]],
+        "relationships": [
+            {
+                "source_id": E1,
+                "target_id": E2,
+                "type": EMPLOYS,
+                "valid_until": "2025-01-01T00:00:00Z",
+            }
+        ],
+    }
+    turtle = RDFSerializer().serialize_to_turtle(kg, include_temporal=True)
+    graph = Graph()
+    graph.parse(data=turtle, format="turtle")
+    assert list(graph.subjects(RDF.type, URIRef(TIME + "Instant")))
