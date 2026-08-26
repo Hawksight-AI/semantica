@@ -90,6 +90,25 @@ def test_pipeline_builder_add_step(pipeline_builder):
     assert step.step_type == "type1"
     assert step.config["foo"] == "bar"
 
+
+def test_registered_handler_is_used_without_control_fields(pipeline_builder, execution_engine):
+    received = {}
+
+    def registered_handler(data, **kwargs):
+        received.update(kwargs)
+        return data
+
+    pipeline_builder.register_step_handler("registered", registered_handler)
+    pipeline_builder.add_step("step1", "registered", dependencies=[])
+    pipeline = pipeline_builder.build()
+
+    result = execution_engine.execute_pipeline(pipeline, {"value": 1})
+
+    assert result.success is True
+    assert received == {}
+    assert pipeline.steps[0].handler is registered_handler
+    assert pipeline.steps[0].dependencies == []
+
 def test_pipeline_builder_connect_steps(pipeline_builder):
     pipeline_builder.add_step("step1", "type1")
     pipeline_builder.add_step("step2", "type2")
