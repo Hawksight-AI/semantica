@@ -272,7 +272,19 @@ class PipelineBuilder:
                 step_name = step_config.get("name")
                 step_type = step_config.get("type")
                 if step_name and step_type:
-                    self.add_step(step_name, step_type, **step_config.get("config", {}))
+                    step = self.add_step(
+                        step_name, step_type, **step_config.get("config", {})
+                    )
+                    step.dependencies = list(
+                        step_config.get("dependencies", step.dependencies)
+                    )
+                    step.delta_mode = step_config.get("delta_mode", step.delta_mode)
+                    step.base_version_id = step_config.get(
+                        "base_version_id", step.base_version_id
+                    )
+                    step.target_version_id = step_config.get(
+                        "target_version_id", step.target_version_id
+                    )
 
             # Set parallelism if specified
             if "parallelism" in pipeline_config:
@@ -398,14 +410,29 @@ class PipelineSerializer:
 
         Returns:
             Serialized pipeline
+
+        Notes:
+            Step handlers are runtime callables and are intentionally omitted from
+            the serialized representation. They must be rebound after deserialization.
         """
+        reserved_config_keys = {
+            "handler",
+            "dependencies",
+            "delta_mode",
+            "base_version_id",
+            "target_version_id",
+        }
         pipeline_data = {
             "name": pipeline.name,
             "steps": [
                 {
                     "name": step.name,
                     "type": step.step_type,
-                    "config": step.config,
+                    "config": {
+                        key: value
+                        for key, value in step.config.items()
+                        if key not in reserved_config_keys
+                    },
                     "dependencies": step.dependencies,
                     "delta_mode": getattr(step, "delta_mode", False),
                     "base_version_id": getattr(step, "base_version_id", None),
@@ -444,6 +471,18 @@ class PipelineSerializer:
             pipeline_data = json.loads(serialized_pipeline)
         else:
             pipeline_data = serialized_pipeline
+
+        # Runtime handlers are process-local and cannot be reconstructed safely
+        # from serialized data. Copy before sanitizing so dict inputs are not mutated.
+        pipeline_data = dict(pipeline_data)
+        sanitized_steps = []
+        for step_data in pipeline_data.get("steps", []):
+            sanitized_step = dict(step_data)
+            step_config = dict(sanitized_step.get("config", {}))
+            step_config.pop("handler", None)
+            sanitized_step["config"] = step_config
+            sanitized_steps.append(sanitized_step)
+        pipeline_data["steps"] = sanitized_steps
 
         # Reconstruct pipeline
         builder = PipelineBuilder(**self.config)
