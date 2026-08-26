@@ -82,6 +82,7 @@ class TestPineconeStore(unittest.TestCase):
         self.assertIsInstance(store.search_engine, PineconeSearch)
         store.client.create_index.assert_called_once()
 
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
     @patch('semantica.vector_store.pinecone_store.PineconeClientLib')
     def test_upsert_vectors(self, mock_pinecone_client):
         """Test upserting vectors to Pinecone index."""
@@ -105,6 +106,7 @@ class TestPineconeStore(unittest.TestCase):
         self.assertEqual(result["upserted_count"], 2)
         store.index.upsert_vectors.assert_called_once()
 
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
     @patch('semantica.vector_store.pinecone_store.PineconeClientLib')
     def test_search_vectors(self, mock_pinecone_client):
         """Test searching vectors in Pinecone index."""
@@ -128,6 +130,7 @@ class TestPineconeStore(unittest.TestCase):
         self.assertEqual(results[0]["id"], "id1")
         store.search_engine.similarity_search.assert_called_once()
 
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
     @patch('semantica.vector_store.pinecone_store.PineconeClientLib')
     def test_delete_vectors(self, mock_pinecone_client):
         """Test deleting vectors from Pinecone index."""
@@ -148,6 +151,7 @@ class TestPineconeStore(unittest.TestCase):
         # Fix: assert called without the empty dict
         store.index.delete_vectors.assert_called_once_with(["id1", "id2"], "")
 
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
     @patch('semantica.vector_store.pinecone_store.PineconeClientLib')
     def test_fetch_vectors(self, mock_pinecone_client):
         """Test fetching vectors from Pinecone index."""

@@ -137,6 +137,69 @@ class TestVectorStore(unittest.TestCase):
         
         self.assertTrue(mock_backend.called)
 
+    def test_filter_by_metadata_inmemory(self):
+        """Test _filter_by_metadata on inmemory backend."""
+        store = VectorStore(backend="inmemory")
+        store.metadata = {
+            "v1": {"category": "finance", "amount": 100, "tags": ["a", "b"]},
+            "v2": {"category": "finance", "amount": 500, "tags": ["b", "c"]},
+            "v3": {"category": "tech", "amount": 200, "tags": ["c"]},
+        }
+        store.vectors = {
+            "v1": np.array([0.1]),
+            "v2": np.array([0.2]),
+            "v3": np.array([0.3]),
+        }
+
+        # Exact filter
+        results = store._filter_by_metadata({"category": "finance"}, limit=10)
+        self.assertEqual(len(results), 2)
+        res_ids = {r["id"] for r in results}
+        self.assertEqual(res_ids, {"v1", "v2"})
+
+        # Range filter
+        results = store._filter_by_metadata({"amount": {"min": 150}}, limit=10)
+        self.assertEqual(len(results), 2)
+        res_ids = {r["id"] for r in results}
+        self.assertEqual(res_ids, {"v2", "v3"})
+
+        # List intersection filter
+        results = store._filter_by_metadata({"tags": ["a"]}, limit=10)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], "v1")
+
+    def test_filter_by_metadata_persistent_backend_delegation(self):
+        """Test that persistent backend delegates filter_by_metadata without AttributeError."""
+        store = VectorStore(backend="inmemory")
+        # Simulate persistent backend by deleting self.metadata attribute if any
+        if hasattr(store, "metadata"):
+            delattr(store, "metadata")
+
+        mock_backend = MagicMock()
+        mock_backend.filter_by_metadata.return_value = [
+            {"id": "p1", "metadata": {"category": "test"}, "vector": np.array([0.5])}
+        ]
+        store._backend_store = mock_backend
+        store.backend = "faiss"
+
+        # Should NOT raise AttributeError: 'VectorStore' object has no attribute 'metadata'
+        results = store._filter_by_metadata({"category": "test"}, limit=5)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], "p1")
+        mock_backend.filter_by_metadata.assert_called_once_with(filters={"category": "test"}, limit=5)
+
+    def test_filter_by_metadata_backend_not_implemented(self):
+        """Test that missing filter_by_metadata method raises NotImplementedError."""
+        store = VectorStore(backend="inmemory")
+        if hasattr(store, "metadata"):
+            delattr(store, "metadata")
+
+        store.backend = "unknown"
+        store._backend_store = object()
+
+        with self.assertRaises(NotImplementedError):
+            store._filter_by_metadata({"key": "val"}, limit=10)
+
     def test_save_load_roundtrip_numpy_vectors(self):
         """save()/load() must handle numpy float32 vectors without raising.
 
@@ -178,6 +241,20 @@ class TestVectorStore(unittest.TestCase):
                 store.load(tmpdir)
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class TestCreateIndexFunction(unittest.TestCase):
+    """create_index() forwards vector_store_config's defaults into VectorIndexer,
+    which already receives backend/dimension as explicit args. Regression for the
+    'got multiple values for keyword argument dimension' crash on the default
+    (unmocked) config, hit by e.g. `semantica embed index`."""
+
+    def test_create_index_with_default_config(self):
+        from semantica.vector_store.methods import create_index
+
+        vectors = [np.array([0.1, 0.2, 0.3]), np.array([0.4, 0.5, 0.6])]
+        index = create_index(vectors, ids=["a", "b"])
+        self.assertIsNotNone(index)
 
 
 if __name__ == '__main__':

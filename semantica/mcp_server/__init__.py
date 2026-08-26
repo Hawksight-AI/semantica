@@ -47,11 +47,27 @@ import os
 import sys
 from typing import Any
 
+# `semantica.__version__` is the authoritative package version — it is kept in
+# sync with pyproject.toml's static `version` field by the release process and
+# is always present whenever this submodule is importable.  Using it directly
+# is simpler and more reliable than `importlib.metadata.version("semantica")`,
+# which reads dist-info written at install time and can lag the source in
+# editable installs (egg-info / dist-info is not regenerated on every version
+# bump, so it can reflect a stale value).
+from semantica import __version__ as _SEMANTICA_VERSION
+
 # ── logging ────────────────────────────────────────────────────────────────
 _log_level = getattr(logging, os.environ.get("SEMANTICA_LOG_LEVEL", "WARNING").upper(), logging.WARNING)
 logging.basicConfig(stream=sys.stderr, level=_log_level,
                     format="%(asctime)s [semantica-mcp] %(levelname)s %(message)s")
 log = logging.getLogger("semantica.mcp_server")
+
+# MCP stdio framing IS stdout: a progress bar or other console renderer writing
+# to stdout would interleave with the JSON-RPC stream and hang every client
+# (observed 2026-08-20: export_graph over MCP timed out at 300s while the same
+# call returned in <1s directly). Force the progress trackers off for this
+# process — stdout is not a console here.
+os.environ["SEMANTICA_DISABLE_PROGRESS"] = "1"
 
 # ── lazy graph session ──────────────────────────────────────────────────────
 _graph: Any = None
@@ -251,16 +267,28 @@ def _tool_get_graph_analytics(args: dict) -> dict:
         return {"error": str(exc)}
 
 
+_EXPORT_GRAPH_FORMATS = ("turtle", "ttl", "nt", "xml", "json-ld", "json")
+
+
 def _tool_export_graph(args: dict) -> dict:
     """Export the current knowledge graph to a serialised format."""
     fmt = args.get("format", "json-ld")
+    if fmt not in _EXPORT_GRAPH_FORMATS:
+        return {
+            "error": f"Unsupported format '{fmt}'. Supported: {', '.join(_EXPORT_GRAPH_FORMATS)}"
+        }
     graph = _get_graph()
     try:
-        from semantica.export import RDFExporter, JSONExporter
+        from semantica.export import RDFExporter
+        # The exporters consume the canonical kg dict, not the ContextGraph
+        # object (regression: the old code passed the object straight through,
+        # so every branch failed — JSONExporter.export() with no file_path on
+        # the json branch, AttributeError on the RDF branches).
+        kg = graph.to_kg_dict()
         if fmt in ("turtle", "ttl", "nt", "xml", "json-ld"):
-            result = RDFExporter().export_to_rdf(graph, format=fmt)
+            result = RDFExporter().export_to_rdf(kg, format=fmt)
         else:
-            result = JSONExporter().export(graph)
+            result = json.dumps(kg, indent=2, ensure_ascii=False)
         return {"format": fmt, "data": result}
     except Exception as exc:
         return {"error": str(exc)}
@@ -432,7 +460,7 @@ TOOLS = [
             "properties": {
                 "format": {
                     "type": "string",
-                    "enum": ["turtle", "ttl", "nt", "xml", "json-ld", "json"],
+                    "enum": list(_EXPORT_GRAPH_FORMATS),
                     "description": "Export format (default: json-ld)",
                 }
             },
@@ -477,7 +505,7 @@ def _read_resource(uri: str) -> dict:
     if uri == "semantica://schema/info":
         return {
             "name": "Semantica",
-            "version": "0.4.0",
+            "version": _SEMANTICA_VERSION,
             "tools": [t["name"] for t in TOOLS],
             "resources": [r["uri"] for r in RESOURCES],
         }
@@ -490,7 +518,7 @@ def _read_resource(uri: str) -> dict:
 
 SERVER_INFO = {
     "name": "semantica",
-    "version": "0.4.0",
+    "version": _SEMANTICA_VERSION,
 }
 
 CAPABILITIES = {

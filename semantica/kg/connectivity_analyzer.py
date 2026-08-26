@@ -48,11 +48,12 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from collections import defaultdict, deque
+from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from ._graph_view import build_adjacency
 
 
 class ConnectivityAnalyzer:
@@ -385,51 +386,7 @@ class ConnectivityAnalyzer:
 
     def _build_adjacency(self, graph) -> Dict[str, List[str]]:
         """Build adjacency list from graph."""
-        adjacency = defaultdict(list)
-
-        # Extract relationships
-        relationships = []
-        if hasattr(graph, "relationships"):
-            relationships = graph.relationships
-        elif hasattr(graph, "get_relationships"):
-            relationships = graph.get_relationships()
-        elif isinstance(graph, dict):
-            relationships = graph.get("relationships", graph.get("edges", []))
-
-        # Build adjacency
-        for rel in relationships:
-            # Handle tuple/list edges (e.g., from NetworkX)
-            if isinstance(rel, (tuple, list)) and len(rel) >= 2:
-                source, target = str(rel[0]), str(rel[1])
-                if source and target:
-                    if target not in adjacency[source]:
-                        adjacency[source].append(target)
-                    if source not in adjacency[target]:
-                        adjacency[target].append(source)
-                continue
-            source = rel.get("source") or rel.get("subject")
-            target = rel.get("target") or rel.get("object")
-
-            # Extract IDs if objects are passed
-            if source and not isinstance(source, (str, int, float)):
-                if isinstance(source, dict):
-                    source = source.get("id") or source.get("entity_id") or source.get("text") or str(source)
-                else:
-                    source = getattr(source, "id", getattr(source, "text", str(source)))
-            
-            if target and not isinstance(target, (str, int, float)):
-                if isinstance(target, dict):
-                    target = target.get("id") or target.get("entity_id") or target.get("text") or str(target)
-                else:
-                    target = getattr(target, "id", getattr(target, "text", str(target)))
-
-            if source and target:
-                if target not in adjacency[source]:
-                    adjacency[source].append(target)
-                if source not in adjacency[target]:
-                    adjacency[target].append(source)
-
-        return dict(adjacency)
+        return build_adjacency(graph)
 
     def _bfs_shortest_path(
         self, adjacency: Dict[str, List[str]], source: str, target: str

@@ -66,6 +66,12 @@ except (ImportError, OSError):
 # Helpers
 # ---------------------------------------------------------------------------
 
+# create_index's index_type reaches a raw SQL keyword position (`USING
+# {index_type}`) that can't be bound as a query parameter; only the
+# documented, PostgreSQL-recognized types are allowed through.
+_ALLOWED_INDEX_TYPES = frozenset({"btree", "gin", "hash", "gist", "brin"})
+
+
 def _sanitize_label(label: str) -> str:
     """
     Sanitize a Cypher label to prevent injection.
@@ -1214,6 +1220,11 @@ class ApacheAgeStore:
             safe_label = _sanitize_label(label)
             if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", property_name):
                 raise ValidationError(f"Invalid property name: '{property_name}'")
+            if index_type not in _ALLOWED_INDEX_TYPES:
+                raise ValidationError(
+                    f"Invalid index_type: {index_type!r}. "
+                    f"Allowed: {sorted(_ALLOWED_INDEX_TYPES)}"
+                )
 
             index_name = options.get(
                 "index_name", f"idx_{self.graph_name}_{safe_label}_{property_name}"

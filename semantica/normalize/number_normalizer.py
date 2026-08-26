@@ -370,8 +370,12 @@ class UnitConverter:
         Raises:
             ValidationError: If units are incompatible or not in same category
         """
-        from_unit = from_unit.lower()
-        to_unit = to_unit.lower()
+        # Normalize aliases before validating categories and looking up factors.
+        # The public API documents abbreviations such as ``kg`` and ``km``;
+        # validating those raw aliases against the canonical category lists
+        # incorrectly rejected otherwise supported conversions.
+        from_unit = self.normalize_unit(from_unit)
+        to_unit = self.normalize_unit(to_unit)
 
         # Validate units
         if not self.validate_units(from_unit, to_unit):
@@ -401,8 +405,8 @@ class UnitConverter:
         Returns:
             bool: True if units are compatible (same category), False otherwise
         """
-        from_unit = from_unit.lower()
-        to_unit = to_unit.lower()
+        from_unit = self.normalize_unit(from_unit)
+        to_unit = self.normalize_unit(to_unit)
 
         # Check if both units exist
         if (
@@ -498,6 +502,18 @@ class UnitConverter:
             "ml": "milliliter",
             "milliliter": "milliliter",
             "milliliters": "milliliter",
+            "ft": "foot",
+            "foot": "foot",
+            "feet": "foot",
+            "yd": "yard",
+            "yard": "yard",
+            "yards": "yard",
+            "mi": "mile",
+            "mile": "mile",
+            "miles": "mile",
+            "gal": "gallon",
+            "gallon": "gallon",
+            "gallons": "gallon",
         }
 
         return unit_map.get(unit_lower, unit_lower)
@@ -562,6 +578,11 @@ class CurrencyNormalizer:
             "SEK",
             "NOK",
             "DKK",
+            "RUB",
+            "KRW",
+            "ILS",
+            "NGN",
+            "PKR",
         ]
 
         self.logger.debug("Currency normalizer initialized")
@@ -606,13 +627,15 @@ class CurrencyNormalizer:
         # Check for currency code
         if not currency_code:
             for code in self.currency_codes:
-                if code in currency_input.upper():
+                match = re.search(
+                    rf"(?<![A-Z]){re.escape(code)}(?![A-Z])",
+                    currency_input.upper(),
+                )
+                if match:
                     currency_code = code
                     amount_str = (
-                        currency_input.replace(code, "")
-                        .replace(code.lower(), "")
-                        .strip()
-                    )
+                        currency_input[: match.start()] + currency_input[match.end() :]
+                    ).strip()
                     amount_str = amount_str.replace(",", "").replace(" ", "")
                     try:
                         amount = float(amount_str)

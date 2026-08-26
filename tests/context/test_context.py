@@ -109,6 +109,61 @@ class TestContextModule(unittest.TestCase):
         self.assertEqual(neighbors[0]["id"], "n2")
         self.assertEqual(neighbors[0]["relationship"], "knows")
 
+    def test_add_edge_is_idempotent(self):
+        graph = ContextGraph()
+        graph.add_node("a", "t")
+        graph.add_node("b", "t")
+
+        self.assertTrue(graph.add_edge("a", "b", "rel"))
+        self.assertFalse(graph.add_edge("a", "b", "rel"))
+        self.assertFalse(graph.add_edge("a", "b", "rel"))
+
+        self.assertEqual(len(graph.edges), 1)
+        self.assertEqual(len(graph.edge_type_index["rel"]), 1)
+        self.assertEqual(len(graph._adjacency["a"]), 1)
+        self.assertEqual(graph.stats()["edge_count"], 1)
+        self.assertLessEqual(graph.density(), 1.0)
+
+    def test_parallel_edges_with_distinct_attributes_are_kept(self):
+        graph = ContextGraph()
+        graph.add_node("a", "t")
+        graph.add_node("b", "t")
+
+        graph.add_edge("a", "b", "rel", confidence=0.9)
+        graph.add_edge("a", "b", "rel", confidence=0.5)
+        graph.add_edge("a", "b", "other")
+
+        self.assertEqual(len(graph.edges), 3)
+        self.assertEqual(len({e.edge_id for e in graph.edges}), 3)
+
+    def test_reingest_does_not_duplicate_edges(self):
+        graph = ContextGraph()
+        entities = [
+            {"id": "alice", "type": "person"},
+            {"id": "acme", "type": "org"},
+        ]
+        relationships = [
+            {"source_id": "alice", "target_id": "acme", "type": "works_at"}
+        ]
+
+        for _ in range(3):
+            graph.build_from_entities_and_relationships(entities, relationships)
+
+        self.assertEqual(len(graph.edges), 1)
+
+    def test_clear_resets_edge_dedupe_index(self):
+        graph = ContextGraph()
+        graph.add_node("a", "t")
+        graph.add_node("b", "t")
+        graph.add_edge("a", "b", "rel")
+
+        graph.clear()
+
+        graph.add_node("a", "t")
+        graph.add_node("b", "t")
+        self.assertTrue(graph.add_edge("a", "b", "rel"))
+        self.assertEqual(len(graph.edges), 1)
+
     def test_get_nodes_by_label_returns_metadata_copy(self):
         graph = ContextGraph()
         graph.add_node("n1", "person", "Alice", role="engineer")
@@ -251,6 +306,88 @@ class TestContextModule(unittest.TestCase):
         # Verify internal components
         self.assertIsNotNone(ctx._memory)
         self.assertEqual(len(ctx._memory.short_term_memory), 1)
+
+class TestContextGraphNodePropertyContract(unittest.TestCase):
+
+    _MISSING = object()
+
+    def _graph_with_node(self):
+        graph = ContextGraph()
+        graph.add_node("n1", "person", "Alice", role="engineer", score=0)
+        return graph
+
+    def test_get_node_property_existing_node_existing_prop(self):
+        graph = self._graph_with_node()
+        self.assertEqual(graph.get_node_property("n1", "role"), "engineer")
+
+    def test_get_node_property_existing_node_missing_prop(self):
+        graph = self._graph_with_node()
+        self.assertIsNone(graph.get_node_property("n1", "nonexistent"))
+
+    def test_get_node_property_missing_node_returns_default_none(self):
+        graph = self._graph_with_node()
+        self.assertIsNone(graph.get_node_property("ghost", "role"))
+
+    def test_get_node_property_returns_default_on_missing_node(self):
+        graph = self._graph_with_node()
+        result = graph.get_node_property("ghost", "role", default=self._MISSING)
+        self.assertIs(result, self._MISSING)
+
+    def test_get_node_property_returns_default_on_missing_prop(self):
+        graph = self._graph_with_node()
+        result = graph.get_node_property("n1", "nonexistent", default=self._MISSING)
+        self.assertIs(result, self._MISSING)
+
+    def test_get_node_property_explicit_default_returned_for_absent_node(self):
+        graph = self._graph_with_node()
+        self.assertEqual(graph.get_node_property("ghost", "role", default="fallback"), "fallback")
+
+    def test_get_node_property_prop_value_of_zero_not_swallowed(self):
+        graph = self._graph_with_node()
+        self.assertEqual(graph.get_node_property("n1", "score"), 0)
+
+    def test_get_node_attributes_existing_node_returns_copy(self):
+        graph = self._graph_with_node()
+        attrs = graph.get_node_attributes("n1")
+        self.assertIsInstance(attrs, dict)
+        self.assertEqual(attrs.get("role"), "engineer")
+
+    def test_get_node_attributes_missing_node_returns_empty_dict_by_default(self):
+        graph = self._graph_with_node()
+        self.assertEqual(graph.get_node_attributes("ghost"), {})
+
+    def test_get_node_attributes_missing_node_explicit_default(self):
+        graph = self._graph_with_node()
+        result = graph.get_node_attributes("ghost", default={})
+        self.assertEqual(result, {})
+
+    def test_add_node_attribute_mutation_callback_fires_on_update(self):
+        graph = self._graph_with_node()
+        fired = []
+        graph.mutation_callback = lambda op, nid, data: fired.append((op, nid))
+        graph.add_node_attribute("n1", {"extra": "value"})
+        self.assertEqual(len(fired), 1)
+        self.assertEqual(fired[0], ("UPDATE_NODE", "n1"))
+
+    def test_add_node_attribute_missing_node_no_callback(self):
+        graph = self._graph_with_node()
+        fired = []
+        graph.mutation_callback = lambda op, nid, data: fired.append((op, nid))
+        graph.add_node_attribute("ghost", {"extra": "value"})
+        self.assertEqual(len(fired), 0)
+
+    def test_add_node_attribute_raising_callback_does_not_propagate(self):
+        graph = self._graph_with_node()
+
+        def _boom(op, nid, data):
+            raise RuntimeError("audit sink unavailable")
+
+        graph.mutation_callback = _boom
+        # Should not raise, matching _add_internal_node/_add_internal_edge,
+        # which already catch and log mutation_callback exceptions.
+        graph.add_node_attribute("n1", {"extra": "value"})
+        self.assertEqual(graph.get_node_property("n1", "extra"), "value")
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -203,6 +203,13 @@ export_lpg(graph,  "import.cypher", method="cypher")
     exporter = SemanticNetworkYAMLExporter()
     exporter.export(graph, "graph.yaml")
     ```
+
+    The YAML exporters read `entities`/`relationships`/`triplets` (with
+    `nodes`/`edges` accepted as aliases, so `ContextGraph.to_dict()` exports
+    directly). A non-empty mapping supplying none of them raises
+    `ValidationError` rather than writing a file with every collection empty,
+    as does one whose collection value is not a list of records
+    (`{"entities": "abc"}`).
   </Tab>
   <Tab title="Graph DB Import">
     **LPGExporter** writes Cypher `CREATE` statements for Neo4j and Memgraph:
@@ -235,6 +242,12 @@ export_lpg(graph,  "import.cypher", method="cypher")
     ```
 
     Both exporters write to a file and return `None`.
+
+    `LPGExporter`, `ArangoAQLExporter`, and `Neo4jCSVExporter` resolve mapping
+    payloads on the same terms as the YAML exporters above, so an unrecognized
+    or malformed mapping is rejected instead of exported as an empty graph.
+    `Neo4jCSVExporter` still reads graph *objects* off their
+    `nodes`/`entities` and `edges`/`relationships` attributes.
 
     <Warning>
       **`ArangoAQLExporter.export()` and `LPGExporter.export()` write to a file and return `None`.** They do not return the AQL/Cypher string. Write to a file and read it back if you need the string.

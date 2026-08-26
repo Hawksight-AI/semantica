@@ -50,12 +50,23 @@ _DISALLOWED_URI_CHARS_RE = re.compile(r"[\s<>\"{}|\\^`]")
 #
 # Shared by BlazegraphStore and RDF4JStore so the detection logic has one
 # canonical implementation rather than being duplicated per-backend.
+#
+# The comment alternative must consume the whole comment up to a line
+# terminator. Written as a bare `\#[^\n]*`, the trailing `*` backtracks: for
+# "# CONSTRUCT ...\nSELECT ...", the engine gives back everything after the
+# '#', letting the CONSTRUCT *inside the comment* satisfy the query-form
+# keyword and misreporting a SELECT as a CONSTRUCT. Requiring a terminator
+# ([\n\r], or end of input for a trailing comment) makes that backtracking
+# impossible: if the character class gives a character back, the next
+# character is by definition not a terminator, so the group cannot match.
+# Both LF and CR are treated as terminators because the SPARQL grammar ends
+# a comment at either.
 CONSTRUCT_QUERY_RE = re.compile(
     r"""
     \A                       # anchor to start of string
     (?:                      # skip zero or more of:
         \s+                  # whitespace
-      | \#[^\n]*             # comments (until newline)
+      | \#[^\n\r]*(?:[\n\r]|\Z)  # comment, to end of line or end of input
       | PREFIX\s+[\w\-]*:\s*<[^>]*>  # PREFIX declaration
       | BASE\s+<[^>]*>       # BASE declaration
     )*

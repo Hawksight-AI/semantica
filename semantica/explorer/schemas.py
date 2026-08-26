@@ -2,15 +2,10 @@
 Shared Pydantic schemas for the Semantica Knowledge Explorer API.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, Field
-
-
-class ErrorResponse(BaseModel):
-    detail: str
-    status_code: int = 500
+from pydantic import BaseModel, Field, field_validator
 
 
 class NodeResponse(BaseModel):
@@ -144,6 +139,37 @@ class DecisionResponse(BaseModel):
     timestamp: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def _normalize_timestamp(cls, value: Any) -> Optional[str]:
+        """Accept the epoch floats ContextGraph.record_decision() writes.
+
+        Decision nodes store ``timestamp`` as ``datetime.now().timestamp()``, a
+        float, so passing the stored value through unconverted fails validation
+        and turns every decision route into a 500. Normalize to ISO-8601 here so
+        the wire format stays a single string type whatever the producer wrote.
+        """
+        if value is None or isinstance(value, str):
+            return value
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            import math
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"timestamp must be a finite number, got {value!r}"
+                )
+            try:
+                return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+            except (OverflowError, OSError) as exc:
+                raise ValueError(
+                    f"timestamp {value!r} is out of the representable epoch range"
+                ) from exc
+        raise ValueError(
+            f"timestamp must be None, a string, a datetime, or a numeric epoch; "
+            f"got {type(value).__name__!r}"
+        )
+
 
 class CausalChainResponse(BaseModel):
     decision_id: str
@@ -154,12 +180,6 @@ class ComplianceResponse(BaseModel):
     decision_id: str
     compliant: bool = True
     violations: List[Dict[str, Any]] = Field(default_factory=list)
-
-
-class TemporalSnapshotResponse(BaseModel):
-    timestamp: str
-    active_nodes: List[NodeResponse]
-    active_node_count: int
 
 
 class TemporalDiffResponse(BaseModel):
@@ -174,7 +194,9 @@ class TemporalPatternResponse(BaseModel):
 
 
 class EnrichExtractRequest(BaseModel):
-    text: str
+    # 10 000 characters is sufficient for a substantial document paragraph while
+    # preventing unbounded spaCy NLP processing on arbitrarily large payloads.
+    text: str = Field(..., max_length=10_000)
 
 
 class EnrichExtractResponse(BaseModel):
@@ -223,13 +245,6 @@ class ExportRequest(BaseModel):
     node_ids: Optional[List[str]] = None
 
 
-class ExportResponse(BaseModel):
-    format: str
-    content_type: str
-    filename: str
-    size_bytes: int = 0
-
-
 class ImportResponse(BaseModel):
     status: str = "success"
     message: str = "Import successful"
@@ -237,11 +252,6 @@ class ImportResponse(BaseModel):
     edges_added: int = 0
     nodes_imported: Optional[int] = None
     edges_imported: Optional[int] = None
-
-
-class StandardMessageResponse(BaseModel):
-    status: str
-    message: str
 
 
 class AnnotationCreate(BaseModel):

@@ -16,6 +16,9 @@ At its core, Semantica adds a **context and accountability layer** on top of you
 - **Accountability Layer** — Provenance tracking, decision intelligence, conflict detection, and W3C PROV-O compliance make every claim in your AI stack auditable and explainable.
 - **Extension Layer** — `PluginRegistry` and `MethodRegistry` let you replace or augment any component: ingestors, extractors, reasoning engines, backends: without changing framework code.
 
+<Warning>
+  **This is system-level explainability, not foundation-model explainability.** Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. What Semantica explains is *outside* the model: the context and data fed in, the decision produced, its provenance, the relevant relationships, the policies applied, and the full execution trail. In short, Semantica explains and audits *what the AI system did*, not the foundation model's private internal reasoning.
+</Warning>
 
 ## Knowledge Graphs
 

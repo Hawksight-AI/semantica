@@ -54,6 +54,11 @@ from semantica.context.decision_models import (
     validate_decision,
 )
 
+# ── Export module ──────────────────────────────────────────────────────────────
+# Set by the exporter's own `import pyarrow` attempt; False when pyarrow is
+# missing or unimportable.
+from semantica.export.parquet_exporter import PARQUET_AVAILABLE
+
 # ── KG module ──────────────────────────────────────────────────────────────────
 from semantica.kg import (
     CentralityCalculator,
@@ -981,6 +986,17 @@ class TestParquetExportRealData:
     Requires: pyarrow (optional dep — tests skip if not installed).
     """
 
+    # ParquetExporter imports fine without pyarrow and only raises ImportError
+    # when an export actually runs, so guarding on that import never skips
+    # anything. Guard on the exporter's own availability flag instead: it is set
+    # by the same `import pyarrow` / `import pyarrow.parquet` the exporter gates
+    # on, so the skip condition cannot drift from the runtime check — including
+    # when pyarrow is present on the path but fails to import.
+    pytestmark = pytest.mark.skipif(
+        not PARQUET_AVAILABLE,
+        reason="pyarrow not installed",
+    )
+
     @pytest.fixture
     def kg_data(self):
         return {
@@ -1000,16 +1016,12 @@ class TestParquetExportRealData:
         }
 
     def test_parquet_exporter_importable(self):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError as e:
-            pytest.skip(f"ParquetExporter not available: {e}")
+        from semantica.export import ParquetExporter
+
+        assert ParquetExporter is not None
 
     def test_parquet_export_entities_to_file(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
-            pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
 
         exporter = ParquetExporter(compression="snappy")
         out_path = tmp_path / "github_entities.parquet"
@@ -1018,10 +1030,7 @@ class TestParquetExportRealData:
         assert out_path.stat().st_size > 0
 
     def test_parquet_export_relationships_to_file(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
-            pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
 
         exporter = ParquetExporter(compression="gzip")
         out_path = tmp_path / "github_relationships.parquet"
@@ -1030,10 +1039,7 @@ class TestParquetExportRealData:
         assert out_path.stat().st_size > 0
 
     def test_parquet_export_knowledge_graph(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
-            pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
 
         exporter = ParquetExporter(compression="snappy")
         base_path = tmp_path / "github_kg"
@@ -1043,30 +1049,24 @@ class TestParquetExportRealData:
         assert len(files) >= 1
 
     def test_parquet_export_snappy_compression(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
-            pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
+
         exporter = ParquetExporter(compression="snappy")
         out_path = tmp_path / "snappy_test.parquet"
         exporter.export_entities(kg_data["entities"], str(out_path))
         assert out_path.exists()
 
     def test_parquet_export_none_compression(self, kg_data, tmp_path):
-        try:
-            from semantica.export import ParquetExporter
-        except ImportError:
-            pytest.skip("pyarrow not installed")
+        from semantica.export import ParquetExporter
+
         exporter = ParquetExporter(compression="none")
         out_path = tmp_path / "uncompressed_test.parquet"
         exporter.export_entities(kg_data["entities"], str(out_path))
         assert out_path.exists()
 
     def test_parquet_convenience_function(self, kg_data, tmp_path):
-        try:
-            from semantica.export.methods import export_parquet
-        except ImportError:
-            pytest.skip("pyarrow not installed")
+        from semantica.export.methods import export_parquet
+
         out_path = tmp_path / "convenience_test.parquet"
         export_parquet(kg_data["entities"], str(out_path))
         assert out_path.exists()
