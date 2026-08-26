@@ -131,12 +131,9 @@ class PipelineBuilder:
         delta_mode = config.pop("delta_mode", False)
         base_version_id = config.pop("base_version_id", None)
         target_version_id = config.pop("target_version_id", None)
-        explicit_handler = config.pop("handler", None)
-        handler = (
-            explicit_handler
-            if explicit_handler is not None
-            else self.step_registry.get(step_type)
-        )
+        handler = config.pop("handler", None)
+        if handler is None:
+            handler = self.step_registry.get(step_type)
         dependencies = config.pop("dependencies", [])
 
         step = PipelineStep(
