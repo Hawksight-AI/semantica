@@ -103,6 +103,7 @@
             "pages": [
               "integrations/agno",
               "integrations/crewai",
+              "integrations/langchain",
               "integrations/docling",
               "integrations/snowflake",
               "integrations/databricks"

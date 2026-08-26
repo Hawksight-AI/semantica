@@ -146,6 +146,294 @@ def mint_relationship_iri(index: int, source: Any, target: Any) -> str:
     return f"{SEMANTICA_NS}rel_{index}_{digest}"
 
 
+#: The metadata keys Semantica itself produces, and the terms they are written
+#: as. GraphBuilder.build_graph writes the first five, create_snapshot writes
+#: snapshot_time, and load_from_neo4j writes source / uri / database. These are
+#: Semantica's own vocabulary, so they are minted in the declared namespace and
+#: declared in semantica-ns.ttl.
+#:
+#: A key the caller supplied is a different matter. Which namespace an
+#: arbitrary metadata key belongs in is issue #1146, and until that is settled
+#: the exporter refuses to guess: it warns and skips, and a caller who already
+#: knows the answer passes ``metadata_terms``.
+#:
+#: The map is key -> term rather than key -> namespace because two of the keys
+#: cannot keep their own name. ``source`` on a graph loaded from Neo4j is the
+#: system it came from, while sem:source is already the ObjectProperty holding
+#: the subject of a reified relationship; reusing it would put a string where
+#: an entity belongs.
+DEFAULT_METADATA_TERMS: Dict[str, str] = {
+    "num_entities": f"{SEMANTICA_NS}numEntities",
+    "num_relationships": f"{SEMANTICA_NS}numRelationships",
+    "temporal_enabled": f"{SEMANTICA_NS}temporalEnabled",
+    "entity_resolution_applied": f"{SEMANTICA_NS}entityResolutionApplied",
+    "timestamp": f"{SEMANTICA_NS}builtAt",
+    "snapshot_time": f"{SEMANTICA_NS}snapshotAt",
+    "source": f"{SEMANTICA_NS}sourceSystem",
+    "uri": f"{SEMANTICA_NS}sourceUri",
+    "database": f"{SEMANTICA_NS}sourceDatabase",
+}
+
+#: Terms whose value is a node rather than a string. Everything else stays a
+#: literal: a metadata value that merely looks like a URL is not thereby a
+#: reference to one.
+IRI_VALUED_METADATA_TERMS: Set[str] = {f"{SEMANTICA_NS}sourceUri"}
+
+_XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+
+
+def _escape_literal(value: str) -> str:
+    """Escape a string for a Turtle or N-Triples quoted literal."""
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+
+
+def _escape_temporal_literal(value: Any) -> str:
+    """Escape a temporal bound for a Turtle ``dateTimeStamp`` literal.
+
+    Bounds are normally strings, but callers may hand us a ``datetime`` or
+    ``None``. ``_escape_literal`` is str-only, so stringify non-str values
+    first instead of calling ``.replace()`` on them; ``None`` yields an empty
+    bound rather than crashing. Datetimes must use ISO 8601 so the
+    ``xsd:dateTimeStamp`` ``T`` separator is preserved — ``str()`` yields a
+    space ("00:00:00+00:00"), which is a lexically invalid timestamp.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return _escape_literal(value)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+#: Turtle/N-Triples IRIREF grammar excludes these unescaped between `<` and
+#: `>`: control characters, space, and <>"{}|^`\. An IRI-valued metadata
+#: value (currently only sem:sourceUri, from the caller-controlled "uri"
+#: metadata key) is written as `<{value}>` with no other quoting, so a value
+#: containing one of these characters — a ">" followed by a full triple, for
+#: instance — closes the IRIREF early and lets the rest of the string be
+#: parsed as further RDF statements. This is the same shape of defect the
+#: entity/relationship IRIs were hardened against; that hardening resolves
+#: prefixes as well, which a metadata value never needs, so this stays a
+#: narrower, dedicated guard rather than reusing _as_turtle_iri.
+_IRI_REF_UNSAFE_RE = re.compile(r'[\x00-\x20<>"{}|^`\\]')
+
+
+def _safe_iri_ref(value: str) -> str:
+    """Percent-encode the characters an IRIREF may not contain unescaped."""
+    return _IRI_REF_UNSAFE_RE.sub(lambda m: quote(m.group(0), safe=""), value)
+
+
+def _escape_xml(value: str) -> str:
+    """Escape a string for either XML element text or an attribute value.
+
+    The quotes matter. This helper feeds `rdf:about`, `rdf:resource` and
+    `xmlns:` attribute values, which are delimited by double quotes, so a value
+    carrying one would close the attribute early and produce a document that
+    does not parse. Escaping them in element text as well is harmless and
+    means one helper cannot be used in the wrong place.
+    """
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
+def _is_ncname(value: str) -> bool:
+    """Whether a string can be an XML NCName, which is what RDF/XML requires.
+
+    Checked over the ASCII range rather than the full XML production: the
+    grammar also admits combining characters and extenders, so this is
+    deliberately conservative. It refuses names it could have accepted, and it
+    never accepts one that would produce a document a parser rejects. The
+    earlier check tested only that the first character was not a digit, which
+    let through every other way a local name can fail to be a name.
+    """
+    if not value:
+        return False
+    if not (value[0].isascii() and (value[0].isalpha() or value[0] == "_")):
+        return False
+    return all(c.isascii() and (c.isalnum() or c in "._-") for c in value[1:])
+
+
+def _split_iri(iri: str) -> Optional[tuple]:
+    """Split an IRI into (namespace, local name) for RDF/XML's QName syntax.
+
+    Returns None when no split yields a usable local name. RDF/XML is the only
+    serialization here that cannot write an arbitrary predicate IRI, so this is
+    the one place a term can be unrepresentable, and the caller reports it
+    rather than dropping it quietly.
+    """
+    for sep in ("#", "/"):
+        index = iri.rfind(sep)
+        if index != -1 and index + 1 < len(iri):
+            local = iri[index + 1 :]
+            if _is_ncname(local):
+                return iri[: index + 1], local
+    return None
+
+
+def _metadata_statements(
+    metadata: Any,
+    terms: Dict[str, str],
+    logger: Any,
+) -> List[tuple]:
+    """Resolve a metadata mapping to a list of (term IRI, value) pairs.
+
+    A key with no term is skipped and reported. Silence is the defect this
+    fixes, so an unmapped key must be louder than a mapped one, not quieter.
+    """
+    if not isinstance(metadata, dict):
+        return []
+
+    statements: List[tuple] = []
+    for key, value in metadata.items():
+        term = terms.get(key)
+        if term is None:
+            logger.warning(
+                "Metadata key %r has no term and was not exported. Which "
+                "namespace a caller-supplied key belongs in is issue #1146; "
+                "pass metadata_terms={%r: '<iri>'} to export it now.",
+                key,
+                key,
+            )
+            continue
+        if value is None:
+            continue
+        if isinstance(value, (dict, list, tuple, set)):
+            logger.warning(
+                "Metadata key %r holds a %s, which has no modelled RDF shape "
+                "yet, and was not exported.",
+                key,
+                type(value).__name__,
+            )
+            continue
+        statements.append((term, value))
+    return statements
+
+
+def _resolve_metadata_terms(overrides: Optional[Dict[str, str]]) -> Dict[str, str]:
+    if not overrides:
+        return DEFAULT_METADATA_TERMS
+    return {**DEFAULT_METADATA_TERMS, **overrides}
+
+
+def _typed_literal_parts(term: str, value: Any) -> tuple:
+    """Return (kind, lexical, datatype) for one metadata value.
+
+    kind is "iri" or "literal". The lexical form and datatype are chosen once,
+    here, so that the four serializers cannot disagree about them the way they
+    disagreed about confidence in #1100.
+    """
+    if term in IRI_VALUED_METADATA_TERMS and isinstance(value, str):
+        return "iri", value, None
+    if isinstance(value, bool):
+        return "literal", "true" if value else "false", f"{_XSD_NS}boolean"
+    if isinstance(value, int):
+        return "literal", str(value), f"{_XSD_NS}integer"
+    if isinstance(value, float):
+        # xsd:double, not xsd:decimal. `repr(1e-05)` is "1e-05" and
+        # `repr(float("nan"))` is "nan", and xsd:decimal admits neither the
+        # exponent form nor the special values, so typing a float as decimal
+        # produced lexicals a strict parser rejects. A Python float is an IEEE
+        # 754 double; xsd:double has legal lexicals for all of them, and it is
+        # also the honest claim, since nothing that arrived as a float was ever
+        # exact. `normalize_confidence` keeps xsd:decimal for confidence
+        # deliberately: that is a bounded score where exactness is meaningful
+        # and NaN is not a confidence at all.
+        if value != value:
+            lexical = "NaN"
+        elif value == float("inf"):
+            lexical = "INF"
+        elif value == float("-inf"):
+            lexical = "-INF"
+        else:
+            lexical = repr(value)
+        return "literal", lexical, f"{_XSD_NS}double"
+    return "literal", str(value), None
+
+
+def _turtle_object(term: str, value: Any) -> str:
+    kind, lexical, datatype = _typed_literal_parts(term, value)
+    if kind == "iri":
+        return f"<{_safe_iri_ref(lexical)}>"
+    if datatype is None:
+        return f'"{_escape_literal(lexical)}"'
+    return f'"{lexical}"^^<{datatype}>'
+
+
+def _turtle_metadata_clauses(statements: List[tuple]) -> List[str]:
+    return [f"<{term}> {_turtle_object(term, value)}" for term, value in statements]
+
+
+def _ntriples_metadata_lines(subject: str, statements: List[tuple]) -> List[str]:
+    return [
+        f"<{subject}> <{term}> {_turtle_object(term, value)} ."
+        for term, value in statements
+    ]
+
+
+def _rdfxml_metadata_lines(
+    statements: List[tuple], indent: str, logger: Any = None
+) -> List[str]:
+    """RDF/XML needs a QName, so an unprefixed term declares its own prefix.
+
+    A term with no QName form has no RDF/XML representation at all, and this is
+    the only serialization with that restriction. Skipping it quietly would
+    reintroduce, in one format, exactly the silent metadata loss this module
+    was changed to stop, so it is reported and the other three formats still
+    carry the statement in full.
+    """
+    lines: List[str] = []
+    for position, (term, value) in enumerate(statements):
+        split = _split_iri(term)
+        if split is None:
+            if logger is not None:
+                logger.warning(
+                    "Term %r has no QName form, so it cannot be written in "
+                    "RDF/XML and was omitted from that serialization only. "
+                    "Turtle, N-Triples and JSON-LD carry it in full.",
+                    term,
+                )
+            continue
+        namespace, local = split
+        kind, lexical, datatype = _typed_literal_parts(term, value)
+        prefix = f"md{position}"
+        opening = f'{indent}<{prefix}:{local} xmlns:{prefix}="{_escape_xml(namespace)}"'
+        if kind == "iri":
+            lines.append(f'{opening} rdf:resource="{_escape_xml(lexical)}"/>')
+            continue
+        if datatype is not None:
+            opening += f' rdf:datatype="{_escape_xml(datatype)}"'
+        lines.append(f"{opening}>{_escape_xml(lexical)}</{prefix}:{local}>")
+    return lines
+
+
+def _jsonld_metadata_entries(statements: List[tuple]) -> Dict[str, Any]:
+    """Absolute IRIs as keys, and explicit @value/@type rather than JSON's own
+    types: JSON's number is xsd:double, which would make the JSON-LD export
+    disagree with the other three about the datatype of an integer."""
+    entries: Dict[str, Any] = {}
+    for term, value in statements:
+        kind, lexical, datatype = _typed_literal_parts(term, value)
+        if kind == "iri":
+            entries[term] = {"@id": lexical}
+        elif datatype is None:
+            entries[term] = lexical
+        else:
+            entries[term] = {"@value": lexical, "@type": datatype}
+    return entries
+
+
 class NamespaceManager:
     """
     RDF namespace management engine.
@@ -501,6 +789,8 @@ class RDFSerializer:
         """
         include_temporal: bool = options.pop("include_temporal", False)
         time_axis: str = options.pop("time_axis", "valid")
+        metadata_terms = _resolve_metadata_terms(options.pop("metadata_terms", None))
+        graph_uri: Optional[str] = options.pop("graph_uri", None)
 
         lines = []
 
@@ -534,21 +824,32 @@ class RDFSerializer:
             text = entity.get("text") or entity.get("label", "")
             confidence = normalize_confidence(entity.get("confidence", 1.0))
 
-            lines.append(
-                f"<{self._as_turtle_iri(entity_id, merged_namespaces)}> a "
-                f"<{self._as_turtle_iri(entity_type, merged_namespaces)}> ;"
-            )
+            clauses = [
+                f"a <{self._as_turtle_iri(entity_type, merged_namespaces)}>",
+                f'semantica:text "{_escape_literal(text)}"',
+            ]
             if confidence is None:
                 self.logger.warning(
                     f"Entity {entity_id} has a confidence that is not a number "
                     f"({entity.get('confidence')!r}), so no confidence is written"
                 )
-                lines.append(f'    semantica:text "{text}" .')
             else:
-                lines.append(f'    semantica:text "{text}" ;')
-                lines.append(
-                    f'    semantica:confidence "{confidence}"^^<{CONFIDENCE_DATATYPE}> .'
+                clauses.append(
+                    f'semantica:confidence "{confidence}"^^<{CONFIDENCE_DATATYPE}>'
                 )
+            clauses.extend(
+                _turtle_metadata_clauses(
+                    _metadata_statements(
+                        entity.get("metadata"), metadata_terms, self.logger
+                    )
+                )
+            )
+
+            entity_iri = self._as_turtle_iri(entity_id, merged_namespaces)
+            lines.append(f"<{entity_iri}> {clauses[0]} ;")
+            for clause in clauses[1:-1]:
+                lines.append(f"    {clause} ;")
+            lines.append(f"    {clauses[-1]} .")
             lines.append("")
 
         # Convert relationships to RDF triplets
@@ -581,6 +882,31 @@ class RDFSerializer:
                         )
                     )
                     lines.extend(owl_lines)
+
+        # Graph-level metadata needs a subject, and this serializer has never
+        # minted a document node. Rather than invent one here, it is written
+        # only when the caller names the graph; issue #1147 is where the
+        # default subject comes from once that lands.
+        graph_clauses = (
+            _turtle_metadata_clauses(
+                _metadata_statements(
+                    rdf_data.get("metadata"), metadata_terms, self.logger
+                )
+            )
+            if graph_uri
+            else []
+        )
+        if graph_clauses:
+            graph_iri = self._as_turtle_iri(graph_uri, merged_namespaces)
+            lines.append("")
+            lines.append(
+                f"<{graph_iri}> {graph_clauses[0]} "
+                + (";" if len(graph_clauses) > 1 else ".")
+            )
+            for clause in graph_clauses[1:-1]:
+                lines.append(f"    {clause} ;")
+            if len(graph_clauses) > 1:
+                lines.append(f"    {graph_clauses[-1]} .")
 
         return "\n".join(lines)
 
@@ -692,7 +1018,7 @@ class RDFSerializer:
                 lines.append(f"    time:hasEnd <{end_id}> .")
                 lines.append(f"<{end_id}> a time:Instant ;")
                 lines.append(
-                    f'    time:inXSDDateTimeStamp "{until_val}"^^xsd:dateTimeStamp .'
+                    f'    time:inXSDDateTimeStamp "{_escape_temporal_literal(until_val)}"^^xsd:dateTimeStamp .'
                 )
             else:
                 lines[-1] = (
@@ -701,7 +1027,7 @@ class RDFSerializer:
 
             lines.append(f"<{begin_id}> a time:Instant ;")
             lines.append(
-                f'    time:inXSDDateTimeStamp "{from_val}"^^xsd:dateTimeStamp .'
+                f'    time:inXSDDateTimeStamp "{_escape_temporal_literal(from_val)}"^^xsd:dateTimeStamp .'
             )
             lines.append("")
 
@@ -730,6 +1056,9 @@ class RDFSerializer:
             ... }
             >>> rdfxml = serializer.serialize_to_rdfxml(rdf_data)
         """
+        metadata_terms = _resolve_metadata_terms(options.pop("metadata_terms", None))
+        graph_uri: Optional[str] = options.pop("graph_uri", None)
+
         lines = ['<?xml version="1.0" encoding="UTF-8"?>']
         lines.append('<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"')
         lines.append('         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"')
@@ -752,6 +1081,9 @@ class RDFSerializer:
             confidence = normalize_confidence(entity.get("confidence", 1.0))
 
             # RDF/XML syntax: rdf:Description with rdf:about
+            # Attribute values are delimited by quotes, and both of these
+            # are caller input. Element text is left alone deliberately: that
+            # is #1098, and it is being fixed on its own path.
             entity_iri = xml_escape(
                 self._as_turtle_iri(entity_id, namespaces), quote=True
             )
@@ -771,6 +1103,15 @@ class RDFSerializer:
                     f'    <semantica:confidence rdf:datatype="{CONFIDENCE_DATATYPE}">'
                     f"{confidence}</semantica:confidence>"
                 )
+            lines.extend(
+                _rdfxml_metadata_lines(
+                    _metadata_statements(
+                        entity.get("metadata"), metadata_terms, self.logger
+                    ),
+                    "    ",
+                    self.logger,
+                )
+            )
             lines.append("  </rdf:Description>")
             lines.append("")
 
@@ -792,6 +1133,26 @@ class RDFSerializer:
             )
             lines.append(f'  <rdf:Description rdf:about="{source_iri}">')
             lines.append(f'    <{rel_type} rdf:resource="{target_iri}"/>')
+            lines.append("  </rdf:Description>")
+            lines.append("")
+
+        graph_lines = (
+            _rdfxml_metadata_lines(
+                _metadata_statements(
+                    rdf_data.get("metadata"), metadata_terms, self.logger
+                ),
+                "    ",
+                self.logger,
+            )
+            if graph_uri
+            else []
+        )
+        if graph_lines:
+            graph_iri = xml_escape(
+                self._as_turtle_iri(graph_uri, namespaces), quote=True
+            )
+            lines.append(f'  <rdf:Description rdf:about="{graph_iri}">')
+            lines.extend(graph_lines)
             lines.append("  </rdf:Description>")
             lines.append("")
 
@@ -824,6 +1185,9 @@ class RDFSerializer:
             >>> jsonld = serializer.serialize_to_jsonld(rdf_data)
         """
         import json
+
+        metadata_terms = _resolve_metadata_terms(options.pop("metadata_terms", None))
+        graph_uri: Optional[str] = options.pop("graph_uri", None)
 
         # Initialize JSON-LD structure with context
         jsonld = {
@@ -869,6 +1233,13 @@ class RDFSerializer:
                     "@value": confidence,
                     "@type": CONFIDENCE_DATATYPE,
                 }
+            node.update(
+                _jsonld_metadata_entries(
+                    _metadata_statements(
+                        entity.get("metadata"), metadata_terms, self.logger
+                    )
+                )
+            )
             jsonld["@graph"].append(node)
 
         # Convert relationships to JSON-LD
@@ -893,6 +1264,18 @@ class RDFSerializer:
                 }
             )
 
+        graph_entries = (
+            _jsonld_metadata_entries(
+                _metadata_statements(
+                    rdf_data.get("metadata"), metadata_terms, self.logger
+                )
+            )
+            if graph_uri
+            else {}
+        )
+        if graph_entries:
+            jsonld["@graph"].append({"@id": graph_uri, **graph_entries})
+
         return json.dumps(jsonld, indent=2, ensure_ascii=False)
 
     def serialize_to_ntriples(self, rdf_data: Dict[str, Any], **options) -> str:
@@ -909,6 +1292,9 @@ class RDFSerializer:
         Returns:
             String containing N-Triples serialization
         """
+        metadata_terms = _resolve_metadata_terms(options.pop("metadata_terms", None))
+        graph_uri: Optional[str] = options.pop("graph_uri", None)
+
         lines = []
 
         namespaces = self.namespace_manager.extract_namespaces(rdf_data)
@@ -938,7 +1324,7 @@ class RDFSerializer:
             # Text property
             text = entity.get("text") or entity.get("label", "")
             if text:
-                safe_text = text.replace('"', '\\"').replace("\n", "\\n")
+                safe_text = _escape_literal(text)
                 lines.append(
                     f'{subject} {expand_uri("semantica:text")} "{safe_text}" .'
                 )
@@ -959,6 +1345,15 @@ class RDFSerializer:
                     f'"{confidence}"^^<{CONFIDENCE_DATATYPE}> .'
                 )
 
+            lines.extend(
+                _ntriples_metadata_lines(
+                    subject.strip("<>"),
+                    _metadata_statements(
+                        entity.get("metadata"), metadata_terms, self.logger
+                    ),
+                )
+            )
+
         # Convert relationships
         relationships = rdf_data.get("relationships", [])
         for rel in relationships:
@@ -970,6 +1365,16 @@ class RDFSerializer:
                 lines.append(
                     f"{expand_uri(source_id)} {expand_uri(rel_type)} {expand_uri(target_id)} ."
                 )
+
+        if graph_uri:
+            lines.extend(
+                _ntriples_metadata_lines(
+                    graph_uri,
+                    _metadata_statements(
+                        rdf_data.get("metadata"), metadata_terms, self.logger
+                    ),
+                )
+            )
 
         return "\n".join(lines)
 

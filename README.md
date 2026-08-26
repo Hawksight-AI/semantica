@@ -87,7 +87,7 @@ Semantica sits underneath your LLM, vector store, and agent framework as a deter
 - **Graph Analytics:** Centrality, community detection, link prediction, and shortest-path queries over the graph you just built
 - **Polyglot Graph Storage:** Native RDF (embedded Oxigraph, Blazegraph, Apache Jena, Eclipse RDF4J via SPARQL) and Labeled Property Graphs (Neo4j, FalkorDB, Apache AGE, AWS Neptune via Cypher), plus vector stores, all swappable without touching your code
 - **Visualization:** Explore any graph, ontology, or timeline in an interactive browser workbench
-- **Drop-in Integrations:** Native Agno and CrewAI support, a full-featured MCP server, a comprehensive CLI, a REST API, and plugins across major editors
+- **Drop-in Integrations:** Native Agno, CrewAI, and LangChain support, a full-featured MCP server, a comprehensive CLI, a REST API, and plugins across major editors
 
 ---
 
@@ -146,6 +146,8 @@ semantica doctor
 # faiss vector store    pass
 # Config file           pass    ~/.semantica/config.yaml
 ```
+
+**Running in a script or CI?** Progress bars are written only when stdout is an interactive terminal (or a Jupyter notebook), so piping and redirecting stay clean by default. Override with `SEMANTICA_DISABLE_PROGRESS=1` to silence progress everywhere, or `SEMANTICA_FORCE_PROGRESS=1` to keep it when stdout is redirected. `SEMANTICA_DISABLE_PROGRESS` takes precedence.
 
 <div align="center">
 
@@ -1186,7 +1188,7 @@ Start with `semantica`, verify with `doctor`, build a graph, and explore the com
 
 ## Integrations
 
-Native plugin bundles for Claude Code, Cursor, Codex, Windsurf, Cline, Continue, VS Code, and OpenClaw; a full-featured MCP server for any MCP-compatible client; a comprehensive REST API; and first-class Agno and CrewAI support for agentic frameworks. Every major LLM provider is already supported via `semantica.llms` and LiteLLM: OpenAI, Anthropic, Gemini, Mistral, Llama, Groq, Cohere, Azure, Bedrock, Ollama, DeepSeek, HuggingFace, and more.
+Native plugin bundles for Claude Code, Cursor, Codex, Windsurf, Cline, Continue, VS Code, and OpenClaw; a full-featured MCP server for any MCP-compatible client; a comprehensive REST API; and first-class Agno, CrewAI, and LangChain support for agentic frameworks. Every major LLM provider is already supported via `semantica.llms` and LiteLLM: OpenAI, Anthropic, Gemini, Mistral, Llama, Groq, Cohere, Azure, Bedrock, Ollama, DeepSeek, HuggingFace, and more.
 
 MCP setup takes 30 seconds — see [MCP Server](#mcp-server) below.
 
@@ -1305,16 +1307,16 @@ MCP setup takes 30 seconds — see [MCP Server](#mcp-server) below.
 <strong>CrewAI</strong><br/>
 <sub>First-class · <code>pip install semantica[crewai]</code></sub>
 </td>
+<td align="center" width="12.5%">
+<a href="https://github.com/langchain-ai/langchain"><img src="https://github.com/langchain-ai.png?size=120" alt="LangChain" width="48" height="48" /></a><br/>
+<strong>LangChain</strong><br/>
+<sub>First-class · <code>pip install semantica[langchain]</code></sub>
+</td>
 </tr>
 <tr>
 <th colspan="8" align="left">Already Supported via REST API &amp; MCP</th>
 </tr>
 <tr>
-<td align="center" width="12.5%">
-<a href="https://github.com/langchain-ai/langchain"><img src="https://github.com/langchain-ai.png?size=120" alt="LangChain" width="48" height="48" /></a><br/>
-<strong>LangChain</strong><br/>
-<sub>REST API · MCP</sub>
-</td>
 <td align="center" width="12.5%">
 <a href="https://github.com/langchain-ai/langgraph"><img src="https://github.com/langchain-ai.png?size=120" alt="LangGraph" width="48" height="48" /></a><br/>
 <strong>LangGraph</strong><br/>
@@ -1345,11 +1347,6 @@ MCP setup takes 30 seconds — see [MCP Server](#mcp-server) below.
 <th colspan="8" align="left">Native SDK Integration (Coming Soon)</th>
 </tr>
 <tr>
-<td align="center" width="12.5%">
-<a href="https://github.com/langchain-ai/langchain"><img src="https://github.com/langchain-ai.png?size=120" alt="LangChain" width="48" height="48" /></a><br/>
-<strong>LangChain</strong><br/>
-<sub>Dedicated toolkit</sub>
-</td>
 <td align="center" width="12.5%">
 <a href="https://github.com/run-llama/llama_index"><img src="https://github.com/run-llama.png?size=120" alt="LlamaIndex" width="48" height="48" /></a><br/>
 <strong>LlamaIndex</strong><br/>
@@ -1509,6 +1506,7 @@ pip install semantica[all]      # everything
 ```bash
 pip install semantica[agno]                 # Agno multi-agent integration
 pip install semantica[crewai]               # CrewAI integration
+pip install semantica[langchain]            # LangChain / LangGraph integration
 pip install semantica[llm-litellm]          # OpenAI, Anthropic, Gemini, Mistral, Llama, Groq, Cohere, Bedrock, Ollama, DeepSeek, and more
 pip install semantica[graph-neo4j]          # Neo4j graph store (LPG)
 pip install semantica[graph-falkordb]       # FalkorDB graph store (LPG)
@@ -1561,11 +1559,11 @@ On-premises deployment · Private cloud · Custom domain implementations · SLA-
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=semantica-agi%2Fsemantica&type=date&legend=top-left">
+<a href="https://star-history.dera.page/#semantica-agi/semantica&amp;type=date&amp;legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=semantica-agi/semantica&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=semantica-agi/semantica&amp;type=date&amp;theme=dark&amp;legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=semantica-agi/semantica&amp;type=date&amp;legend=top-left" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=semantica-agi/semantica&amp;type=date&amp;legend=top-left" />
  </picture>
 </a>
 
@@ -1591,6 +1589,23 @@ All contributions are welcome: bug fixes, features, tests, and documentation.
 4. Open a PR and tag `@KaifAhmad1` for review
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
+
+---
+
+## Cite Us
+
+If you use Semantica in your research or production systems, please cite it as:
+
+```bibtex
+@software{semantica2026,
+  title  = {Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems},
+  author = {Semantica},
+  year   = {2026},
+  url    = {https://github.com/semantica-agi/semantica}
+}
+```
+
+All citation formats (APA, MLA, Chicago, IEEE) live on the [Citation](https://docs.getsemantica.ai/citation) page — every format attributes authorship to **Semantica**, not individual contributors.
 
 ---
 
