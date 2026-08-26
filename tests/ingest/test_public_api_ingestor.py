@@ -198,13 +198,80 @@ def test_public_api_detection_reports_auth_required() -> None:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-        detection = PublicAPIIngestor(rate_limit_delay=0).detect_public_api(
-            "https://api.example.com/private"
-        )
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            detection = PublicAPIIngestor(rate_limit_delay=0).detect_public_api(
+                "https://api.example.com/private"
+            )
 
     assert detection.is_public is False
     assert detection.requires_auth is True
     assert detection.response_status == 401
+
+
+def test_detect_public_api_propagates_ssrf_validation_error() -> None:
+    """detect_public_api() must surface ValidationError, not swallow it.
+
+    request_with_ssrf_guard() raises ValidationError (not
+    requests.exceptions.RequestException) for SSRF-blocked hosts, so
+    detect_public_api()'s error handling must catch it explicitly like its
+    sibling ingest_public_api() already does.
+    """
+    with patch("requests.Session") as mock_session_class:
+        mock_session = mock_session_class.return_value
+        mock_session.headers = {}
+
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("127.0.0.1", 0))],
+        ):
+            with pytest.raises(ValidationError):
+                PublicAPIIngestor(rate_limit_delay=0).detect_public_api(
+                    "https://blocked.example.com/data"
+                )
+
+
+def test_detect_public_api_rejects_duplicate_session_and_allow_private_ips_kwargs() -> None:
+    """Passing session/allow_private_ips through **options must not crash.
+
+    Both are always supplied explicitly to request_with_ssrf_guard(); caller
+    copies must be dropped from **options rather than causing a
+    'got multiple values for keyword argument' TypeError.
+    """
+    with patch("requests.Session") as mock_session_class:
+        mock_session = mock_session_class.return_value
+        mock_session.headers = {}
+        mock_session.request.return_value = _mock_response(
+            headers={"Content-Type": "application/json"}
+        )
+
+        detection = PublicAPIIngestor(rate_limit_delay=0).detect_public_api(
+            "https://jsonplaceholder.typicode.com/posts",
+            allow_private_ips=True,
+            session=object(),
+        )
+
+    assert detection.is_public is True
+
+
+def test_ingest_public_api_rejects_duplicate_session_and_allow_private_ips_kwargs() -> None:
+    with patch("requests.Session") as mock_session_class:
+        mock_session = mock_session_class.return_value
+        mock_session.headers = {}
+        mock_session.request.return_value = _mock_response(
+            json_payload=[{"id": 1}],
+            headers={"Content-Type": "application/json"},
+        )
+
+        result = PublicAPIIngestor(rate_limit_delay=0).ingest_public_api(
+            "https://jsonplaceholder.typicode.com/posts",
+            allow_private_ips=True,
+            session=object(),
+        )
+
+    assert result.response_status == 200
 
 
 def test_public_api_ingestor_rejects_authentication_inputs() -> None:
@@ -238,10 +305,14 @@ def test_public_api_ingestor_parses_string_boolean_config() -> None:
             config={"validate_no_auth": "false"},
             rate_limit_delay=0,
         )
-        result = ingestor.ingest_public_api(
-            "https://api.example.com/data",
-            headers={"Authorization": "Bearer token"},
-        )
+        with patch(
+            "semantica.ingest.ssrf.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 0))],
+        ):
+            result = ingestor.ingest_public_api(
+                "https://api.example.com/data",
+                headers={"Authorization": "Bearer token"},
+            )
 
     assert ingestor.validate_no_auth is False
     assert result.data == payload

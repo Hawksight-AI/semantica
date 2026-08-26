@@ -20,7 +20,7 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from dataclasses import asdict, dataclass, field, is_dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import yaml
@@ -773,10 +773,22 @@ def changelog(cli_ctx: CLIContext, local_json: bool) -> None:
     _run_with_error_handling(_action)
 
 
+class _DeepEmbeddingFailure(Exception):
+    """A deep-probe failure from doctor's embedding checks.
+
+    Marks failures that happened AFTER the backend imported cleanly — model
+    load, probe, or runtime problems — so the check's hint can point at the
+    real remediation instead of `pip install`.
+    """
+
+
 @main.command()
 @click.option("--json", "local_json", is_flag=True, default=False)
+@click.option("--deep-embeddings", "deep_embeddings", is_flag=True, default=False,
+              help="Also instantiate the local embedding backends and embed a probe "
+                   "text (catches backends that import cleanly but cannot load).")
 @click.pass_obj
-def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
+def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None:
     """Run a health check on all Semantica components and backends."""
     import importlib.metadata
     cli_ctx = _require_ctx(cli_ctx)
@@ -787,6 +799,16 @@ def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
         try:
             note = fn()
             return label, "ok", note, None
+        except _DeepEmbeddingFailure as exc:
+            # A deep-probe failure means the package IMPORTED fine: the pip
+            # hint would be the wrong remediation for what is actually a
+            # runtime/model-load problem (broken torch, failed model
+            # download, missing shared libs).
+            return label, "fail", str(exc), (
+                "runtime/model-load failure — reinstalling the package usually "
+                "does not help; check the warnings above (torch install, model "
+                "download, disk space)"
+            )
         except Exception as exc:
             return label, "fail", str(exc), hint
 
@@ -826,6 +848,50 @@ def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
                 import faiss  # noqa: F401
             return f"{backend} importable"
         checks.append(_check("Vector store", _vector, hint="pip install semantica[vectorstore-…]"))
+
+        # Embedding backends (#994): `doctor` used to report all green while
+        # every local embedding backend was non-functional — import success
+        # says nothing about model loading. Default checks stay cheap
+        # (import + version); --deep-embeddings (or
+        # SEMANTICA_DOCTOR_DEEP_EMBEDDINGS=1) instantiates the backend through
+        # TextEmbedder and embeds a probe, which is the only level that
+        # catches a backend that imports cleanly but cannot actually load.
+        deep = deep_embeddings or os.environ.get("SEMANTICA_DOCTOR_DEEP_EMBEDDINGS", "").strip().lower() in ("1", "true", "yes", "on")
+
+        def _embedding_backend(method: str) -> str:
+            if method == "sentence_transformers":
+                import sentence_transformers  # noqa: F401
+                note = f"importable ({importlib.metadata.version('sentence-transformers')})"
+            else:
+                import fastembed  # noqa: F401
+                note = f"importable ({importlib.metadata.version('fastembed')})"
+            if not deep:
+                return note
+            try:
+                from .embeddings import TextEmbedder
+                embedder = TextEmbedder(method=method)
+                if embedder.model is None and embedder.fastembed_model is None:
+                    raise RuntimeError(
+                        "model failed to load — the hash fallback is active "
+                        "(see warnings above); embedding quality is degraded"
+                    )
+                probe = embedder.embed_text("semantica doctor embedding probe")
+            except _DeepEmbeddingFailure:
+                raise
+            except Exception as exc:
+                raise _DeepEmbeddingFailure(str(exc)) from exc
+            return f"{note}; deep probe ok ({len(probe)}-dim)"
+
+        checks.append(_check(
+            "Embeddings (sentence-transformers)",
+            lambda: _embedding_backend("sentence_transformers"),
+            hint="pip install sentence-transformers",
+        ))
+        checks.append(_check(
+            "Embeddings (fastembed)",
+            lambda: _embedding_backend("fastembed"),
+            hint="pip install fastembed",
+        ))
 
         # LLM provider keys
         for provider, var in [("OpenAI", "OPENAI_API_KEY"), ("Anthropic", "ANTHROPIC_API_KEY"),
@@ -1708,7 +1774,43 @@ def embed_generate(cli_ctx: CLIContext, input_path: str, model: str,
         except ImportError as exc:
             raise click.ClickException(f"Embeddings module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            output_path = Path(output)
+            suffix = output_path.suffix.lower()
+            try:
+                import numpy as np
+                import pandas as pd
+                arr = np.asarray(result)
+                if arr.ndim == 1:
+                    arr = arr[np.newaxis, :]
+                if arr.ndim != 2:
+                    raise click.ClickException(
+                        f"embed generate --output expects a 1-D or 2-D array, "
+                        f"got {arr.ndim}-D (shape {arr.shape})"
+                    )
+                rows = [list(row) for row in arr]
+                if suffix == ".parquet":
+                    # Schema: single 'embedding' column (list[float] per row).
+                    # embed index detects vector columns via
+                    # isinstance(df[c].iloc[0], (list, np.ndarray)).
+                    df = pd.DataFrame({"embedding": rows})
+                    df.to_parquet(output_path, index=False)
+                elif suffix in (".json", ".jsonl"):
+                    df = pd.DataFrame({"embedding": rows})
+                    df.to_json(
+                        output_path,
+                        orient="records",
+                        lines=(suffix == ".jsonl"),
+                    )
+                else:
+                    raise click.ClickException(
+                        f"Unsupported output format '{suffix}'. "
+                        "Use .parquet, .json, or .jsonl"
+                    )
+            except ImportError as exc:
+                raise click.ClickException(
+                    f"Missing dependency for --output: {exc}. "
+                    "Install pyarrow with: pip install pyarrow"
+                ) from exc
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"status": "ok"})
@@ -3933,15 +4035,68 @@ def backup_restore(cli_ctx: CLIContext, source: str, local_dry: bool) -> None:
 
         try:
             if _tf.is_tarfile(str(work_path)):
-                restore_root = Path.cwd()
+                restore_root = Path.cwd().resolve()
                 with _tf.open(str(work_path), "r:*") as tar:
                     # Dry-run listing was already handled above; extract now
                     for member in tar.getmembers():
                         # Strip the leading "semantica-backup/" prefix
                         member.name = member.name.replace("semantica-backup/", "", 1)
-                        if member.name:
-                            tar.extract(member, path=str(restore_root))
-                            console.print(f"  restored: {member.name}")
+                        if not member.name:
+                            continue
+
+                        # Reject members whose resolved path escapes the
+                        # restore root (path traversal / absolute paths),
+                        # regardless of the "semantica-backup/" prefix.
+                        member_path = (restore_root / member.name).resolve()
+                        try:
+                            member_path.relative_to(restore_root)
+                        except ValueError:
+                            raise click.ClickException(
+                                f"Refusing to restore '{member.name}': "
+                                "path escapes the restore directory."
+                            )
+
+                        # Reject symlink/hardlink members whose target
+                        # escapes the restore root. Checked two ways:
+                        # lexically (linkname itself, so an absolute path or
+                        # a literal ".." segment is rejected outright, with
+                        # no dependence on what else does or doesn't already
+                        # exist on disk) and by resolution (catches any
+                        # remaining traversal the lexical check misses).
+                        if member.issym() or member.islnk():
+                            linkname = member.linkname or ""
+                            linkname_parts = PurePosixPath(
+                                linkname.replace("\\", "/")
+                            ).parts
+                            if (
+                                not linkname
+                                or os.path.isabs(linkname)
+                                or PureWindowsPath(linkname).is_absolute()
+                                or ".." in linkname_parts
+                            ):
+                                raise click.ClickException(
+                                    f"Refusing to restore '{member.name}': "
+                                    "link target is absolute or traverses "
+                                    "out of the archive."
+                                )
+                            link_target = (
+                                member_path.parent / linkname
+                            ).resolve()
+                            try:
+                                link_target.relative_to(restore_root)
+                            except ValueError:
+                                raise click.ClickException(
+                                    f"Refusing to restore '{member.name}': "
+                                    "link target escapes the restore directory."
+                                )
+
+                        extract_kwargs: Dict[str, Any] = {"path": str(restore_root)}
+                        if hasattr(_tf, "data_filter"):
+                            # Python >=3.12: also reject device files, and
+                            # further harden the traversal/ownership checks.
+                            extract_kwargs["filter"] = "data"
+                        tar.extract(member, **extract_kwargs)
+                        console.print(f"  restored: {member.name}")
             elif src.is_dir():
                 restore_root = Path.cwd()
                 for f in src.rglob("*"):
@@ -4065,7 +4220,7 @@ def server(ctx: click.Context) -> None:
 @click.option("--port", default=8000, type=int, show_default=True)
 @click.option("--workers", default=1, type=int, show_default=True)
 @click.option("--reload", is_flag=True, default=False, help="Enable hot reload.")
-@click.option("--host", default="0.0.0.0", show_default=True)
+@click.option("--host", default="127.0.0.1", show_default=True)
 @click.pass_obj
 def server_start(cli_ctx: CLIContext, port: int, workers: int, reload: bool, host: str) -> None:
     """Start the REST API server.
@@ -4075,6 +4230,16 @@ def server_start(cli_ctx: CLIContext, port: int, workers: int, reload: bool, hos
       semantica server start --port 8000 --workers 4
     """
     cli_ctx = _require_ctx(cli_ctx)
+
+    _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+    if host not in _LOOPBACK_HOSTS:
+        console.print(
+            f"[{_WARN_STY}] ⚠[/{_WARN_STY}] Binding to [cyan]{host}[/cyan] exposes "
+            "the server to the network. Set SEMANTICA_API_KEY before doing this "
+            "in any reachable environment — without it, protected routes refuse "
+            "all requests (503), and with SEMANTICA_ALLOW_ANONYMOUS=true they are "
+            "wide open."
+        )
 
     def _action() -> None:
         import subprocess as sp

@@ -319,11 +319,11 @@ class JenaStore:
             # Build SPARQL query
             query_parts = []
             if subject:
-                query_parts.append(f"?s = <{subject}>")
+                query_parts.append(f"?s = <{sparql_escaping.validate_uri(subject)}>")
             if predicate:
-                query_parts.append(f"?p = <{predicate}>")
+                query_parts.append(f"?p = <{sparql_escaping.validate_uri(predicate)}>")
             if object:
-                query_parts.append(f"?o = <{object}>")
+                query_parts.append(f"?o = <{sparql_escaping.validate_uri(object)}>")
 
             where_clause = " ".join(query_parts) if query_parts else ""
             query = f"SELECT ?s ?p ?o WHERE {{ ?s ?p ?o {where_clause} }}"

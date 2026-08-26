@@ -1,8 +1,11 @@
+import tempfile
 import unittest
-from unittest.mock import MagicMock, patch, mock_open
 from pathlib import Path
-from semantica.seed.seed_manager import SeedDataManager, SeedDataSource, SeedData
+from unittest.mock import patch
+
+from semantica.seed.seed_manager import SeedData, SeedDataManager, SeedDataSource
 from semantica.utils.exceptions import ProcessingError
+
 
 class TestSeedDataManager(unittest.TestCase):
 
@@ -32,20 +35,20 @@ class TestSeedDataManager(unittest.TestCase):
         self.assertEqual(source.entity_type, "Person")
         self.assertIn(name, self.manager.versions)
 
-    @patch("pathlib.Path.exists")
-    @patch("builtins.open", new_callable=mock_open, read_data="name,age\nAlice,30\nBob,25")
-    def test_load_from_csv(self, mock_file, mock_exists):
-        mock_exists.return_value = True
-        
-        records = self.manager.load_from_csv("test.csv", entity_type="Person", source_name="test_source")
-        
+    def test_load_from_csv(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            csv_file = Path(tmp_dir) / "test.csv"
+            csv_file.write_text("name,age\nAlice,30\nBob,25", encoding="utf-8")
+
+            records = self.manager.load_from_csv(
+                csv_file, entity_type="Person", source_name="test_source"
+            )
+
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0]["name"], "Alice")
         self.assertEqual(records[0]["age"], "30")
         self.assertEqual(records[0]["entity_type"], "Person")
         self.assertEqual(records[0]["source"], "test_source")
-        
-        mock_file.assert_called_once_with(Path("test.csv"), "r", encoding="utf-8")
 
     @patch("pathlib.Path.exists")
     def test_load_from_csv_file_not_found(self, mock_exists):

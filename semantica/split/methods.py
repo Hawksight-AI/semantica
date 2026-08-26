@@ -97,7 +97,7 @@ from .semantic_chunker import Chunk
 logger = get_logger("split_methods")
 
 # Try to import optional dependencies
-spacy, SPACY_AVAILABLE = safe_import("spacy")
+_, SPACY_AVAILABLE = safe_import("spacy")
 
 nltk, NLTK_AVAILABLE = safe_import("nltk")
 tiktoken, TIKTOKEN_AVAILABLE = safe_import("tiktoken")
@@ -336,7 +336,8 @@ def split_by_sentences(
     # Try spaCy first
     if SPACY_AVAILABLE and kwargs.get("use_spacy", True):
         try:
-            nlp = spacy.load("en_core_web_sm")
+            from ..semantic_extract.methods import load_spacy_model
+            nlp = load_spacy_model("en_core_web_sm")
             doc = nlp(text)
             sentences = [sent.text for sent in doc.sents]
         except Exception:
@@ -1180,7 +1181,9 @@ def split_graph_based(
         )
 
         entities = ner_extractor.extract(text)
-        relations = relation_extractor.extract(text)
+        # Relation extraction requires the extracted entities; failing to pass
+        # them raises and can trigger the broad fallback to recursive splitting.
+        relations = relation_extractor.extract(text, entities)
 
         # Build graph
         G = nx.Graph()
@@ -1623,8 +1626,9 @@ def split_sliding_window(
         )
 
     try:
+        effective_stride = stride if stride is not None else (chunk_size - overlap)
         chunker = SlidingWindowChunker(
-            chunk_size=chunk_size, overlap=overlap, stride=stride, **kwargs
+            chunk_size=chunk_size, overlap=overlap, stride=effective_stride, **kwargs
         )
         return chunker.chunk(text, preserve_boundaries=preserve_boundaries, **kwargs)
     except Exception as e:

@@ -445,6 +445,173 @@ class WeaviateStore:
             self.logger.warning(f"Failed to get metadata for {vector_id}: {e}")
             return None
 
+    def _build_weaviate_filter(self, filters: Dict[str, Any]) -> Any:
+        """Build native Weaviate Filter object from metadata filter dictionary."""
+        if not filters or not WEAVIATE_AVAILABLE:
+            return None
+
+        Filter = None
+        try:
+            from weaviate.classes.query import Filter
+        except (ImportError, AttributeError):
+            try:
+                if weaviate and hasattr(weaviate, "classes") and hasattr(weaviate.classes, "query"):
+                    Filter = getattr(weaviate.classes.query, "Filter", None)
+            except AttributeError:
+                Filter = None
+
+        if Filter is None:
+            return None
+
+        try:
+            conditions = []
+            for key, value in filters.items():
+                if isinstance(value, dict):
+                    if "min" in value and value["min"] is not None:
+                        conditions.append(Filter.by_property(key).greater_or_equal(value["min"]))
+                    if "max" in value and value["max"] is not None:
+                        conditions.append(Filter.by_property(key).less_or_equal(value["max"]))
+                elif isinstance(value, list):
+                    conditions.append(Filter.by_property(key).contains_any(value))
+                else:
+                    conditions.append(Filter.by_property(key).equal(value))
+
+            if not conditions:
+                return None
+
+            weaviate_filter = conditions[0]
+            for cond in conditions[1:]:
+                weaviate_filter = weaviate_filter & cond
+
+            return weaviate_filter
+        except Exception as e:
+            self.logger.debug(f"Could not build native Weaviate filter: {e}")
+            return None
+
+    def filter_by_metadata(
+        self, filters: Dict[str, Any], limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter stored objects by metadata in Weaviate.
+
+        Args:
+            filters: Metadata filter criteria
+            limit: Maximum number of results
+
+        Returns:
+            List of matching result dicts with 'id', 'metadata', and 'vector'
+        """
+        if self.collection is None or not WEAVIATE_AVAILABLE:
+            return []
+
+        from .vector_store import _matches_filter
+
+        native_filter = self._build_weaviate_filter(filters) if filters else None
+
+        results = []
+        seen_ids = set()
+        after_cursor = None
+        scanned_count = 0
+        page_size = max(limit, 100)
+        use_native_filter = native_filter is not None
+
+        try:
+            while len(results) < limit:
+                kwargs = {"limit": page_size, "include_vector": True}
+                if use_native_filter and native_filter is not None:
+                    kwargs["filters"] = native_filter
+                if after_cursor is not None:
+                    kwargs["after"] = after_cursor
+
+                try:
+                    objs = self.collection.query.fetch_objects(**kwargs)
+                except TypeError as te:
+                    # Handle kwargs incompatibility (e.g. mock or client version without filters/after)
+                    if "filters" in kwargs:
+                        use_native_filter = False
+                        kwargs.pop("filters", None)
+                        try:
+                            objs = self.collection.query.fetch_objects(**kwargs)
+                        except TypeError:
+                            if "after" in kwargs:
+                                kwargs.pop("after", None)
+                                kwargs["offset"] = scanned_count
+                                try:
+                                    objs = self.collection.query.fetch_objects(**kwargs)
+                                except TypeError:
+                                    kwargs.pop("offset", None)
+                                    objs = self.collection.query.fetch_objects(**kwargs)
+                    elif "after" in kwargs:
+                        kwargs.pop("after", None)
+                        kwargs["offset"] = scanned_count
+                        try:
+                            objs = self.collection.query.fetch_objects(**kwargs)
+                        except TypeError:
+                            kwargs.pop("offset", None)
+                            objs = self.collection.query.fetch_objects(**kwargs)
+                    else:
+                        raise te
+                except Exception as fe:
+                    if use_native_filter:
+                        self.logger.warning(
+                            f"Native Weaviate filter query failed, falling back to paginated fetch: {fe}"
+                        )
+                        use_native_filter = False
+                        kwargs.pop("filters", None)
+                        objs = self.collection.query.fetch_objects(**kwargs)
+                    else:
+                        raise fe
+
+                if not objs or not getattr(objs, "objects", None):
+                    break
+
+                batch_objects = objs.objects
+                if not batch_objects:
+                    break
+
+                new_objects_found = False
+                for obj in batch_objects:
+                    obj_id = str(obj.uuid) if hasattr(obj, "uuid") and obj.uuid is not None else None
+                    if obj_id:
+                        if obj_id in seen_ids:
+                            continue
+                        seen_ids.add(obj_id)
+                        new_objects_found = True
+
+                    properties = getattr(obj, "properties", None) or {}
+                    if _matches_filter(properties, filters):
+                        vector = None
+                        if hasattr(obj, "vector") and obj.vector:
+                            vector = np.array(obj.vector)
+                        results.append(
+                            {
+                                "id": obj_id,
+                                "metadata": properties,
+                                "vector": vector,
+                            }
+                        )
+                        if len(results) >= limit:
+                            break
+
+                if not new_objects_found:
+                    break
+
+                scanned_count += len(batch_objects)
+                if len(batch_objects) < page_size:
+                    break
+
+                last_obj = batch_objects[-1]
+                if hasattr(last_obj, "uuid") and last_obj.uuid is not None:
+                    after_cursor = str(last_obj.uuid)
+                else:
+                    break
+
+            return results
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch Weaviate objects by metadata filter: {e}")
+            return results if results else []
+
+
     def query_vectors(
         self,
         query_vector: np.ndarray,

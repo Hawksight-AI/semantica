@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
+from .ssrf import request_with_ssrf_guard
 
 
 @dataclass
@@ -341,36 +342,38 @@ class MCPClient:
             raise
 
     def _send_request_http(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Send request via HTTP."""
-        try:
-            import httpx
+        """Send request via HTTP, with redirect-safe credential handling.
 
-            response = httpx.post(
+        Uses ``request_with_ssrf_guard`` so that:
+
+        * ``Authorization`` / ``Proxy-Authorization`` headers are **not**
+          forwarded to a different origin if the MCP server issues a redirect
+          (issue #947).
+        * The redirect chain is bounded (default 10 hops).
+
+        ``allow_private_ips=True`` is set because MCP servers are explicitly
+        configured by the operator and frequently run on localhost or an
+        internal network — the same trust model as ``allow_private_ips`` opt-in
+        in the other ingestors.  That trust covers only ``self.url`` itself:
+        ``allow_private_ips_on_redirect=False`` keeps redirect targets held to
+        the normal public-address check, so a compromised or malicious MCP
+        server cannot use a redirect to route the client into private/
+        internal address space (e.g. cloud metadata) that the operator never
+        configured.  Scheme validation (http/https only) and the
+        auth-stripping logic remain active regardless of these flags.
+        """
+        try:
+            response = request_with_ssrf_guard(
+                "POST",
                 self.url,
-                json=request,
                 headers=self.headers,
+                json=request,
                 timeout=self.config.get("timeout", 30.0),
+                allow_private_ips=True,
+                allow_private_ips_on_redirect=False,
             )
             response.raise_for_status()
             return response.json()
-        except (ImportError, OSError):
-            # Fallback to requests if httpx not available
-            try:
-                import requests
-
-                response = requests.post(
-                    self.url,
-                    json=request,
-                    headers=self.headers,
-                    timeout=self.config.get("timeout", 30.0),
-                )
-                response.raise_for_status()
-                return response.json()
-            except (ImportError, OSError):
-                raise ProcessingError(
-                    "HTTP transport requires 'httpx' or 'requests' package. "
-                    "Install with: pip install httpx or pip install requests"
-                )
         except Exception as e:
             self.logger.error(f"Failed to send HTTP request: {e}")
             raise

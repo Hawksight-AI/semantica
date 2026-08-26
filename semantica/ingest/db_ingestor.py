@@ -29,6 +29,7 @@ License: MIT
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -37,6 +38,96 @@ from urllib.parse import urlparse
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# Fragments that turn a filter/order clause into a second statement, a
+# data-exfiltration UNION, a time-based blind-injection oracle, or schema
+# enumeration, rather than a boolean/ordering expression.
+_SQL_FRAGMENT_BLOCKLIST_RE = re.compile(
+    r";|--|/\*|\*/|\bunion\b|\binsert\b|\bupdate\b|\bdelete\b|\bdrop\b|"
+    r"\balter\b|\bcreate\b|\bexec\b|\bexecute\b|\bgrant\b|\brevoke\b|"
+    r"\battach\b|\bpragma\b|\bxp_\w+|\bsp_\w+|\binto\s+outfile\b|\bload_file\b|"
+    r"\bsleep\s*\(|\bbenchmark\s*\(|\bpg_sleep\s*\(|\bwaitfor\b|"
+    r"\bdbms_\w+|\butl_\w+|\binformation_schema\b|\bpg_catalog\b",
+    re.IGNORECASE,
+)
+
+# SQL single-quoted string literals (''  is the standard escaped-quote) and
+# double-quoted identifiers (""  likewise) — matched only when properly
+# closed, so a malformed/unterminated quote sequence is left alone and
+# still hits the blocklist above rather than being treated as "inside a
+# literal" and skipped.
+_SQL_STRING_LITERAL_RE = re.compile(r"'(?:[^']|'')*'")
+_SQL_QUOTED_IDENTIFIER_RE = re.compile(r'"(?:[^"]|"")*"')
+
+
+def _mask_sql_literals(fragment: str) -> str:
+    """Blank the contents of quoted literals so they can't trip the blocklist.
+
+    A legitimate value or quoted identifier that happens to contain a
+    blocked word or character as *data* — e.g. ``status = 'union'`` or
+    ``"my--column" = 1`` — is not SQL syntax and shouldn't be rejected as
+    if it were. Only the quoted span's interior is replaced (with `?`,
+    keeping the surrounding quotes and the fragment's length/positions
+    intact for the error message); text outside any properly closed quote
+    is passed through unchanged and still fully scrutinized.
+    """
+    fragment = _SQL_STRING_LITERAL_RE.sub(
+        lambda m: "'" + "?" * (len(m.group(0)) - 2) + "'", fragment
+    )
+    fragment = _SQL_QUOTED_IDENTIFIER_RE.sub(
+        lambda m: '"' + "?" * (len(m.group(0)) - 2) + '"', fragment
+    )
+    return fragment
+
+
+def _validate_sql_identifier(name: str, kind: str) -> str:
+    """Validate a table/schema name used as a raw SQL identifier.
+
+    ``export_table_data`` interpolates *name* directly into the query text
+    (SQLAlchemy has no bind-parameter syntax for identifiers), so anything
+    outside a plain alphanumeric/underscore identifier is a potential
+    breakout of the surrounding ``"..."`` quoting.
+    """
+    if not isinstance(name, str) or not _IDENTIFIER_RE.match(name):
+        raise ValidationError(
+            f"Invalid {kind}: {name!r}. Must start with a letter or "
+            "underscore and contain only alphanumeric characters and "
+            "underscores."
+        )
+    return name
+
+
+def _validate_sql_fragment(fragment: str, kind: str) -> str:
+    """Reject WHERE/ORDER BY fragments that smuggle a second statement.
+
+    These clauses can't be bound as query parameters (they're arbitrary
+    boolean/ordering expressions, not values), so this blocks the concrete
+    injection primitives (statement separators, comments, UNION, DML/DDL
+    keywords, time-based blind oracles, schema enumeration) rather than
+    parameterizing.
+
+    This is a blocklist, not a grammar: it cannot exhaustively prove
+    *fragment* is safe, only reject known-dangerous constructs, so a
+    boolean-blind subquery expressed with none of the blocked keywords
+    (e.g. ``id = (SELECT 1 FROM t WHERE ...)``) still passes. ``where``/
+    ``order_by`` are a raw-SQL-fragment API by design (see
+    ``export_table_data``'s docstring); treat them as trusted/operator
+    input, not something to expose directly to untrusted end users.
+    """
+    if not isinstance(fragment, str):
+        raise ValidationError(f"Invalid {kind}: must be a string")
+    # Check the blocklist against literal-masked text so a blocked word
+    # appearing only as quoted data (not as SQL syntax) doesn't false-
+    # positive; the original, unmodified fragment is still what's returned
+    # and used in the query.
+    if _SQL_FRAGMENT_BLOCKLIST_RE.search(_mask_sql_literals(fragment)):
+        raise ValidationError(
+            f"Invalid {kind}: {fragment!r} contains disallowed SQL "
+            "keywords or statement-boundary characters"
+        )
+    return fragment
 
 
 @dataclass
@@ -253,8 +344,13 @@ class DataExporter:
             schema: Schema name (for databases with schema support, optional)
             limit: Maximum number of rows to export (optional)
             offset: Row offset for pagination (optional)
-            where: WHERE clause for filtering (optional, e.g., "age > 18")
-            order_by: ORDER BY clause for sorting (optional, e.g., "name ASC")
+            where: WHERE clause for filtering (optional, e.g., "age > 18").
+                Raw SQL, checked against a keyword/character blocklist (see
+                ``_validate_sql_fragment``) but not fully sanitized — treat
+                as trusted/operator input, never pass untrusted end-user
+                text here directly.
+            order_by: ORDER BY clause for sorting (optional, e.g., "name ASC").
+                Same trust requirement as ``where``.
             **options: Additional export options (unused)
 
         Returns:
@@ -269,7 +365,16 @@ class DataExporter:
             ProcessingError: If table export fails
         """
         try:
-            from sqlalchemy import inspect
+            from sqlalchemy import inspect, text
+
+            _validate_sql_identifier(table_name, "table_name")
+            if schema:
+                _validate_sql_identifier(schema, "schema")
+            if where:
+                _validate_sql_fragment(where, "where")
+            if order_by:
+                _validate_sql_fragment(order_by, "order_by")
+
             inspector = inspect(connection)
 
             # Get column information
@@ -344,6 +449,8 @@ class DataExporter:
                 schema=schema,
             )
 
+        except ValidationError:
+            raise
         except Exception as e:
             self.logger.error(f"Failed to export table {table_name}: {e}")
             raise ProcessingError(f"Failed to export table: {e}") from e
@@ -760,8 +867,11 @@ class DBIngestor:
             schema: Schema name (for databases with schema support, optional)
             limit: Maximum number of rows to export (optional)
             offset: Row offset for pagination (optional)
-            where: WHERE clause for filtering (optional, e.g., "status = 'active'")
-            order_by: ORDER BY clause for sorting (optional, e.g., "created_at DESC")
+            where: WHERE clause for filtering (optional, e.g., "status = 'active'").
+                Raw SQL passed through to ``export_table_data`` — same trust
+                requirement documented there: not for untrusted end-user text.
+            order_by: ORDER BY clause for sorting (optional, e.g., "created_at DESC").
+                Same trust requirement as ``where``.
             transform: Whether to apply data transformations (default: False)
             **filters: Additional filtering options (merged with above parameters)
 
