@@ -166,7 +166,11 @@ def _tool_query_decisions(args: dict) -> dict:
             results = graph.find_similar_decisions(query, max_results=limit)
         elif category:
             nodes = graph.find_nodes(node_type="decision")
-            results = [n for n in nodes if n.get("category") == category][:limit]
+            results = [
+                node
+                for node in nodes
+                if (node.get("metadata") or {}).get("category") == category
+            ][:limit]
         else:
             results = graph.find_nodes(node_type="decision")[:limit]
         return {"decisions": results if isinstance(results, list) else list(results)}
