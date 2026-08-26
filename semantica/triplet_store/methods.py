@@ -101,7 +101,6 @@ from .triplet_store import TripletStore
 # Global store registry
 _global_stores: Dict[str, TripletStore] = {}
 _default_store_id: Optional[str] = None
-_global_query_engine: Optional[QueryEngine] = None
 _global_bulk_loader: Optional[BulkLoader] = None
 
 
@@ -129,25 +128,6 @@ def _get_store(store_id: Optional[str] = None) -> TripletStore:
         raise ValueError(f"Store not found: {target_id}")
         
     return _global_stores[target_id]
-
-
-def _get_query_engine() -> QueryEngine:
-    """Get or create global QueryEngine instance."""
-    global _global_query_engine
-    if _global_query_engine is None:
-        # We need a store backend for the engine, but QueryEngine in this module
-        # seems to be initialized with config in the old code.
-        # In the new code, TripletStore has its own query_engine.
-        # If we use this standalone function, we might need to rely on the store's engine.
-        # But let's keep a standalone one if needed, or better, delegate to store.
-        config = triplet_store_config.get_all()
-        # QueryEngine now expects a backend, but we can initialize it without one 
-        # if we pass the backend at execution time? 
-        # Checking QueryEngine implementation... it takes `store_backend` in __init__.
-        # So we can't easily have a global one without a store.
-        # We'll rely on the store's engine.
-        pass
-    return None # Deprecated use of global engine
 
 
 def _get_bulk_loader() -> BulkLoader:

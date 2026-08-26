@@ -85,7 +85,8 @@ dependencies = [
   "loguru>=0.7.3",
   "structlog>=22.1.0",
   "gensim>=4.4.0",
-  "httpx<0.29.0"
+  "httpx<0.29.0",
+  "pyarrow>=14.0.0"
 ]
 
 [project.urls]
@@ -205,6 +206,7 @@ agno = ["agno>=1.0.0"]
 # needed (it pulls vulnerable transitive deps like chromadb) and would only
 # duplicate the prebuilt tooling users can install separately.
 crewai = ["crewai>=0.80.0"]
+langchain = ["langchain-core>=0.3.0"]
 
 # ---- File Watching ----
 watch = ["watchdog>=6.0.0"]
@@ -252,7 +254,7 @@ explorer-lite = [
 # dependency-audit/security gates.  Install it explicitly via ``semantica[crewai]``.
 all = [
   "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,explorer]",
-  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno]"
+  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno,langchain]"
 ]
 
 # ---------------- ENTRYPOINTS ----------------

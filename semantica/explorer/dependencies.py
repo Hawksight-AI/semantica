@@ -2,8 +2,9 @@
 Semantica Explorer : FastAPI Dependencies
 
 Provides ``Depends()``-compatible callables for injecting the
-current ``GraphSession`` and ``ConnectionManager`` into route handlers,
-and for enforcing API-key authentication on protected routes.
+current ``GraphSession`` into route handlers, and for enforcing API-key
+authentication on protected routes. WebSocket manager access is handled
+directly via ``app.state.ws_manager``.
 """
 
 import hmac
@@ -14,7 +15,6 @@ from fastapi import Request, HTTPException, Security, status
 from fastapi.security.api_key import APIKeyHeader
 
 from .session import GraphSession
-from .ws import ConnectionManager
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -80,13 +80,3 @@ def get_session(request: Request) -> GraphSession:
             detail="GraphSession not initialized."
         )
     return request.app.state.session
-
-
-def get_ws_manager(request: Request) -> ConnectionManager:
-    """Retrieve the ConnectionManager stored on ``app.state``."""
-    if not hasattr(request.app.state, "ws_manager") or request.app.state.ws_manager is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="WebSocket manager not initialized.",
-        )
-    return request.app.state.ws_manager

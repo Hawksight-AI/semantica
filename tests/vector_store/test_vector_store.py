@@ -243,5 +243,19 @@ class TestVectorStore(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+class TestCreateIndexFunction(unittest.TestCase):
+    """create_index() forwards vector_store_config's defaults into VectorIndexer,
+    which already receives backend/dimension as explicit args. Regression for the
+    'got multiple values for keyword argument dimension' crash on the default
+    (unmocked) config, hit by e.g. `semantica embed index`."""
+
+    def test_create_index_with_default_config(self):
+        from semantica.vector_store.methods import create_index
+
+        vectors = [np.array([0.1, 0.2, 0.3]), np.array([0.4, 0.5, 0.6])]
+        index = create_index(vectors, ids=["a", "b"])
+        self.assertIsNotNone(index)
+
+
 if __name__ == '__main__':
     unittest.main()
