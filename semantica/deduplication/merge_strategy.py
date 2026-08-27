@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from ..utils.entity_ids import get_entity_id
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
@@ -317,14 +318,20 @@ class MergeStrategyManager:
                 message=f"Building merged entity... ({current_step}/{total_steps}, remaining: {remaining_steps} steps)"
             )
             # Build merged entity
+            merged_from = []
+            for entity in entities:
+                entity_id = get_entity_id(entity)
+                if entity_id is not None:
+                    merged_from.append(entity_id)
+
             merged_entity = {
-                "id": base_entity.get("id"),
+                "id": get_entity_id(base_entity),
                 "name": self._merge_top_level_field("name", entities, base_entity),
                 "type": self._merge_top_level_field("type", entities, base_entity),
                 "properties": merged_properties,
                 "relationships": merged_relationships,
                 "metadata": self._merge_metadata(entities, base_entity),
-                "merged_from": [e.get("id") for e in entities if e.get("id")],
+                "merged_from": merged_from,
                 "merge_strategy": strategy.value,
             }
 

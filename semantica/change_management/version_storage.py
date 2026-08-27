@@ -31,6 +31,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import warnings
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -62,6 +63,12 @@ def create_graph_snapshot_record(
     """
     Creates a standardized snapshot metadata record for a named graph.
 
+    .. deprecated::
+        ``create_graph_snapshot_record()`` is deprecated and will be removed in
+        a future major version. It has no callers inside Semantica; build the
+        record inline and checksum it with
+        :func:`semantica.change_management.compute_checksum` instead.
+
     Args:
         version_id: Unique identifier for this snapshot
         graph_uri: The underlying named graph URI in the triplet store
@@ -69,6 +76,13 @@ def create_graph_snapshot_record(
         description: Purpose or context of the snapshot
         metadata: Additional tags or pipeline context
     """
+    warnings.warn(
+        "create_graph_snapshot_record() is deprecated and will be removed in a "
+        "future major version. Build the snapshot record inline and use "
+        "semantica.change_management.compute_checksum() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     
     record = {
         "label": version_id,

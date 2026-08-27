@@ -7,6 +7,8 @@ extraction found nothing, the chain came back empty even though an explicit
 ``CAUSED`` edge was stored in the graph.
 """
 
+import pytest
+
 from semantica.context import ContextGraph
 from semantica.context.context_graph import ContextEdge
 
@@ -323,3 +325,130 @@ def test_entity_based_inference_still_applies_without_explicit_edges():
         hop["from"] == earlier and hop["to"] == later and hop["type"] == "influences"
         for hop in hops
     )
+
+
+def test_get_causal_chain_accepts_lowercase_causal_edge_types():
+    """Issue #1184: edges recorded with the analyzer's lowercase vocabulary
+    must be traversed by get_causal_chain().
+
+    CausalChainAnalyzer documents causal types as lowercase ("causes",
+    "influences", ...) while get_causal_chain() matched only the uppercase
+    spellings, so an edge recorded as "causes" produced an empty audit
+    chain — silent and in the dangerous direction.
+    """
+    graph = ContextGraph(advanced_analytics=True)
+    cause = graph.record_decision(
+        category="a", scenario="upstream", reasoning="r",
+        outcome="x", confidence=0.9,
+    )
+    effect = graph.record_decision(
+        category="b", scenario="downstream", reasoning="r",
+        outcome="y", confidence=0.9,
+    )
+    graph.add_edge(cause, effect, "causes")
+
+    chain = graph.get_causal_chain(effect, direction="upstream")
+
+    assert [decision.decision_id for decision in chain] == [cause]
+
+
+def test_add_causal_relationship_accepts_any_case_and_stores_canonical():
+    """Issue #1184: add_causal_relationship() should accept either spelling
+    and store the canonical uppercase vocabulary."""
+    graph = ContextGraph(advanced_analytics=True)
+    cause = graph.record_decision(
+        category="a", scenario="upstream", reasoning="r",
+        outcome="x", confidence=0.9,
+    )
+    effect = graph.record_decision(
+        category="b", scenario="downstream", reasoning="r",
+        outcome="y", confidence=0.9,
+    )
+
+    graph.add_causal_relationship(cause, effect, relationship_type="causes")
+
+    edges = [
+        edge for edge in graph.edges
+        if edge.source_id == cause and edge.target_id == effect
+    ]
+    assert edges, "add_causal_relationship must store the edge"
+    assert edges[0].edge_type == "CAUSED"
+
+
+def test_add_causal_relationship_rejects_non_string_with_value_error():
+    """Invalid relationship types must keep raising ValueError (issue #1184
+    follow-up): normalization must not turn them into AttributeError."""
+    graph = ContextGraph(advanced_analytics=True)
+    cause = graph.record_decision(
+        category="a", scenario="upstream", reasoning="r",
+        outcome="x", confidence=0.9,
+    )
+    effect = graph.record_decision(
+        category="b", scenario="downstream", reasoning="r",
+        outcome="y", confidence=0.9,
+    )
+
+    for bad_type in (None, 42, ["CAUSED"]):
+        with pytest.raises(ValueError):
+            graph.add_causal_relationship(cause, effect, relationship_type=bad_type)
+
+
+def test_analyze_decision_influence_sees_lowercase_causal_edge():
+    """Issue #1184 follow-up: influence analysis reads the same edge index as
+    the causal traversal, so lowercase edges must count as direct influence."""
+    graph = ContextGraph(advanced_analytics=True)
+    cause = graph.record_decision(
+        category="a", scenario="upstream", reasoning="r",
+        outcome="x", confidence=0.9,
+    )
+    effect = graph.record_decision(
+        category="b", scenario="downstream", reasoning="r",
+        outcome="y", confidence=0.9,
+    )
+    graph.add_edge(cause, effect, "causes")
+
+    impact = graph.analyze_decision_influence(cause)
+
+    direct_ids = {entry["decision_id"] for entry in impact["direct_influence"]}
+    assert effect in direct_ids
+
+
+def test_trace_decision_causality_sees_lowercase_causal_edge():
+    """Issue #1184 follow-up: the trace must not return an empty audit chain
+    for a decision with an explicit lowercase upstream causal edge."""
+    graph = ContextGraph(advanced_analytics=True)
+    cause = graph.record_decision(
+        category="a", scenario="upstream", reasoning="r",
+        outcome="x", confidence=0.9,
+    )
+    effect = graph.record_decision(
+        category="b", scenario="downstream", reasoning="r",
+        outcome="y", confidence=0.9,
+    )
+    graph.add_edge(cause, effect, "causes")
+
+    trace = graph.trace_decision_causality(effect)
+
+    assert any(
+        hop["from"] == cause and hop["to"] == effect
+        for chain in trace for hop in chain["hops"]
+    ), "lowercase causal edge must appear in the traced chain"
+
+
+def test_find_precedents_sees_lowercase_precedent_edge():
+    """Issue #1184 follow-up: precedent lookup must accept the analyzer's
+    spelling alongside the canonical PRECEDENT_FOR."""
+    graph = ContextGraph(advanced_analytics=True)
+    precedent = graph.record_decision(
+        category="a", scenario="earlier", reasoning="r",
+        outcome="x", confidence=0.9,
+    )
+    later = graph.record_decision(
+        category="b", scenario="later", reasoning="r",
+        outcome="y", confidence=0.9,
+    )
+    graph.add_edge(precedent, later, "precedes")
+
+    precedents = graph.find_precedents(later)
+
+    assert [d.decision_id for d in precedents] == [precedent]

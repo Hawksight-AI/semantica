@@ -192,7 +192,11 @@ decision_id = context.record_decision(
 
 ## Built for Where Mistakes Have Consequences
 
-Semantica was designed for domains where every decision must be explainable and every fact must be traceable:
+Semantica was designed for domains where every decision must be explainable and every fact must be traceable.
+
+<Warning>
+  **This is system-level explainability, not foundation-model explainability.** Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. What Semantica explains is *outside* the model: the context and data fed in, the decision produced, its provenance, the relevant relationships, the policies applied, and the full execution trail. See [Core Concepts](concepts) for the full scope note.
+</Warning>
 
 **Healthcare & Life Sciences**
 - Clinical decision support with full audit trails
