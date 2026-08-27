@@ -34,6 +34,7 @@ from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .naming_conventions import NamingConventions
+from .relationship_utils import build_entity_aliases, resolve_relationship_endpoint_type
 
 
 class PropertyGenerator:
@@ -106,7 +107,7 @@ class PropertyGenerator:
                 tracking_id, message="Inferring object properties from relationships..."
             )
             object_properties = self._infer_object_properties(
-                relationships, classes, **options
+                relationships, classes, entities=entities, **options
             )
             properties.extend(object_properties)
 
@@ -134,6 +135,7 @@ class PropertyGenerator:
         self,
         relationships: List[Dict[str, Any]],
         classes: List[Dict[str, Any]],
+        entities: Optional[List[Dict[str, Any]]] = None,
         **options,
     ) -> List[Dict[str, Any]]:
         """Infer object properties from relationships."""
@@ -145,6 +147,7 @@ class PropertyGenerator:
 
         # Create class map
         class_map = {cls["name"]: cls for cls in classes}
+        entity_aliases = build_entity_aliases(entities or [])
 
         properties = []
         for rel_type, rels in rel_types.items():
@@ -154,12 +157,12 @@ class PropertyGenerator:
                 ranges = set()
 
                 for rel in rels:
-                    source_type = rel.get(
-                        "source_type"
-                    ) or self._infer_class_from_entity(rel.get("source_id"), classes)
-                    target_type = rel.get(
-                        "target_type"
-                    ) or self._infer_class_from_entity(rel.get("target_id"), classes)
+                    source_type = resolve_relationship_endpoint_type(
+                        rel, "source", entity_aliases
+                    )
+                    target_type = resolve_relationship_endpoint_type(
+                        rel, "target", entity_aliases
+                    )
 
                     if source_type:
                         domains.add(source_type)
