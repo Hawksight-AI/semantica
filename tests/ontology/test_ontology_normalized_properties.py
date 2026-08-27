@@ -1,6 +1,9 @@
+import pytest
+
 from semantica.ontology.class_inferrer import ClassInferrer
 from semantica.ontology.ontology_generator import OntologyGenerator
 from semantica.ontology.property_generator import PropertyGenerator
+from semantica.utils.exceptions import ValidationError
 
 
 def _entities():
@@ -39,3 +42,15 @@ def test_ontology_pipeline_emits_data_properties_for_normalized_types():
     email = next(prop for prop in ontology["properties"] if prop["name"] == "email")
     assert email["domain"] == ["SoftwareEngineer"]
     assert email["range"] == "xsd:string"
+
+
+def test_class_inference_rejects_normalized_type_collisions():
+    entities = [
+        {"type": "Person", "name": "Alice"},
+        {"type": "Person", "name": "Bob"},
+        {"type": "person", "name": "Carol"},
+        {"type": "person", "name": "Dan"},
+    ]
+
+    with pytest.raises(ValidationError, match="duplicate class names"):
+        ClassInferrer().infer_classes(entities)
