@@ -241,7 +241,18 @@ engine   = ExecutionEngine(max_workers=2, retry_on_failure=True)
 result   = engine.execute_pipeline(pipeline)
 ```
 
-`set_parallelism(n)` tells the engine how many steps it may run simultaneously. The topological sort guarantees that only steps whose dependencies are all completed are eligible for concurrent execution — you cannot accidentally run a step before its inputs are ready.
+`set_parallelism(n)` tells the engine how many steps it may run simultaneously; `n` must be a positive integer. The topological sort guarantees that only steps whose dependencies are all completed are eligible for concurrent execution — you cannot accidentally run a step before its inputs are ready. The effective concurrency is capped at `min(n, max_workers)`, so the engine's `max_workers` setting remains a hard resource ceiling.
+
+Concurrency is opt-in per step. A dependency layer only runs in parallel when every step in that layer is marked `parallel_safe`, the layer has more than one step, and the data flowing into the layer is a dict:
+
+```python
+builder.add_step("ner",      "ner_extract",     parallel_safe=True, confidence_threshold=0.75)
+builder.add_step("triplets", "triplet_extract", parallel_safe=True, include_temporal=True)
+```
+
+If any step in a layer is not marked `parallel_safe`, or if a step runs in delta mode, the entire layer falls back to sequential execution — parallelism never silently bypasses a step that was not declared safe. `parallel_safe` is a control field: like `dependencies`, it is consumed by the builder and never reaches your handler's config.
+
+Parallel-safe handlers must return a dict. Each step in a parallel layer receives an isolated deep copy of the layer's input, so steps cannot see each other's mutations. The per-step results are merged key by key in step declaration order: a key written by one step is added to the merged output, a key written by several steps with equal values is kept, and two steps writing different values for the same key fail the pipeline with a `ProcessingError` naming the conflicting key and both steps. Handlers that touch shared mutable resources — database connections, in-memory stores, global caches — should not be marked `parallel_safe`.
 
 ## Common Pitfalls
 

@@ -32,8 +32,10 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import copy
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -242,11 +244,63 @@ class ExecutionEngine:
             return ExecutionResult(success=False, output=None, errors=[str(e)])
 
     def _execute_steps(self, pipeline: Pipeline, data: Any, **options) -> Any:
-        """Execute pipeline steps."""
-        # Sort steps by dependencies (topological sort)
-        sorted_steps = self._topological_sort(pipeline.steps)
+        """
+        Execute pipeline steps.
 
-        # Execute steps
+        Steps are grouped into dependency layers. When a pipeline is
+        configured with parallelism > 1, a layer whose steps are all marked
+        ``parallel_safe`` and whose input is a dict is executed concurrently
+        (bounded by the effective parallelism); every other layer runs
+        sequentially, preserving the default serial behaviour.
+        """
+        effective_parallelism = self._get_effective_parallelism(pipeline)
+
+        if effective_parallelism <= 1:
+            return self._execute_steps_sequential(pipeline, data, **options)
+
+        layers = self._group_steps_by_dependency_level(pipeline.steps)
+
+        current_data = data
+        for layer in layers:
+            if self.pipeline_status.get(pipeline.name) == PipelineStatus.STOPPED:
+                break
+
+            # Wait if paused
+            while self.pipeline_status.get(pipeline.name) == PipelineStatus.PAUSED:
+                time.sleep(0.1)
+
+            if self._can_run_layer_in_parallel(layer, current_data):
+                merged = self._execute_parallel_group(
+                    layer, current_data, effective_parallelism, **options
+                )
+                if merged is None:
+                    # Input isolation failed before any handler started;
+                    # run this layer sequentially instead.
+                    current_data = self._execute_steps_sequential(
+                        pipeline, current_data, steps=layer, **options
+                    )
+                else:
+                    current_data = merged
+            else:
+                current_data = self._execute_steps_sequential(
+                    pipeline, current_data, steps=layer, **options
+                )
+
+        return current_data
+
+    def _execute_steps_sequential(
+        self,
+        pipeline: Pipeline,
+        data: Any,
+        steps: Optional[List[PipelineStep]] = None,
+        **options,
+    ) -> Any:
+        """Execute steps sequentially following dependency order."""
+        if steps is None:
+            sorted_steps = self._topological_sort(pipeline.steps)
+        else:
+            sorted_steps = list(steps)
+
         current_data = data
         total_steps = len(sorted_steps)
 
@@ -258,76 +312,258 @@ class ExecutionEngine:
             while self.pipeline_status.get(pipeline.name) == PipelineStatus.PAUSED:
                 time.sleep(0.1)
 
-            # Track step execution
-            step_tracking_id = self.progress_tracker.start_tracking(
-                module="pipeline",
-                submodule=step.step_type or step.name,
-                message=f"Step {step_idx + 1}/{total_steps}: {step.name}",
+            current_data = self._execute_step_with_retries(
+                step,
+                current_data,
+                step_label=f"Step {step_idx + 1}/{total_steps}: {step.name}",
+                **options,
             )
 
-            try:
-                # Execute step
-                step.status = StepStatus.RUNNING
-                step_result = self._execute_step(step, current_data, **options)
-                step.status = StepStatus.COMPLETED
-                step.result = step_result
-                current_data = step_result
+        return current_data
 
+    def _execute_step_with_retries(
+        self,
+        step: PipelineStep,
+        data: Any,
+        step_label: Optional[str] = None,
+        **options,
+    ) -> Any:
+        """
+        Execute a single step with retry handling.
+
+        Shared by the sequential and parallel execution paths so that retry
+        policies, step status tracking and progress reporting behave
+        identically. Returns the step result, or raises the final error
+        after retries are exhausted.
+        """
+        step_tracking_id = self.progress_tracker.start_tracking(
+            module="pipeline",
+            submodule=step.step_type or step.name,
+            message=step_label or f"Executing step: {step.name}",
+        )
+
+        try:
+            step.status = StepStatus.RUNNING
+            step_result = self._execute_step(step, data, **options)
+            step.status = StepStatus.COMPLETED
+            step.result = step_result
+
+            self.progress_tracker.stop_tracking(
+                step_tracking_id,
+                status="completed",
+                message=f"Completed step: {step.name}",
+            )
+            return step_result
+
+        except Exception as e:
+            step.status = StepStatus.FAILED
+            step.error = e
+
+            # Retry loop respecting max_retries from the policy
+            retry_policy = self.failure_handler.get_retry_policy(step.step_type)
+            max_retries = retry_policy.max_retries if retry_policy else 0
+            retry_count = 0
+            success = False
+
+            while retry_count < max_retries:
+                recovery_result = self.failure_handler.handle_step_failure(step, e)
+                if not recovery_result.get("retry", False):
+                    break
+                retry_delay = recovery_result.get("retry_delay", 0.0)
+                if retry_delay > 0:
+                    time.sleep(retry_delay)
+                self.progress_tracker.update_tracking(
+                    step_tracking_id,
+                    status="running",
+                    message=f"Retrying step: {step.name} (attempt {retry_count + 1})",
+                )
+                step.status = StepStatus.RUNNING
+                try:
+                    step_result = self._execute_step(step, data, **options)
+                    step.status = StepStatus.COMPLETED
+                    step.result = step_result
+                    success = True
+                    break
+                except Exception as retry_e:
+                    step.status = StepStatus.FAILED
+                    step.error = retry_e
+                    e = retry_e
+                    retry_count += 1
+
+            if success:
                 self.progress_tracker.stop_tracking(
                     step_tracking_id,
                     status="completed",
-                    message=f"Completed step: {step.name}",
+                    message=f"Retry successful: {step.name}",
                 )
+                return step_result
+            else:
+                self.progress_tracker.stop_tracking(
+                    step_tracking_id, status="failed", message=str(e)
+                )
+                raise e
 
-            except Exception as e:
-                step.status = StepStatus.FAILED
-                step.error = e
+    def _get_effective_parallelism(self, pipeline: Pipeline) -> int:
+        """Return the parallelism actually used for this pipeline."""
+        configured = pipeline.config.get("parallelism", 1)
+        if not isinstance(configured, int) or configured <= 0:
+            return 1
+        return min(configured, self.parallelism_manager.max_workers)
 
-                # Retry loop respecting max_retries from the policy
-                retry_policy = self.failure_handler.get_retry_policy(step.step_type)
-                max_retries = retry_policy.max_retries if retry_policy else 0
-                retry_count = 0
-                success = False
+    def _group_steps_by_dependency_level(
+        self, steps: List[PipelineStep]
+    ) -> List[List[PipelineStep]]:
+        """Group steps into dependency layers, preserving declaration order."""
+        step_map = {step.name: step for step in steps}
+        levels: Dict[str, int] = {}
 
-                while retry_count < max_retries:
-                    recovery_result = self.failure_handler.handle_step_failure(step, e)
-                    if not recovery_result.get("retry", False):
-                        break
-                    retry_delay = recovery_result.get("retry_delay", 0.0)
-                    if retry_delay > 0:
-                        time.sleep(retry_delay)
-                    self.progress_tracker.update_tracking(
-                        step_tracking_id,
-                        status="running",
-                        message=f"Retrying step: {step.name} (attempt {retry_count + 1})",
-                    )
-                    step.status = StepStatus.RUNNING
-                    try:
-                        step_result = self._execute_step(step, current_data, **options)
-                        step.status = StepStatus.COMPLETED
-                        step.result = step_result
-                        current_data = step_result
-                        success = True
-                        break
-                    except Exception as retry_e:
-                        step.status = StepStatus.FAILED
-                        step.error = retry_e
-                        e = retry_e
-                        retry_count += 1
+        def get_level(step_name: str) -> int:
+            if step_name in levels:
+                return levels[step_name]
+            step = step_map[step_name]
+            if not step.dependencies:
+                level = 0
+            else:
+                level = max(get_level(dep) for dep in step.dependencies) + 1
+            levels[step_name] = level
+            return level
 
-                if success:
-                    self.progress_tracker.stop_tracking(
-                        step_tracking_id,
-                        status="completed",
-                        message=f"Retry successful: {step.name}",
-                    )
+        for step in steps:
+            get_level(step.name)
+
+        grouped: Dict[int, List[PipelineStep]] = {}
+        for step in steps:
+            grouped.setdefault(levels[step.name], []).append(step)
+        return [grouped[level] for level in sorted(grouped)]
+
+    def _can_run_layer_in_parallel(self, layer: List[PipelineStep], data: Any) -> bool:
+        """Check whether a dependency layer can safely run in parallel."""
+        if len(layer) <= 1:
+            return False
+        if not isinstance(data, dict):
+            return False
+        for step in layer:
+            if not getattr(step, "parallel_safe", False):
+                return False
+            if getattr(step, "delta_mode", False):
+                return False
+        return True
+
+    def _execute_parallel_group(
+        self,
+        layer: List[PipelineStep],
+        data: Any,
+        effective_parallelism: int,
+        **options,
+    ) -> Optional[Any]:
+        """
+        Execute a dependency layer concurrently.
+
+        Per-step inputs are deep-copied before any handler starts so that
+        parallel steps do not share mutable state. Returns the merged dict
+        result, or None when input isolation failed (before any handler
+        ran) and the layer should fall back to sequential execution.
+        """
+        # Isolate per-step inputs before starting any handler
+        try:
+            step_inputs = {step.name: copy.deepcopy(data) for step in layer}
+        except Exception as e:
+            self.logger.warning(
+                f"Falling back to sequential execution: input for parallel "
+                f"layer could not be isolated ({e})"
+            )
+            return None
+
+        step_results: Dict[str, Any] = {}
+        failure: Optional[BaseException] = None
+        max_workers = min(effective_parallelism, len(layer))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    self._execute_step_with_retries,
+                    step,
+                    step_inputs[step.name],
+                    **options,
+                ): step
+                for step in layer
+            }
+
+            for future in as_completed(futures):
+                step = futures[future]
+                try:
+                    step_result = future.result()
+                except Exception as e:
+                    if failure is None:
+                        failure = e
+                    # Cancel steps that have not started yet
+                    for pending in futures:
+                        pending.cancel()
                 else:
-                    self.progress_tracker.stop_tracking(
-                        step_tracking_id, status="failed", message=str(e)
-                    )
-                    raise e
+                    if not isinstance(step_result, dict):
+                        exc = ProcessingError(
+                            f"Step '{step.name}' is marked parallel_safe and must "
+                            f"return a dict so parallel results can be merged, got "
+                            f"{type(step_result).__name__}"
+                        )
+                        step.status = StepStatus.FAILED
+                        step.error = exc
+                        if failure is None:
+                            failure = exc
+                        for pending in futures:
+                            pending.cancel()
+                    else:
+                        step_results[step.name] = step_result
 
-        return current_data
+        if failure is not None:
+            raise failure
+
+        return self._merge_parallel_results(data, layer, step_results)
+
+    def _merge_parallel_results(
+        self,
+        base: Dict[str, Any],
+        layer: List[PipelineStep],
+        step_results: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Merge the results of a parallel layer into a single dict.
+
+        Steps are processed in declaration order (never by completion
+        order). Keys written with equal values by multiple steps are
+        allowed; conflicting values for the same key raise a
+        ProcessingError naming the key and both steps.
+        """
+        merged = dict(base)
+        key_sources: Dict[str, str] = {}
+
+        for step in layer:
+            step_result = step_results.get(step.name)
+            if step_result is None:
+                continue
+            for key, value in step_result.items():
+                if key in key_sources and not self._values_equal(
+                    merged.get(key), value
+                ):
+                    raise ProcessingError(
+                        f"Conflicting values for key '{key}' in parallel step "
+                        f"results: step '{step.name}' produced {value!r}, but "
+                        f"step '{key_sources[key]}' previously produced "
+                        f"{merged.get(key)!r}"
+                    )
+                key_sources[key] = step.name
+                merged[key] = value
+
+        return merged
+
+    @staticmethod
+    def _values_equal(left: Any, right: Any) -> bool:
+        """Safely compare two values; ambiguous comparisons count as conflicts."""
+        try:
+            return bool(left == right)
+        except (TypeError, ValueError):
+            return False
+
 
     def _execute_step(self, step: PipelineStep, data: Any, **options) -> Any:
         """

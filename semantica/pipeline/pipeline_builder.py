@@ -67,6 +67,7 @@ class PipelineStep:
     delta_mode: bool = False
     base_version_id: Optional[str] = None
     target_version_id: Optional[str] = None
+    parallel_safe: bool = False
 
 
 @dataclass
@@ -133,6 +134,7 @@ class PipelineBuilder:
         target_version_id = config.pop("target_version_id", None)
         dependencies = config.pop("dependencies", [])
         handler = config.pop("handler", None)
+        parallel_safe = config.pop("parallel_safe", False)
         if handler is None:
             handler = self.step_registry.get(step_type)
 
@@ -145,6 +147,7 @@ class PipelineBuilder:
             delta_mode = delta_mode,
             base_version_id=base_version_id,
             target_version_id=target_version_id,
+            parallel_safe=parallel_safe,
         )
 
         self.steps.append(step)
@@ -186,6 +189,14 @@ class PipelineBuilder:
         Returns:
             Self for method chaining
         """
+        if (
+            isinstance(level, bool)
+            or not isinstance(level, int)
+            or level <= 0
+        ):
+            raise ValidationError(
+                f"Parallelism level must be a positive integer, got {level!r}"
+            )
         self.pipeline_config["parallelism"] = level
         return self
 
@@ -289,6 +300,9 @@ class PipelineBuilder:
                     step.target_version_id = step_config.get(
                         "target_version_id", step.target_version_id
                     )
+                    step.parallel_safe = step_config.get(
+                        "parallel_safe", step.parallel_safe
+                    )
 
             # Set parallelism if specified
             if "parallelism" in pipeline_config:
@@ -344,6 +358,7 @@ class PipelineBuilder:
                     "type": step.step_type,
                     "config": step.config,
                     "dependencies": step.dependencies,
+                    "parallel_safe": step.parallel_safe,
                 }
                 for step in self.steps
             ],
@@ -425,6 +440,7 @@ class PipelineSerializer:
             "delta_mode",
             "base_version_id",
             "target_version_id",
+            "parallel_safe",
         }
         pipeline_data = {
             "name": pipeline.name,
@@ -441,6 +457,7 @@ class PipelineSerializer:
                     "delta_mode": getattr(step, "delta_mode", False),
                     "base_version_id": getattr(step, "base_version_id", None),
                     "target_version_id": getattr(step, "target_version_id", None),
+                    "parallel_safe": getattr(step, "parallel_safe", False),
                 }
                 for step in pipeline.steps
             ],
@@ -487,6 +504,12 @@ class PipelineSerializer:
             sanitized_step["config"] = step_config
             sanitized_steps.append(sanitized_step)
         pipeline_data["steps"] = sanitized_steps
+
+        # Reapply pipeline-level config (e.g. parallelism) at the top level
+        # so build_pipeline picks it up
+        serialized_config = pipeline_data.pop("config", None) or {}
+        for key, value in serialized_config.items():
+            pipeline_data.setdefault(key, value)
 
         # Reconstruct pipeline
         builder = PipelineBuilder(**self.config)
