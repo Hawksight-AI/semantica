@@ -46,12 +46,19 @@ jobs:
       - name: Build Explorer frontend
         working-directory: explorer
         run: npm run build
-      - name: Install pinned Python dependencies
+      - name: Install Explorer backend test dependencies
         run: |
-          pip install -r requirements-ci.txt
+          # Run the deterministic backend path before the all-extras CI
+          # environment is installed.  The Explorer extra supplies the
+          # production API dependencies without importing optional vector
+          # providers such as Pinecone during test collection.
+          pip install -e ".[explorer]" pytest==9.1.1
       - name: Test deterministic Explorer backend path
         run: |
           pytest -q tests/explorer/test_explorer_deterministic_rendering_e2e.py
+      - name: Install pinned Python dependencies
+        run: |
+          pip install -r requirements-ci.txt
       - name: Verify requirements-ci.txt is up to date
         run: |
           pip install uv==0.12.1
