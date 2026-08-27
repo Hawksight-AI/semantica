@@ -18,11 +18,13 @@ from unittest.mock import MagicMock, patch
 from semantica.pipeline.execution_engine import ExecutionEngine
 from semantica.pipeline.failure_handler import RetryPolicy, RetryStrategy
 from semantica.pipeline.pipeline_builder import (
+    Pipeline,
     PipelineBuilder,
     PipelineSerializer,
+    PipelineStep,
     StepStatus,
 )
-from semantica.utils.exceptions import ValidationError
+from semantica.utils.exceptions import ProcessingError, ValidationError
 
 
 class ConcurrencyProbe:
@@ -476,6 +478,155 @@ class TestPipelineParallelExecution(unittest.TestCase):
         self.assertNotIn("parallel_safe", received_kwargs)
         self.assertNotIn("parallel_safe", pipeline.steps[0].config)
 
+    def test_unchanged_echoed_key_does_not_conflict(self):
+        probe = ConcurrencyProbe()
+        pipeline = self._build(
+            [
+                # "a" echoes the base value of "shared" (unchanged),
+                # "b" legitimately changes it: no false conflict.
+                ("a", "branch", branch_handler(probe, "shared", 1), True),
+                ("b", "branch", branch_handler(probe, "shared", 2), True),
+            ],
+            parallelism=2,
+        )
+
+        result = ExecutionEngine().execute_pipeline(
+            pipeline, data={"text": "hi", "shared": 1}
+        )
+
+        self.assertTrue(result.success, msg=str(result.errors))
+        self.assertEqual(result.output["shared"], 2)
+
+    def test_ambiguous_equality_counts_as_changed(self):
+        sentinel = Uncomparable()
+
+        def echo(data, **kwargs):
+            return {**data, "shared": data["shared"]}
+
+        def change(data, **kwargs):
+            return {**data, "shared": "changed"}
+
+        pipeline = self._build(
+            [("a", "branch", echo, True), ("b", "branch", change, True)],
+            parallelism=2,
+        )
+
+        result = ExecutionEngine().execute_pipeline(
+            pipeline, data={"text": "hi", "shared": sentinel}
+        )
+
+        # Ambiguous equality must not be treated as unchanged, so both
+        # branches count as writes and the merge reports the conflict.
+        self.assertFalse(result.success)
+        error_text = result.errors[0] if result.errors else ""
+        self.assertIn("shared", error_text)
+
+    def test_non_boolean_parallel_safe_stays_serial(self):
+        probe = ConcurrencyProbe()
+        pipeline = self._build(
+            [
+                ("a", "branch", branch_handler(probe, "a"), True),
+                ("b", "branch", branch_handler(probe, "b"), True),
+            ],
+            parallelism=2,
+        )
+        # Simulate a truthy non-bool value reaching the engine (e.g. set
+        # directly on the step attribute): must not enable concurrency.
+        for step in pipeline.steps:
+            step.parallel_safe = "false"
+
+        result = ExecutionEngine().execute_pipeline(pipeline, data={"text": "hi"})
+
+        self.assertTrue(result.success)
+        self.assertEqual(probe.max_active, 1)
+
+    def test_non_dict_result_reports_failure_not_completion(self):
+        probe = ConcurrencyProbe()
+        tracking_ids = {}
+        counter = {"n": 0}
+
+        def fake_start(*args, **kwargs):
+            tid = f"tid_{counter['n']}"
+            counter["n"] += 1
+            tracking_ids[kwargs.get("submodule")] = tid
+            return tid
+
+        with patch(
+            "semantica.pipeline.execution_engine.get_progress_tracker"
+        ) as mock_get:
+            tracker = MagicMock()
+            tracker.start_tracking.side_effect = fake_start
+            mock_get.return_value = tracker
+            engine = ExecutionEngine()
+
+        def non_dict_handler(data, **kwargs):
+            with probe:
+                return "not-a-dict"
+
+        pipeline = self._build(
+            [
+                ("a", "branch", branch_handler(probe, "a"), True),
+                ("b", "branch", non_dict_handler, True),
+            ],
+            parallelism=2,
+            name="progress_pipeline",
+        )
+
+        result = engine.execute_pipeline(pipeline, data={"text": "hi"})
+
+        self.assertFalse(result.success)
+        failed_step = next(s for s in pipeline.steps if s.name == "b")
+        self.assertEqual(failed_step.status, StepStatus.FAILED)
+        self.assertIsInstance(failed_step.error, ProcessingError)
+        # Handler ran exactly once: never re-run serially.
+        self.assertEqual(probe.calls, 2)
+
+        b_tid = tracking_ids.get("progress_pipeline:branch:b")
+        self.assertIsNotNone(
+            b_tid, f"expected tracking for step b, got {tracking_ids}"
+        )
+        b_stops = [
+            c
+            for c in tracker.stop_tracking.call_args_list
+            if (c.args[0] if c.args else c.kwargs.get("tracking_id")) == b_tid
+        ]
+        self.assertTrue(b_stops)
+        for call in b_stops:
+            status = call.kwargs.get("status")
+            self.assertEqual(status, "failed")
+            self.assertNotEqual(status, "completed")
+
+    def test_same_type_steps_get_distinct_tracking_records(self):
+        probe = ConcurrencyProbe()
+        pipeline = self._build(
+            [
+                ("a", "branch", branch_handler(probe, "a"), True),
+                ("b", "branch", branch_handler(probe, "b"), True),
+            ],
+            parallelism=2,
+            name="tracking_pipeline",
+        )
+
+        with patch(
+            "semantica.pipeline.execution_engine.get_progress_tracker"
+        ) as mock_get:
+            tracker = MagicMock()
+            mock_get.return_value = tracker
+            engine = ExecutionEngine()
+
+        result = engine.execute_pipeline(pipeline, data={"text": "hi"})
+
+        self.assertTrue(result.success, msg=str(result.errors))
+        submodules = [
+            call.kwargs.get("submodule")
+            for call in tracker.start_tracking.call_args_list
+            if call.kwargs.get("module") == "pipeline"
+        ]
+        # Concurrent steps of the same step_type get distinct submodules
+        # (and therefore distinct tracking IDs), including pipeline identity.
+        self.assertIn("tracking_pipeline:branch:a", submodules)
+        self.assertIn("tracking_pipeline:branch:b", submodules)
+
 
 class TestParallelSafeSerialization(unittest.TestCase):
     """parallel_safe must survive dict and JSON round-trips."""
@@ -521,6 +672,113 @@ class TestParallelSafeSerialization(unittest.TestCase):
         self.assertTrue(serialized["steps"][0]["parallel_safe"])
         self.assertFalse(serialized["steps"][1]["parallel_safe"])
         self.assertEqual(serialized["config"]["parallelism"], 2)
+
+
+class Uncomparable:
+    """Object whose equality comparison always raises TypeError."""
+
+    def __eq__(self, other):
+        raise TypeError("cannot compare")
+
+
+class TestParallelDependencyValidation(unittest.TestCase):
+    """Cyclic/unknown dependencies must fail with ValidationError in the
+    parallel path, not RecursionError/KeyError (review finding #1)."""
+
+    def _engine(self):
+        with patch(
+            "semantica.pipeline.execution_engine.get_progress_tracker"
+        ) as mock_get:
+            mock_get.return_value = MagicMock()
+            engine = ExecutionEngine()
+        return engine
+
+    def _handler(self):
+        return lambda data, **kwargs: data
+
+    def test_cyclic_dependencies_raise_validation_error(self):
+        # Construct the pipeline directly: the builder already rejects
+        # cycles at build time, so bypassing it exercises the engine-level
+        # grouping guard (which otherwise hits RecursionError).
+        steps = [
+            PipelineStep(
+                name="a",
+                step_type="branch",
+                handler=self._handler(),
+                dependencies=["b"],
+                parallel_safe=True,
+            ),
+            PipelineStep(
+                name="b",
+                step_type="branch",
+                handler=self._handler(),
+                dependencies=["a"],
+                parallel_safe=True,
+            ),
+        ]
+        pipeline = Pipeline(
+            name="cyclic_pipeline",
+            steps=steps,
+            config={"parallelism": 4},
+        )
+
+        result = self._engine().execute_pipeline(pipeline, data={"text": "hi"})
+
+        self.assertFalse(result.success)
+        error_text = result.errors[0] if result.errors else ""
+        self.assertIn("Circular dependency", error_text)
+
+    def test_unknown_dependency_raises_validation_error(self):
+        # Construct the pipeline directly so the engine-level unknown
+        # dependency guard is exercised (instead of a builder-time
+        # KeyError from the grouping DFS).
+        steps = [
+            PipelineStep(
+                name="a",
+                step_type="branch",
+                handler=self._handler(),
+                dependencies=["missing"],
+                parallel_safe=True,
+            ),
+        ]
+        pipeline = Pipeline(
+            name="unknown_dep_pipeline",
+            steps=steps,
+            config={"parallelism": 4},
+        )
+
+        result = self._engine().execute_pipeline(pipeline, data={"text": "hi"})
+
+        self.assertFalse(result.success)
+        error_text = result.errors[0] if result.errors else ""
+        self.assertIn("unknown step 'missing'", error_text)
+        self.assertIn("'a'", error_text)
+
+
+class TestParallelSafeMustBeBoolean(unittest.TestCase):
+    """parallel_safe must be an explicit boolean everywhere (review #4)."""
+
+    def test_add_step_rejects_non_boolean_values(self):
+        builder = PipelineBuilder()
+        for invalid in ("false", "true", 1, 0, None, [True]):
+            with self.assertRaises(ValidationError):
+                builder.add_step(
+                    "a",
+                    "branch",
+                    handler=lambda data, **kwargs: data,
+                    parallel_safe=invalid,
+                )
+
+    def test_build_pipeline_rejects_non_boolean_values(self):
+        builder = PipelineBuilder()
+        config = {
+            "name": "invalid_parallel_safe",
+            "steps": [
+                {"name": "a", "type": "branch", "parallel_safe": "false"}
+            ],
+        }
+        with self.assertRaises(ValidationError):
+            builder.build_pipeline(config)
 
 
 if __name__ == "__main__":

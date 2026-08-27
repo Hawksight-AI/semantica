@@ -135,6 +135,11 @@ class PipelineBuilder:
         dependencies = config.pop("dependencies", [])
         handler = config.pop("handler", None)
         parallel_safe = config.pop("parallel_safe", False)
+        if not isinstance(parallel_safe, bool):
+            raise ValidationError(
+                f"parallel_safe must be a boolean, got "
+                f"{type(parallel_safe).__name__} for step '{step_name}'"
+            )
         if handler is None:
             handler = self.step_registry.get(step_type)
 
@@ -300,9 +305,16 @@ class PipelineBuilder:
                     step.target_version_id = step_config.get(
                         "target_version_id", step.target_version_id
                     )
-                    step.parallel_safe = step_config.get(
+                    raw_parallel_safe = step_config.get(
                         "parallel_safe", step.parallel_safe
                     )
+                    if not isinstance(raw_parallel_safe, bool):
+                        raise ValidationError(
+                            "parallel_safe must be a boolean for step "
+                            f"'{step_name}', got "
+                            f"{type(raw_parallel_safe).__name__}"
+                        )
+                    step.parallel_safe = raw_parallel_safe
 
             # Set parallelism if specified
             if "parallelism" in pipeline_config:

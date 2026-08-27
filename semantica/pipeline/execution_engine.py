@@ -61,6 +61,14 @@ class PipelineStatus(Enum):
     STOPPED = "stopped"
 
 
+class _ParallelResultContractError(ProcessingError):
+    """Raised when a parallel step violates the dict-result contract.
+
+    Contract violations are deterministic: re-running the handler cannot
+    change its return type, so the retry loop must be skipped entirely.
+    """
+
+
 @dataclass
 class ExecutionResult:
     """Pipeline execution result."""
@@ -271,7 +279,11 @@ class ExecutionEngine:
 
             if self._can_run_layer_in_parallel(layer, current_data):
                 merged = self._execute_parallel_group(
-                    layer, current_data, effective_parallelism, **options
+                    layer,
+                    current_data,
+                    effective_parallelism,
+                    pipeline_name=pipeline.name,
+                    **options,
                 )
                 if merged is None:
                     # Input isolation failed before any handler started;
@@ -316,6 +328,7 @@ class ExecutionEngine:
                 step,
                 current_data,
                 step_label=f"Step {step_idx + 1}/{total_steps}: {step.name}",
+                pipeline_name=pipeline.name,
                 **options,
             )
 
@@ -326,6 +339,8 @@ class ExecutionEngine:
         step: PipelineStep,
         data: Any,
         step_label: Optional[str] = None,
+        pipeline_name: Optional[str] = None,
+        require_dict_result: bool = False,
         **options,
     ) -> Any:
         """
@@ -335,16 +350,34 @@ class ExecutionEngine:
         policies, step status tracking and progress reporting behave
         identically. Returns the step result, or raises the final error
         after retries are exhausted.
+
+        When ``require_dict_result`` is set (parallel layers), a handler
+        returning a non-dict raises ProcessingError before the step is
+        marked completed, so status and progress reporting stay consistent.
+        Such contract violations are never retried: the handler's return
+        type cannot change between attempts.
         """
         step_tracking_id = self.progress_tracker.start_tracking(
             module="pipeline",
-            submodule=step.step_type or step.name,
+            # Pipeline identity + step name keep tracking IDs unique so
+            # concurrent steps of the same step_type cannot overwrite each
+            # other's progress records.
+            submodule=(
+                f"{pipeline_name or 'pipeline'}:"
+                f"{step.step_type or 'step'}:{step.name}"
+            ),
             message=step_label or f"Executing step: {step.name}",
         )
 
         try:
             step.status = StepStatus.RUNNING
             step_result = self._execute_step(step, data, **options)
+            if require_dict_result and not isinstance(step_result, dict):
+                raise _ParallelResultContractError(
+                    f"Step '{step.name}' is marked parallel_safe and must "
+                    f"return a dict so parallel results can be merged, got "
+                    f"{type(step_result).__name__}"
+                )
             step.status = StepStatus.COMPLETED
             step.result = step_result
 
@@ -358,6 +391,15 @@ class ExecutionEngine:
         except Exception as e:
             step.status = StepStatus.FAILED
             step.error = e
+
+            # Contract violations are deterministic failures: re-running
+            # the handler cannot change its return type, so never consult
+            # the retry policy for them.
+            if isinstance(e, _ParallelResultContractError):
+                self.progress_tracker.stop_tracking(
+                    step_tracking_id, status="failed", message=str(e)
+                )
+                raise
 
             # Retry loop respecting max_retries from the policy
             retry_policy = self.failure_handler.get_retry_policy(step.step_type)
@@ -380,6 +422,15 @@ class ExecutionEngine:
                 step.status = StepStatus.RUNNING
                 try:
                     step_result = self._execute_step(step, data, **options)
+                    if require_dict_result and not isinstance(
+                        step_result, dict
+                    ):
+                        raise _ParallelResultContractError(
+                            f"Step '{step.name}' is marked parallel_safe "
+                            f"and must return a dict so parallel results "
+                            f"can be merged, got "
+                            f"{type(step_result).__name__}"
+                        )
                     step.status = StepStatus.COMPLETED
                     step.result = step_result
                     success = True
@@ -413,18 +464,39 @@ class ExecutionEngine:
     def _group_steps_by_dependency_level(
         self, steps: List[PipelineStep]
     ) -> List[List[PipelineStep]]:
-        """Group steps into dependency layers, preserving declaration order."""
+        """
+        Group steps into dependency layers, preserving declaration order.
+
+        Circular or unknown dependencies raise ValidationError so the
+        parallel path fails deterministically, matching the validation
+        behaviour of the serial topological sort.
+        """
         step_map = {step.name: step for step in steps}
         levels: Dict[str, int] = {}
+        visiting: set = set()
+
+        for step in steps:
+            for dep in step.dependencies:
+                if dep not in step_map:
+                    raise ValidationError(
+                        f"Step '{step.name}' depends on unknown step '{dep}'"
+                    )
 
         def get_level(step_name: str) -> int:
             if step_name in levels:
                 return levels[step_name]
+            if step_name in visiting:
+                raise ValidationError(
+                    "Circular dependency detected in pipeline "
+                    f"(cycle passes through step '{step_name}')"
+                )
+            visiting.add(step_name)
             step = step_map[step_name]
             if not step.dependencies:
                 level = 0
             else:
                 level = max(get_level(dep) for dep in step.dependencies) + 1
+            visiting.discard(step_name)
             levels[step_name] = level
             return level
 
@@ -443,7 +515,9 @@ class ExecutionEngine:
         if not isinstance(data, dict):
             return False
         for step in layer:
-            if not getattr(step, "parallel_safe", False):
+            # Strict boolean check: truthy non-bool values (e.g. the
+            # string "false") must never opt a step into concurrency.
+            if getattr(step, "parallel_safe", False) is not True:
                 return False
             if getattr(step, "delta_mode", False):
                 return False
@@ -454,6 +528,7 @@ class ExecutionEngine:
         layer: List[PipelineStep],
         data: Any,
         effective_parallelism: int,
+        pipeline_name: Optional[str] = None,
         **options,
     ) -> Optional[Any]:
         """
@@ -484,6 +559,10 @@ class ExecutionEngine:
                     self._execute_step_with_retries,
                     step,
                     step_inputs[step.name],
+                    # Validate the dict-result contract inside the shared
+                    # lifecycle path, before completion is reported.
+                    pipeline_name=pipeline_name,
+                    require_dict_result=True,
                     **options,
                 ): step
                 for step in layer
@@ -500,20 +579,7 @@ class ExecutionEngine:
                     for pending in futures:
                         pending.cancel()
                 else:
-                    if not isinstance(step_result, dict):
-                        exc = ProcessingError(
-                            f"Step '{step.name}' is marked parallel_safe and must "
-                            f"return a dict so parallel results can be merged, got "
-                            f"{type(step_result).__name__}"
-                        )
-                        step.status = StepStatus.FAILED
-                        step.error = exc
-                        if failure is None:
-                            failure = exc
-                        for pending in futures:
-                            pending.cancel()
-                    else:
-                        step_results[step.name] = step_result
+                    step_results[step.name] = step_result
 
         if failure is not None:
             raise failure
@@ -530,9 +596,13 @@ class ExecutionEngine:
         Merge the results of a parallel layer into a single dict.
 
         Steps are processed in declaration order (never by completion
-        order). Keys written with equal values by multiple steps are
+        order). Keys whose values are unchanged from the shared base input
+        are skipped (handlers commonly return complete dicts such as
+        ``{**data, ...}``); only added or changed keys count as branch
+        writes. Keys written with equal values by multiple steps are
         allowed; conflicting values for the same key raise a
-        ProcessingError naming the key and both steps.
+        ProcessingError naming the key and both steps. Ambiguous equality
+        comparisons count as changed, never as unchanged.
         """
         merged = dict(base)
         key_sources: Dict[str, str] = {}
@@ -542,6 +612,10 @@ class ExecutionEngine:
             if step_result is None:
                 continue
             for key, value in step_result.items():
+                if key in base and self._values_equal(base[key], value):
+                    # Echo of the shared input: not a branch write, so it
+                    # cannot conflict with a sibling that changes the key.
+                    continue
                 if key in key_sources and not self._values_equal(
                     merged.get(key), value
                 ):
