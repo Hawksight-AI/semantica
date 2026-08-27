@@ -30,6 +30,8 @@
     "react-arborist": "^3.4.3",
     "react-dom": "^19.2.4",
     "react-dropzone": "^15.0.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "sigma": "^3.0.2",
     "vis-data": "^8.0.3",
     "vis-timeline": "^8.5.0"
