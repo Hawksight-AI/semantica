@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import type {
+  GraphDiagnosticsSnapshot,
   GraphEffectAvailability,
   GraphEffectToggle,
 } from "../types";
@@ -31,11 +32,27 @@ const EFFECT_ROWS: EffectRowConfig[] = [
     description: "Local emphasis around the hovered or selected node.",
   },
   {
+    key: "edgeLabelsEnabled",
+    label: "Edge Labels",
+    description: "Draw the relationship type on graph edges. Off restores label-free edges on dense graphs.",
+  },
+  {
     key: "legendEnabled",
     label: "Semantic Legend",
     description: "Compact semantic group legend for graph orientation.",
   },
 ];
+
+// Maps the effect toggle keys rendered by this plugin to their corresponding
+// availability keys in GraphDiagnosticsSnapshot["effectAvailability"]. Kept
+// local because this plugin only renders a subset of all effects.
+const EFFECT_AVAILABILITY_KEYS: Partial<Record<GraphEffectToggle, keyof GraphDiagnosticsSnapshot["effectAvailability"]>> = {
+  pathPulseEnabled: "pathPulse",
+  pathFlowEnabled: "pathFlow",
+  lensEnabled: "lens",
+  edgeLabelsEnabled: "edgeLabels",
+  legendEnabled: "legend",
+};
 
 function renderAvailabilityText(availability: GraphEffectAvailability) {
   if (availability.available) {
@@ -139,15 +156,9 @@ export const explorationEffectsPlugin: GraphPlugin = {
                 description={row.description}
                 checked={effectsState[row.key]}
                 availability={
-                  availability?.[
-                    row.key === "pathPulseEnabled"
-                      ? "pathPulse"
-                      : row.key === "pathFlowEnabled"
-                        ? "pathFlow"
-                        : row.key === "lensEnabled"
-                          ? "lens"
-                          : "legend"
-                  ] ?? {
+                  (EFFECT_AVAILABILITY_KEYS[row.key] !== undefined
+                    ? availability?.[EFFECT_AVAILABILITY_KEYS[row.key]!]
+                    : undefined) ?? {
                     enabled: effectsState[row.key],
                     available: false,
                     reason: "Waiting for graph runtime",

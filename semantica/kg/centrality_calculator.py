@@ -43,7 +43,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from collections import defaultdict, deque
+from collections import deque
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -51,6 +51,7 @@ from scipy import sparse
 
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from ._graph_view import build_adjacency, build_graph_view
 
 
 class CentralityCalculator:
@@ -518,76 +519,15 @@ class CentralityCalculator:
 
     def _build_adjacency(self, graph) -> Dict[str, List[str]]:
         """Build adjacency list from graph."""
-        adjacency = defaultdict(list)
-
-        # Extract relationships
-        relationships = []
-        if hasattr(graph, "relationships"):
-            relationships = graph.relationships
-        elif hasattr(graph, "get_relationships"):
-            relationships = graph.get_relationships()
-        elif isinstance(graph, dict):
-            relationships = graph.get("relationships", graph.get("edges", []))
-        elif hasattr(graph, "edges") and not callable(graph.edges):
-            # ContextGraph-style: edges is a list of dataclass objects with source_id/target_id
-            for edge in (graph.edges or []):
-                if isinstance(edge, dict):
-                    src = edge.get("source") or edge.get("source_id")
-                    tgt = edge.get("target") or edge.get("target_id")
-                else:
-                    src = getattr(edge, "source_id", None) or getattr(edge, "source", None)
-                    tgt = getattr(edge, "target_id", None) or getattr(edge, "target", None)
-                if src and tgt:
-                    src, tgt = str(src), str(tgt)
-                    if tgt not in adjacency[src]:
-                        adjacency[src].append(tgt)
-                    if src not in adjacency[tgt]:
-                        adjacency[tgt].append(src)
-            return dict(adjacency)
-
-        # Build adjacency
-        for rel in relationships:
-            # Handle tuple/list edges (e.g., from NetworkX)
-            if isinstance(rel, (tuple, list)) and len(rel) >= 2:
-                source, target = str(rel[0]), str(rel[1])
-                if source and target:
-                    if target not in adjacency[source]:
-                        adjacency[source].append(target)
-                    if source not in adjacency[target]:
-                        adjacency[target].append(source)
-                continue
-            source = rel.get("source") or rel.get("subject")
-            target = rel.get("target") or rel.get("object")
-
-            # Extract IDs if objects are passed
-            if source and not isinstance(source, (str, int, float)):
-                if isinstance(source, dict):
-                    source = source.get("id") or source.get("entity_id") or source.get("text") or str(source)
-                else:
-                    source = getattr(source, "id", getattr(source, "text", str(source)))
-            
-            if target and not isinstance(target, (str, int, float)):
-                if isinstance(target, dict):
-                    target = target.get("id") or target.get("entity_id") or target.get("text") or str(target)
-                else:
-                    target = getattr(target, "id", getattr(target, "text", str(target)))
-
-            if source and target:
-                if target not in adjacency[source]:
-                    adjacency[source].append(target)
-                if source not in adjacency[target]:
-                    adjacency[target].append(source)
-
-        return dict(adjacency)
+        return build_adjacency(graph)
 
     def _to_networkx(self, graph):
         """Convert graph to NetworkX format."""
-        adjacency = self._build_adjacency(graph)
+        view = build_graph_view(graph)
         nx_graph = self.nx.Graph()
 
-        for source, targets in adjacency.items():
-            for target in targets:
-                nx_graph.add_edge(source, target)
+        nx_graph.add_nodes_from(view.nodes)
+        nx_graph.add_edges_from(view.edges)
 
         return nx_graph
 

@@ -108,6 +108,7 @@ License: MIT
 
 import re
 import difflib
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -139,6 +140,47 @@ _result_cache = ExtractionCache(
 if not config.get("cache_enabled", True):
     _result_cache.enabled = False
 
+# Generation kwargs that affect provider output and must therefore be part of
+# the cache key. This is the union of every generation-affecting parameter
+# read across providers.py, including params picked up outside _add_if_set
+# (e.g. AnthropicProvider's manual pass-through loop). Sensitive values
+# (api_key, token, etc.) are already filtered out by
+# ExtractionCache._generate_key, so they need not be excluded here.
+_GENERATION_CACHE_KEYS = frozenset({
+    "max_tokens",
+    "max_completion_tokens",
+    "temperature",
+    "top_p",
+    "top_k",
+    "seed",
+    "frequency_penalty",
+    "presence_penalty",
+    "stop",
+    "stop_sequences",  # Anthropic/Gemini spelling of "stop"
+    "logit_bias",
+    "user",
+    "system",  # Anthropic system prompt
+    "metadata",  # Anthropic request metadata
+    "candidate_count",  # Gemini
+    "repeat_penalty",  # Ollama
+    "num_ctx",  # Ollama
+    "context_window",  # Ollama alias for num_ctx
+})
+
+
+def _generation_cache_params(kwargs: dict) -> dict:
+    """Return the subset of *kwargs* that affects generation output.
+
+    Only keys listed in ``_GENERATION_CACHE_KEYS`` are included so that
+    irrelevant or sensitive caller kwargs do not pollute the cache key.
+    Values that are ``None`` are omitted; a caller passing
+    ``temperature=None`` is equivalent to not passing it at all.
+    """
+    return {
+        k: v for k, v in kwargs.items()
+        if k in _GENERATION_CACHE_KEYS and v is not None
+    }
+
 # Try to import spaCy
 from ..utils.helpers import safe_import
 
@@ -152,6 +194,39 @@ spacy, SPACY_AVAILABLE = safe_import("spacy")
 # Global cache for spacy model and text embedder to avoid reloading
 _nlp_cache = None
 _embedder_cache = None
+
+# Cache for models loaded by name, so extraction functions do not pay
+# spacy.load() on every call. Entries record the spacy module they were loaded
+# from: tests patch `methods.spacy` with a mock, and an entry produced by a
+# different module object must not be handed back to a later caller.
+_spacy_model_cache: Dict[str, Tuple[Any, Any]] = {}
+_spacy_model_cache_lock = threading.Lock()
+
+
+def load_spacy_model(name: str):
+    """Load a spaCy model once per process, keyed by model name.
+
+    Raises whatever ``spacy.load`` raises (``OSError`` for a missing model), so
+    callers keep their existing fallback behavior.
+    """
+    cached = _spacy_model_cache.get(name)
+    if cached is not None and cached[0] is spacy:
+        return cached[1]
+
+    with _spacy_model_cache_lock:
+        cached = _spacy_model_cache.get(name)
+        if cached is not None and cached[0] is spacy:
+            return cached[1]
+        nlp = spacy.load(name)
+        _spacy_model_cache[name] = (spacy, nlp)
+        return nlp
+
+
+def clear_spacy_model_cache() -> None:
+    """Drop every cached spaCy model. Intended for tests."""
+    with _spacy_model_cache_lock:
+        _spacy_model_cache.clear()
+
 
 def get_text_embedder():
     """
@@ -247,6 +322,8 @@ def find_best_match_index(text: str, candidates: List[str]) -> Tuple[int, float]
     Find the best matching candidate index and score.
     Uses hybrid similarity approach: Exact -> Synonym -> Substring -> Embeddings -> Vector -> Fuzzy.
     Optimized for batch processing to avoid redundant embedding calculations.
+    Embedding/vector similarity stages are best-effort; if they fail, matching falls back
+    to remaining strategies instead of raising.
     
     Returns:
         Tuple[int, float]: (best_candidate_index, best_score). Index is -1 if no candidates.
@@ -370,10 +447,12 @@ def find_best_match_index(text: str, candidates: List[str]) -> Tuple[int, float]
         vector_idx = -1
         
         if nlp and nlp.vocab.vectors.shape[0] > 0:
+            failing_candidate_idx = -1
             try:
                 doc = nlp(text)
                 if doc.vector_norm:
                     for i, candidate in enumerate(candidates):
+                        failing_candidate_idx = i
                         if not candidate: continue
                         cand_doc = nlp(candidate)
                         if cand_doc.vector_norm:
@@ -382,7 +461,13 @@ def find_best_match_index(text: str, candidates: List[str]) -> Tuple[int, float]
                                 vector_score = score
                                 vector_idx = i
             except Exception:
-                pass
+                logger.debug(
+                    "Vector similarity calculation failed at candidate index %s; continuing with fallback scoring.",
+                    failing_candidate_idx if failing_candidate_idx >= 0 else "N/A",
+                    exc_info=True,
+                )
+                vector_score = 0.0
+                vector_idx = -1
         
         if vector_score > best_score:
             best_score = vector_score
@@ -676,11 +761,11 @@ def extract_entities_ml(
         return extract_entities_pattern(text, **kwargs)
 
     try:
-        nlp = spacy.load(model)
+        nlp = load_spacy_model(model)
     except OSError:
         logger.warning(f"spaCy model {model} not found, using en_core_web_sm")
         try:
-            nlp = spacy.load("en_core_web_sm")
+            nlp = load_spacy_model("en_core_web_sm")
         except OSError:
             logger.warning(
                 "spaCy model not available, falling back to pattern extraction"
@@ -745,9 +830,11 @@ def extract_entities_huggingface(
     """
     loader = HuggingFaceModelLoader(device=device)
     # Pass kwargs (like aggregation_strategy) to load_ner_model
-    model_obj = loader.load_ner_model(model, **kwargs)
+    loader_kwargs = {
+        key: value for key, value in kwargs.items() if key != "huggingface_model"
+    }
+    model_obj = loader.load_ner_model(model, **loader_kwargs)
     results = loader.extract_entities(model_obj, text)
-
     entities = []
     
     # Check if manual aggregation is needed (raw IOB tags detected)
@@ -911,6 +998,7 @@ def extract_entities_llm(
         "max_text_length": max_text_length,
         "structured_output_mode": structured_output_mode,
         "entity_types": kwargs.get("entity_types"),
+        **_generation_cache_params(kwargs),
     }
     cached_result = _result_cache.get("entities", text, **cache_params)
     if cached_result is not None:
@@ -1076,47 +1164,6 @@ Text to extract from:
                 raise
             raise ProcessingError(error_msg) from e
         return []
-
-
-def _parse_entity_result(result: Any, provider: str, model: Optional[str]) -> List[Entity]:
-    """Helper to parse raw LLM result into Entity objects."""
-    entities = []
-    items = []
-    
-    if isinstance(result, list):
-        items = result
-    elif isinstance(result, dict):
-        # Handle cases where LLM wraps the list in a key
-        for key in ["entities", "data", "results"]:
-            if key in result and isinstance(result[key], list):
-                items = result[key]
-                break
-        if not items and "text" in result: # Single object instead of list
-            items = [result]
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-            
-        text = item.get("text", "")
-        if not text:
-            continue
-            
-        entities.append(
-            Entity(
-                text=text,
-                label=item.get("label", "UNKNOWN"),
-                start_char=item.get("start", 0),
-                end_char=item.get("end", 0),
-                confidence=item.get("confidence", 0.9),
-                metadata={
-                    "provider": provider,
-                    "model": model,
-                    "extraction_method": "llm",
-                },
-            )
-        )
-    return entities
 
 
 def _extract_entities_chunked(
@@ -1400,12 +1447,12 @@ def extract_relations_similarity(
             # Prefer larger models for vectors
             for model_name in ["en_core_web_lg", "en_core_web_md", "en_core_web_sm"]:
                 if spacy.util.is_package(model_name):
-                    nlp = spacy.load(model_name)
+                    nlp = load_spacy_model(model_name)
                     break
             if not nlp:
                  # Try loading what we have
                  try:
-                     nlp = spacy.load("en_core_web_sm") 
+                     nlp = load_spacy_model("en_core_web_sm") 
                  except:
                      pass
         except Exception:
@@ -1505,7 +1552,7 @@ def extract_relations_dependency(
         return extract_relations_pattern(text, entities, **kwargs)
 
     try:
-        nlp = spacy.load(model)
+        nlp = load_spacy_model(model)
     except OSError:
         logger.warning(f"spaCy model {model} not found")
         return extract_relations_pattern(text, entities, **kwargs)
@@ -1701,7 +1748,8 @@ def extract_relations_llm(
         "relation_types": kwargs.get("relation_types"),
         "extract_temporal_bounds": extract_temporal_bounds,
         # Include entities hash/str in cache key implicitly via **cache_params
-        "entities_hash": hash(tuple(sorted([e.text for e in entities]))) if entities else 0
+        "entities_hash": hash(tuple(sorted([e.text for e in entities]))) if entities else 0,
+        **_generation_cache_params(kwargs),
     }
     cached_result = _result_cache.get("relations", text, **cache_params)
     if cached_result is not None:
@@ -1901,13 +1949,10 @@ Entities found in text: {entities_str}"""
                 "[methods.extract_relations_llm] Calling llm.generate_typed (%s/%s)...",
                 provider, model,
             )
-        # Only forward minimal, safe parameters to provider calls
-        call_kwargs = {}
-        if "temperature" in kwargs:
-            call_kwargs["temperature"] = kwargs["temperature"]
-        if "verbose" in kwargs:
-            call_kwargs["verbose"] = kwargs["verbose"]
-
+        # Forward all caller-supplied generation kwargs so they reach
+        # generate_typed and the underlying provider API. max_retries is
+        # always set from the explicit parameter.
+        call_kwargs = kwargs.copy()
         call_kwargs["max_retries"] = max_retries
 
         # Select schema based on whether temporal extraction is requested
@@ -2359,7 +2404,8 @@ def extract_triplets_llm(
         "triplet_types": kwargs.get("triplet_types"),
         # Include entities/relations hash in cache key implicitly via **cache_params
         "entities_hash": hash(tuple(sorted([e.text for e in entities]))) if entities else 0,
-        "relations_hash": hash(tuple(sorted([str(r) for r in relations]))) if relations else 0
+        "relations_hash": hash(tuple(sorted([str(r) for r in relations]))) if relations else 0,
+        **_generation_cache_params(kwargs),
     }
     cached_result = _result_cache.get("triplets", text, **cache_params)
     if cached_result is not None:
@@ -2511,48 +2557,6 @@ Text to extract from:
                 raise
             raise ProcessingError(error_msg) from e
         return []
-
-
-def _parse_triplet_result(result: Any, provider: str, model: Optional[str]) -> List[Triplet]:
-    """Helper to parse raw LLM result into Triplet objects."""
-    triplets = []
-    items = []
-    
-    if isinstance(result, list):
-        items = result
-    elif isinstance(result, dict):
-        for key in ["triplets", "data", "results"]:
-            if key in result and isinstance(result[key], list):
-                items = result[key]
-                break
-        if not items and "subject" in result:
-            items = [result]
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-            
-        subject = item.get("subject", "")
-        predicate = item.get("predicate", "")
-        obj = item.get("object", "")
-        
-        if not subject or not predicate or not obj:
-            continue
-            
-        triplets.append(
-            Triplet(
-                subject=str(subject),
-                predicate=str(predicate),
-                object=str(obj),
-                confidence=item.get("confidence", 0.9),
-                metadata={
-                    "provider": provider,
-                    "model": model,
-                    "extraction_method": "llm",
-                },
-            )
-        )
-    return triplets
 
 
 def _extract_triplets_chunked(

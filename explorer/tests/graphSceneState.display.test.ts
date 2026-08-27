@@ -1061,3 +1061,198 @@ test("checkGroupedViewAvailability returns available when communities exist", ()
   assert.equal(result.reason, null);
 });
 
+
+// ── #1009: edge label data-path regression tests ─────────────────────────────
+
+test("resolveDisplayGraph parallel-bundle preserves edgeType on aggregated edge", () => {
+  addNode("a");
+  addNode("b");
+  batchMergeEdges([
+    { id: "e1", source: "a", target: "b", attributes: { edgeType: "causes", weight: 1, properties: {} } },
+    { id: "e2", source: "a", target: "b", attributes: { edgeType: "causes", weight: 2, properties: {} } },
+  ]);
+
+  const { graph: displayGraph } = resolveDisplayGraph("", [], [], "full", { aggregationEnabled: true });
+  assert.equal(displayGraph.size, 1);
+
+  const edgeId = displayGraph.edges()[0];
+  const attrs = displayGraph.getEdgeAttributes(edgeId) as { edgeType?: string; isAggregated?: boolean };
+  assert.equal(attrs.isAggregated, true);
+  // The aggregated representative must carry the relationship text through to
+  // the edgeReducer's label assignment.
+  assert.equal(typeof attrs.edgeType, "string");
+  assert.ok((attrs.edgeType ?? "").length > 0, "aggregated edge must have a non-empty edgeType");
+});
+
+test("resolveDisplayGraph parallel-bundle picks dominant edgeType across mixed types", () => {
+  addNode("a");
+  addNode("b");
+  batchMergeEdges([
+    { id: "e1", source: "a", target: "b", attributes: { edgeType: "inhibits", weight: 1, properties: {} } },
+    { id: "e2", source: "a", target: "b", attributes: { edgeType: "inhibits", weight: 1, properties: {} } },
+    { id: "e3", source: "a", target: "b", attributes: { edgeType: "activates", weight: 1, properties: {} } },
+  ]);
+
+  const { graph: displayGraph } = resolveDisplayGraph("", [], [], "full", { aggregationEnabled: true });
+  const edgeId = displayGraph.edges()[0];
+  const attrs = displayGraph.getEdgeAttributes(edgeId) as { edgeType?: string; dominantEdgeType?: string };
+  // "inhibits" appears twice so it must be the dominant type.
+  assert.equal(attrs.edgeType, "inhibits");
+  assert.equal(attrs.dominantEdgeType, "inhibits");
+});
+
+test("resolveDisplayGraph grouped view community edges carry non-empty edgeType", () => {
+  const left = ["g1", "g2", "g3", "g4"];
+  const right = ["h1", "h2", "h3", "h4"];
+  [...left, ...right].forEach((nodeId, index) => addNode(nodeId, index < left.length ? "left" : "right"));
+
+  let edgeIndex = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    for (let j = 0; j < left.length; j += 1) {
+      if (i !== j) {
+        batchMergeEdges([{
+          id: `lg-${edgeIndex++}`,
+          source: left[i],
+          target: left[j],
+          attributes: { edgeType: "co_occurs", weight: 3, properties: {} },
+        }]);
+      }
+    }
+  }
+  for (let i = 0; i < right.length; i += 1) {
+    for (let j = 0; j < right.length; j += 1) {
+      if (i !== j) {
+        batchMergeEdges([{
+          id: `rg-${edgeIndex++}`,
+          source: right[i],
+          target: right[j],
+          attributes: { edgeType: "co_occurs", weight: 3, properties: {} },
+        }]);
+      }
+    }
+  }
+  batchMergeEdges([{ id: "bridge-g", source: "g1", target: "h1", attributes: { edgeType: "interacts_with", weight: 0.1, properties: {} } }]);
+
+  const { graph: displayGraph, state } = resolveDisplayGraph("", [], [], "grouped", { aggregationEnabled: true });
+  assert.equal(state.groupedViewAvailable, true);
+
+  const communityEdges = displayGraph.edges().filter((edgeId) => {
+    const attrs = displayGraph.getEdgeAttributes(edgeId) as { bundleKind?: string };
+    return attrs.bundleKind === "community";
+  });
+  assert.ok(communityEdges.length > 0, "expected at least one community bundle edge");
+
+  for (const edgeId of communityEdges) {
+    const attrs = displayGraph.getEdgeAttributes(edgeId) as { edgeType?: string };
+    assert.equal(typeof attrs.edgeType, "string");
+    assert.ok((attrs.edgeType ?? "").length > 0, `community edge ${edgeId} must have a non-empty edgeType`);
+  }
+});
+
+test("resolveDisplayGraph raw edge preserves exact edgeType string for label rendering", () => {
+  addNode("src");
+  addNode("tgt");
+  batchMergeEdges([{
+    id: "raw-1",
+    source: "src",
+    target: "tgt",
+    attributes: { edgeType: "works_for", weight: 1, properties: {} },
+  }]);
+
+  // In full view without aggregation the edge passes through unchanged.
+  const { graph: displayGraph } = resolveDisplayGraph("", [], [], "full", { aggregationEnabled: false });
+  assert.equal(displayGraph.size, 1);
+
+  const edgeId = displayGraph.edges()[0];
+  const attrs = displayGraph.getEdgeAttributes(edgeId) as { edgeType?: string };
+  assert.equal(attrs.edgeType, "works_for");
+});
+
+test("resolveDisplayGraph does not produce empty-string edgeType on aggregated edges when source has empty type", () => {
+  addNode("a");
+  addNode("b");
+  // Simulate an API response where type is empty string — the aggregation
+  // path must not propagate a blank label.
+  batchMergeEdges([
+    { id: "e-empty-1", source: "a", target: "b", attributes: { edgeType: "", weight: 1, properties: {} } },
+    { id: "e-empty-2", source: "a", target: "b", attributes: { edgeType: "", weight: 1, properties: {} } },
+  ]);
+
+  const { graph: displayGraph } = resolveDisplayGraph("", [], [], "full", { aggregationEnabled: true });
+  const edgeId = displayGraph.edges()[0];
+  const attrs = displayGraph.getEdgeAttributes(edgeId) as {
+    edgeType?: string;
+    isAggregated?: boolean;
+  };
+  assert.equal(attrs.isAggregated, true);
+  // The aggregation falls back to "related_to" when all source edgeTypes are
+  // empty, so the rendered label should never be an empty string.
+  assert.equal(attrs.edgeType, "related_to");
+});
+
+test("resolveEdgeElementStyle hidden class produces hidden:true for suppressed edges", () => {
+  // Verify the data condition the edgeReducer relies on: hidden-classified
+  // edges must have hidden:true so that the label assignment sets undefined.
+  const style = resolveEdgeElementStyle(
+    GRAPH_THEME,
+    "overview",
+    "inactive",
+    {
+      edgeType: "causes",
+      weight: 1,
+      properties: {},
+      edgeVariant: "line",
+      visualPriority: 0.05,
+      baseSize: 0.3,
+    },
+    "source",
+    "target",
+    "full",
+    "inactive-edge",
+    "hidden",
+  );
+  assert.equal(style.hidden, true);
+});
+
+// ── #1009 maintainer-blocking regression: single-edge empty edgeType ─────────
+
+test("resolveDisplayGraph single-edge normalizes empty-string edgeType to related_to", () => {
+  addNode("a");
+  addNode("b");
+  // One edge only — exercises the entries.length === 1 path in aggregateDisplayGraph.
+  batchMergeEdges([{
+    id: "e-single-empty",
+    source: "a",
+    target: "b",
+    attributes: { edgeType: "", weight: 1, properties: {} },
+  }]);
+
+  const { graph: displayGraph } = resolveDisplayGraph("", [], [], "full", { aggregationEnabled: true });
+  assert.equal(displayGraph.size, 1);
+
+  const edgeId = displayGraph.edges()[0];
+  const attrs = displayGraph.getEdgeAttributes(edgeId) as { edgeType?: string; dominantEdgeType?: string };
+  assert.equal(attrs.edgeType, "related_to",
+    "single-edge path must normalize empty edgeType to the canonical fallback");
+  assert.equal(attrs.dominantEdgeType, "related_to",
+    "single-edge dominantEdgeType must also be normalized");
+});
+
+test("resolveDisplayGraph single-edge preserves a valid non-empty edgeType unchanged", () => {
+  addNode("a");
+  addNode("b");
+  batchMergeEdges([{
+    id: "e-single-valid",
+    source: "a",
+    target: "b",
+    attributes: { edgeType: "works_for", weight: 1, properties: {} },
+  }]);
+
+  const { graph: displayGraph } = resolveDisplayGraph("", [], [], "full", { aggregationEnabled: true });
+  assert.equal(displayGraph.size, 1);
+
+  const edgeId = displayGraph.edges()[0];
+  const attrs = displayGraph.getEdgeAttributes(edgeId) as { edgeType?: string };
+  assert.equal(attrs.edgeType, "works_for",
+    "single-edge path must not alter a valid relationship type");
+});

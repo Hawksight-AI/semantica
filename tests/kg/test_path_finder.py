@@ -241,7 +241,51 @@ class TestPathFinder:
         if len(paths) > 1:
             lengths = [self.finder.path_length(multi_path_graph, path) for path in paths]
             assert all(lengths[i] <= lengths[i+1] for i in range(len(lengths)-1))
-    
+
+    def test_find_k_shortest_paths_preserves_graph(self):
+        """Test k-shortest path search does not mutate the input graph."""
+        graph = nx.Graph()
+        graph.add_edges_from([
+            ("A", "X"), ("X", "Y"), ("Y", "E"),
+            ("A", "B"), ("B", "C"), ("C", "E"),
+        ])
+        original_nodes = set(graph.nodes)
+        original_edges = set(graph.edges)
+
+        paths = self.finder.find_k_shortest_paths(graph, "A", "E", k=5)
+
+        assert len(paths) == 2
+        assert set(graph.nodes) == original_nodes
+        assert set(graph.edges) == original_edges
+
+    def test_find_k_shortest_paths_returns_loopless_paths(self):
+        """Test k-shortest paths do not repeat nodes."""
+        graph = nx.Graph()
+        graph.add_edges_from([
+            ("A", "D"), ("A", "E"), ("A", "C"),
+            ("B", "D"), ("B", "C"),
+        ])
+
+        paths = self.finder.find_k_shortest_paths(graph, "A", "B", k=5)
+
+        assert paths == [["A", "C", "B"], ["A", "D", "B"]]
+        assert all(len(path) == len(set(path)) for path in paths)
+
+    def test_dijkstra_exclusion_respects_undirected_traversal(self):
+        """Test exclusions apply in both directions for undirected traversal."""
+        graph = nx.DiGraph()
+        graph.add_edge("A", "B")
+
+        path = self.finder._dijkstra_shortest_path(
+            graph,
+            "B",
+            "A",
+            directed=False,
+            excluded_edges={("A", "B")},
+        )
+
+        assert path == []
+
     def test_find_k_shortest_paths_no_path(self):
         """Test finding k shortest paths with no path available."""
         paths = self.finder.find_k_shortest_paths(self.disconnected_graph, "A", "D", k=3)

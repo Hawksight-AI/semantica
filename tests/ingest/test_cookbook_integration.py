@@ -10,19 +10,20 @@ class TestCookbookIntegration:
     
     @pytest.fixture
     def mock_mcp_server(self):
-        # We need to patch both httpx and requests because MCPClient tries httpx first
-        with patch("httpx.post") as mock_httpx_post, \
-             patch("requests.post") as mock_requests_post:
-            
-            def side_effect(url, json=None, **kwargs):
+        # MCPClient._send_request_http now routes through request_with_ssrf_guard,
+        # which calls requests.request (not httpx.post / requests.post directly).
+        # Patch at the point where the guard issues the actual HTTP call.
+        with patch("requests.Session.request") as mock_request:
+
+            def side_effect(method, url, json=None, **kwargs):
                 if not json:
                     return MagicMock()
-                
-                method = json.get("method")
+
+                rpc_method = json.get("method")
                 response_mock = MagicMock()
                 response_mock.status_code = 200
-                
-                if method == "initialize":
+
+                if rpc_method == "initialize":
                     response_mock.json.return_value = {
                         "jsonrpc": "2.0",
                         "id": json.get("id"),
@@ -32,7 +33,7 @@ class TestCookbookIntegration:
                             "serverInfo": {"name": "test_server", "version": "1.0"}
                         }
                     }
-                elif method == "resources/list":
+                elif rpc_method == "resources/list":
                     response_mock.json.return_value = {
                         "jsonrpc": "2.0",
                         "id": json.get("id"),
@@ -44,7 +45,7 @@ class TestCookbookIntegration:
                             ]
                         }
                     }
-                elif method == "tools/list":
+                elif rpc_method == "tools/list":
                     response_mock.json.return_value = {
                         "jsonrpc": "2.0",
                         "id": json.get("id"),
@@ -56,7 +57,7 @@ class TestCookbookIntegration:
                             ]
                         }
                     }
-                elif method == "resources/read":
+                elif rpc_method == "resources/read":
                     response_mock.json.return_value = {
                         "jsonrpc": "2.0",
                         "id": json.get("id"),
@@ -66,13 +67,13 @@ class TestCookbookIntegration:
                             ]
                         }
                     }
-                elif method == "tools/call":
+                elif rpc_method == "tools/call":
                     tool_name = json.get("params", {}).get("name")
                     content = [{"type": "text", "text": "Tool Output"}]
-                    
+
                     if tool_name == "query_inventory":
                         content = [{"type": "text", "text": '{"warehouse_id": "WH001", "level": 100}'}]
-                        
+
                     response_mock.json.return_value = {
                         "jsonrpc": "2.0",
                         "id": json.get("id"),
@@ -86,12 +87,11 @@ class TestCookbookIntegration:
                         "id": json.get("id"),
                         "result": {}
                     }
-                    
+
                 return response_mock
-            
-            mock_httpx_post.side_effect = side_effect
-            mock_requests_post.side_effect = side_effect
-            yield mock_httpx_post
+
+            mock_request.side_effect = side_effect
+            yield mock_request
 
     def test_financial_data_integration(self, mock_mcp_server):
         """
