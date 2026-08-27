@@ -44,6 +44,19 @@ def _substitute_variables(template: str, bindings: Dict[str, str]) -> str:
     return re.sub(r"\?(\w+)", _replace, template)
 
 
+def _make_activation_key(
+    rule_id: str, bindings: Dict[str, Any], fact_tokens: List[str]
+) -> Tuple[str, Tuple[Tuple[str, str], ...], Tuple[str, ...]]:
+    """Return a stable identity for one concrete rule activation."""
+    canonical_bindings = tuple(
+        sorted(
+            (str(name), f"{type(value).__qualname__}:{value!r}")
+            for name, value in bindings.items()
+        )
+    )
+    return rule_id, canonical_bindings, tuple(sorted(str(token) for token in fact_tokens))
+
+
 def _parse_fact(fact: str) -> Optional[Tuple[str, List[str]]]:
     """Parse a ``Predicate(arg1, arg2, ...)`` fact string.
 
@@ -296,6 +309,9 @@ class Reasoner:
         self.rules: List[Rule] = []
         self.facts: Set[str] = set()
         self.rule_counter = 0
+        self._fired_activations: Set[
+            Tuple[str, Tuple[Tuple[str, str], ...], Tuple[str, ...]]
+        ] = set()
 
         # Optional knowledge graph for AssertAction(write_back=True) targets.
         self.knowledge_graph = kwargs.get("knowledge_graph")
@@ -503,8 +519,8 @@ class Reasoner:
         new_facts_added = True
         max_iterations = self.config.get("max_iterations", 50)
         iteration = 0
-        # Activations (rule + concrete bindings) whose actions have already
-        # fired, tracked across ALL passes. Actions are side-effecting and must
+        # Activations (rule + concrete bindings + matched facts) whose actions
+        # have already fired. Actions are side-effecting and must
         # fire exactly once per distinct match, decoupled from whether the
         # rule's *conclusion* is new. This fixes two failure modes:
         #   * A valid binding whose conclusion is already known (or duplicated
@@ -512,8 +528,6 @@ class Reasoner:
         #   * A RetractAction that removes a premise of its own rule previously
         #     re-fired every pass, iterating to max_iterations. Recording the
         #     activation means it fires once and stops driving iterations.
-        fired_activations: Set[Tuple[str, Tuple[Tuple[str, str], ...]]] = set()
-        
         while new_facts_added and iteration < max_iterations:
             new_facts_added = False
             iteration += 1
@@ -542,12 +556,13 @@ class Reasoner:
                     # concrete bindings so distinct matches each fire, but a
                     # repeated match (same bindings across passes) does not.
                     if rule.actions or rule.handler is not None:
-                        activation_key = (
+                        activation_key = _make_activation_key(
                             rule.rule_id,
-                            tuple(sorted(bindings.items())),
+                            bindings,
+                            matched_facts,
                         )
-                        if activation_key not in fired_activations:
-                            fired_activations.add(activation_key)
+                        if activation_key not in self._fired_activations:
+                            self._fired_activations.add(activation_key)
                             self._fire_actions(rule, bindings)
 
                     if conclusion in pass_results:
@@ -774,11 +789,16 @@ class Reasoner:
         """Substitute variables in a pattern with bound values."""
         return _substitute_variables(pattern, bindings)
         
+    def reset_action_history(self) -> None:
+        """Allow previously fired rule activations to execute their actions again."""
+        self._fired_activations.clear()
+
     def clear(self) -> None:
-        """Clear facts and rules."""
+        """Clear facts, rules, and action activation history."""
         self.facts.clear()
         self.rules.clear()
         self.rule_counter = 0
+        self.reset_action_history()
 
     def reset(self) -> None:
         """Alias for clear()."""

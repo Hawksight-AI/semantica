@@ -120,6 +120,72 @@ class TestRuleActions(unittest.TestCase):
         self.assertEqual(entry["bindings"]["x"], "John")
         self.assertIn("Adult(John)", entry["description"])
 
+    def test_repeated_forward_chain_fires_same_activation_once(self):
+        calls = []
+
+        rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [
+            CallAction(lambda bindings, reasoner: calls.append(dict(bindings)))
+        ]
+        self.reasoner.add_fact("Person(John)")
+
+        self.reasoner.forward_chain()
+        self.reasoner.forward_chain()
+
+        self.assertEqual(calls, [{"x": "John"}])
+
+    def test_repeated_forward_chain_records_provenance_once(self):
+        reasoner = Reasoner(provenance=True)
+        rule = reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [AssertAction("Verified(?x)")]
+        reasoner.add_fact("Person(John)")
+
+        reasoner.forward_chain()
+        reasoner.forward_chain()
+
+        self.assertEqual(len(reasoner.action_log), 1)
+
+    def test_new_binding_creates_a_new_activation(self):
+        calls = []
+        rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [
+            CallAction(lambda bindings, reasoner: calls.append(bindings["x"]))
+        ]
+        self.reasoner.add_fact("Person(John)")
+
+        self.reasoner.forward_chain()
+        self.reasoner.add_fact("Person(Jane)")
+        self.reasoner.forward_chain()
+
+        self.assertCountEqual(calls, ["John", "Jane"])
+
+    def test_reset_action_history_allows_deliberate_replay(self):
+        calls = []
+        rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [CallAction(lambda bindings, reasoner: calls.append("called"))]
+        self.reasoner.add_fact("Person(John)")
+
+        self.reasoner.forward_chain()
+        self.reasoner.reset_action_history()
+        self.reasoner.forward_chain()
+
+        self.assertEqual(calls, ["called", "called"])
+
+    def test_clear_resets_action_history(self):
+        calls = []
+        rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [CallAction(lambda bindings, reasoner: calls.append("called"))]
+        self.reasoner.add_fact("Person(John)")
+        self.reasoner.forward_chain()
+
+        self.reasoner.clear()
+        rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [CallAction(lambda bindings, reasoner: calls.append("called"))]
+        self.reasoner.add_fact("Person(John)")
+        self.reasoner.forward_chain()
+
+        self.assertEqual(calls, ["called", "called"])
+
     def test_no_provenance_log_when_disabled(self):
         rule = self.reasoner.add_rule(
             "IF Person(?x) AND Parent(?x, ?y) THEN Child(?y, ?x)"
