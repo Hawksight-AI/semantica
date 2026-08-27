@@ -157,7 +157,7 @@ class TestNotebook02DataIngestion:
         repo_ingestor = RepoIngestor()
         with patch.object(repo_ingestor, 'ingest_repository') as mock_ingest:
             mock_ingest.return_value = {'name': 'semantica'}
-            repo_data = repo_ingestor.ingest_repository("https://github.com/Hawksight-AI/semantica.git")
+            repo_data = repo_ingestor.ingest_repository("https://github.com/semantica-agi/semantica.git")
             assert repo_data['name'] == 'semantica'
 
     def test_07_email_ingestion(self):

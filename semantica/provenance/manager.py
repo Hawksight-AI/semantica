@@ -26,7 +26,7 @@ License: MIT
 
 from typing import Optional, List, Dict, Any, Union
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import contextmanager
 import copy
 import inspect
@@ -36,7 +36,12 @@ import threading
 from .schemas import ProvenanceEntry, SourceReference, AgentRecord, ActivityRecord
 from .storage import ProvenanceStorage, InMemoryStorage, SQLiteStorage
 from .integrity import compute_checksum, verify_checksum
+from ..utils.helpers import to_utc_datetime, utc_now_iso
 from ..utils.logging import get_logger
+
+#: Sort key for an entry whose timestamp cannot be read as one, so an
+#: unreadable value orders first instead of raising during a sort.
+_EPOCH = datetime(1, 1, 1, tzinfo=timezone.utc)
 
 # Issue #825, Part B Tier 3 — configurable base URI for export_prov(), shared
 # with RDFExporter's NamespaceManager "semantica" entry (semantica/export/
@@ -363,8 +368,8 @@ class ProvenanceManager:
                     source_quote=kwargs.get("source_quote"),
                     confidence=kwargs.get("confidence", 1.0),
                     metadata=metadata or {},
-                    first_seen=existing.first_seen if existing else datetime.utcnow().isoformat(),
-                    last_updated=datetime.utcnow().isoformat(),
+                    first_seen=existing.first_seen if existing else utc_now_iso(),
+                    last_updated=utc_now_iso(),
                     parent_entity_id=parent_id,
                     used_entities=list(kwargs.get("used_entities", [])),
                     activity_started_at_time=activity_info["activity_started_at_time"],
@@ -455,8 +460,8 @@ class ProvenanceManager:
             source_location=kwargs.get("source_location"),
             confidence=kwargs.get("confidence", 1.0),
             metadata=metadata or {},
-            first_seen=datetime.utcnow().isoformat(),
-            last_updated=datetime.utcnow().isoformat(),
+            first_seen=utc_now_iso(),
+            last_updated=utc_now_iso(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
             acted_on_behalf_of=kwargs.get("acted_on_behalf_of"),
@@ -534,7 +539,7 @@ class ProvenanceManager:
             # split (issue #825, Part A item 4).
             derived_from_id=parent_chunk_id,
             metadata=metadata,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=utc_now_iso(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
         )
@@ -604,7 +609,7 @@ class ProvenanceManager:
                 **metadata,
                 **source.metadata
             },
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=utc_now_iso(),
             activity_started_at_time=activity_info["activity_started_at_time"],
             activity_ended_at_time=activity_info["activity_ended_at_time"],
         )
@@ -959,11 +964,27 @@ class ProvenanceManager:
         Returns:
             List of matching entries as dicts, sorted by timestamp ascending.
         """
-        matches = [
-            e for e in self.storage.retrieve_all()
-            if e.timestamp and start <= e.timestamp <= end
-        ]
-        matches.sort(key=lambda e: e.timestamp)
+        # Compare instants, not spellings. Since #1114 new entries carry a
+        # +00:00 offset while entries written earlier do not, and a raw string
+        # comparison orders those two by length: an inclusive naive bound equal
+        # to a stored offset-bearing timestamp would sort below it and drop the
+        # record. A bound in another offset was mis-ordered the same way.
+        start_at = to_utc_datetime(start)
+        end_at = to_utc_datetime(end)
+        entries = [e for e in self.storage.retrieve_all() if e.timestamp]
+
+        if start_at is None or end_at is None:
+            # A bound this module cannot read as a timestamp keeps the historical
+            # string comparison rather than raising on a call that used to work.
+            matches = [e for e in entries if start <= e.timestamp <= end]
+        else:
+            matches = [
+                e for e in entries
+                if (at := to_utc_datetime(e.timestamp)) is not None
+                and start_at <= at <= end_at
+            ]
+
+        matches.sort(key=lambda e: (to_utc_datetime(e.timestamp) or _EPOCH, e.timestamp))
         return [e.to_dict() for e in matches]
 
     def get_all_sources(self, entity_id: str) -> List[Dict[str, Any]]:
@@ -1071,7 +1092,7 @@ class ProvenanceManager:
 
             entry = copy.deepcopy(existing)
             entry.invalidated = True
-            entry.invalidated_at_time = datetime.utcnow().isoformat()
+            entry.invalidated_at_time = utc_now_iso()
             entry.invalidated_by = agent_id
             entry.invalidation_reason = reason
             entry.previous_version_id = history_id
@@ -1163,8 +1184,22 @@ class ProvenanceManager:
         """
         entries = self.storage.retrieve_all()
         if since:
-            entries = [e for e in entries if getattr(e, "timestamp", "") >= since]
-        entries.sort(key=lambda e: getattr(e, "timestamp", ""))
+            since_at = to_utc_datetime(since)
+            if since_at is None:
+                entries = [e for e in entries
+                           if getattr(e, "timestamp", "") >= since]
+            else:
+                entries = [
+                    e for e in entries
+                    if (at := to_utc_datetime(getattr(e, "timestamp", None)))
+                    is not None and at >= since_at
+                ]
+        entries.sort(
+            key=lambda e: (
+                to_utc_datetime(getattr(e, "timestamp", None)) or _EPOCH,
+                getattr(e, "timestamp", ""),
+            )
+        )
 
         if format == "json":
             return [

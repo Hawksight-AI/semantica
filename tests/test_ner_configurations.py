@@ -101,9 +101,15 @@ class TestNERConfigurations(unittest.TestCase):
             self.assertEqual(entities[0].metadata["extraction_method"], "ml")
             self.assertEqual(entities[0].metadata["model"], "en_core_web_trf")
 
-    @patch('semantica.semantic_extract.ner_extractor.spacy')
+    @patch('semantica.semantic_extract.methods.spacy')
     def test_ner_ml_init_falls_back_when_spacy_runtime_is_broken(self, mock_spacy):
-        """Test NER init does not crash when spaCy is installed but unusable at runtime."""
+        """Test NER init does not crash when spaCy is installed but unusable at runtime.
+
+        The model load now goes through load_spacy_model() in semantic_extract.methods,
+        so we patch methods.spacy (not ner_extractor.spacy) to inject the failure.
+        """
+        from semantica.semantic_extract.methods import clear_spacy_model_cache
+        clear_spacy_model_cache()
         mock_spacy.load.side_effect = RuntimeError("ConfigSchemaNlp is not fully defined")
 
         with patch('semantica.semantic_extract.ner_extractor.SPACY_AVAILABLE', True):
@@ -112,17 +118,23 @@ class TestNERConfigurations(unittest.TestCase):
         self.assertIsNone(extractor.nlp)
         self.assertFalse(extractor._ml_runtime_usable)
 
-    @patch('semantica.semantic_extract.ner_extractor.spacy')
     @patch('semantica.semantic_extract.methods.get_entity_method')
     @patch('semantica.semantic_extract.methods.spacy')
     def test_ner_ml_runtime_failure_disables_repeated_ml_load_attempts(
         self,
         mock_methods_spacy,
         mock_get_method,
-        mock_init_spacy,
     ):
-        """Test degraded ML mode skips repeated spaCy load attempts after init failure."""
-        mock_init_spacy.load.side_effect = RuntimeError("ConfigSchemaNlp is not fully defined")
+        """Test degraded ML mode skips repeated spaCy load attempts after init failure.
+
+        The model load at construction time now goes through load_spacy_model() in
+        semantic_extract.methods, so methods.spacy is the single mock target for the
+        init-time failure.  After the RuntimeError is raised, _ml_runtime_usable is
+        False and no further spacy.load (or extract_entities_ml) calls are made.
+        """
+        from semantica.semantic_extract.methods import clear_spacy_model_cache
+        clear_spacy_model_cache()
+        mock_methods_spacy.load.side_effect = RuntimeError("ConfigSchemaNlp is not fully defined")
         mock_ml_method = MagicMock(return_value=[])
         mock_get_method.side_effect = lambda name: mock_ml_method if name == "ml" else (lambda *_args, **_kwargs: [])
 
@@ -132,8 +144,9 @@ class TestNERConfigurations(unittest.TestCase):
         entities = extractor.extract_entities(self.text)
 
         self.assertFalse(extractor._ml_runtime_usable)
-        self.assertEqual(mock_init_spacy.load.call_count, 1)
-        self.assertEqual(mock_methods_spacy.load.call_count, 0)
+        # methods.spacy.load called once during __init__ (the RuntimeError); not again
+        # during extract_entities because _filter_unusable_methods removes "ml".
+        self.assertEqual(mock_methods_spacy.load.call_count, 1)
         self.assertEqual(mock_ml_method.call_count, 0)
         self.assertIsInstance(entities, list)
 

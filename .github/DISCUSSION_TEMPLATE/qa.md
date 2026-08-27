@@ -46,8 +46,8 @@ If applicable, paste any error messages or describe unexpected behavior:
 
 ## Checklist
 
-- [ ] I have searched existing [discussions](https://github.com/Hawksight-AI/semantica/discussions) and [issues](https://github.com/Hawksight-AI/semantica/issues)
-- [ ] I have checked the [documentation](https://github.com/Hawksight-AI/semantica/tree/main/docs) and [FAQ](https://github.com/Hawksight-AI/semantica/blob/main/docs/faq.md)
+- [ ] I have searched existing [discussions](https://github.com/semantica-agi/semantica/discussions) and [issues](https://github.com/semantica-agi/semantica/issues)
+- [ ] I have checked the [documentation](https://github.com/semantica-agi/semantica/tree/main/docs) and [FAQ](https://github.com/semantica-agi/semantica/blob/main/docs/faq.md)
 - [ ] I have provided a minimal code example (if applicable)
 - [ ] I have included error messages (if applicable)
 - [ ] I have provided environment details

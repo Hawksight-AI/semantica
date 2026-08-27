@@ -222,7 +222,7 @@ def test_discover_feeds_empty() -> None:
         "semantica.ingest.ssrf.socket.getaddrinfo",
         return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
     ):
-        with patch("requests.request", side_effect=fake_request):
+        with patch("requests.Session.request", side_effect=fake_request):
             feeds = ingestor.discover_feeds("http://site.com")
 
     assert len(feeds) == 0
@@ -254,7 +254,7 @@ def test_discover_feeds_found() -> None:
         "semantica.ingest.ssrf.socket.getaddrinfo",
         return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
     ):
-        with patch("requests.request", side_effect=fake_request):
+        with patch("requests.Session.request", side_effect=fake_request):
             feeds = ingestor.discover_feeds("http://site.com")
 
     assert "http://site.com/rss.xml" in feeds
