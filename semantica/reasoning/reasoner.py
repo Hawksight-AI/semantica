@@ -7,6 +7,7 @@ supported by the Semantica framework. It serves as a facade for different reason
 
 import re
 import uuid
+from collections.abc import Mapping, Sequence, Set as AbstractSet
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -44,20 +45,89 @@ def _substitute_variables(template: str, bindings: Dict[str, str]) -> str:
     return re.sub(r"\?(\w+)", _replace, template)
 
 
+def _canonicalize_activation_value(
+    value: Any, active_containers: Optional[Dict[int, int]] = None
+) -> Tuple[Any, ...]:
+    """Convert nested activation data into a deterministic, hashable value."""
+    if active_containers is None:
+        active_containers = {}
+
+    value_type = (type(value).__module__, type(value).__qualname__)
+    is_mapping = isinstance(value, Mapping)
+    is_sequence = isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    )
+    is_set = isinstance(value, AbstractSet) and not isinstance(
+        value, (str, bytes, bytearray)
+    )
+    if not (is_mapping or is_sequence or is_set):
+        return ("scalar", value_type, repr(value))
+
+    object_id = id(value)
+    if object_id in active_containers:
+        return ("reference", active_containers[object_id])
+    active_containers[object_id] = len(active_containers)
+
+    try:
+        if is_mapping:
+            keyed_items = [
+                (
+                    _canonicalize_activation_value(key, active_containers),
+                    item,
+                )
+                for key, item in value.items()
+            ]
+            keyed_items.sort(key=lambda entry: repr(entry[0]))
+            entries = tuple(
+                (
+                    key,
+                    _canonicalize_activation_value(item, active_containers),
+                )
+                for key, item in keyed_items
+            )
+            return ("mapping", value_type, entries)
+        if is_sequence:
+            return (
+                "sequence",
+                value_type,
+                tuple(
+                    _canonicalize_activation_value(item, active_containers)
+                    for item in value
+                ),
+            )
+        items = tuple(
+            sorted(
+                (
+                    _canonicalize_activation_value(item, active_containers)
+                    for item in value
+                ),
+                key=repr,
+            )
+        )
+        return ("set", value_type, items)
+    finally:
+        del active_containers[object_id]
+
+
 def _make_activation_key(
-    rule_id: str, bindings: Dict[str, Any], fact_tokens: List[str]
-) -> Tuple[str, Tuple[Tuple[str, str], ...], Tuple[str, ...]]:
+    rule_id: str, bindings: Dict[str, Any], fact_tokens: List[Any]
+) -> Tuple[Any, ...]:
     """Return a stable identity for one concrete rule activation."""
     canonical_bindings = tuple(
         sorted(
-            (str(name), f"{type(value).__qualname__}:{value!r}")
+            (str(name), _canonicalize_activation_value(value))
             for name, value in bindings.items()
         )
     )
     return (
         rule_id,
         canonical_bindings,
-        tuple(sorted(str(token) for token in fact_tokens)),
+        tuple(
+            sorted(
+                (_canonicalize_activation_value(token) for token in fact_tokens),
+                key=repr,
+            )
+        ),
     )
 
 
@@ -313,9 +383,7 @@ class Reasoner:
         self.rules: List[Rule] = []
         self.facts: Set[str] = set()
         self.rule_counter = 0
-        self._fired_activations: Set[
-            Tuple[str, Tuple[Tuple[str, str], ...], Tuple[str, ...]]
-        ] = set()
+        self._fired_activations: Set[Tuple[Any, ...]] = set()
 
         # Optional knowledge graph for AssertAction(write_back=True) targets.
         self.knowledge_graph = kwargs.get("knowledge_graph")

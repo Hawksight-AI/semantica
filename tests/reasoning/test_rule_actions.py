@@ -6,6 +6,7 @@ callback.
 """
 
 import unittest
+from collections import UserDict
 
 from semantica.reasoning import (
     AssertAction,
@@ -189,6 +190,56 @@ class TestRuleActions(unittest.TestCase):
 
         self.assertEqual(calls, ["called", "called"])
 
+    def test_failed_action_is_not_retried_without_explicit_reset(self):
+        attempts = []
+
+        def fail(bindings, reasoner):
+            attempts.append(bindings["x"])
+            raise RuntimeError("boom")
+
+        rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [CallAction(fail)]
+        self.reasoner.add_fact("Person(John)")
+
+        self.reasoner.forward_chain()
+        self.reasoner.forward_chain()
+        self.assertEqual(attempts, ["John"])
+
+        self.reasoner.reset_action_history()
+        self.reasoner.forward_chain()
+        self.assertEqual(attempts, ["John", "John"])
+
+    def test_replacing_actions_in_place_requires_explicit_history_reset(self):
+        calls = []
+        rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [CallAction(lambda bindings, reasoner: calls.append("first"))]
+        self.reasoner.add_fact("Person(John)")
+        self.reasoner.forward_chain()
+
+        rule.actions = [CallAction(lambda bindings, reasoner: calls.append("second"))]
+        self.reasoner.forward_chain()
+        self.assertEqual(calls, ["first"])
+
+        self.reasoner.reset_action_history()
+        self.reasoner.forward_chain()
+        self.assertEqual(calls, ["first", "second"])
+
+    def test_activation_is_recorded_before_reentrant_action_execution(self):
+        calls = []
+
+        def reenter(bindings, reasoner):
+            calls.append(bindings["x"])
+            if len(calls) == 1:
+                reasoner.forward_chain()
+
+        rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        rule.actions = [CallAction(reenter)]
+        self.reasoner.add_fact("Person(John)")
+
+        self.reasoner.forward_chain()
+
+        self.assertEqual(calls, ["John"])
+
     def test_no_provenance_log_when_disabled(self):
         rule = self.reasoner.add_rule(
             "IF Person(?x) AND Parent(?x, ?y) THEN Child(?y, ?x)"
@@ -367,6 +418,89 @@ class TestReteActionExecution(unittest.TestCase):
         self.engine.execute_matches([other_match])
 
         self.assertEqual(self.calls, [{"x": "John"}, {"x": "John"}])
+
+    def test_rete_equivalent_nested_bindings_share_an_activation(self):
+        first_match = Match(
+            rule=self.rule,
+            facts=self.match.facts,
+            bindings={"x": {"a": 1, "b": 2}},
+        )
+        reordered_match = Match(
+            rule=self.rule,
+            facts=self.match.facts,
+            bindings={"x": {"b": 2, "a": 1}},
+        )
+
+        self.engine.execute_matches([first_match])
+        self.engine.execute_matches([reordered_match])
+
+        self.assertEqual(len(self.calls), 1)
+
+    def test_rete_structured_fact_identity_avoids_separator_collisions(self):
+        first_match = Match(
+            rule=self.rule,
+            facts=[Fact("a", "b:C", [])],
+            bindings={"x": "John"},
+        )
+        colliding_text_match = Match(
+            rule=self.rule,
+            facts=[Fact("a:b", "C", [])],
+            bindings={"x": "John"},
+        )
+
+        self.engine.execute_matches([first_match])
+        self.engine.execute_matches([colliding_text_match])
+
+        self.assertEqual(len(self.calls), 2)
+
+    def test_rete_cyclic_binding_preserves_results_and_deduplicates_actions(self):
+        cyclic_value = []
+        cyclic_value.append(cyclic_value)
+        cyclic_match = Match(
+            rule=self.rule,
+            facts=self.match.facts,
+            bindings={"x": cyclic_value},
+        )
+
+        first_results = self.engine.execute_matches([cyclic_match])
+        second_results = self.engine.execute_matches([cyclic_match])
+
+        self.assertEqual(first_results, ["Adult(?x)"])
+        self.assertEqual(second_results, ["Adult(?x)"])
+        self.assertEqual(len(self.calls), 1)
+
+    def test_rete_equivalent_mapping_implementations_share_an_activation(self):
+        first_match = Match(
+            rule=self.rule,
+            facts=self.match.facts,
+            bindings={"x": UserDict({"a": 1, "b": 2})},
+        )
+        reordered_match = Match(
+            rule=self.rule,
+            facts=self.match.facts,
+            bindings={"x": UserDict({"b": 2, "a": 1})},
+        )
+
+        self.engine.execute_matches([first_match])
+        self.engine.execute_matches([reordered_match])
+
+        self.assertEqual(len(self.calls), 1)
+
+    def test_rete_key_error_does_not_suppress_conclusion(self):
+        class UnrepresentableValue:
+            def __repr__(self):
+                raise RuntimeError("cannot represent")
+
+        invalid_match = Match(
+            rule=self.rule,
+            facts=self.match.facts,
+            bindings={"x": UnrepresentableValue()},
+        )
+
+        results = self.engine.execute_matches([invalid_match])
+
+        self.assertEqual(results, ["Adult(?x)"])
+        self.assertEqual(self.calls, [])
 
     def test_rete_reset_action_history_allows_deliberate_replay(self):
         self.engine.execute_matches([self.match])

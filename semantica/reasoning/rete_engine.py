@@ -212,9 +212,7 @@ class ReteEngine:
         self.facts: List[Fact] = []
         self.fact_counter = 0
         self.node_counter = 0
-        self._executed_activations: Set[
-            Tuple[str, Tuple[Tuple[str, str], ...], Tuple[str, ...]]
-        ] = set()
+        self._executed_activations: Set[Tuple[Any, ...]] = set()
         # Optional Reasoner used to fire rule-driven actions on match. When
         # set, execute_matches() runs each matched rule's ``actions`` (and any
         # legacy ``handler``) through the Reasoner's action machinery so that
@@ -423,6 +421,9 @@ class ReteEngine:
             )
             results = []
             for match in matches:
+                # Conclusions are the pure inference result and remain
+                # independent from optional side-effect execution below.
+                results.append(match.rule.conclusion)
                 try:
                     # Fire the rule's actions (and any legacy handler) through
                     # the bound Reasoner so Rete matching produces the same
@@ -434,13 +435,14 @@ class ReteEngine:
                         activation_key = _make_activation_key(
                             match.rule.rule_id,
                             match.bindings,
-                            [f"{fact.fact_id}:{fact}" for fact in match.facts],
+                            [
+                                (fact.fact_id, fact.predicate, fact.arguments)
+                                for fact in match.facts
+                            ],
                         )
                         if activation_key not in self._executed_activations:
                             self._executed_activations.add(activation_key)
                             self.reasoner._fire_actions(match.rule, match.bindings)
-                    result = match.rule.conclusion
-                    results.append(result)
                 except Exception as e:
                     self.logger.error(f"Error executing match: {e}")
 
