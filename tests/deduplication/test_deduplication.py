@@ -12,6 +12,7 @@ from semantica.deduplication.cluster_builder import ClusterBuilder
 from semantica.deduplication.registry import MethodRegistry
 from semantica.deduplication.config import DeduplicationConfig
 from semantica.deduplication.methods import get_deduplication_method
+from semantica.utils.types import Entity
 from semantica.utils.progress_tracker import ConsoleProgressDisplay
 
 class TestDeduplication(unittest.TestCase):
@@ -87,6 +88,85 @@ class TestDeduplication(unittest.TestCase):
         # One group should have at least 2 entities (the Apple ones)
         apple_group = next((g for g in groups if len(g.entities) >= 2), None)
         self.assertIsNotNone(apple_group)
+
+    def test_different_types_are_never_duplicates(self):
+        """Entities with different non-empty types must not merge (issue #1137)."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.4
+        )
+        entities = [
+            {"id": "e1", "type": "Person", "name": "Alice", "text": "Alice"},
+            {"id": "e2", "type": "Organization", "name": "Acme", "text": "Acme"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertEqual(
+            duplicates, [],
+            "Person 'Alice' and Organization 'Acme' must not be duplicate candidates",
+        )
+        # GraphBuilder with merge_entities=True must keep both entities
+        from semantica.kg import GraphBuilder
+        graph = GraphBuilder(merge_entities=True).build(
+            {"entities": entities, "relationships": []}
+        )
+        self.assertEqual(len(graph["entities"]), 2)
+
+    def test_same_type_same_name_still_merges(self):
+        """Type guard must not break legitimate dedup of same-type entities."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.4
+        )
+        entities = [
+            {"id": "e1", "type": "Person", "name": "Alice", "text": "Alice"},
+            {"id": "e2", "type": "Person", "name": "Alice", "text": "Alice"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertTrue(
+            duplicates, "Same-type same-name entities must still be detected as duplicates"
+        )
+
+    def test_untyped_same_name_still_merges(self):
+        """Entities with no type must retain previous behavior (merge on similarity)."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.4
+        )
+        entities = [
+            {"id": "x1", "name": "Apple"},
+            {"id": "x2", "name": "Apple"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertTrue(
+            duplicates, "Untyped same-name entities must still be detected as duplicates"
+        )
+
+    def test_entity_objects_different_types_not_duplicates(self):
+        """Entity objects expose their type via .type, not .label (issue #1137)."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.0
+        )
+        entities = [
+            Entity(id="e1", text="Alice", type="Person"),
+            Entity(id="e2", text="Acme", type="Organization"),
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertEqual(
+            duplicates, [],
+            "Entity objects with different types must never be detected as duplicates",
+        )
+
+    def test_zero_threshold_still_excludes_type_mismatch(self):
+        """Type mismatch must be excluded structurally, not just by confidence 0."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.0
+        )
+        entities = [
+            {"id": "e1", "type": "Person", "name": "Alice", "text": "Alice"},
+            {"id": "e2", "type": "Organization", "name": "Acme", "text": "Acme"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertEqual(
+            duplicates, [],
+            "Different-type candidates must be excluded even with confidence_threshold=0.0",
+        )
         
     def test_entity_merger(self):
         """Test entity merging."""

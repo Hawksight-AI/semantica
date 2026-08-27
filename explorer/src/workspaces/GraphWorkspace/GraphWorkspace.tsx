@@ -148,6 +148,7 @@ const DEFAULT_EFFECTS_STATE: GraphEffectsState = {
   communitiesEnabled: false,
   centralityEnabled: false,
   legendEnabled: false,
+  edgeLabelsEnabled: true,
   diagnosticsEnabled: false,
   lensMode: "neighborhood",
   effectQuality: "bounded",

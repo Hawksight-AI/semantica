@@ -383,9 +383,9 @@ class AnzoStore:
         if self._is_uri_value(obj):
             if obj.startswith("<") and obj.endswith(">"):
                 inner = obj[1:-1]
-                if " " in inner or ">" in inner:
-                    raise ValueError(f"IRI contains invalid characters: {obj!r}")
+                sparql_escaping.validate_uri(inner)
                 return obj
+            sparql_escaping.validate_uri(obj)
             return f"<{obj}>"
 
         escaped = sparql_escaping.escape_literal(obj)

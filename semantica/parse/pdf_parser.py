@@ -143,15 +143,39 @@ class PDFParser:
                             )
                             pages.append(page_data)
 
+                    full_text = "\n\n".join(page.text for page in pages)
+
+                    # Scanned/image-only PDFs have no text layer; warn so the
+                    # failure surfaces at parse time instead of downstream.
+                    # Check any() over page texts to avoid a temporary stripped
+                    # copy of the full concatenation for large documents.
+                    no_text = (
+                        options.get("extract_text", True)
+                        and pages
+                        and not any(page.text.strip() for page in pages)
+                    )
+                    if no_text:
+                        self.logger.warning(
+                            f"PDF {file_path.name}: parsed {len(pages)} page(s) but "
+                            f"extracted no text. This is likely a scanned "
+                            f"(image-only) PDF. Retry with "
+                            f"parse_pdf(..., method='docling', enable_ocr=True) "
+                            f"for OCR-based extraction."
+                        )
+
                     self.progress_tracker.stop_tracking(
                         tracking_id,
                         status="completed",
-                        message=f"Parsed {len(pages)} pages",
+                        message=(
+                            f"Parsed {len(pages)} page(s) (no text layer detected)"
+                            if no_text
+                            else f"Parsed {len(pages)} page(s)"
+                        ),
                     )
                     return {
                         "metadata": metadata.__dict__,
                         "pages": [page.__dict__ for page in pages],
-                        "full_text": "\n\n".join(page.text for page in pages),
+                        "full_text": full_text,
                         "total_pages": len(pdf.pages),
                     }
 

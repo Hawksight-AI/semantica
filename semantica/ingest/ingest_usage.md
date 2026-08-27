@@ -15,12 +15,13 @@ This guide demonstrates how to use the ingest module for ingesting data from var
 9. [Repository Ingestion](#repository-ingestion)
 10. [Email Ingestion](#email-ingestion)
 11. [Database Ingestion](#database-ingestion)
-12. [MCP Server Ingestion](#mcp-server-ingestion)
-13. [Unified Ingestion](#unified-ingestion)
-14. [Using Methods](#using-methods)
-15. [Using Registry](#using-registry)
-16. [Configuration](#configuration)
-17. [Advanced Examples](#advanced-examples)
+12. [Salesforce CRM Ingestion](#salesforce-crm-ingestion)
+13. [MCP Server Ingestion](#mcp-server-ingestion)
+14. [Unified Ingestion](#unified-ingestion)
+15. [Using Methods](#using-methods)
+16. [Using Registry](#using-registry)
+17. [Configuration](#configuration)
+18. [Advanced Examples](#advanced-examples)
 
 ## Basic Usage
 
@@ -874,6 +875,95 @@ schema = connector.get_schema(engine)
     for table_name, columns in schema['columns'].items():
         print(f"  {table_name}: {[col['name'] for col in columns]}")
 ```
+
+## Salesforce CRM Ingestion
+
+Salesforce ingestion requires `simple-salesforce`:
+
+```bash
+pip install "semantica[db-salesforce]"
+```
+
+### Basic Usage
+
+```python
+from semantica.ingest import SalesforceIngestor
+import os
+
+ingestor = SalesforceIngestor(
+    username=os.getenv("SALESFORCE_USERNAME"),
+    password=os.getenv("SALESFORCE_PASSWORD"),
+    security_token=os.getenv("SALESFORCE_SECURITY_TOKEN"),
+    domain="login",   # "test" for sandbox
+)
+
+# Ingest Account records
+data = ingestor.ingest_sobject(
+    "Account",
+    fields=["Id", "Name", "Industry", "BillingCity"],
+    where="Type = 'Customer'",
+    limit=5000,
+)
+print(f"Retrieved {data.row_count} of {data.total_size} matching records")
+```
+
+`SalesforceIngestor()` with no arguments reads from `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, `SALESFORCE_SECURITY_TOKEN`, and `SALESFORCE_DOMAIN` environment variables automatically.
+
+### Custom Objects and Raw SOQL
+
+```python
+# Custom object (API name ends in __c)
+data = ingestor.ingest_sobject("My_Custom_Object__c", fields=["Id", "Name", "Custom_Field__c"])
+
+# Raw SOQL — pagination is handled automatically
+data = ingestor.ingest_query("""
+    SELECT Id, Name, StageName, Amount
+    FROM Opportunity
+    WHERE IsClosed = false
+    ORDER BY CloseDate ASC
+""")
+print(f"Open opportunities: {data.row_count}")
+```
+
+### Document Export
+
+```python
+documents = ingestor.export_as_documents(
+    data,
+    id_field="Id",                      # Salesforce 18-char record Id
+    text_fields=["Name", "Description"],
+)
+# Each document: {"id": "001...", "text": "...", "metadata": {"source": "salesforce", ...}}
+```
+
+### Convenience Function
+
+```python
+from semantica.ingest import ingest_salesforce
+
+# Fetch records
+data = ingest_salesforce(
+    method="sobject",
+    sobject_name="Account",
+    fields=["Id", "Name"],
+    limit=500,
+)
+
+# Ingest and export as documents in one call
+docs = ingest_salesforce(
+    method="documents",
+    sobject_name="Account",
+    text_fields=["Name", "Description"],
+)
+
+# Using the unified dispatcher
+from semantica.ingest import ingest
+result = ingest(None, source_type="salesforce", method="sobject",
+                sobject_name="Account", fields=["Id", "Name"])
+data = result["data"]
+```
+
+See [Salesforce Integration](https://docs.getsemantica.ai/integrations/salesforce) for full documentation including sandbox, schema discovery, pagination details, and troubleshooting.
 
 ## MCP Server Ingestion
 
