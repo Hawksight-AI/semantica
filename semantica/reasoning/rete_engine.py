@@ -33,14 +33,75 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from collections import defaultdict
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from .reasoner import Fact, Rule
+from .reasoner import Fact, Rule, _make_activation_key
+
+
+def _extract_bindings(condition: Any, fact: Fact) -> Dict[str, Any]:
+    """Extract ``?var`` bindings by matching a condition pattern against a fact.
+
+    ``condition`` is the pattern stored on the alpha node (typically a string
+    like ``"Person(?x)"``); ``fact`` is the working-memory :class:`Fact`. The
+    fact's canonical string form (``Predicate(arg1, arg2, ...)``) is matched
+    against the pattern using the same ``?\\w+`` placeholder convention as the
+    Reasoner, so downstream actions receive real bindings (e.g. ``{"x": "John"}``)
+    instead of the empty dict that previously left ``?x`` placeholders
+    unsubstituted.
+
+    Returns an empty dict when the condition is not a string pattern or does
+    not match -- callers treat that as "no bindings extracted".
+    """
+    if not isinstance(condition, str):
+        return {}
+
+    segments = re.split(r"(\?\w+)", condition)
+    seen_vars: Set[str] = set()
+    p_regex = ""
+    for seg in segments:
+        if seg.startswith("?"):
+            var_name = seg[1:]
+            if var_name in seen_vars:
+                p_regex += f"(?P={var_name})"
+            else:
+                p_regex += f"(?P<{var_name}>.+?)"
+                seen_vars.add(var_name)
+        else:
+            p_regex += re.escape(seg)
+    p_regex = f"^{p_regex}$"
+
+    try:
+        match = re.match(p_regex, str(fact))
+    except re.error:
+        return {}
+    if not match:
+        return {}
+    return {k: v for k, v in match.groupdict().items() if v is not None}
+
+
+def _bindings_for_rule(rule: Rule, facts: List[Fact]) -> Dict[str, Any]:
+    """Merge ``?var`` bindings from matching a rule's conditions against facts.
+
+    Each fact is matched against every condition of the rule; the first
+    condition that yields bindings for a fact contributes them. Bindings from
+    all facts are merged so multi-condition (joined) rules receive the full
+    variable environment. Later conflicting values do not overwrite earlier
+    ones, preserving the binding that a join already validated.
+    """
+    bindings: Dict[str, Any] = {}
+    for fact in facts:
+        for condition in rule.conditions:
+            extracted = _extract_bindings(condition, fact)
+            if not extracted:
+                continue
+            for key, value in extracted.items():
+                bindings.setdefault(key, value)
+            break
+    return bindings
 
 
 @dataclass
@@ -58,7 +119,7 @@ class ReteNode:
 
     def __init__(self, node_id: str):
         self.node_id = node_id
-        self.children: List["ReteNode"] = []
+        self.children: List[ReteNode] = []
 
 
 class AlphaNode(ReteNode):
@@ -151,6 +212,17 @@ class ReteEngine:
         self.facts: List[Fact] = []
         self.fact_counter = 0
         self.node_counter = 0
+        self._executed_activations: Set[Tuple[Any, ...]] = set()
+        # Optional Reasoner used to fire rule-driven actions on match. When
+        # set, execute_matches() runs each matched rule's ``actions`` (and any
+        # legacy ``handler``) through the Reasoner's action machinery so that
+        # Rete-based matching benefits from the same production-rule behaviour
+        # as forward_chain(). Left None keeps the pure-matching mode.
+        self.reasoner: Optional[Any] = self.config.get("reasoner")
+
+    def bind_reasoner(self, reasoner: Any) -> None:
+        """Attach a Reasoner so matched rules can fire their actions."""
+        self.reasoner = reasoner
 
     def build_network(self, rules: List[Rule]) -> None:
         """
@@ -166,6 +238,7 @@ class ReteEngine:
         )
 
         try:
+            self.reset_action_history()
             self.network.clear()
 
             self.progress_tracker.update_tracking(
@@ -252,15 +325,24 @@ class ReteEngine:
                         # Propagate to children
                         for grandchild in child.children:
                             if isinstance(grandchild, TerminalNode):
+                                facts = [left_fact, fact]
                                 match = Match(
                                     rule=grandchild.rule,
-                                    facts=[left_fact, fact],
+                                    facts=facts,
+                                    bindings=_bindings_for_rule(
+                                        grandchild.rule, facts
+                                    ),
                                     confidence=1.0,
                                 )
                                 grandchild.activate(match)
             elif isinstance(child, TerminalNode):
                 # Direct activation
-                match = Match(rule=child.rule, facts=[fact], confidence=1.0)
+                match = Match(
+                    rule=child.rule,
+                    facts=[fact],
+                    bindings=_bindings_for_rule(child.rule, [fact]),
+                    confidence=1.0,
+                )
                 child.activate(match)
 
     def match_patterns(self, facts: Optional[List[Fact]] = None) -> List[Match]:
@@ -276,7 +358,7 @@ class ReteEngine:
         tracking_id = self.progress_tracker.start_tracking(
             module="reasoning",
             submodule="ReteEngine",
-            message=f"Matching patterns using Rete algorithm",
+            message="Matching patterns using Rete algorithm",
         )
 
         try:
@@ -339,10 +421,28 @@ class ReteEngine:
             )
             results = []
             for match in matches:
+                # Conclusions are the pure inference result and remain
+                # independent from optional side-effect execution below.
+                results.append(match.rule.conclusion)
                 try:
-                    # Execute rule
-                    result = match.rule.conclusion
-                    results.append(result)
+                    # Fire the rule's actions (and any legacy handler) through
+                    # the bound Reasoner so Rete matching produces the same
+                    # side effects / provenance as forward_chain(). Falls back
+                    # to just recording the conclusion when no Reasoner is bound.
+                    if self.reasoner is not None and (
+                        match.rule.actions or match.rule.handler is not None
+                    ):
+                        activation_key = _make_activation_key(
+                            match.rule.rule_id,
+                            match.bindings,
+                            [
+                                (fact.fact_id, fact.predicate, fact.arguments)
+                                for fact in match.facts
+                            ],
+                        )
+                        if activation_key not in self._executed_activations:
+                            self._executed_activations.add(activation_key)
+                            self.reasoner._fire_actions(match.rule, match.bindings)
                 except Exception as e:
                     self.logger.error(f"Error executing match: {e}")
 
@@ -359,13 +459,16 @@ class ReteEngine:
             )
             raise
 
+    def reset_action_history(self) -> None:
+        """Allow previously executed activations to fire their actions again."""
+        self._executed_activations.clear()
+
     def reset(self) -> None:
-        """Reset Rete engine."""
+        """Reset Rete working memory and action activation history."""
         self.facts.clear()
+        self.reset_action_history()
         for node in self.network.values():
-            if isinstance(node, AlphaNode):
-                node.matches.clear()
-            elif isinstance(node, BetaNode):
+            if isinstance(node, AlphaNode) or isinstance(node, BetaNode):
                 node.matches.clear()
             elif isinstance(node, TerminalNode):
                 node.activations.clear()
