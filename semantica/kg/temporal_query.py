@@ -510,6 +510,9 @@ class TemporalGraphQuery:
                     - "count": Number of relationships
                     - "diversity": Number of unique relationship types
                     - "stability": Relationship duration/stability measure
+                      (mean valid-time duration in seconds across
+                      relationships that have both ``valid_from`` and
+                      ``valid_until`` set)
             **options: Additional analysis options (unused)
 
         Returns:
@@ -535,7 +538,8 @@ class TemporalGraphQuery:
             relationships = [
                 rel
                 for rel in relationships
-                if rel.get("source") == entity or rel.get("target") == entity
+                if (rel.get("source") or rel.get("source_id")) == entity
+                or (rel.get("target") or rel.get("target_id")) == entity
             ]
 
         if relationship:
@@ -581,14 +585,17 @@ class TemporalGraphQuery:
             result["diversity"] = len(rel_types)
 
         if "stability" in metrics:
-            # Calculate stability based on relationship duration
+            # Stability is the mean duration (in seconds) that relationships
+            # remain valid. Relationships without a bounded validity interval
+            # (missing/open ``valid_from`` or ``valid_until``) are skipped, and
+            # non-positive intervals are clamped to zero.
             durations = []
             for rel in relationships:
                 valid_from = self._parse_time(rel.get("valid_from"))
                 valid_until = self._parse_time(rel.get("valid_until"))
                 if valid_from and valid_until:
-                    # Simplified duration calculation
-                    durations.append(1)  # Placeholder
+                    duration_seconds = (valid_until - valid_from).total_seconds()
+                    durations.append(max(0.0, duration_seconds))
             result["stability"] = sum(durations) / len(durations) if durations else 0
 
         return result
@@ -642,8 +649,14 @@ class TemporalGraphQuery:
         parsed_end_time = self._parse_time(end_time) if end_time else None
 
         for rel in relationships:
+            # Accept both the legacy ``source``/``target`` keys and the
+            # canonical ``source_id``/``target_id`` keys from ``to_kg_dict()``.
             s = rel.get("source")
+            if s is None:
+                s = rel.get("source_id")
             t = rel.get("target")
+            if t is None:
+                t = rel.get("target_id")
 
             # Check temporal validity
             if start_time or end_time:

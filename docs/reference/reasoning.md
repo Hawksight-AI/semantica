@@ -127,8 +127,18 @@ conclusions = reasoner.infer_facts(
 | `forward_chain()` | `List[InferenceResult]` | Derive all possible conclusions iteratively until fixpoint |
 | `backward_chain(goal, max_depth)` | `InferenceResult \| None` | Prove a specific goal string, returns `None` if unprovable |
 | `infer_facts(facts, rules)` | `List[str]` | Load facts and rules then run `forward_chain()`, returns conclusion strings |
-| `clear()` | `None` | Clear all facts and rules |
+| `reset_action_history()` | `None` | Allow actions for previously fired activations to run again |
+| `clear()` | `None` | Clear all facts, rules, and action activation history |
 | `reset()` | `None` | Alias for `clear()` |
+
+Rules with actions use at-most-once attempt semantics per concrete activation
+(rule ID, bindings, and matched facts). Calling `forward_chain()` again on the
+same instance does not repeat side effects for an activation that was already
+attempted, even when an action raised an exception. Call
+`reset_action_history()` to deliberately retry without clearing facts or rules;
+`clear()` and `reset()` also clear this history. Replacing a rule's actions in
+place does not invalidate an existing activation; reset the history explicitly
+when the replacement should be replayed.
 
 ### Rule and Fact dataclass fields
 
@@ -230,8 +240,15 @@ engine.reset()
 | `add_fact(fact)` | `None` | Add a `Fact` to working memory and propagate through the network |
 | `match_patterns(facts)` | `List[Match]` | Match all patterns; optionally add facts before matching |
 | `execute_matches(matches)` | `List[Any]` | Execute matched rules and return their conclusion values |
-| `reset()` | `None` | Clear facts and all node activation state |
+| `reset_action_history()` | `None` | Allow actions for previously executed activations to run again |
+| `reset()` | `None` | Clear facts, node activation state, and action activation history |
 | `get_network_stats()` | `dict` | Return counts of alpha, beta, terminal nodes and facts |
+
+When a Reasoner is bound, `execute_matches()` deduplicates action side effects
+by rule ID, bindings, and matched fact identity. Re-executing a match still
+returns its conclusion for compatibility, but its actions are skipped after the
+first attempt. `reset_action_history()`, `reset()`, and `build_network()` allow
+those actions to run again.
 
 
 ## SPARQLReasoner

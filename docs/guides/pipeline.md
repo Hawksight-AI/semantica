@@ -222,10 +222,10 @@ builder.register_step_handler("ner_extract",     run_ner)
 builder.register_step_handler("triplet_extract", run_triplets)
 builder.register_step_handler("kg_merge",        merge_into_graph)
 
-builder.add_step("ingest",   "file_ingest",     handler=ingest_stix_bundles, path="./stix_bundles/")
-builder.add_step("ner",      "ner_extract",     handler=run_ner,             confidence_threshold=0.75)
-builder.add_step("triplets", "triplet_extract", handler=run_triplets,        include_temporal=True)
-builder.add_step("store",    "kg_merge",        handler=merge_into_graph,    output_path="./cti_output/")
+builder.add_step("ingest",   "file_ingest",     path="./stix_bundles/")
+builder.add_step("ner",      "ner_extract",     confidence_threshold=0.75)
+builder.add_step("triplets", "triplet_extract", include_temporal=True)
+builder.add_step("store",    "kg_merge",        output_path="./cti_output/")
 
 # ingest feeds both ner and triplets in parallel
 builder.connect_steps("ingest",   "ner")

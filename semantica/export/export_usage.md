@@ -297,6 +297,57 @@ export_yaml(semantic_network, "network.yaml", method="semantic_network")
 export_yaml(schema, "schema.yaml", method="schema")
 ```
 
+### Accepted Input
+
+Both YAML exporters read their payload by key, so the input must be a mapping;
+anything else raises `ProcessingError`. A bare list is rejected rather than
+wrapped, since these formats distinguish entities from relationships from
+triplets and guessing which one a list holds would mislabel the records.
+
+Each exporter then reads a fixed set of keys, and raises `ValidationError` on a
+non-empty mapping that supplies none of them — such a payload would otherwise
+serialize to a valid file with every collection empty. Naming a recognized key
+is not enough on its own: `{"entities": [], "data": [...]}` also raises, since
+nothing resolves while the records sit under a key the exporter never reads.
+
+| Method | Recognized keys |
+| :--- | :--- |
+| `"semantic_network"` | `entities` (alias `nodes`), `relationships` (alias `edges`), `triplets` |
+| `"schema"` | `classes`, `properties`, `namespaces`, `uri`, `title`, `description`, `version` |
+
+`metadata` is carried through on both, but does not by itself make a payload
+recognized — an `export_json` envelope (`{"data": [...], "count": N,
+"metadata": {...}}`) carries one and is rejected.
+
+```python
+# ContextGraph.to_dict() exports directly via the nodes/edges aliases
+export_yaml(context_graph.to_dict(), "graph.yaml")
+
+# A bare list has no unambiguous meaning here
+export_yaml(records, "out.yaml")            # ProcessingError
+
+# An export_json payload is refused rather than written out empty
+export_yaml({"data": records}, "out.yaml")  # ValidationError
+
+# ...and so is one that names a recognized key but leaves it empty
+export_yaml({"entities": [], "data": records}, "out.yaml")  # ValidationError
+```
+
+The value under a recognized key must be a collection of records — a list or
+tuple of mappings or objects. A string, a bare mapping, or a scalar raises
+`ValidationError` naming the key, rather than being iterated into
+character-sized "records" or surfacing as a `TypeError` from inside the
+exporter. `None` is read as an absent collection, the same as `[]`.
+
+```python
+export_yaml({"entities": "abc"}, "out.yaml")         # ValidationError
+export_yaml({"entities": 42}, "out.yaml")            # ValidationError
+export_yaml({"nodes": {"id": "n1"}}, "out.yaml")     # ValidationError — wrap it in a list
+```
+
+An empty mapping is still accepted: an empty graph is a legitimate export and
+has no records to lose.
+
 ## OWL Export
 
 ### OWL/XML Format
@@ -477,6 +528,23 @@ Pass `validate=True` to run a post-export integrity check before returning:
 
 ```python
 export_neo4j_csv(kg, "neo4j_import/", validate=True)
+```
+
+#### Accepted Input
+
+Mapping payloads are read on the same terms as the YAML exporters (see [Accepted
+Input](#accepted-input) above): `entities`/`relationships`, with `nodes`/`edges`
+accepted as aliases. A non-empty mapping that supplies neither — or that supplies
+a malformed collection value — raises `ValidationError` rather than writing
+header-only CSVs indistinguishable from a genuinely exported empty graph. The
+payload is normalized before any file is opened, so a rejected export writes
+nothing.
+
+Graph *objects* are unaffected: they are still read off `nodes`/`entities` and
+`edges`/`relationships` attributes.
+
+```python
+export_neo4j_csv({"data": [{"id": "e1"}]}, "neo4j_import/")  # ValidationError
 ```
 
 #### Importing into Neo4j

@@ -64,6 +64,29 @@ def _progress_disabled_from_env() -> bool:
         "on",
     )
 
+
+def _progress_forced_from_env() -> bool:
+    """Return whether console progress is forced on despite a non-interactive stdout."""
+    return os.getenv("SEMANTICA_FORCE_PROGRESS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _stdout_is_tty() -> bool:
+    """Return whether stdout is an interactive terminal.
+
+    Replacement streams do not always implement ``isatty`` and closed streams can
+    raise, so both cases are treated as non-interactive.
+    """
+    try:
+        return bool(sys.stdout is not None and sys.stdout.isatty())
+    except (AttributeError, ValueError):
+        return False
+
+
 # Try to import IPython for Jupyter support
 try:
     from IPython import get_ipython
@@ -1040,18 +1063,24 @@ class ProgressTracker:
         # Create displays
         self.displays: List[ProgressDisplay] = []
 
+        # Console output only suits an interactive stdout. When output is piped or
+        # redirected (scripts, CI logs) the progress bars and their escape
+        # sequences would otherwise drown the program's own output.
+        console_ok = _stdout_is_tty() or self.is_jupyter or _progress_forced_from_env()
+
         # Always try Jupyter first if available, fallback to console
         if IPYTHON_AVAILABLE:
             # Try to detect Jupyter - if available, use it
             if self.is_jupyter and not self.disable_jupyter_progress:
                 self.displays.append(JupyterProgressDisplay(use_emoji=use_emoji))
             # Also add console as fallback for immediate feedback
-            self.displays.append(
-                ConsoleProgressDisplay(
-                    use_emoji=use_emoji, update_interval=update_interval
+            if console_ok:
+                self.displays.append(
+                    ConsoleProgressDisplay(
+                        use_emoji=use_emoji, update_interval=update_interval
+                    )
                 )
-            )
-        else:
+        elif console_ok:
             self.displays.append(
                 ConsoleProgressDisplay(
                     use_emoji=use_emoji, update_interval=update_interval

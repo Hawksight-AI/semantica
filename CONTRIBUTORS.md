@@ -44,7 +44,7 @@ We recognize all types of contributions:
 All contributors are recognized in:
 
 - This contributors list
-- [GitHub contributors page](https://github.com/Hawksight-AI/semantica/graphs/contributors)
+- [GitHub contributors page](https://github.com/semantica-agi/semantica/graphs/contributors)
 - Release notes for significant contributions
 - Community appreciation
 
@@ -54,7 +54,7 @@ All contributors are recognized in:
 
 ### Automatic Recognition
 
-If you've made a commit, you'll automatically appear in [GitHub's contributors graph](https://github.com/Hawksight-AI/semantica/graphs/contributors).
+If you've made a commit, you'll automatically appear in [GitHub's contributors graph](https://github.com/semantica-agi/semantica/graphs/contributors).
 
 ### Using All-Contributors Bot
 
@@ -101,7 +101,7 @@ When using the all-contributors bot, use these codes:
 - `infra` - Infrastructure
 - `maintenance` - Maintenance
 
-See [all-contributors specification](https://allcontributors.org/docs/en/emoji-key) for complete list.
+See [all-contributors specification](https://github.com/all-contributors/all-contributors#emoji-key) for complete list.
 
 ---
 
@@ -111,4 +111,4 @@ Every contribution, no matter how small, helps make Semantica better. Thank you 
 
 **Want to contribute?** 
 
-⭐ Give us a Star • 🍴 [Fork us](https://github.com/Hawksight-AI/semantica/fork) • Check out our [Contributing Guide](CONTRIBUTING.md) to get started!
+⭐ Give us a Star • 🍴 [Fork us](https://github.com/semantica-agi/semantica/fork) • Check out our [Contributing Guide](CONTRIBUTING.md) to get started!
