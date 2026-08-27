@@ -13,7 +13,7 @@ class TestCookbookIntegration:
         # MCPClient._send_request_http now routes through request_with_ssrf_guard,
         # which calls requests.request (not httpx.post / requests.post directly).
         # Patch at the point where the guard issues the actual HTTP call.
-        with patch("semantica.ingest.ssrf.requests.request") as mock_request:
+        with patch("requests.Session.request") as mock_request:
 
             def side_effect(method, url, json=None, **kwargs):
                 if not json:

@@ -33,6 +33,12 @@ class SHACLViolation:
     value: Optional[str] = None
     shape: Optional[str] = None
     explanation: Optional[str] = None
+    # Real constraint parameters extracted from the source shape (sh:sourceShape),
+    # used to render accurate plain-English explanations.
+    min_count: Optional[int] = None
+    max_count: Optional[int] = None
+    datatype: Optional[str] = None
+    class_: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -44,6 +50,10 @@ class SHACLViolation:
             "value": self.value,
             "shape": self.shape,
             "explanation": self.explanation,
+            "min_count": self.min_count,
+            "max_count": self.max_count,
+            "datatype": self.datatype,
+            "class_": self.class_,
         }
 
 
@@ -118,10 +128,10 @@ class SHACLValidationReport:
                 focus_node=v.focus_node,
                 path=v.result_path or "",
                 value=v.value or "",
-                min_count=1,
-                max_count=1,
-                datatype=v.message or "",
-                class_=v.message or "",
+                min_count=v.min_count if v.min_count is not None else "?",
+                max_count=v.max_count if v.max_count is not None else "?",
+                datatype=v.datatype or "the expected datatype",
+                class_=v.class_ or "the required class",
             )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -135,14 +145,14 @@ class SHACLValidationReport:
         }
 
 
-def _run_pyshacl(
+def run_shacl_validation(
     data_graph_str: str,
     shacl_str: str,
     data_graph_format: str = "turtle",
     shacl_format: str = "turtle",
 ) -> SHACLValidationReport:
     """
-    Run pyshacl validation and return a structured SHACLValidationReport.
+    Run pySHACL validation and return a structured SHACLValidationReport.
 
     Args:
         data_graph_str: Serialized data graph string.
@@ -208,6 +218,32 @@ def _run_pyshacl(
         shape_node = results_graph.value(result, SH.sourceShape)
         shape = str(shape_node) if shape_node is not None else None
 
+        # Look up the real constraint parameters from the source shape so that
+        # explain_violations can render accurate values instead of placeholders.
+        # Note: sh:qualifiedMinCount / sh:qualifiedMaxCount are not handled here;
+        # such violations fall back to the "?" placeholder in explain_violations.
+        min_count: Optional[int] = None
+        max_count: Optional[int] = None
+        datatype: Optional[str] = None
+        class_: Optional[str] = None
+        if shape_node is not None:
+            min_node = shacl_g.value(shape_node, SH.minCount)
+            if min_node is not None:
+                try:
+                    min_count = int(str(min_node))
+                except (TypeError, ValueError):
+                    min_count = None
+            max_node = shacl_g.value(shape_node, SH.maxCount)
+            if max_node is not None:
+                try:
+                    max_count = int(str(max_node))
+                except (TypeError, ValueError):
+                    max_count = None
+            dt_node = shacl_g.value(shape_node, SH.datatype)
+            datatype = str(dt_node) if dt_node is not None else None
+            cls_node = shacl_g.value(shape_node, SH["class"])
+            class_ = str(cls_node) if cls_node is not None else None
+
         v = SHACLViolation(
             focus_node=focus,
             result_path=path,
@@ -216,6 +252,10 @@ def _run_pyshacl(
             message=msg,
             value=val,
             shape=shape,
+            min_count=min_count,
+            max_count=max_count,
+            datatype=datatype,
+            class_=class_,
         )
         if sev_str == "Violation":
             violations.append(v)
@@ -230,6 +270,21 @@ def _run_pyshacl(
         warnings=warnings,
         infos=infos,
         raw_report=results_text,
+    )
+
+
+def _run_pyshacl(
+    data_graph_str: str,
+    shacl_str: str,
+    data_graph_format: str = "turtle",
+    shacl_format: str = "turtle",
+) -> SHACLValidationReport:
+    """Backward-compatible alias for :func:`run_shacl_validation`."""
+    return run_shacl_validation(
+        data_graph_str,
+        shacl_str,
+        data_graph_format=data_graph_format,
+        shacl_format=shacl_format,
     )
 
 @dataclass

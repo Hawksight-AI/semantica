@@ -63,7 +63,9 @@ semantica-explorer --graph my_graph.json --no-browser
 python -m semantica.explorer --graph my_graph.json
 ```
 
-> **Security note:** The Explorer API has no built-in authentication. The default `--host 127.0.0.1` binds to localhost only, so it is not reachable from other machines on your network. If you bind to `0.0.0.0`, all graph data is readable and writable by any host that can reach the port. The CLI will print a warning in that case.
+> **Security note:** Since v0.6.5 the Explorer API requires an API key on protected routes. Set the `SEMANTICA_API_KEY` environment variable and send it as the `X-API-Key` header; without a configured key, protected routes fail closed with `503` rather than serving anonymously. To opt into unauthenticated access for local development only, set `SEMANTICA_ALLOW_ANONYMOUS=true` explicitly. (`/api/health` and `/api/info` are intentionally unauthenticated.)
+>
+> The default `--host 127.0.0.1` binds to localhost only, so it is not reachable from other machines on your network. If you bind to `0.0.0.0`, all graph data is readable and writable by any host that can reach the port (subject to API-key auth). The CLI prints a warning when binding to a non-loopback host in anonymous mode or when `SEMANTICA_API_KEY` is unset.
 
 ---
 
@@ -148,6 +150,8 @@ This writes the compiled assets to `../semantica/static/`. The Python server the
 | --- | --- | --- |
 | `EXPLORER_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated list of allowed CORS origins |
 | `EXPLORER_CORS_CREDENTIALS` | `false` | Set to `true` to allow credentialed cross-origin requests (only needed behind an authenticating reverse proxy) |
+| `SEMANTICA_API_KEY` | *(unset)* | API key required on protected routes since v0.6.5; send it as the `X-API-Key` header. When unset, protected routes fail closed with `503`. |
+| `SEMANTICA_ALLOW_ANONYMOUS` | `false` | Set to `true` to opt into unauthenticated access (local development only). |
 
 ---
 
@@ -251,6 +255,11 @@ Vite automatically tries the next available port and prints the actual URL in th
 - Confirm the backend exposes the `/ws/graph-updates` WebSocket endpoint.
 - Check DevTools → Network → WS tab for the connection status and error code.
 - Ensure the backend version matches the frontend — mixing major versions can cause protocol mismatches.
+- **Authentication:** `/ws/graph-updates` enforces the same API key as the REST routes. Browsers cannot set custom headers on a WebSocket handshake, so pass the key as a query parameter instead:
+  ```
+  ws://127.0.0.1:8000/ws/graph-updates?api_key=<your-key>
+  ```
+  Non-browser clients (native apps, scripts) may send it as the `X-API-Key` header. A missing or incorrect key results in close code `4401`; if `SEMANTICA_API_KEY` is unset and `SEMANTICA_ALLOW_ANONYMOUS` is not `true`, the connection is also rejected. Note that API keys in URLs appear in server logs — prefer the header for non-browser clients.
 
 ---
 

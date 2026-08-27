@@ -1,9 +1,10 @@
 
 import pytest
-from semantica.utils.types import Entity
 from semantica.kg.graph_builder import GraphBuilder
 from semantica.kg.entity_resolver import EntityResolver
 from semantica.kg.graph_analyzer import GraphAnalyzer
+from semantica.utils.entity_ids import get_entity_id
+from semantica.utils.types import Entity
 
 def test_full_entity_pipeline():
     """
@@ -33,13 +34,6 @@ def test_full_entity_pipeline():
     }
     graph_data = builder.build(sources=sources)
     
-    # DEBUG: Print graph_data keys and entities count
-    print(f"DEBUG: graph_data keys: {list(graph_data.keys())}")
-    print(f"DEBUG: Entities count: {len(graph_data.get('entities', []))}")
-    print(f"DEBUG: Relationships count: {len(graph_data.get('relationships', []))}")
-    if graph_data.get('entities'):
-        print(f"DEBUG: First entity: {graph_data['entities'][0]}")
-
     # Verify graph data contains the entities and normalized relationships
     assert len(graph_data["entities"]) >= 3
     assert len(graph_data["relationships"]) == 3
@@ -106,6 +100,126 @@ def test_direct_entity_objects_in_analyzer():
     assert "metrics" in analysis_results
     
     print("Direct Entity objects test passed successfully!")
+
+
+def test_entity_id_only_merge_remaps_relationship_endpoints():
+    """Entity aliases must survive merging and relationship remapping."""
+    builder = GraphBuilder(
+        merge_entities=True,
+        entity_resolution_strategy="exact",
+        resolve_conflicts=False,
+    )
+
+    graph = builder.build(
+        {
+            "entities": [
+                {"entity_id": "alice:1", "name": "Alice", "type": "Person"},
+                {"entity_id": "alice:2", "name": " Alice ", "type": "Person"},
+                {"entity_id": "org:1", "name": "Acme", "type": "Organization"},
+            ],
+            "relationships": [
+                {
+                    "source_id": "alice:2",
+                    "target_id": "org:1",
+                    "type": "WORKS_FOR",
+                }
+            ],
+        }
+    )
+
+    merged_alice = next(
+        entity for entity in graph["entities"] if entity["name"] == "Alice"
+    )
+    relationship = graph["relationships"][0]
+    entity_ids = {
+        entity.get("id") or entity.get("entity_id") for entity in graph["entities"]
+    }
+
+    assert merged_alice["id"] == "alice:1"
+    assert set(merged_alice["merged_from"]) == {"alice:1", "alice:2"}
+    assert {
+        item["id"] for item in merged_alice["metadata"]["provenance"]["merged_from"]
+    } == {"alice:1", "alice:2"}
+    assert relationship["source"] == "alice:1"
+    assert relationship["target"] == "org:1"
+    assert relationship["source_id"] == "alice:1"
+    assert relationship["target_id"] == "org:1"
+    assert {relationship["source"], relationship["target"]} <= entity_ids
+
+
+def test_entity_id_helper_ignores_falsy_identifiers():
+    """ID extraction must match the KG pipeline's falsy-ID contract."""
+    assert get_entity_id({"id": "", "entity_id": "alias:1"}) == "alias:1"
+    assert get_entity_id({"id": 0, "entity_id": "alias:2"}) == "alias:2"
+    assert (
+        get_entity_id({"id": "primary:1", "entity_id": "alias:3"})
+        == "primary:1"
+    )
+    assert get_entity_id({"id": "", "entity_id": 0}) is None
+
+
+def test_entity_merge_repairs_stale_alias_for_canonical_endpoint():
+    """A canonical endpoint must not retain a merged-away endpoint alias."""
+    graph = GraphBuilder(
+        merge_entities=True,
+        entity_resolution_strategy="exact",
+        resolve_conflicts=False,
+    ).build(
+        {
+            "entities": [
+                {"entity_id": "alice:1", "name": "Alice", "type": "Person"},
+                {"entity_id": "alice:2", "name": " Alice ", "type": "Person"},
+                {"entity_id": "org:1", "name": "Acme", "type": "Organization"},
+            ],
+            "relationships": [
+                {
+                    "source": "alice:1",
+                    "source_id": "alice:2",
+                    "target": "org:1",
+                    "target_id": "org:1",
+                    "type": "WORKS_FOR",
+                }
+            ],
+        }
+    )
+
+    relationship = graph["relationships"][0]
+
+    assert relationship["source"] == "alice:1"
+    assert relationship["source_id"] == "alice:1"
+    assert relationship["target"] == "org:1"
+    assert relationship["target_id"] == "org:1"
+
+
+def test_entity_merge_remaps_both_stale_endpoint_aliases():
+    """Both endpoint fields must be remapped when they start with an old ID."""
+    graph = GraphBuilder(
+        merge_entities=True,
+        entity_resolution_strategy="exact",
+        resolve_conflicts=False,
+    ).build(
+        {
+            "entities": [
+                {"entity_id": "alice:1", "name": "Alice", "type": "Person"},
+                {"entity_id": "alice:2", "name": " Alice ", "type": "Person"},
+                {"entity_id": "org:1", "name": "Acme", "type": "Organization"},
+            ],
+            "relationships": [
+                {
+                    "source": "alice:2",
+                    "source_id": "alice:2",
+                    "target": "org:1",
+                    "type": "WORKS_FOR",
+                }
+            ],
+        }
+    )
+
+    relationship = graph["relationships"][0]
+
+    assert relationship["source"] == "alice:1"
+    assert relationship["source_id"] == "alice:1"
+    assert relationship["target"] == "org:1"
 
 if __name__ == "__main__":
     test_full_entity_pipeline()

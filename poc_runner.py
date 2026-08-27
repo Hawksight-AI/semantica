@@ -187,15 +187,6 @@ def poc_vuln3():
             })
         return nodes
 
-    # Simulate the CSV parser — mirrors export_import.py lines 131-133
-    def parse_import_csv_row(row: dict) -> dict:
-        """Mirrors export_import.py CSV node ID extraction (no sanitization)."""
-        node_id = row.get("id") or row.get("node_id") or row.get(":ID") or row.get("_id")
-        return {
-            "id": str(node_id),  # ← UNSANITIZED
-            "type": row.get("type", "entity"),
-        }
-
     # Attack payloads
     payloads = [
         # Header injection payload (chained with VULN-1)

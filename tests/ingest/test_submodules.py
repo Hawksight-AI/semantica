@@ -198,7 +198,7 @@ class TestMCPClient:
         # MCPClient._send_request_http now routes through request_with_ssrf_guard,
         # which calls requests.request (not requests.post) with allow_redirects=False.
         # Patch the requests.request call inside ssrf.py.
-        with patch("semantica.ingest.ssrf.requests.request") as mock_request:
+        with patch("requests.Session.request") as mock_request:
             mock_response = MagicMock()
             mock_response.status_code = 200
 
@@ -226,7 +226,7 @@ class TestMCPClient:
 
     def test_call_tool_mock_check(self):
         # Redo with the corrected patch target.
-        with patch("semantica.ingest.ssrf.requests.request") as mock_request:
+        with patch("requests.Session.request") as mock_request:
             mock_response = MagicMock()
             mock_response.status_code = 200
 
