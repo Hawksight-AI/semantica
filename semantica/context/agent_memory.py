@@ -77,6 +77,7 @@ import yaml
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from ..utils.types import EntityDict, RelationshipDict
+from ._markdown_filesystem import find_filesystem_link
 
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
@@ -1742,9 +1743,10 @@ class AgentMemory:
     @staticmethod
     def _write_markdown_file(file_path: Path, document: str) -> None:
         """Atomically replace a Markdown file without following output symlinks."""
-        if file_path.is_symlink():
+        if find_filesystem_link(file_path) is not None:
             raise ValueError(
-                f"Refusing to overwrite Markdown symbolic link: {file_path}"
+                "Refusing to overwrite Markdown symbolic link or junction: "
+                f"{file_path}"
             )
 
         temporary_path = None
@@ -1867,7 +1869,8 @@ class AgentMemory:
             if "\n" not in data and "\r" not in data:
                 candidate = Path(data)
                 try:
-                    candidate_exists = candidate.exists()
+                    candidate_is_link = find_filesystem_link(candidate) is not None
+                    candidate_exists = candidate_is_link or candidate.exists()
                 except OSError as exc:
                     error_message = (
                         "Failed to inspect possible Markdown import "
@@ -1909,62 +1912,71 @@ class AgentMemory:
         return memories
 
     def _read_markdown_file_content(self, file_path: Path) -> str:
-        if file_path.is_symlink():
-            raise ValueError(f"Symlink Markdown import paths are rejected: {file_path}")
+        if find_filesystem_link(file_path) is not None:
+            raise ValueError(
+                "Symlink Markdown import paths are rejected; symbolic links and "
+                f"junctions are unsafe: {file_path}"
+            )
 
         flags = os.O_RDONLY
-        if hasattr(os, "O_NOFOLLOW"):
-            # On POSIX, O_NOFOLLOW makes os.open() fail with ELOOP if the
-            # final path component is a symlink, atomically closing the TOCTOU
-            # window between the is_symlink() check above and the open call.
-            # On Windows, O_NOFOLLOW is not available; the is_symlink() pre-check
-            # above is the only symlink defense and remains vulnerable to a narrow
-            # race.  The fstat()/S_ISREG guard below still rejects special files
-            # (FIFOs, devices) on both platforms.
-            flags |= os.O_NOFOLLOW
+        nofollow_flag = getattr(os, "O_NOFOLLOW", 0)
+        flags |= nofollow_flag
 
         try:
             fd = os.open(str(file_path), flags)
         except OSError as exc:
-            if exc.errno == getattr(errno, "ELOOP", None):
+            if (
+                (nofollow_flag and exc.errno == errno.ELOOP)
+                or find_filesystem_link(file_path) is not None
+            ):
                 raise ValueError(
-                    f"Symlink Markdown import paths are rejected: {file_path}"
+                    "Symlink Markdown import paths are rejected; symbolic links "
+                    f"and junctions are unsafe: {file_path}"
                 ) from exc
             raise
 
         try:
-            stat_res = os.fstat(fd)
-            if not stat.S_ISREG(stat_res.st_mode):
+            if find_filesystem_link(file_path) is not None:
+                raise ValueError(
+                    "Symlink Markdown import paths are rejected; symbolic links "
+                    f"and junctions are unsafe: {file_path}"
+                )
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
                 raise ValueError(
                     f"Markdown import path is not a regular file: {file_path}"
                 )
-            with open(fd, "r", encoding="utf-8", closefd=True) as f:
-                return f.read()
-        except Exception:
-            try:
+            with os.fdopen(fd, mode="r", encoding="utf-8") as source:
+                fd = -1
+                return source.read()
+        finally:
+            if fd >= 0:
                 os.close(fd)
-            except OSError:
-                pass
-            raise
 
     def _read_markdown_path(self, path: Path) -> List[Tuple[str, str]]:
-        if path.is_symlink():
-            raise ValueError(f"Symlink Markdown import paths are rejected: {path}")
+        if find_filesystem_link(path) is not None:
+            raise ValueError(
+                "Symlink Markdown import paths are rejected; symbolic links and "
+                f"junctions are unsafe: {path}"
+            )
 
         if not path.exists():
             raise FileNotFoundError(f"Markdown import path does not exist: {path}")
 
         if path.is_dir():
-            file_paths = sorted(
-                (
-                    file_path
-                    for file_path in path.iterdir()
-                    if file_path.is_file()
-                    and not file_path.is_symlink()
-                    and file_path.suffix.lower() in self._MARKDOWN_EXTENSIONS
-                ),
-                key=lambda file_path: (file_path.name.casefold(), file_path.name),
-            )
+            file_paths = []
+            for file_path in path.iterdir():
+                if file_path.suffix.lower() not in self._MARKDOWN_EXTENSIONS:
+                    continue
+                if find_filesystem_link(file_path) is not None:
+                    continue
+                if file_path.is_file():
+                    file_paths.append(file_path)
+            if find_filesystem_link(path) is not None:
+                raise ValueError(
+                    "Symlink Markdown import paths are rejected; symbolic links "
+                    f"and junctions are unsafe: {path}"
+                )
+            file_paths.sort(key=lambda item: (item.name.casefold(), item.name))
         elif path.is_file():
             file_paths = [path]
         else:

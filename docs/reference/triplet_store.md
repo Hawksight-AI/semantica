@@ -182,7 +182,7 @@ for row in result.bindings:
     store = TripletStore(
         backend="rdf4j",
         endpoint="http://localhost:8080/rdf4j-server",
-        repository_id="semantica",   # passed through **config
+        repository_id="semantica",   # selects the remote repository
     )
     ```
 

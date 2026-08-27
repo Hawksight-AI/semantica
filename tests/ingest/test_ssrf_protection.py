@@ -447,7 +447,7 @@ class TestSitemapCrawlerSSRF:
         redirect.close = MagicMock()
 
         with patch(
-            "semantica.ingest.ssrf.requests.request", return_value=redirect
+            "requests.Session.request", return_value=redirect
         ), patch(
             "semantica.ingest.ssrf.socket.getaddrinfo",
             return_value=[(None, None, None, None, ("93.184.216.34", 0))],

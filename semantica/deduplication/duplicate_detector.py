@@ -278,8 +278,12 @@ class DuplicateDetector:
             for i, (entity1, entity2, score) in enumerate(similarities):
                 candidate = self._create_duplicate_candidate(entity1, entity2, score)
 
-                # Filter by confidence threshold
-                if candidate.confidence >= self.confidence_threshold:
+                # Filter by confidence threshold; type mismatches are excluded
+                # structurally so no threshold value can admit them.
+                if (
+                    candidate.confidence >= self.confidence_threshold
+                    and "type_mismatch" not in candidate.reasons
+                ):
                     candidates.append(candidate)
 
                 remaining = total_similarities - (i + 1)
@@ -624,8 +628,12 @@ class DuplicateDetector:
                             new_entity, existing_entity, similarity.score
                         )
 
-                        # Filter by confidence threshold
-                        if candidate.confidence >= self.confidence_threshold:
+                        # Filter by confidence threshold; type mismatches are
+                        # excluded structurally regardless of the threshold.
+                        if (
+                            candidate.confidence >= self.confidence_threshold
+                            and "type_mismatch" not in candidate.reasons
+                        ):
                             candidates.append(candidate)
 
                     processed += 1
@@ -723,7 +731,9 @@ class DuplicateDetector:
             if key == "name":
                 return getattr(entity, "text", default)
             if key == "type":
-                return getattr(entity, "label", default)
+                # Entity objects store the type on .type; extraction entities
+                # may expose .label. Missing .label never means "no type".
+                return getattr(entity, "type", default) or getattr(entity, "label", default)
             if key == "properties":
                 # Check metadata for properties
                 metadata = getattr(entity, "metadata", {})
@@ -757,6 +767,25 @@ class DuplicateDetector:
         reasons = []
         confidence = similarity_score
 
+        # Check entity type mismatch first: two entities with different
+        # explicit types are not duplicates, whatever their similarity.
+        entity_type1 = self._get_entity_value(entity1, "type")
+        entity_type2 = self._get_entity_value(entity2, "type")
+        if entity_type1 and entity_type2 and entity_type1 != entity_type2:
+            return DuplicateCandidate(
+                entity1=entity1,
+                entity2=entity2,
+                similarity_score=similarity_score,
+                confidence=0.0,
+                reasons=["type_mismatch"],
+                metadata={
+                    "name_match": False,
+                    "common_properties": 0,
+                    "type_match": False,
+                    "type_mismatch": True,
+                },
+            )
+
         # Check for exact name match (strong indicator)
         name1 = str(self._get_entity_value(entity1, "name", "")).lower().strip()
         name2 = str(self._get_entity_value(entity2, "name", "")).lower().strip()
@@ -779,9 +808,8 @@ class DuplicateDetector:
                 # Boost confidence for each matching property
                 confidence += 0.05 * prop_matches
 
-        # Check entity type match
-        entity_type1 = self._get_entity_value(entity1, "type")
-        entity_type2 = self._get_entity_value(entity2, "type")
+        # Check entity type match (only boosts when types are equal; mismatch
+        # is handled above)
         if entity_type1 and entity_type2 and entity_type1 == entity_type2:
             reasons.append("same_type")
             confidence += 0.05
