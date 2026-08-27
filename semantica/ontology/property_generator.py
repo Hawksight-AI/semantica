@@ -197,23 +197,22 @@ class PropertyGenerator:
         self, entities: List[Dict[str, Any]], classes: List[Dict[str, Any]], **options
     ) -> List[Dict[str, Any]]:
         """Infer data properties from entity attributes."""
-        # Group entities by type
-        entity_types = defaultdict(list)
+        # Group entities by their inferred class so normalized class names remain
+        # aligned with the class definitions emitted by ClassInferrer.
+        class_entities = defaultdict(list)
+        class_lookup = self._build_class_type_lookup(classes)
         for entity in entities:
             entity_type = entity.get("type") or entity.get("entity_type", "Entity")
-            entity_types[entity_type].append(entity)
+            class_def = self._find_class_for_entity_type(entity_type, class_lookup)
+            if not class_def:
+                continue
+            class_name = class_def["name"]
+            class_entities[class_name].append(entity)
 
         # Extract data properties for each class
         properties = []
 
-        for entity_type, type_entities in entity_types.items():
-            # Find corresponding class
-            class_def = next(
-                (cls for cls in classes if cls["name"] == entity_type), None
-            )
-            if not class_def:
-                continue
-
+        for class_name, type_entities in class_entities.items():
             # Extract data properties
             data_props = self._extract_data_properties(type_entities)
 
@@ -233,7 +232,7 @@ class PropertyGenerator:
                     else None,
                     "label": normalized_name,
                     "comment": f"Data property for {prop_name}",
-                    "domain": [entity_type],
+                    "domain": [class_name],
                     "range": prop_type,
                     "metadata": {"inferred_from": prop_name},
                 }
@@ -241,6 +240,38 @@ class PropertyGenerator:
                 properties.append(property_def)
 
         return properties
+
+    def _build_class_type_lookup(
+        self, classes: List[Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build a lookup for raw, normalized, and recorded source type names."""
+        lookup: Dict[str, Dict[str, Any]] = {}
+        for class_def in classes:
+            class_name = class_def.get("name")
+            if class_name:
+                lookup.setdefault(str(class_name), class_def)
+                lookup.setdefault(
+                    self.naming_conventions.normalize_class_name(str(class_name)),
+                    class_def,
+                )
+
+            inferred_from = class_def.get("metadata", {}).get("inferred_from")
+            if inferred_from is not None:
+                lookup.setdefault(str(inferred_from), class_def)
+                lookup.setdefault(
+                    self.naming_conventions.normalize_class_name(str(inferred_from)),
+                    class_def,
+                )
+
+        return lookup
+
+    def _find_class_for_entity_type(
+        self, entity_type: Any, class_lookup: Dict[str, Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Find a class using the precomputed type lookup."""
+        raw_type = str(entity_type)
+        normalized_type = self.naming_conventions.normalize_class_name(raw_type)
+        return class_lookup.get(raw_type) or class_lookup.get(normalized_type)
 
     def _extract_data_properties(
         self, entities: List[Dict[str, Any]]

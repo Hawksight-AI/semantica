@@ -7,6 +7,7 @@ Tests integration between all KG components and algorithms.
 import pytest
 import networkx as nx
 import numpy as np
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Tuple
 import time
 import json
@@ -14,7 +15,6 @@ import json
 from semantica.kg import (
     GraphBuilderWithProvenance,
     AlgorithmTrackerWithProvenance,
-    NodeEmbedder,
     SimilarityCalculator,
     PathFinder,
     LinkPredictor,
@@ -22,6 +22,40 @@ from semantica.kg import (
     CommunityDetector,
     ConnectivityAnalyzer
 )
+
+
+def _stored(owner, entity_id):
+    """Read a provenance record back. Fails if tracking only minted an ID."""
+    record = owner._prov_manager.get_provenance(entity_id)
+    assert record is not None, (
+        f"no stored provenance for {entity_id!r} — an ID was generated without a write"
+    )
+    assert record.get("entity_id") == entity_id
+    return record
+
+
+def _assert_utc_iso(value, field="timestamp"):
+    assert value, f"missing {field}"
+    parsed = datetime.fromisoformat(value)
+    assert parsed.tzinfo is not None, (
+        f"{field}={value!r} is naive (datetime.utcnow leftover)"
+    )
+    assert parsed.utcoffset() == timedelta(0), f"{field}={value!r} is not UTC"
+    return parsed
+
+
+def _assert_tracked(owner, entity_id, source, **metadata):
+    record = _stored(owner, entity_id)
+    assert record["source_document"] == source
+    actual = record.get("metadata") or {}
+    for key, expected in metadata.items():
+        assert actual.get(key) == expected, (
+            f"{entity_id} metadata[{key!r}]={actual.get(key)!r}, expected {expected!r}"
+        )
+    _assert_utc_iso(record["timestamp"], "timestamp")
+    if record.get("last_updated"):
+        _assert_utc_iso(record["last_updated"], "last_updated")
+    return record
 
 
 class TestComprehensiveIntegration:
@@ -157,8 +191,6 @@ class TestComprehensiveIntegration:
         # Initialize all components
         builder = GraphBuilderWithProvenance(provenance=True)
         tracker = AlgorithmTrackerWithProvenance(provenance=True)
-        embedder = NodeEmbedder()
-        embedder.enable_provenance = True
         sim_calc = SimilarityCalculator()
         path_finder = PathFinder()
         link_predictor = LinkPredictor()
@@ -351,14 +383,34 @@ class TestComprehensiveIntegration:
             source='comprehensive_integration_test'
         )
         
-        # Verify all phases completed successfully
+        expected = {
+            'construction': 'graph_construction',
+            'centrality': 'centrality_calculation',
+            'connectivity': 'connectivity_analysis',
+            'community': 'community_detection',
+            'similarity': 'similarity_calculation',
+            'link_prediction': 'link_prediction',
+            'path_analysis': 'path_analysis',
+            'cross_layer': 'cross_layer_analysis',
+        }
         assert len(execution_ids) == 8
         for phase, exec_id in execution_ids.items():
-            assert exec_id is not None
-            assert len(exec_id) > 10
-        
-        print(f"Full pipeline integration completed: {pipeline_id}")
-        return pipeline_id
+            _assert_tracked(
+                tracker,
+                exec_id,
+                source=pipeline_id,
+                entity_type=expected[phase],
+            )
+        summary_record = _assert_tracked(
+            tracker,
+            summary_id,
+            source='comprehensive_integration_test',
+            entity_type='pipeline_summary',
+            pipeline_id=pipeline_id,
+            phases_count=8,
+        )
+        assert summary_id.startswith('pipeline_summary_')
+        assert summary_record['metadata']['input_data_size'] == len(complex_graph_data)
     
     def test_multi_layer_network_analysis(self, multi_layer_network, realistic_embeddings):
         """Test multi-layer network analysis."""
@@ -382,39 +434,39 @@ class TestComprehensiveIntegration:
             
             # Centrality analysis
             if graph.number_of_nodes() > 0:
-                try:
-                    degree_cent = centrality_calc.calculate_degree_centrality(graph_dict)
-                    layer_results[f"{layer_name}_centrality"] = degree_cent
-                    
-                    # Track with provenance
-                    cent_id = tracker.track_layer_analysis(
-                        layer_name=layer_name,
-                        graph=graph,
-                        analysis_type='centrality',
-                        results=degree_cent,
-                        source=multi_layer_id
-                    )
-                    
-                except Exception as e:
-                    print(f"Centrality analysis failed for {layer_name}: {e}")
+                degree_cent = centrality_calc.calculate_degree_centrality(graph_dict)
+                layer_results[f"{layer_name}_centrality"] = degree_cent
+                cent_id = tracker.track_centrality_calculation(
+                    graph=graph,
+                    centrality_scores=degree_cent['centrality'],
+                    method='degree',
+                    source=multi_layer_id
+                )
+                _assert_tracked(
+                    tracker,
+                    cent_id,
+                    source=multi_layer_id,
+                    method='degree',
+                    scores_count=len(degree_cent['centrality']),
+                )
             
             # Community detection
             if graph.number_of_edges() > 0:
-                try:
-                    communities = community_detector.detect_communities(graph_dict, method='label_propagation')
-                    layer_results[f"{layer_name}_communities"] = communities
-                    
-                    # Track with provenance
-                    comm_id = tracker.track_layer_analysis(
-                        layer_name=layer_name,
-                        graph=graph,
-                        analysis_type='communities',
-                        results=communities,
-                        source=multi_layer_id
-                    )
-                    
-                except Exception as e:
-                    print(f"Community detection failed for {layer_name}: {e}")
+                communities = community_detector.detect_communities(graph_dict, method='label_propagation')
+                layer_results[f"{layer_name}_communities"] = communities
+                comm_id = tracker.track_community_detection(
+                    graph=graph,
+                    communities=communities['communities'],
+                    method='label_propagation',
+                    source=multi_layer_id
+                )
+                _assert_tracked(
+                    tracker,
+                    comm_id,
+                    source=multi_layer_id,
+                    method='label_propagation',
+                    communities_count=len(communities['communities']),
+                )
         
         # Cross-layer similarity analysis
         print("Cross-layer similarity analysis")
@@ -433,39 +485,43 @@ class TestComprehensiveIntegration:
                         similarity_score = len(common_nodes) / max(len(graph1.nodes()), len(graph2.nodes()))
                         layer_similarities[f"{layer1_name}_{layer2_name}"] = similarity_score
         
-        # Track cross-layer analysis
         cross_layer_id = tracker.track_cross_layer_analysis(
-            multi_layer_network=multi_layer_network,
-            layer_similarities=layer_similarities,
+            graph_data=multi_layer_network,
+            cross_layer_results=layer_similarities,
             source='multi_layer_test'
+        )
+        _assert_tracked(
+            tracker,
+            cross_layer_id,
+            source='multi_layer_test',
+            entity_type='cross_layer_analysis',
+            layers_count=len(layer_similarities),
         )
         
         # Embedding-based entity similarity
-        print("Embedding-based entity similarity")
-        
         entity_similarities = sim_calc.pairwise_similarity(realistic_embeddings)
         
-        # Track embedding analysis
         embed_id = tracker.track_embedding_analysis(
             embeddings=realistic_embeddings,
-            similarities=entity_similarities,
+            analysis_results=entity_similarities,
             source='multi_layer_test'
         )
+        _assert_tracked(
+            tracker,
+            embed_id,
+            source='multi_layer_test',
+            entity_type='embedding_analysis',
+            embeddings_count=len(realistic_embeddings),
+        )
         
-        # Verify results
         assert len(layer_results) > 0
         assert len(layer_similarities) > 0
         assert len(entity_similarities) > 0
-        
-        print(f"Multi-layer analysis completed")
-        print(f"Layers analyzed: {list(multi_layer_network.keys())}")
-        print(f"Layer similarities: {list(layer_similarities.keys())}")
-        
-        return multi_layer_id
     
     def test_error_handling_and_recovery(self):
         """Test error handling and recovery mechanisms."""
         tracker = AlgorithmTrackerWithProvenance(provenance=True)
+        centrality_calc = CentralityCalculator()
         
         # Test with invalid graph data
         invalid_graph = {
@@ -473,46 +529,24 @@ class TestComprehensiveIntegration:
             'edges': []
         }
         
-        # Should handle gracefully
-        try:
-            centrality_calc = CentralityCalculator()
-            result = centrality_calc.calculate_degree_centrality(invalid_graph)
-            # Should return empty result or handle gracefully
-            assert isinstance(result, dict)
-        except Exception as e:
-            # Should be a controlled exception
-            assert isinstance(e, (ValueError, RuntimeError))
+        result = centrality_calc.calculate_degree_centrality(invalid_graph)
+        assert isinstance(result, dict)
         
-        # Test with invalid embeddings
-        invalid_embeddings = {
-            'node1': [1, 2],  # Different dimensions
-            'node2': [1, 2, 3, 4]  # Different dimensions
-        }
-        
-        try:
-            sim_calc = SimilarityCalculator()
-            result = sim_calc.batch_similarity(
-                embeddings=invalid_embeddings,
-                query_embedding=[1, 2, 3, 4],
-                method='cosine'
-            )
-            # Should handle dimension mismatch
-        except Exception as e:
-            # Should handle gracefully
-            assert isinstance(e, ValueError)
-        
-        # Test provenance tracking with invalid data
-        try:
-            result = tracker.track_embedding_computation(
-                graph=None,  # Invalid graph
-                algorithm='test',
-                embeddings={},
-                parameters={}
-            )
-            # Should either return None or handle gracefully
-        except Exception as e:
-            # Should be a controlled exception
-            assert isinstance(e, (ValueError, TypeError))
+        # Provenance tracking with a None graph still writes a record.
+        result = tracker.track_embedding_computation(
+            graph=None,
+            algorithm='test',
+            embeddings={},
+            parameters={},
+            source='integration_error_recovery'
+        )
+        _assert_tracked(
+            tracker,
+            result,
+            source='integration_error_recovery',
+            algorithm='test',
+            input_data_type='NoneType',
+        )
         
         # Test graceful degradation when provenance is disabled
         tracker_no_prov = AlgorithmTrackerWithProvenance(provenance=False)
@@ -526,8 +560,7 @@ class TestComprehensiveIntegration:
         
         # Should return None when provenance is disabled
         assert result is None
-        
-        print("Error handling and recovery test completed")
+        assert tracker_no_prov._prov_manager is None
     
     def test_performance_benchmarks(self, realistic_embeddings):
         """Test performance benchmarks with realistic data."""
