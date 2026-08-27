@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **First-class LangChain integration** (closes #963; recreates #969)
+  - New `pip install semantica[langchain]` extra (`langchain-core>=0.3.0`), included in the `all` bundle
+  - `integrations/langchain/SemanticaRetriever` — LangChain `BaseRetriever` that seeds from `HybridSearch` then walks graph edges (`hops=2` default) for GraphRAG-style retrieval; falls back to `ContextGraph.query` when hybrid search is unavailable
+  - `integrations/langchain/SemanticaVectorStore` — LangChain `VectorStore` adapter over `HybridSearch` (`add_texts`, `similarity_search`, `similarity_search_with_score`, `from_texts`)
+  - `integrations/langchain/SemanticaKGTool` / `SemanticaDecisionTool` — `BaseTool` subclasses with Pydantic `args_schema` (`semantica_query_graph`, `semantica_query_decisions`); `build()` returns the tool, or `None` when langchain-core is absent
+  - Retriever and VectorStore read HybridSearch nested `metadata` (`content`, `node_id`, `node_type`) rather than top-level fields that HybridSearch does not set
+  - All adapters remain importable without langchain-core (`LANGCHAIN_AVAILABLE` flag)
+  - Docs: `docs/integrations/langchain.md`, README native-integration matrix, and `docs.json` nav entry
+
 ## [0.6.6] - 2026-08-20
 
 ### Added
@@ -121,6 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `tests/export/test_timestamp_timezones.py` and `tests/provenance/test_timestamp_timezones.py`: offset presence on every export and provenance path, PROV-O literals valid as `xsd:dateTimeStamp`, comparison against a timezone-aware instant without `TypeError`, the Oxigraph filter that dropped the naive value (with a bound inside the indeterminate window, so the test cannot pass by accident), and the document `@id` remaining a valid IRI with `+00:00` in it. 11 of the 13 fail on the parent commit
   - **Fixed during review** (Qodo): once new entries carry `+00:00` and stored ones do not, `ProvenanceManager.query_recorded_between` and `audit_log` compared ISO timestamps as raw strings, so they ordered by spelling rather than by instant — an inclusive naive bound naming a stored offset-bearing timestamp sorted *below* it and dropped the record, and a bound written in another offset landed wherever its digits fell (`19:45+05:30` is 14:15Z, but sorted after 14:19Z). Both now compare instants through a new `to_utc_datetime()` helper that reads a missing offset as UTC, which is what the values written before this change actually were; a bound that cannot be read as a timestamp keeps the historical string comparison rather than raising on a call that used to work
   - The remaining 147 naive call sites are in `context/`, `vector_store/`, `seed/` and elsewhere, where timestamps are compared against values parsed from previously stored naive strings. Converting those without a read-side migration would raise `TypeError: can't compare offset-naive and offset-aware datetimes` on existing data, so they are deliberately left for a separate change
+- **`SHACLGenerator` mangles `#`-terminated namespaces into `#/`, so generated shapes target nothing** (#1082) by @changshenhan
+  - `__init__` normalized `base_uri` with `rstrip("/") + "/"`, which turns `http://example.org/manufacturing#` into `...manufacturing#/` — the most common RDF namespace convention. Every generated URI (`sh:targetClass`, `sh:path`, shape URIs) then landed in a different namespace than the instance data, and SHACL validation silently passed because the shapes targeted nothing
+  - `__init__` now preserves a namespace already ending in `/` or `#`, matching the `#`-aware normalization `generate()` already applies; `shapes_uri` inherits the fix
+  - New `test_hash_namespace_base_uri_is_not_mangled` in `tests/ontology/test_ontology_advanced.py` fails on the pre-fix normalization and passes with it; full ontology suite (76 tests) green
 
 - **`split`/chunking paths bypassed the centralized spaCy model cache, reloading the model on every call** (#1042, closes #998) by @Accute9, reviewed by @Sameer6305
   - `semantica/split/methods.py`'s `split_by_sentences()` and `semantica/split/semantic_chunker.py`'s `SemanticChunker.__init__` each called `spacy.load()` directly instead of reusing the process-level cache added in #889/`semantic_extract/methods.py`'s `load_spacy_model()` — every call/construction re-paid the ~120ms model-load cost independently of `NERExtractor`, which already used the cache
