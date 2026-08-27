@@ -91,6 +91,55 @@ class TestScannedPdfWarning(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_warns_when_pages_have_only_whitespace(self):
+        """Pages that return only whitespace count as no extractable text."""
+        mock_pdfplumber = self._mock_pdfplumber(page_text="   \n\t  ")
+        parser = PDFParser()
+        path = self._make_pdf_path()
+        try:
+            with patch.dict(sys.modules, {"pdfplumber": mock_pdfplumber}):
+                parser.parse(path)
+            self.mock_logger.warning.assert_called_once()
+            message = self.mock_logger.warning.call_args[0][0]
+            self.assertIn("scanned", message)
+            self.assertIn("enable_ocr", message)
+        finally:
+            os.unlink(path)
+
+    def test_no_warning_for_mixed_pdf(self):
+        """A PDF where at least one page has real text must not warn."""
+        # Build a two-page PDF: page 1 has text, page 2 is image-only
+        mock_page_text = MagicMock()
+        mock_page_text.extract_text.return_value = "Actual content"
+        mock_page_text.extract_tables.return_value = []
+        mock_page_text.width = 612
+        mock_page_text.height = 792
+
+        mock_page_image = MagicMock()
+        mock_page_image.extract_text.return_value = None
+        mock_page_image.extract_tables.return_value = []
+        mock_page_image.width = 612
+        mock_page_image.height = 792
+
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [mock_page_text, mock_page_image]
+        mock_pdf.metadata = {}
+
+        mock_pdfplumber = MagicMock()
+        context_manager = MagicMock()
+        context_manager.__enter__.return_value = mock_pdf
+        mock_pdfplumber.open.return_value = context_manager
+
+        parser = PDFParser()
+        path = self._make_pdf_path()
+        try:
+            with patch.dict(sys.modules, {"pdfplumber": mock_pdfplumber}):
+                result = parser.parse(path)
+            self.assertIn("Actual content", result["full_text"])
+            self.mock_logger.warning.assert_not_called()
+        finally:
+            os.unlink(path)
+
 
 if __name__ == "__main__":
     unittest.main()
