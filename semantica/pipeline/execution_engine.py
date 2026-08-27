@@ -379,7 +379,7 @@ class ExecutionEngine:
    
             data = delta_result
         
-        if step.handler:
+        if step.handler is not None:
             return step.handler(data, **step.config, **options)
         else:
             return data

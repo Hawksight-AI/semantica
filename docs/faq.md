@@ -17,7 +17,7 @@ icon: "circle-question"
 | API key required? | Optional: pattern extraction works with no keys |
 | Works with LangChain / LlamaIndex? | Yes: Semantica is a layer on top, not a replacement |
 | Production-ready? | Yes: 1,000+ tests, v0.5.0 ships with 12 security fixes |
-| Latest version? | **v0.6.5** (August 2026) |
+| Latest version? | **v0.6.6** (August 2026) |
 | Local LLMs? | Yes: Ollama via LiteLLM, HuggingFaceLLM for air-gapped |
 
 
