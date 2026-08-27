@@ -630,6 +630,7 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
             targetId: edge.target,
             weight: edge.weight,
             edgeType: edge.type,
+            label: edge.type,
             properties: edge.properties,
             size: clamp(0.18, 0.22 + Math.sqrt(Math.max(Number(edge.weight) || 1, 1)) * 0.2, 0.88),
             baseSize: clamp(0.18, 0.22 + Math.sqrt(Math.max(Number(edge.weight) || 1, 1)) * 0.2, 0.88),

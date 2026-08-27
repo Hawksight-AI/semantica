@@ -33,18 +33,25 @@ jobs:
       - name: Install Explorer frontend dependencies
         working-directory: explorer
         run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: explorer
+        run: npx playwright install --with-deps chromium
       - name: Test Explorer frontend
         working-directory: explorer
         run: |
           npm run test:graph-store
           npm run test:graph-workspace
           npm run test:plugin-registry
+          npm run test:deterministic-e2e
       - name: Build Explorer frontend
         working-directory: explorer
         run: npm run build
       - name: Install pinned Python dependencies
         run: |
           pip install -r requirements-ci.txt
+      - name: Test deterministic Explorer backend path
+        run: |
+          pytest -q tests/explorer/test_explorer_deterministic_rendering_e2e.py
       - name: Verify requirements-ci.txt is up to date
         run: |
           pip install uv==0.12.1
