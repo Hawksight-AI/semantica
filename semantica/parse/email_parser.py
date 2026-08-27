@@ -33,6 +33,7 @@ License: MIT
 """
 
 import email
+import email.message
 from dataclasses import dataclass, field
 from email import message_from_bytes, message_from_string
 from email.header import decode_header
