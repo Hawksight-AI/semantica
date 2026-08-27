@@ -63,9 +63,16 @@ import importlib
 import json
 import os
 import re
+import types
+from collections import Counter
+from collections.abc import Iterable as IterableABC
+from collections.abc import Mapping
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
+
+from .exceptions import ProcessingError, ValidationError
 
 
 def format_data(data: Any, format_type: str = "json") -> str:
@@ -313,6 +320,65 @@ def format_timestamp(
     return dt.strftime(format_str)
 
 
+def utc_now() -> datetime:
+    """
+    Current instant as a timezone-aware UTC datetime.
+
+    ``datetime.now()`` reads the local clock and ``datetime.utcnow()`` reads UTC,
+    but both return a naive datetime, and the two are indistinguishable once
+    serialized: a consumer cannot tell which zone the value belongs to, and an
+    RDF timestamp without an offset is not comparable against one that has an
+    offset (a SPARQL FILTER drops it rather than reporting an error). Use this
+    for any timestamp that leaves the process.
+
+    Returns:
+        Current UTC time, timezone-aware
+    """
+    return datetime.now(timezone.utc)
+
+
+def utc_now_iso() -> str:
+    """
+    Current instant as an ISO 8601 string carrying an explicit UTC offset.
+
+    Returns:
+        Timestamp string such as ``2026-08-19T14:19:04.229937+00:00``, which is
+        a valid ``xsd:dateTimeStamp`` and orders correctly against timestamps
+        written in any other timezone
+    """
+    return utc_now().isoformat()
+
+
+def to_utc_datetime(value: Union[str, datetime, None]) -> Optional[datetime]:
+    """
+    Read an ISO 8601 timestamp as a timezone-aware UTC instant.
+
+    Timestamps written before #1114 carry no offset. They were produced by
+    ``datetime.utcnow()``, so a missing offset is read as UTC: that keeps a
+    stored naive value and the same instant written with an offset comparing
+    equal, instead of ordering by how the timestamp happens to be spelled.
+
+    Args:
+        value: ISO 8601 string or datetime. ``Z`` is accepted as the offset.
+
+    Returns:
+        Timezone-aware UTC datetime, or None if the value cannot be read as a
+        timestamp, so callers can fall back rather than raise on stored data
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def parse_timestamp(timestamp_str: str, format_str: Optional[str] = None) -> datetime:
     """
     Parse timestamp string to datetime.
@@ -391,9 +457,7 @@ def chunk_list(items: List[Any], chunk_size: int) -> List[List[Any]]:
     Returns:
         List of chunks
     """
-    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
-
-
+    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]    
 def flatten_dict(
     d: Dict[str, Any], parent_key: str = "", sep: str = "."
 ) -> Dict[str, Any]:
@@ -407,18 +471,32 @@ def flatten_dict(
 
     Returns:
         Flattened dictionary
+
+    Raises:
+        ValueError: If two input paths produce the same flattened key.
     """
-    items = []
+    result = {}
 
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
 
         if isinstance(v, dict):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
+            nested = flatten_dict(v, new_key, sep=sep)
 
-    return dict(items)
+            for key, value in nested.items():
+                if key in result:
+                    raise ValueError(
+                        f"Key collision while flattening dictionary: {key}"
+                    )
+                result[key] = value
+        else:
+            if new_key in result:
+                raise ValueError(
+                    f"Key collision while flattening dictionary: {new_key}"
+                )
+            result[new_key] = v
+
+    return result
 
 
 def get_nested_value(
@@ -584,3 +662,396 @@ def classify_path_distance(hop_count: int) -> str:
     if hop_count <= 6:
         return "mid-range"
     return "distant"
+
+
+# Graph payloads circulate under two vocabularies: 'entities'/'relationships'
+# (kg builders, most exporters) and 'nodes'/'edges' (ContextGraph.to_dict,
+# Neo4jCSVExporter, the Explorer routes). Consumers each reconciled them
+# locally, with at least three competing idioms, so the same payload could be
+# exported, silently dropped, or rejected depending on which consumer read it.
+# This is the single place that decision is made.
+_ENTITY_KEYS = ("entities", "nodes")
+_RELATIONSHIP_KEYS = ("relationships", "edges")
+_TRIPLET_KEYS = ("triplets",)
+
+# Keys that legitimately travel alongside the collections without being
+# records themselves, so their presence is never evidence that records were
+# dropped: ContextGraph.to_dict() carries 'statistics', JSON envelopes carry
+# 'metadata' and 'count'.
+_CONTEXT_KEYS = ("metadata", "statistics", "count")
+
+# Validation errors below interpolate caller-controlled keys. A pathological
+# key (megabytes long) would otherwise size the exception string and, through
+# the export wrappers that log the full exception, the log entry. The display
+# keeps the offending key recognizable while bounding the message.
+_MAX_KEY_DISPLAY = 64
+
+
+def _truncate_key(key: Any) -> str:
+    """Render a mapping key for an error message, bounded in length."""
+    value = str(key)
+    if len(value) > _MAX_KEY_DISPLAY:
+        return value[:_MAX_KEY_DISPLAY] + "…"
+    return value
+
+
+# Truncating each key bounds the per-key cost; capping the count of keys
+# shown bounds the total, so a payload carrying many unknown keys cannot
+# size the message (or the log entry that records it) either.
+_MAX_KEYS_DISPLAY = 8
+
+
+def _truncate_key_list(keys: Iterable[Any]) -> str:
+    """Render keys for an error message, bounded in count and length."""
+    rendered = [_truncate_key(key) for key in keys]
+    if len(rendered) <= _MAX_KEYS_DISPLAY:
+        return ", ".join(f"'{key}'" for key in rendered)
+    shown = ", ".join(f"'{key}'" for key in rendered[:_MAX_KEYS_DISPLAY])
+    return f"{shown}, and {len(rendered) - _MAX_KEYS_DISPLAY} more"
+
+
+def _require_recognized_keys(
+    payload: Mapping, recognized_keys: Sequence[str], *, what: str
+) -> None:
+    """Reject a mapping that shares no key with the recognized set.
+
+    A consumer that reads a fixed set of keys turns an unrecognized mapping
+    into an empty result that looks like a legitimate one. An empty mapping is
+    allowed through -- it carries nothing that could be lost.
+
+    Args:
+        payload: Mapping to check.
+        recognized_keys: Keys the consumer reads.
+        what: Noun for the error message, e.g. ``"Graph payload"``.
+
+    Raises:
+        ValidationError: if ``payload`` is non-empty and shares no key with
+            ``recognized_keys``.
+    """
+    if not payload or any(key in payload for key in recognized_keys):
+        return
+
+    supplied = _truncate_key_list(sorted(map(str, payload)))
+    expected = ", ".join(f"'{key}'" for key in recognized_keys)
+    raise ValidationError(
+        f"{what} has no recognized key. Supplied: {supplied}. "
+        f"Expected at least one of: {expected}."
+    )
+
+
+def _require_nothing_dropped(
+    payload: Mapping,
+    recognized_keys: Sequence[str],
+    resolved: Iterable[Any],
+    *,
+    what: str,
+) -> None:
+    """Reject a mapping that resolved to nothing while still holding records.
+
+    Checking that a recognized key is *present* is not enough:
+    ``{"entities": [], "data": [...]}`` clears that bar and still resolves to
+    empty, dropping every record under 'data'. Presence answers "did the
+    caller use our vocabulary"; this answers the question that actually
+    matters, "did anything the caller supplied survive".
+
+    Only non-empty lists count as evidence of dropped records. A payload can
+    carry scalars and dicts that are not collections -- ContextGraph.to_dict()
+    always includes 'statistics' -- and an empty graph must stay exportable.
+
+    Args:
+        payload: Mapping to check.
+        recognized_keys: Keys the consumer reads.
+        resolved: The collections the consumer resolved from ``payload``.
+        what: Noun for the error message, e.g. ``"Graph payload"``.
+
+    Raises:
+        ValidationError: if nothing resolved and an unread key holds a
+            non-empty list.
+    """
+    if any(resolved):
+        return
+
+    dropped = sorted(
+        str(key)
+        for key, value in payload.items()
+        if key not in recognized_keys
+        and key not in _CONTEXT_KEYS
+        and isinstance(value, (list, tuple))
+        and value
+    )
+    if not dropped:
+        return
+
+    named = _truncate_key_list(dropped)
+    expected = ", ".join(f"'{key}'" for key in recognized_keys)
+    raise ValidationError(
+        f"{what} resolved to nothing, but {named} still holds records. "
+        f"Exporting it would drop them silently. Supply the records under "
+        f"one of: {expected}."
+    )
+
+
+def _is_record(value: Any) -> bool:
+    """Report whether a value can stand in for a graph record.
+
+    Consumers read records either as mappings (``entity.get("type")`` in the
+    LPG and Arango exporters) or as objects with attributes
+    (``Neo4jCSVExporter._record_to_dict`` accepts dataclasses and anything
+    carrying a ``__dict__``). Both are legitimate, so both are accepted here;
+    strings, numbers, and nested sequences are not records under either
+    reading.
+
+    Modules and class/type objects are excluded even though they carry
+    ``__dict__``: they are not graph records under any supported reading, and
+    passing them through the boundary would produce ``AttributeError`` inside
+    exporters rather than a ``ValidationError`` at the boundary where the
+    problem is visible.
+    """
+    return isinstance(value, Mapping) or is_dataclass(value) or (
+        hasattr(value, "__dict__")
+        and not isinstance(value, (types.ModuleType, type))
+    )
+
+
+def _record_to_dict(record: Any) -> Dict[str, Any]:
+    """Convert an accepted record to a plain dict.
+
+    :func:`_is_record` accepts mappings, dataclasses, and objects carrying
+    ``__dict__`` as legitimate record shapes, but consumers of
+    :func:`normalize_graph_payload` -- YAML serialization, ``entity.get(...)``
+    in the LPG and Arango exporters -- read records as dicts. Converting here,
+    at the boundary, means every exporter gets the same shape regardless of
+    which reading the caller used; previously only ``Neo4jCSVExporter``
+    converted object-shaped records locally, so a dataclass record passed
+    validation for the other exporters only to crash with a raw
+    ``AttributeError`` once used.
+    """
+    if isinstance(record, Mapping):
+        return dict(record)
+    if is_dataclass(record):
+        return asdict(record)
+    return {
+        key: value for key, value in vars(record).items() if not key.startswith("_")
+    }
+
+
+def _coerce_records(key: str, value: Any) -> List[Any]:
+    """Validate one collection value and materialize it as a list of records.
+
+    This runs before any truthiness or ``list()`` call, because both mislead
+    on malformed input: ``list("abc")`` quietly turns a string into three
+    single-character "records", and ``list(42)`` raises a bare ``TypeError``
+    from deep inside the exporter that named the exporter rather than the
+    offending payload key. Neither reaches the caller as an actionable
+    message, so the shapes that produce them are rejected by name instead.
+
+    ``None`` is deliberately not rejected: JSON round-trips an absent
+    collection to null, and treating that as "no records under this key" is
+    the same answer an explicit ``[]`` gets. It is not silent data loss --
+    a null collection alongside records under an unread key is still caught
+    by :func:`_require_nothing_dropped`.
+
+    Args:
+        key: Payload key the value came from, for the error message.
+        value: The raw value stored under ``key``.
+
+    Returns:
+        The records as a new list, so the result never aliases the input.
+
+    Raises:
+        ValidationError: if ``value`` is a string, bytes, a mapping, or any
+            non-iterable scalar; or if any element is not a record.
+    """
+    if value is None:
+        return []
+
+    if isinstance(value, (str, bytes, bytearray)):
+        raise ValidationError(
+            f"Graph payload key '{key}' holds a {type(value).__name__}, not a "
+            f"collection of records. Iterating it would yield characters, not "
+            f"records. Supply a list of records."
+        )
+
+    if isinstance(value, Mapping):
+        raise ValidationError(
+            f"Graph payload key '{key}' holds a mapping, not a collection of "
+            f"records. If it is a single record, wrap it in a list; if it is "
+            f"keyed by ID, supply its values as a list."
+        )
+
+    if not isinstance(value, IterableABC):
+        raise ValidationError(
+            f"Graph payload key '{key}' holds a "
+            f"{type(value).__name__}, not a collection of records. Supply a "
+            f"list of records."
+        )
+
+    records = list(value)
+    for index, record in enumerate(records):
+        if not _is_record(record):
+            raise ValidationError(
+                f"Graph payload key '{key}' holds a "
+                f"{type(record).__name__} at index {index}, not a record. "
+                f"Records must be mappings or objects with attributes."
+            )
+    return [_record_to_dict(record) for record in records]
+
+
+def _canonical_record_multiset(records: List[Dict[str, Any]]) -> "Counter[str]":
+    """Represent records as an order-independent multiset for equality checks.
+
+    Two spellings of the same collection (``entities`` and ``nodes``) can
+    legitimately list identical records in a different order -- a caller
+    round-tripping through a dict-keyed cache or a set has no reason to
+    preserve list order. Comparing with plain list equality would treat that
+    as a conflict and reject a payload that carries no real data loss, so
+    records are compared as a multiset of their canonical JSON form instead.
+    """
+    return Counter(
+        json.dumps(record, sort_keys=True, default=str) for record in records
+    )
+
+
+def _resolve_collection(
+    payload: Dict[str, Any], keys: Tuple[str, ...]
+) -> List[Dict[str, Any]]:
+    """Pick one collection from a payload that may use either vocabulary.
+
+    Both spellings may legitimately be present: ``JSONExporter`` writes
+    'entities' and 'nodes' side by side, so a round-trip of its output carries
+    both, one of them empty. Where only one holds records, that one wins.
+
+    Two non-empty, unequal spellings are a different matter -- there is no
+    basis for preferring either, and picking one would silently discard the
+    other -- so that is refused rather than guessed at.
+
+    Every spelling present is validated, not just the one that wins: a
+    malformed 'nodes' alongside a well-formed 'entities' is a payload the
+    caller should hear about, and validating only the winner would let it
+    through on the strength of the other key.
+
+    Args:
+        payload: Mapping to read from.
+        keys: Accepted spellings, most canonical first.
+
+    Returns:
+        The resolved collection, or an empty list if no spelling is present.
+
+    Raises:
+        ValidationError: if a spelling holds something other than a collection
+            of records; or if two spellings are both present, both non-empty,
+            and hold different records, order ignored.
+    """
+    present = {
+        key: _coerce_records(key, payload[key]) for key in keys if key in payload
+    }
+    populated = {key: value for key, value in present.items() if value}
+
+    if len(populated) > 1:
+        values = list(populated.values())
+        canonical = [_canonical_record_multiset(value) for value in values]
+        if any(entry != canonical[0] for entry in canonical[1:]):
+            named = " and ".join(f"'{key}'" for key in populated)
+            raise ValidationError(
+                f"Graph payload carries {named} with different contents; "
+                f"cannot determine which to export. Supply one, or make them "
+                f"identical."
+            )
+
+    for key in keys:
+        value = present.get(key)
+        if value:
+            # Already a fresh list from _coerce_records, so the result cannot
+            # alias the caller's collection.
+            return value
+
+    # Every spelling present is empty (or none is): an explicit empty
+    # collection is a legitimate answer, distinct from "unrecognized".
+    return []
+
+
+def _require_mapping(data: Any, expected_keys: Sequence[str]) -> None:
+    """Reject non-mapping export input with an actionable error.
+
+    Shared by every consumer of :func:`normalize_graph_payload` so that a
+    wrong *type* fails the same way everywhere. Handed a sequence (or any
+    other non-mapping), every downstream key lookup would fail with a bare
+    ``AttributeError: 'list' object has no attribute 'get'``, which tells the
+    caller nothing about the shape expected -- and ``normalize_graph_payload``
+    itself raises ``ValidationError`` for this case, which would leave
+    exporters that skip this guard raising a different exception type than
+    the ones that call it, for the identical mistake.
+
+    A list is rejected rather than wrapped: these formats distinguish
+    entities from relationships from triplets (or nodes/edges), so inferring
+    which one a bare list represents would silently mislabel the records.
+
+    Args:
+        data: Candidate export payload.
+        expected_keys: Key names the caller reads, named in the error so the
+            caller learns the expected shape.
+
+    Raises:
+        ProcessingError: if ``data`` is not a mapping.
+    """
+    if not isinstance(data, Mapping):
+        keys = "/".join(f"'{key}'" for key in expected_keys)
+        raise ProcessingError(
+            f"Cannot export object of type '{type(data).__name__}': "
+            f"expected a dict with {keys}."
+        )
+
+
+def normalize_graph_payload(
+    payload: Dict[str, Any],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Reduce a graph payload to one canonical vocabulary.
+
+    Accepts either 'entities'/'relationships' or 'nodes'/'edges' (or a mix)
+    and returns the canonical spelling, so consumers read one shape instead of
+    reimplementing the reconciliation.
+
+    This is the validation boundary for graph payloads: it either returns
+    collections of records or raises. Nothing that reaches an exporter through
+    it needs re-checking, and nothing malformed passes through it as a
+    valid-looking empty graph.
+
+    Args:
+        payload: Graph payload mapping.
+
+    Returns:
+        ``{"entities": [...], "relationships": [...], "triplets": [...]}``.
+
+    Raises:
+        ValidationError: if ``payload`` is not a mapping; if a recognized key
+            holds something other than a collection of records; if two
+            spellings of the same collection are both non-empty and differ; if
+            a non-empty mapping contains no recognized key; or if it resolves
+            to nothing while an unread key still holds records. The last two
+            would otherwise hand the caller a valid-looking result with their
+            records silently dropped.
+
+    Example:
+        >>> normalize_graph_payload({"nodes": [{"id": "n1"}], "edges": []})
+        {'entities': [{'id': 'n1'}], 'relationships': [], 'triplets': []}
+    """
+    if not isinstance(payload, Mapping):
+        raise ValidationError(
+            f"Cannot normalize graph payload of type "
+            f"'{type(payload).__name__}': expected a mapping."
+        )
+
+    recognized = _ENTITY_KEYS + _RELATIONSHIP_KEYS + _TRIPLET_KEYS
+    _require_recognized_keys(payload, recognized, what="Graph payload")
+
+    resolved = {
+        "entities": _resolve_collection(payload, _ENTITY_KEYS),
+        "relationships": _resolve_collection(payload, _RELATIONSHIP_KEYS),
+        "triplets": _resolve_collection(payload, _TRIPLET_KEYS),
+    }
+
+    _require_nothing_dropped(
+        payload, recognized, resolved.values(), what="Graph payload"
+    )
+
+    return resolved

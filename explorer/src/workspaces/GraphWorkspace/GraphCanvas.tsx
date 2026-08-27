@@ -162,7 +162,11 @@ const SIGMA_SETTINGS = {
   hideLabelsOnMove: true,
   hideEdgesOnMove: true,
   enableEdgeEvents: true,
-  renderEdgeLabels: false,
+  // #1009: edge labels (the edge `type` — "works_for", "leads", ...) were
+  // hardcoded off, so edge text never rendered regardless of data. The
+  // labelDensity / labelGridCellSize / labelRenderedSizeThreshold settings
+  // below already throttle label density for both nodes and edges.
+  renderEdgeLabels: true,
   labelDensity: 0.7,
   labelGridCellSize: 140,
   zIndex: true,
@@ -741,6 +745,12 @@ function buildEffectAvailability(
     ? { enabled: true, available: true, reason: "Panel enabled" }
     : { enabled: false, available: false, reason: "Disabled by toggle" };
 
+  // #1009: edge labels are immediately available once the graph is loaded —
+  // they have no async analytics or zoom-tier dependency.
+  const edgeLabels = effectsState.edgeLabelsEnabled
+    ? { enabled: true, available: true, reason: "Ready" }
+    : { enabled: false, available: false, reason: "Disabled by toggle" };
+
   const diagnostics = !GRAPH_THEME.effects.diagnostics.enabledInDev
     ? { enabled: false, available: false, reason: "Disabled in production" }
     : effectsState.diagnosticsEnabled
@@ -758,6 +768,7 @@ function buildEffectAvailability(
     communities,
     centrality,
     legend,
+    edgeLabels,
     diagnostics,
   };
 }
@@ -1211,6 +1222,12 @@ function applySceneState(
       size: resolvedStyle.size,
       zIndex: resolvedStyle.zIndex,
       curvature: resolvedStyle.curvature,
+      // #1009: Sigma's edge label renderer draws data.label — the graph
+      // stores the relationship type in edgeType, which the renderer never
+      // saw, so enabling renderEdgeLabels alone left edges blank.
+      // Use || rather than ?? so that an empty-string edgeType (possible
+      // when the API returns type: "") does not produce a blank label.
+      label: resolvedStyle.hidden ? undefined : String(attrs.edgeType || data.label || ""),
     };
   });
 
@@ -1295,6 +1312,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const onEdgeClickRef = useRef(onEdgeClick);
     const onSceneRuntimeChangeRef = useRef(onSceneRuntimeChange);
     const onCameraStateChangeRef = useRef(onCameraStateChange);
+    // #1009: tracked as a ref so the Sigma creation effect always reads the
+    // current value without needing effectsState in its dependency array.
+    const effectsStateRef = useRef(effectsState);
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     const [zoomTier, setZoomTier] = useState<GraphZoomTier>("overview");
     const [analyticsSnapshot, setAnalyticsSnapshot] = useState<GraphAnalyticsSnapshot | null>(null);
@@ -1323,6 +1343,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     onEdgeClickRef.current = onEdgeClick;
     onSceneRuntimeChangeRef.current = onSceneRuntimeChange;
     onCameraStateChangeRef.current = onCameraStateChange;
+    effectsStateRef.current = effectsState;
 
     const behaviors = useMemo<GraphBehavior[]>(
       () => [
@@ -1835,7 +1856,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         return;
       }
 
-      const sigma = new Sigma(displayGraphRef.current, containerRef.current, SIGMA_SETTINGS);
+      const sigma = new Sigma(displayGraphRef.current, containerRef.current, {
+        ...SIGMA_SETTINGS,
+        // #1009: initialize with the current toggle value rather than the
+        // static default so that a user who disabled Edge Labels before
+        // graph/Sigma initialization sees the correct state after mount.
+        renderEdgeLabels: effectsStateRef.current.edgeLabelsEnabled,
+      });
       sigmaRef.current = sigma;
       appliedGraphVersionRef.current = graphVersionRef.current;
 
@@ -1936,6 +1963,17 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         syncCameraState(sigma);
       });
     }, [behaviors, dispatchToBehaviors, getBehaviorContext, graphReady, syncCameraState]);
+
+    // #1009: renderEdgeLabels follows the Effects-panel toggle instead of
+    // staying hardcoded — dense graphs get their label-free edges back.
+    useEffect(() => {
+      const sigma = sigmaRef.current;
+      if (!sigma) {
+        return;
+      }
+      sigma.setSetting("renderEdgeLabels", effectsState.edgeLabelsEnabled);
+      sigma.scheduleRefresh();
+    }, [effectsState.edgeLabelsEnabled]);
 
     useEffect(() => {
       return () => {

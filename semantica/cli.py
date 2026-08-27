@@ -20,7 +20,7 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from dataclasses import asdict, dataclass, field, is_dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import yaml
@@ -773,10 +773,22 @@ def changelog(cli_ctx: CLIContext, local_json: bool) -> None:
     _run_with_error_handling(_action)
 
 
+class _DeepEmbeddingFailure(Exception):
+    """A deep-probe failure from doctor's embedding checks.
+
+    Marks failures that happened AFTER the backend imported cleanly — model
+    load, probe, or runtime problems — so the check's hint can point at the
+    real remediation instead of `pip install`.
+    """
+
+
 @main.command()
 @click.option("--json", "local_json", is_flag=True, default=False)
+@click.option("--deep-embeddings", "deep_embeddings", is_flag=True, default=False,
+              help="Also instantiate the local embedding backends and embed a probe "
+                   "text (catches backends that import cleanly but cannot load).")
 @click.pass_obj
-def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
+def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None:
     """Run a health check on all Semantica components and backends."""
     import importlib.metadata
     cli_ctx = _require_ctx(cli_ctx)
@@ -787,6 +799,16 @@ def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
         try:
             note = fn()
             return label, "ok", note, None
+        except _DeepEmbeddingFailure as exc:
+            # A deep-probe failure means the package IMPORTED fine: the pip
+            # hint would be the wrong remediation for what is actually a
+            # runtime/model-load problem (broken torch, failed model
+            # download, missing shared libs).
+            return label, "fail", str(exc), (
+                "runtime/model-load failure — reinstalling the package usually "
+                "does not help; check the warnings above (torch install, model "
+                "download, disk space)"
+            )
         except Exception as exc:
             return label, "fail", str(exc), hint
 
@@ -826,6 +848,50 @@ def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
                 import faiss  # noqa: F401
             return f"{backend} importable"
         checks.append(_check("Vector store", _vector, hint="pip install semantica[vectorstore-…]"))
+
+        # Embedding backends (#994): `doctor` used to report all green while
+        # every local embedding backend was non-functional — import success
+        # says nothing about model loading. Default checks stay cheap
+        # (import + version); --deep-embeddings (or
+        # SEMANTICA_DOCTOR_DEEP_EMBEDDINGS=1) instantiates the backend through
+        # TextEmbedder and embeds a probe, which is the only level that
+        # catches a backend that imports cleanly but cannot actually load.
+        deep = deep_embeddings or os.environ.get("SEMANTICA_DOCTOR_DEEP_EMBEDDINGS", "").strip().lower() in ("1", "true", "yes", "on")
+
+        def _embedding_backend(method: str) -> str:
+            if method == "sentence_transformers":
+                import sentence_transformers  # noqa: F401
+                note = f"importable ({importlib.metadata.version('sentence-transformers')})"
+            else:
+                import fastembed  # noqa: F401
+                note = f"importable ({importlib.metadata.version('fastembed')})"
+            if not deep:
+                return note
+            try:
+                from .embeddings import TextEmbedder
+                embedder = TextEmbedder(method=method)
+                if embedder.model is None and embedder.fastembed_model is None:
+                    raise RuntimeError(
+                        "model failed to load — the hash fallback is active "
+                        "(see warnings above); embedding quality is degraded"
+                    )
+                probe = embedder.embed_text("semantica doctor embedding probe")
+            except _DeepEmbeddingFailure:
+                raise
+            except Exception as exc:
+                raise _DeepEmbeddingFailure(str(exc)) from exc
+            return f"{note}; deep probe ok ({len(probe)}-dim)"
+
+        checks.append(_check(
+            "Embeddings (sentence-transformers)",
+            lambda: _embedding_backend("sentence_transformers"),
+            hint="pip install sentence-transformers",
+        ))
+        checks.append(_check(
+            "Embeddings (fastembed)",
+            lambda: _embedding_backend("fastembed"),
+            hint="pip install fastembed",
+        ))
 
         # LLM provider keys
         for provider, var in [("OpenAI", "OPENAI_API_KEY"), ("Anthropic", "ANTHROPIC_API_KEY"),
@@ -1666,6 +1732,93 @@ def embed(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
+def _json_default(obj) -> object:
+    """JSON serialiser that converts NumPy scalars/arrays to native Python types.
+
+    Falls back to ``str()`` for everything else so the writer never crashes on
+    unexpected types (e.g. ``datetime``, custom domain objects).
+    """
+    try:
+        import numpy as np  # local import — only needed when result contains numpy
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.generic):
+            return obj.item()
+    except ImportError:
+        pass
+    return str(obj)
+
+
+def _write_result_output(out_path: Path, result) -> None:
+    """Serialize a structured CLI result (dict or list) for ``--output``.
+
+    Domain commands like ``deduplicate`` and ``ontology align`` produce dicts
+    and lists, not numeric matrices — routing them through the embeddings
+    writer rejected their shapes and extensions (.csv is documented for
+    deduplicate). JSON-family formats serialize anything; CSV serializes a
+    list of dicts (or a single dict as one row).
+
+    Accepted extensions: .json, .jsonl, .csv  (no-extension and .txt are
+    rejected so the path reported to the caller always matches the file
+    actually created, consistent with every other --output in the CLI).
+    """
+    import json as _json
+
+    suffix = out_path.suffix.lower()
+
+    # ── JSON ────────────────────────────────────────────────────────────────
+    if suffix == ".json":
+        with open(out_path, "w", encoding="utf-8") as fh:
+            _json.dump(result, fh, indent=2, default=_json_default)
+        return
+
+    # ── JSON Lines ──────────────────────────────────────────────────────────
+    # Every record must occupy exactly one line.  Wrap a bare dict in a list
+    # so callers never need to know whether their result is singular or plural.
+    if suffix == ".jsonl":
+        items = result if isinstance(result, list) else [result]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            for item in items:
+                fh.write(_json.dumps(item, default=_json_default) + "\n")
+        return
+
+    # ── CSV ─────────────────────────────────────────────────────────────────
+    if suffix == ".csv":
+        import pandas as pd
+
+        rows = result if isinstance(result, list) else [result]
+        if not rows:
+            raise click.ClickException(
+                "No results to write — output file not created."
+            )
+        # Normalise numpy scalars/arrays to Python natives so to_csv() does
+        # not fall back to repr() strings for array-valued cells.
+        def _normalise(row):
+            if not isinstance(row, dict):
+                return row
+            out = {}
+            for k, v in row.items():
+                try:
+                    import numpy as np
+                    if isinstance(v, np.ndarray):
+                        v = v.tolist()
+                    elif isinstance(v, np.generic):
+                        v = v.item()
+                except ImportError:
+                    pass
+                out[k] = v
+            return out
+
+        pd.DataFrame([_normalise(r) for r in rows]).to_csv(out_path, index=False)
+        return
+
+    # ── unsupported ─────────────────────────────────────────────────────────
+    display = suffix if suffix else "(no extension)"
+    raise click.ClickException(
+        f"Unsupported output format '{display}'. Use .json, .jsonl, or .csv"
+    )
+
+
 @embed.command("generate")
 @click.argument("input_path")
 @click.option("--model",
@@ -1708,7 +1861,43 @@ def embed_generate(cli_ctx: CLIContext, input_path: str, model: str,
         except ImportError as exc:
             raise click.ClickException(f"Embeddings module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            output_path = Path(output)
+            suffix = output_path.suffix.lower()
+            try:
+                import numpy as np
+                import pandas as pd
+                arr = np.asarray(result)
+                if arr.ndim == 1:
+                    arr = arr[np.newaxis, :]
+                if arr.ndim != 2:
+                    raise click.ClickException(
+                        f"embed generate --output expects a 1-D or 2-D array, "
+                        f"got {arr.ndim}-D (shape {arr.shape})"
+                    )
+                rows = [list(row) for row in arr]
+                if suffix == ".parquet":
+                    # Schema: single 'embedding' column (list[float] per row).
+                    # embed index detects vector columns via
+                    # isinstance(df[c].iloc[0], (list, np.ndarray)).
+                    df = pd.DataFrame({"embedding": rows})
+                    df.to_parquet(output_path, index=False)
+                elif suffix in (".json", ".jsonl"):
+                    df = pd.DataFrame({"embedding": rows})
+                    df.to_json(
+                        output_path,
+                        orient="records",
+                        lines=(suffix == ".jsonl"),
+                    )
+                else:
+                    raise click.ClickException(
+                        f"Unsupported output format '{suffix}'. "
+                        "Use .parquet, .json, or .jsonl"
+                    )
+            except ImportError as exc:
+                raise click.ClickException(
+                    f"Missing dependency for --output: {exc}. "
+                    "Install pyarrow with: pip install pyarrow"
+                ) from exc
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"status": "ok"})
@@ -1930,7 +2119,7 @@ def deduplicate(
         except ImportError as exc:
             raise click.ClickException(f"Deduplication module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            _write_result_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
@@ -3054,7 +3243,7 @@ def ontology_align(cli_ctx: CLIContext, source: str, target: str, strategy: str,
         except ImportError as exc:
             raise click.ClickException(f"Ontology module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            _write_result_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"alignments": str(result)})
@@ -3933,15 +4122,68 @@ def backup_restore(cli_ctx: CLIContext, source: str, local_dry: bool) -> None:
 
         try:
             if _tf.is_tarfile(str(work_path)):
-                restore_root = Path.cwd()
+                restore_root = Path.cwd().resolve()
                 with _tf.open(str(work_path), "r:*") as tar:
                     # Dry-run listing was already handled above; extract now
                     for member in tar.getmembers():
                         # Strip the leading "semantica-backup/" prefix
                         member.name = member.name.replace("semantica-backup/", "", 1)
-                        if member.name:
-                            tar.extract(member, path=str(restore_root))
-                            console.print(f"  restored: {member.name}")
+                        if not member.name:
+                            continue
+
+                        # Reject members whose resolved path escapes the
+                        # restore root (path traversal / absolute paths),
+                        # regardless of the "semantica-backup/" prefix.
+                        member_path = (restore_root / member.name).resolve()
+                        try:
+                            member_path.relative_to(restore_root)
+                        except ValueError:
+                            raise click.ClickException(
+                                f"Refusing to restore '{member.name}': "
+                                "path escapes the restore directory."
+                            )
+
+                        # Reject symlink/hardlink members whose target
+                        # escapes the restore root. Checked two ways:
+                        # lexically (linkname itself, so an absolute path or
+                        # a literal ".." segment is rejected outright, with
+                        # no dependence on what else does or doesn't already
+                        # exist on disk) and by resolution (catches any
+                        # remaining traversal the lexical check misses).
+                        if member.issym() or member.islnk():
+                            linkname = member.linkname or ""
+                            linkname_parts = PurePosixPath(
+                                linkname.replace("\\", "/")
+                            ).parts
+                            if (
+                                not linkname
+                                or os.path.isabs(linkname)
+                                or PureWindowsPath(linkname).is_absolute()
+                                or ".." in linkname_parts
+                            ):
+                                raise click.ClickException(
+                                    f"Refusing to restore '{member.name}': "
+                                    "link target is absolute or traverses "
+                                    "out of the archive."
+                                )
+                            link_target = (
+                                member_path.parent / linkname
+                            ).resolve()
+                            try:
+                                link_target.relative_to(restore_root)
+                            except ValueError:
+                                raise click.ClickException(
+                                    f"Refusing to restore '{member.name}': "
+                                    "link target escapes the restore directory."
+                                )
+
+                        extract_kwargs: Dict[str, Any] = {"path": str(restore_root)}
+                        if hasattr(_tf, "data_filter"):
+                            # Python >=3.12: also reject device files, and
+                            # further harden the traversal/ownership checks.
+                            extract_kwargs["filter"] = "data"
+                        tar.extract(member, **extract_kwargs)
+                        console.print(f"  restored: {member.name}")
             elif src.is_dir():
                 restore_root = Path.cwd()
                 for f in src.rglob("*"):

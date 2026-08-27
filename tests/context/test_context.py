@@ -109,6 +109,61 @@ class TestContextModule(unittest.TestCase):
         self.assertEqual(neighbors[0]["id"], "n2")
         self.assertEqual(neighbors[0]["relationship"], "knows")
 
+    def test_add_edge_is_idempotent(self):
+        graph = ContextGraph()
+        graph.add_node("a", "t")
+        graph.add_node("b", "t")
+
+        self.assertTrue(graph.add_edge("a", "b", "rel"))
+        self.assertFalse(graph.add_edge("a", "b", "rel"))
+        self.assertFalse(graph.add_edge("a", "b", "rel"))
+
+        self.assertEqual(len(graph.edges), 1)
+        self.assertEqual(len(graph.edge_type_index["rel"]), 1)
+        self.assertEqual(len(graph._adjacency["a"]), 1)
+        self.assertEqual(graph.stats()["edge_count"], 1)
+        self.assertLessEqual(graph.density(), 1.0)
+
+    def test_parallel_edges_with_distinct_attributes_are_kept(self):
+        graph = ContextGraph()
+        graph.add_node("a", "t")
+        graph.add_node("b", "t")
+
+        graph.add_edge("a", "b", "rel", confidence=0.9)
+        graph.add_edge("a", "b", "rel", confidence=0.5)
+        graph.add_edge("a", "b", "other")
+
+        self.assertEqual(len(graph.edges), 3)
+        self.assertEqual(len({e.edge_id for e in graph.edges}), 3)
+
+    def test_reingest_does_not_duplicate_edges(self):
+        graph = ContextGraph()
+        entities = [
+            {"id": "alice", "type": "person"},
+            {"id": "acme", "type": "org"},
+        ]
+        relationships = [
+            {"source_id": "alice", "target_id": "acme", "type": "works_at"}
+        ]
+
+        for _ in range(3):
+            graph.build_from_entities_and_relationships(entities, relationships)
+
+        self.assertEqual(len(graph.edges), 1)
+
+    def test_clear_resets_edge_dedupe_index(self):
+        graph = ContextGraph()
+        graph.add_node("a", "t")
+        graph.add_node("b", "t")
+        graph.add_edge("a", "b", "rel")
+
+        graph.clear()
+
+        graph.add_node("a", "t")
+        graph.add_node("b", "t")
+        self.assertTrue(graph.add_edge("a", "b", "rel"))
+        self.assertEqual(len(graph.edges), 1)
+
     def test_get_nodes_by_label_returns_metadata_copy(self):
         graph = ContextGraph()
         graph.add_node("n1", "person", "Alice", role="engineer")

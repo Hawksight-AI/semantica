@@ -14,8 +14,9 @@ License: MIT
 """
 
 from typing import Any, Optional
-from datetime import datetime
 import uuid
+
+from ..utils.helpers import utc_now_iso
 
 
 class ExporterWithProvenance:
@@ -45,9 +46,9 @@ class ExporterWithProvenance:
 
     def export(self, data: Any, destination: str, **kwargs):
         """Export data with provenance tracking."""
-        activity_started_at_time = datetime.utcnow().isoformat()
+        activity_started_at_time = utc_now_iso()
         result = self._exporter.export(data, destination, **kwargs)
-        activity_ended_at_time = datetime.utcnow().isoformat()
+        activity_ended_at_time = utc_now_iso()
 
         if self.provenance and self._prov_manager:
             self._prov_manager.track_entity(

@@ -195,89 +195,62 @@ class TestMCPIngestor:
 
 class TestMCPClient:
     def test_call_tool(self):
-        # Patch requests.post globally if requests is used, or httpx.post if httpx is used.
-        # The code tries importing httpx, then requests.
-        # We should patch both or ensure we catch the right one.
-        # Simpler to patch sys.modules to simulate httpx missing, then patch requests.
-        
-        with patch.dict(sys.modules, {'httpx': None}):
-             with patch("requests.post") as mock_post:
-                mock_response = MagicMock()
-                mock_response.status_code = 200
-                
-                # Sequence of calls:
-                # 1. connect() calls _connect_http() -> calls _initialize() -> calls _send_request()
-                # _send_request() calls requests.post with method="initialize"
-                # 2. call_tool() calls _send_request() with method="tools/call"
-                
-                # Response for initialize
-                init_response = {
-                    "jsonrpc": "2.0",
-                    "result": {"serverInfo": {"name": "test", "version": "1.0"}},
-                    "id": 1
-                }
-                
-                # Response for tool call
-                tool_response = {
-                    "jsonrpc": "2.0",
-                    "result": {"content": [{"type": "text", "text": "Tool Result"}]},
-                    "id": 2
-                }
-                
-                mock_response.json.side_effect = [init_response, tool_response]
-                mock_post.return_value = mock_response
-                
-                client = MCPClient(url="http://localhost:8000")
-                client.connect()
-                
-                result = client.call_tool("my_tool", {"arg": "val"})
-                
-                # result is the dict returned by tool call? 
-                # call_tool returns dict?
-                # Check MCPClient.call_tool implementation
-                # It calls _send_request, which returns response.json().
-                # But wait, call_tool might process the result.
-                # Let's check call_tool implementation in mcp_client.py (not read yet, but assumed).
-                # Wait, I read mcp_client.py but didn't check call_tool specifically.
-                # Assuming call_tool returns result part or whole response.
-                
-                # Actually, let's verify call_tool in mcp_client.py
-                pass
+        # MCPClient._send_request_http now routes through request_with_ssrf_guard,
+        # which calls requests.request (not requests.post) with allow_redirects=False.
+        # Patch the requests.request call inside ssrf.py.
+        with patch("requests.Session.request") as mock_request:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+
+            # Response for initialize
+            init_response = {
+                "jsonrpc": "2.0",
+                "result": {"serverInfo": {"name": "test", "version": "1.0"}},
+                "id": 1,
+            }
+
+            # Response for tool call
+            tool_response = {
+                "jsonrpc": "2.0",
+                "result": {"content": [{"type": "text", "text": "Tool Result"}]},
+                "id": 2,
+            }
+
+            mock_response.json.side_effect = [init_response, tool_response]
+            mock_request.return_value = mock_response
+
+            client = MCPClient(url="http://localhost:8000")
+            client.connect()
+
+            client.call_tool("my_tool", {"arg": "val"})
 
     def test_call_tool_mock_check(self):
-         # Redoing the test with more specific mocking logic
-         with patch.dict(sys.modules, {'httpx': None}):
-             with patch("requests.post") as mock_post:
-                mock_response = MagicMock()
-                mock_response.status_code = 200
-                
-                # initialize response
-                init_response = {
-                    "jsonrpc": "2.0",
-                    "result": {"serverInfo": {"name": "test", "version": "1.0"}},
-                    "id": 1
-                }
-                
-                # tool call response - Assuming call_tool returns the 'result' part of JSON-RPC response
-                # If call_tool implementation wraps it, we need to know.
-                # Let's assume standard behavior for now.
-                tool_response = {
-                    "jsonrpc": "2.0",
-                    "result": {"content": [{"type": "text", "text": "Tool Result"}]},
-                    "id": 2
-                }
-                
-                mock_response.json.side_effect = [init_response, tool_response]
-                mock_post.return_value = mock_response
-                
-                client = MCPClient(url="http://localhost:8000")
-                client.connect()
-                
-                result = client.call_tool("my_tool", {"arg": "val"})
-                
-                # Verify result.
-                # If call_tool returns the 'result' dict from JSON-RPC:
-                assert result["content"] == [{"type": "text", "text": "Tool Result"}]
+        # Redo with the corrected patch target.
+        with patch("requests.Session.request") as mock_request:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+
+            init_response = {
+                "jsonrpc": "2.0",
+                "result": {"serverInfo": {"name": "test", "version": "1.0"}},
+                "id": 1,
+            }
+
+            tool_response = {
+                "jsonrpc": "2.0",
+                "result": {"content": [{"type": "text", "text": "Tool Result"}]},
+                "id": 2,
+            }
+
+            mock_response.json.side_effect = [init_response, tool_response]
+            mock_request.return_value = mock_response
+
+            client = MCPClient(url="http://localhost:8000")
+            client.connect()
+
+            result = client.call_tool("my_tool", {"arg": "val"})
+
+            assert result["content"] == [{"type": "text", "text": "Tool Result"}]
 
 class TestGDriveIngestor:
     def test_init_raises_if_no_google_libs(self):

@@ -38,6 +38,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from ..ingest.ssrf import request_with_ssrf_guard
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.helpers import read_json_file, write_json_file
 from ..utils.logging import get_logger
@@ -401,18 +402,25 @@ class SeedDataManager:
         """
         try:
             from ..ingest.db_ingestor import DBIngestor
+        except ImportError as e:
+            raise ProcessingError(
+                "Database ingestion module not available. Install required dependencies."
+            ) from e
 
+        try:
             # Initialize DB ingestor
             db_ingestor = DBIngestor(config={"connection_string": connection_string})
 
-            # Execute query or export table
+            # Execute query or export table. Both ingestor methods take the
+            # connection string as their first argument — the constructor's
+            # config is not a substitute for it (#973).
             if query:
                 # Execute custom query
-                result = db_ingestor.execute_query(query)
+                result = db_ingestor.execute_query(connection_string, query)
                 records = result if isinstance(result, list) else [result]
             elif table_name:
                 # Export table
-                table_data = db_ingestor.export_table(table_name)
+                table_data = db_ingestor.export_table(connection_string, table_name)
                 records = table_data.rows if hasattr(table_data, "rows") else []
             else:
                 raise ProcessingError("Either 'query' or 'table_name' must be provided")
@@ -429,11 +437,11 @@ class SeedDataManager:
             self.logger.info(f"Loaded {len(records)} records from database")
             return records
 
-        except (ImportError, OSError):
-            raise ProcessingError(
-                "Database ingestion module not available. Install required dependencies."
-            )
+        except ProcessingError:
+            raise
         except Exception as e:
+            # OSError here is a real connection/driver failure, not a missing
+            # module — report the actual cause and keep the chain (#973).
             raise ProcessingError(f"Failed to load from database: {e}") from e
 
     def load_from_api(
@@ -449,8 +457,8 @@ class SeedDataManager:
         """
         Load seed data from API.
 
-        Makes an HTTP GET request to an API endpoint and parses the JSON
-        response. Handles various response structures (list, dict with
+        Makes an SSRF-protected HTTP GET request to an API endpoint and parses
+        the JSON response. Handles various response structures (list, dict with
         'entities', 'data', 'results', 'items' keys). Automatically adds
         entity_type, relationship_type, and source metadata if provided.
 
@@ -474,8 +482,8 @@ class SeedDataManager:
             List of loaded data records as dictionaries
 
         Raises:
-            ProcessingError: If API request fails, response parsing fails, or
-                requests library is not available
+            ProcessingError: If the API request fails (connection error,
+                timeout, non-2xx status) or the response cannot be parsed
 
         Example:
             >>> records = manager.load_from_api(
@@ -486,16 +494,17 @@ class SeedDataManager:
             ... )
         """
         try:
-            import requests
-
             # Build full URL
             if endpoint:
                 full_url = f"{api_url.rstrip('/')}/{endpoint.lstrip('/')}"
             else:
                 full_url = api_url
 
-            # Prepare headers
-            request_headers = headers or {}
+            # Prepare headers — copy the caller's dict so we never mutate it in-place.
+            # Without the copy, adding "Authorization" here would silently modify the
+            # caller's original dict and potentially leak the key to subsequent calls
+            # that reuse the same dict without expecting it to contain credentials.
+            request_headers = dict(headers) if headers else {}
             if api_key:
                 request_headers["Authorization"] = f"Bearer {api_key}"
 
@@ -550,10 +559,6 @@ class SeedDataManager:
             self.logger.info(f"Loaded {len(records)} records from API: {full_url}")
             return records
 
-        except (ImportError, OSError):
-            raise ProcessingError(
-                "requests library not available. Install with: pip install requests"
-            )
         except Exception as e:
             raise ProcessingError(f"Failed to load from API: {e}") from e
 

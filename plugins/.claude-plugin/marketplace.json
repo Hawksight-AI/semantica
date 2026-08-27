@@ -1,8 +1,8 @@
 {
   "name": "semantica-local",
   "owner": {
-    "name": "Hawksight AI",
-    "url": "https://github.com/Hawksight-AI/semantica"
+    "name": "Semantica",
+    "url": "https://github.com/semantica-agi/semantica"
   },
   "plugins": [
     {

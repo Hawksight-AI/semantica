@@ -147,9 +147,12 @@ def calculate_similarity(
         >>> result = calculate_similarity(entity1, entity2, method="levenshtein")
         >>> print(f"Similarity: {result.score:.2f}")
     """
-    # Check for custom method in registry
+    # Check for custom method in registry, skip self-referential wrappers.
+    # _multi_factor_similarity is registered under "multi_factor" and calls back
+    # into calculate_similarity(method="multi_factor"), creating indirect
+    # infinite recursion.  The identity guard short-circuits that loop.
     custom_method = method_registry.get("similarity", method)
-    if custom_method:
+    if custom_method and custom_method is not calculate_similarity:
         return custom_method(entity1, entity2, **kwargs)
 
     # Use default SimilarityCalculator
@@ -235,9 +238,11 @@ def detect_duplicates(
         >>> duplicates = detect_duplicates(entities, method="pairwise", similarity_threshold=0.8)
         >>> print(f"Found {len(duplicates)} duplicate candidates")
     """
-    # Check for custom method in registry
+    # Check for custom method in registry, skip self-referential wrappers.
+    # _pairwise_detection is registered under "pairwise" and calls back into
+    # detect_duplicates(method="pairwise"), creating indirect infinite recursion.
     custom_method = method_registry.get("detection", method)
-    if custom_method:
+    if custom_method and custom_method is not detect_duplicates:
         return custom_method(
             entities, similarity_threshold=similarity_threshold, **kwargs
         )
@@ -282,9 +287,10 @@ def dedup_triplets(
         List of duplicate relationship piars (rel1, rel2).
     """
 
-    # Check for custom method in registry (but not ourself)
+    # Check for custom method in registry (but not ourself — identity guard
+    # consistent with the other dispatch functions in this module).
     custom_method = method_registry.get("detection", "triplets")
-    if custom_method and custom_method.__name__ != "dedup_triplets":
+    if custom_method and custom_method is not dedup_triplets:
         return custom_method(relationships, mode=mode, threshold=threshold, **kwargs)
 
     detector = DuplicateDetector(**kwargs)
@@ -328,9 +334,11 @@ def merge_entities(
         >>> operations = merge_entities(duplicate_entities, method="keep_most_complete")
         >>> print(f"Performed {len(operations)} merge operations")
     """
-    # Check for custom method in registry
+    # Check for custom method in registry, skip self-referential registration.
+    # merge_entities is now registered directly under its default method name;
+    # the identity guard prevents a direct recursion loop.
     custom_method = method_registry.get("merging", method)
-    if custom_method:
+    if custom_method and custom_method is not merge_entities:
         return custom_method(
             entities, preserve_provenance=preserve_provenance, **kwargs
         )
@@ -374,9 +382,12 @@ def build_clusters(
         >>> result = build_clusters(entities, method="graph_based", similarity_threshold=0.8)
         >>> print(f"Found {len(result.clusters)} clusters")
     """
-    # Check for custom method in registry
+    # Check for custom method in registry, skip self-referential wrappers.
+    # _graph_based_clustering is registered under "graph_based" and calls back
+    # into build_clusters(method="graph_based"), creating indirect infinite
+    # recursion.
     custom_method = method_registry.get("clustering", method)
-    if custom_method:
+    if custom_method and custom_method is not build_clusters:
         return custom_method(
             entities, similarity_threshold=similarity_threshold, **kwargs
         )
@@ -546,25 +557,12 @@ def list_available_methods(task: Optional[str] = None) -> Dict[str, List[str]]:
     return result
 
 
-# Register default methods with registry
-def _multi_factor_similarity(e1, e2, **kw):
-    return calculate_similarity(e1, e2, method="multi_factor", **kw)
-
-
-def _pairwise_detection(entities, **kw):
-    return detect_duplicates(entities, method="pairwise", **kw)
-
-
-def _keep_most_complete_merging(entities, **kw):
-    return merge_entities(entities, method="keep_most_complete", **kw)
-
-
-def _graph_based_clustering(entities, **kw):
-    return build_clusters(entities, method="graph_based", **kw)
-
-
-method_registry.register("similarity", "multi_factor", _multi_factor_similarity)
-method_registry.register("detection", "pairwise", _pairwise_detection)
-method_registry.register("merging", "keep_most_complete", _keep_most_complete_merging)
-method_registry.register("clustering", "graph_based", _graph_based_clustering)
+# Register default methods with registry.
+# The public dispatch functions are registered directly so the identity guard
+# in each function short-circuits the self-reference rather than going through
+# an intermediate wrapper that re-enters the same dispatch path.
+method_registry.register("similarity", "multi_factor", calculate_similarity)
+method_registry.register("detection", "pairwise", detect_duplicates)
+method_registry.register("merging", "keep_most_complete", merge_entities)
+method_registry.register("clustering", "graph_based", build_clusters)
 method_registry.register("detection", "triplets", dedup_triplets)
