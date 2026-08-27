@@ -150,6 +150,12 @@ HighRiskSupplier(DELTA-3)                 conf=100%  rule=Rule 3
 
 DELTA-3 is flagged even though no document described it that way — the system traced: DELTA-3 supplied GAMMA-7, and GAMMA-7 exploits critical CVEs. For rules that need priority ordering or graded confidence, use the `Rule` dataclass:
 
+If a rule has side-effecting actions, one concrete activation runs those
+actions at most once on a Reasoner instance. Re-running `forward_chain()` is
+therefore safe: already-attempted actions are not repeated. Use
+`reasoner.reset_action_history()` when you intentionally want to replay them;
+`reasoner.clear()` and `reasoner.reset()` also clear the history.
+
 ```python
 # Higher priority rules fire first; confidence propagates into InferenceResult.confidence
 reasoner.add_rule(Rule(
@@ -359,6 +365,13 @@ engine.reset()
 ```
 
 The rule network is compiled once by `build_network()`. Each subsequent `add_fact()` call propagates incrementally through only the nodes whose conditions it satisfies — not the full rule set — which keeps evaluation cost proportional to the number of new activations rather than the total rule count.
+
+With a Reasoner bound, Rete action side effects are attempted once per rule,
+bindings, and matched fact identity. Passing the same match to
+`execute_matches()` again still returns the same conclusion, but does not repeat
+its actions. Call `engine.reset_action_history()` to replay actions without
+clearing working memory. `engine.reset()` and `engine.build_network()` also
+clear the action history.
 
 ## Step 7 — Temporal interval reasoning
 
