@@ -133,6 +133,26 @@ class TestPipelineModule(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.output, {"value": 1})
 
+    def test_falsy_explicit_handler_is_invoked(self):
+        """A handler whose __bool__ is False must still be dispatched."""
+
+        class FalseyHandler:
+            def __bool__(self):
+                return False
+
+            def __call__(self, data):
+                return {"explicit": data}
+
+        builder = PipelineBuilder()
+        builder.add_step("step1", "mytype", handler=FalseyHandler())
+
+        result = ExecutionEngine().execute_pipeline(
+            builder.build("falsy"), data=1
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output, {"explicit": 1})
+
     def test_execution_engine_failure(self):
         """Test pipeline failure handling."""
         def failing_handler(data, **kwargs):
@@ -179,8 +199,8 @@ class TestPipelineModule(unittest.TestCase):
 
         _ = semantica.pipeline
 
-        from semantica.pipeline import PipelineBuilder, PipelineValidator
         from semantica.deduplication import DuplicateDetector
+        from semantica.pipeline import PipelineBuilder, PipelineValidator
 
         builder = PipelineBuilder()
         builder.add_step("step1", "dummy")
