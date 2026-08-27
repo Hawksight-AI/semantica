@@ -22,8 +22,9 @@ License: MIT
 
 from typing import Any, Dict, List, Optional
 
-from ..deduplication.duplicate_detector import DuplicateDetector
+from ..deduplication.duplicate_detector import DuplicateDetector, DuplicateGroup
 from ..deduplication.entity_merger import EntityMerger
+from ..utils.entity_ids import get_entity_id
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
@@ -138,9 +139,7 @@ class EntityResolver:
             self.logger.debug(
                 f"Detecting duplicate groups with threshold {self.similarity_threshold}"
             )
-            duplicate_groups = self.duplicate_detector.detect_duplicate_groups(
-                entities, threshold=self.similarity_threshold
-            )
+            duplicate_groups = self._detect_duplicate_groups(entities)
 
             self.logger.debug(f"Found {len(duplicate_groups)} duplicate group(s)")
 
@@ -150,6 +149,7 @@ class EntityResolver:
             # Step 2: Merge duplicates in each group
             merged_entities = []
             processed_entity_ids = set()  # Track which entities have been merged
+            processed_entity_objects = set()
 
             for group in duplicate_groups:
                 # Skip groups with less than 2 entities (not duplicates)
@@ -157,9 +157,16 @@ class EntityResolver:
                     continue
 
                 # Merge the duplicate group into a single canonical entity
-                merge_operations = self.entity_merger.merge_duplicates(
-                    group.entities, **self.config
-                )
+                if self.resolution_strategy == "exact":
+                    merge_operations = [
+                        self.entity_merger.merge_entity_group(
+                            group.entities, **self.config
+                        )
+                    ]
+                else:
+                    merge_operations = self.entity_merger.merge_duplicates(
+                        group.entities, **self.config
+                    )
 
                 # Process each merge operation
                 for operation in merge_operations:
@@ -168,30 +175,26 @@ class EntityResolver:
 
                     # Mark all source entities as processed
                     for source_entity in operation.source_entities:
-                        entity_id = (
-                            source_entity.get("id")
-                            if isinstance(source_entity, dict)
-                            else getattr(source_entity, "id", None)
-                        ) or (
-                            source_entity.get("entity_id")
-                            if isinstance(source_entity, dict)
-                            else getattr(source_entity, "entity_id", None)
-                        )
-                        if entity_id:
+                        entity_id = self._get_entity_id(source_entity)
+                        if entity_id is None:
+                            processed_entity_objects.add(id(source_entity))
+                            continue
+                        try:
                             processed_entity_ids.add(entity_id)
+                        except TypeError:
+                            processed_entity_objects.add(id(source_entity))
 
             # Step 3: Add non-duplicate entities (entities not in any duplicate group)
             for entity in entities:
-                entity_id = (
-                    entity.get("id")
-                    if isinstance(entity, dict)
-                    else getattr(entity, "id", None)
-                ) or (
-                    entity.get("entity_id")
-                    if isinstance(entity, dict)
-                    else getattr(entity, "entity_id", None)
-                )
-                if entity_id and entity_id not in processed_entity_ids:
+                entity_id = self._get_entity_id(entity)
+                if entity_id is None:
+                    is_unprocessed = id(entity) not in processed_entity_objects
+                else:
+                    try:
+                        is_unprocessed = entity_id not in processed_entity_ids
+                    except TypeError:
+                        is_unprocessed = id(entity) not in processed_entity_objects
+                if is_unprocessed:
                     # This entity was not merged, add it as-is
                     merged_entities.append(entity)
 
@@ -213,6 +216,48 @@ class EntityResolver:
             )
             raise
 
+    def _detect_duplicate_groups(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[DuplicateGroup]:
+        """Detect duplicate groups according to the configured strategy."""
+        if self.resolution_strategy != "exact":
+            return self.duplicate_detector.detect_duplicate_groups(
+                entities, threshold=self.similarity_threshold
+            )
+
+        groups = {}
+        for entity in entities:
+            name = self._get_entity_name(entity)
+            normalized = str(name).strip() if name is not None else ""
+            if normalized:
+                groups.setdefault(normalized.casefold(), []).append(entity)
+
+        return [
+            DuplicateGroup(entities=group, confidence=1.0)
+            for group in groups.values()
+            if len(group) > 1
+        ]
+
+    @staticmethod
+    def _get_entity_id(entity: Any) -> Any:
+        """Return an entity ID while supporting dictionary and object inputs."""
+        return get_entity_id(entity)
+
+    @staticmethod
+    def _get_entity_name(entity: Any) -> Optional[str]:
+        """Return an entity name, falling back to text-based entity input."""
+        if isinstance(entity, dict):
+            name = entity.get("name")
+            return (
+                name if name is not None and str(name).strip() else entity.get("text")
+            )
+        name = getattr(entity, "name", None)
+        return (
+            name
+            if name is not None and str(name).strip()
+            else getattr(entity, "text", None)
+        )
+
     def merge_duplicates(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Merge duplicate entities.
@@ -233,13 +278,13 @@ class EntityResolver:
         processed_ids = set()
         for op in merge_operations:
             for source_entity in op.source_entities:
-                entity_id = source_entity.get("id") or source_entity.get("entity_id")
-                if entity_id:
+                entity_id = get_entity_id(source_entity)
+                if entity_id is not None:
                     processed_ids.add(entity_id)
 
         for entity in entities:
-            entity_id = entity.get("id") or entity.get("entity_id")
-            if entity_id and entity_id not in processed_ids:
+            entity_id = get_entity_id(entity)
+            if entity_id is not None and entity_id not in processed_ids:
                 merged_entities.append(entity)
 
         self.logger.info(f"Merged to {len(merged_entities)} entities")

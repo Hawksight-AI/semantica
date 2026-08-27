@@ -6,8 +6,9 @@ chunk tracking, source tracking, and lineage tracing.
 """
 
 import pytest
+import warnings
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from semantica.provenance import ProvenanceManager, SourceReference, ProvenanceEntry
 from semantica.provenance.storage import InMemoryStorage, SQLiteStorage
 
@@ -733,8 +734,8 @@ class TestProvenanceManager:
             entity_type="entity",
             activity_id="test",
             source_document="doc_1",
-            first_seen=datetime.utcnow().isoformat(),
-            last_updated=datetime.utcnow().isoformat(),
+            first_seen=datetime.now(timezone.utc).isoformat(),
+            last_updated=datetime.now(timezone.utc).isoformat(),
         )
         with patch.object(prov_mgr.storage, "store", side_effect=RuntimeError("storage error")), \
              patch.object(prov_mgr.logger, "error") as mock_log_error:
@@ -1672,3 +1673,195 @@ class TestActivityTimingAcrossWrappers:
         assert entry["activity_ended_at_time"] is not None
 
 
+class TestTimezoneAwareUtcTimestamps:
+    """Issue #946 — timezone-aware UTC stamps without datetime.utcnow()."""
+
+    def test_track_entity_stamps_timezone_aware_utc(self):
+        before = datetime.now(timezone.utc) - timedelta(seconds=1)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            prov_mgr = ProvenanceManager()
+            entry = prov_mgr.track_entity("utc_entity", source="doc_1")
+        after = datetime.now(timezone.utc) + timedelta(seconds=1)
+
+        utcnow_warnings = [
+            w
+            for w in caught
+            if issubclass(w.category, DeprecationWarning)
+            and "utcnow" in str(w.message).lower()
+        ]
+        assert utcnow_warnings == []
+
+        for field in ("timestamp", "first_seen", "last_updated"):
+            value = getattr(entry, field)
+            parsed = datetime.fromisoformat(value)
+            assert parsed.tzinfo is not None, f"{field}={value!r} is naive"
+            assert parsed.utcoffset() == timedelta(0), f"{field}={value!r} is not UTC"
+            assert before <= parsed <= after
+
+        stored = prov_mgr.get_provenance("utc_entity")
+        assert stored is not None
+        assert stored["source_document"] == "doc_1"
+        assert stored["last_updated"] == entry.last_updated
+
+    def test_invalidate_stamps_timezone_aware_utc(self):
+        prov_mgr = ProvenanceManager()
+        prov_mgr.track_entity("utc_invalidate", source="doc_1")
+        result = prov_mgr.invalidate(
+            "utc_invalidate", agent_id="reviewer", reason="test"
+        )
+        parsed = datetime.fromisoformat(result.invalidated_at_time)
+        assert parsed.tzinfo is not None
+        assert parsed.utcoffset() == timedelta(0)
+
+    def test_graph_builder_activity_times_are_timezone_aware_utc(self):
+        from semantica.kg.kg_provenance import GraphBuilderWithProvenance
+
+        builder = GraphBuilderWithProvenance(provenance=True, agent_id="builder_svc")
+        result = builder.build_single_source({
+            "entities": [{"id": "person1", "type": "Person", "name": "Ada"}],
+            "relationships": [],
+        })
+        assert result["entities"][0]["id"] == "person1"
+
+        person = builder._prov_manager.get_provenance("person1")
+        assert person is not None
+        assert person["metadata"]["operation"] == "build_entity"
+        for field in ("activity_started_at_time", "activity_ended_at_time"):
+            parsed = datetime.fromisoformat(person[field])
+            assert parsed.tzinfo is not None, (
+                f"{field}={person[field]!r} is naive"
+            )
+            assert parsed.utcoffset() == timedelta(0)
+        started = datetime.fromisoformat(person["activity_started_at_time"])
+        ended = datetime.fromisoformat(person["activity_ended_at_time"])
+        assert started <= ended
+
+class TestMixedFormatTimestampComparisons:
+    """Issue #946 review — naive and offset-bearing stamps must compare as instants.
+
+    Records written before the timezone-aware change carry a naive UTC stamp
+    (``2026-08-19T22:35:38.501697``); records written after carry ``+00:00``.
+    Comparing the two as raw strings puts the offset-bearing form above a naive
+    bound at the identical instant, so the record falls outside a range that
+    should contain it. These tests pin the boundary in both directions.
+    """
+
+    NAIVE = "2026-08-19T12:00:00.500000"
+    AWARE = "2026-08-19T12:00:00.500000+00:00"
+
+    def _manager_with(self, *timestamps):
+        prov_mgr = ProvenanceManager()
+        for index, stamp in enumerate(timestamps):
+            prov_mgr.storage.store(
+                ProvenanceEntry(
+                    entity_id=f"entity_{index}",
+                    entity_type="entity",
+                    activity_id="test",
+                    source_document="doc_1",
+                    timestamp=stamp,
+                )
+            )
+        return prov_mgr
+
+    def test_raw_string_compare_would_exclude_the_boundary_record(self):
+        """Guards the premise: the two forms are not string-comparable."""
+        assert not (self.AWARE <= self.NAIVE)
+        assert datetime.fromisoformat(self.AWARE) == datetime.fromisoformat(
+            self.NAIVE
+        ).replace(tzinfo=timezone.utc)
+
+    def test_query_range_with_naive_bounds_includes_aware_record(self):
+        prov_mgr = self._manager_with(self.AWARE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T12:00:00.500000", "2026-08-19T12:00:00.500000"
+        )
+        assert [r["entity_id"] for r in results] == ["entity_0"]
+
+    def test_query_range_with_aware_bounds_includes_naive_record(self):
+        prov_mgr = self._manager_with(self.NAIVE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T12:00:00.500000+00:00", "2026-08-19T12:00:00.500000+00:00"
+        )
+        assert [r["entity_id"] for r in results] == ["entity_0"]
+
+    def test_query_range_returns_both_formats_from_a_mixed_store(self):
+        prov_mgr = self._manager_with(self.NAIVE, self.AWARE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T11:00:00", "2026-08-19T13:00:00+00:00"
+        )
+        assert {r["entity_id"] for r in results} == {"entity_0", "entity_1"}
+
+    def test_query_range_sorts_mixed_formats_chronologically(self):
+        prov_mgr = self._manager_with(
+            "2026-08-19T12:00:02+00:00",  # entity_0, latest
+            "2026-08-19T12:00:00",        # entity_1, earliest
+            "2026-08-19T12:00:01+00:00",  # entity_2, middle
+        )
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T11:00:00", "2026-08-19T13:00:00"
+        )
+        assert [r["entity_id"] for r in results] == [
+            "entity_1",
+            "entity_2",
+            "entity_0",
+        ]
+
+    def test_query_range_accepts_trailing_z(self):
+        prov_mgr = self._manager_with(self.NAIVE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T11:00:00Z", "2026-08-19T13:00:00Z"
+        )
+        assert len(results) == 1
+
+    def test_query_range_skips_unparseable_timestamp(self):
+        prov_mgr = self._manager_with("not-a-timestamp", self.AWARE)
+        results = prov_mgr.query_recorded_between(
+            "2026-08-19T11:00:00", "2026-08-19T13:00:00"
+        )
+        assert [r["entity_id"] for r in results] == ["entity_1"]
+
+    def test_audit_log_since_naive_bound_includes_aware_record(self):
+        prov_mgr = self._manager_with(self.AWARE)
+        entries = prov_mgr.audit_log(
+            since="2026-08-19T12:00:00.500000", format="json"
+        )
+        assert [e["entity_id"] for e in entries] == ["entity_0"]
+
+    def test_audit_log_since_aware_bound_includes_naive_record(self):
+        prov_mgr = self._manager_with(self.NAIVE)
+        entries = prov_mgr.audit_log(
+            since="2026-08-19T12:00:00.500000+00:00", format="json"
+        )
+        assert [e["entity_id"] for e in entries] == ["entity_0"]
+
+    def test_audit_log_excludes_records_before_since_across_formats(self):
+        prov_mgr = self._manager_with(
+            "2026-08-19T11:59:59",        # entity_0, before
+            "2026-08-19T12:00:01+00:00",  # entity_1, after
+        )
+        entries = prov_mgr.audit_log(since="2026-08-19T12:00:00+00:00", format="json")
+        assert [e["entity_id"] for e in entries] == ["entity_1"]
+
+    def test_audit_log_sorts_mixed_formats_chronologically(self):
+        prov_mgr = self._manager_with(
+            "2026-08-19T12:00:02+00:00",
+            "2026-08-19T12:00:00",
+            "2026-08-19T12:00:01+00:00",
+        )
+        entries = prov_mgr.audit_log(format="json")
+        assert [e["entity_id"] for e in entries] == [
+            "entity_1",
+            "entity_2",
+            "entity_0",
+        ]
+
+    def test_audit_log_unparseable_timestamp_sorts_first(self):
+        prov_mgr = self._manager_with("not-a-timestamp", "2026-08-19T12:00:00+00:00")
+        entries = prov_mgr.audit_log(format="json")
+        assert [e["entity_id"] for e in entries] == ["entity_0", "entity_1"]
+
+    def test_audit_log_since_excludes_unparseable_timestamp(self):
+        prov_mgr = self._manager_with("not-a-timestamp", "2026-08-19T12:00:00+00:00")
+        entries = prov_mgr.audit_log(since="2026-08-19T11:00:00", format="json")
+        assert [e["entity_id"] for e in entries] == ["entity_1"]

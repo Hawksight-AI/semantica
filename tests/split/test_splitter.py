@@ -30,18 +30,16 @@ class TestSplitter(unittest.TestCase):
         splitter = TextSplitter(method=["recursive", "token"])
         self.assertEqual(splitter.methods, ["recursive", "token"])
 
-    @patch('semantica.split.semantic_chunker.spacy')
+    @patch('semantica.semantic_extract.methods.spacy')
     def test_semantic_chunker_initialization(self, mock_spacy):
-        # Mock spacy.load to return a mock nlp object
+        # SemanticChunker now loads spaCy through the centralized
+        # load_spacy_model() in semantic_extract.methods, so we patch
+        # methods.spacy rather than the removed semantic_chunker.spacy binding.
         mock_nlp = MagicMock()
         mock_spacy.load.return_value = mock_nlp
-        
-        # We need to ensure SPACY_AVAILABLE is True for this test context if possible, 
-        # but it is imported at module level. 
-        # If spacy is not installed, it sets SPACY_AVAILABLE = False.
-        # We might need to patch the module attribute or just test fallback if spacy missing.
-        
-        chunker = SemanticChunker(chunk_size=100)
+
+        with patch('semantica.split.semantic_chunker.SPACY_AVAILABLE', True):
+            chunker = SemanticChunker(chunk_size=100)
         self.assertEqual(chunker.chunk_size, 100)
 
     def test_chunk_dataclass(self):

@@ -8,7 +8,7 @@ icon: "shield-check"
 
 SHACL (Shapes Constraint Language) is a standard for validating graph-based data. While an ontology defines the conceptual *schema* (the "what" exists in your domain), SHACL defines the structural *rules and constraints* (the "how" it should be structured). 
 
-In Semantica, `SHACLGenerator` produces constraint rules (shapes) based on your ontology, and `_run_pyshacl` evaluates your actual data against these rules. If a node violates a rule (e.g., missing a required property or using the wrong datatype), a detailed violation report is generated.
+In Semantica, `SHACLGenerator` produces constraint rules (shapes) based on your ontology, and the public `run_shacl_validation` function evaluates your actual data against these rules. If a node violates a rule (e.g., missing a required property or using the wrong datatype), a detailed violation report is generated. The historical `_run_pyshacl` name remains available as a compatibility alias.
 
 ## Why Use SHACL Validation?
 
@@ -55,7 +55,7 @@ Let's look at a simple, universally understood example: ensuring every `Employee
 ```python
 from semantica.context import ContextGraph
 from semantica.ontology import OntologyGenerator, SHACLGenerator, PropertyShape
-from semantica.ontology.ontology_validator import _run_pyshacl
+from semantica.ontology import run_shacl_validation
 
 # 1. Prepare your data graph
 graph = ContextGraph()
@@ -95,7 +95,7 @@ data_ttl = """
 """
 
 # 5. Run Validation
-report = _run_pyshacl(data_ttl, shacl_ttl)
+report = run_shacl_validation(data_ttl, shacl_ttl)
 
 # 6. Analyze the Report
 print(f"Graph conforms: {report.conforms}")
@@ -265,10 +265,10 @@ cve_id_shape = NodeShape(
 
 ## Step 4 — Run validation and read the report
 
-Serialize the graph to RDF, then run `_run_pyshacl` against the shapes.
+Serialize the graph to RDF, then run `run_shacl_validation` against the shapes.
 
 ```python
-from semantica.ontology.ontology_validator import _run_pyshacl
+from semantica.ontology import run_shacl_validation
 
 # Prepare your RDF data string (since export_rdf primarily exports structural metadata,
 # you typically serialize your custom data graph to Turtle using rdflib or similar).
@@ -281,7 +281,7 @@ data_ttl = """
 """
 
 # Run SHACL validation
-report = _run_pyshacl(
+report = run_shacl_validation(
     data_ttl,
     shacl_ttl,
     data_graph_format="turtle",
@@ -366,8 +366,8 @@ print(f"Malware nodes missing 'family': {len(missing_family)}")
 # e.g. graph.update_node(node_id, {"family": "UNKNOWN — requires triage"})
 
 # After remediation, re-run validation to confirm the fix
-# (re-export the patched graph to Turtle first, then call _run_pyshacl again)
-report2 = _run_pyshacl(patched_data_ttl, shacl_ttl)
+# (re-export the patched graph to Turtle first, then call run_shacl_validation again)
+report2 = run_shacl_validation(patched_data_ttl, shacl_ttl)
 print(f"Violations after remediation: {report2.violation_count}")
 # Violations after remediation: 0
 ```
@@ -377,10 +377,49 @@ print(f"Violations after remediation: {report2.violation_count}")
 ## Common Pitfalls
 
 - **Assuming the ontology automatically enforces data quality**: `SHACLGenerator` generates shapes based on what it observes in the data. If your data is missing a field, the generator won't know it was mandatory unless you explicitly inject the constraint (as shown in Step 3).
-- **Passing `ContextGraph` directly to SHACL validators**: The `_run_pyshacl` function expects an RDF string (like Turtle format), not a raw Python dictionary or `ContextGraph` object. 
+- **Passing `ContextGraph` directly to SHACL validators**: The `run_shacl_validation` function expects an RDF string (like Turtle format), not a raw Python dictionary or `ContextGraph` object.
 - **Forgetting RDF serialization**: You must serialize your graph (often via a temporary file using `export_rdf`) before validating it.
 - **Treating validation as a one-time step**: Validation should be integrated as an automated step in your CI/CD pipeline or data ingestion flow, acting as a recurring gatekeeper rather than a one-off script.
 - **Ignoring validation reports**: A graph that does not conform must be remediated. Failing to review the `violation_count` and address the issues negates the purpose of SHACL validation.
+- **Validating `sh:class`/`sh:node` range checks on a property that declares `rdfs:range` with RDFS entailment on**: RDFS is an entailment rule, not a constraint. When pyshacl runs with `inference="rdfs"`, it infers the range class onto every object of the property, so class-based constraints on that property can never fail — the report says `conforms: True` on data that does not conform:
+
+    ```python
+    from pyshacl import validate
+    from rdflib import Graph
+
+    data = Graph()
+    data.parse(
+        data="""
+        @prefix ex: <https://example.org/ns#> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        ex:contains rdfs:domain ex:Container ; rdfs:range ex:Item .
+        ex:box a ex:Container ; ex:contains ex:notAnItem .
+        ex:notAnItem a ex:Fish .
+        """,
+        format="turtle",
+    )
+
+    shapes = Graph()
+    shapes.parse(
+        data="""
+        @prefix ex: <https://example.org/ns#> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:ContainerShape a sh:NodeShape ;
+            sh:targetClass ex:Container ;
+            sh:property [ sh:path ex:contains ; sh:class ex:Item ] .
+        """,
+        format="turtle",
+    )
+
+    for inference in ("none", "rdfs"):
+        conforms, _, _ = validate(data, shacl_graph=shapes, inference=inference)
+        print(inference, conforms)
+    # none  False   <- correct: notAnItem is a Fish, not an Item
+    # rdfs  True    <- the entailment manufactured the type
+    ```
+
+    Mitigations: prefer not to declare `rdfs:range` on properties you intend to constrain with `sh:class`; when class membership is the thing under test, run validation without RDFS entailment (`inference="none"`); or express the check as a constraint the entailment cannot satisfy (for example a literal property constraint). Note the trade-off: with entailment off, `sh:targetClass` no longer reaches subclasses, so subclass hierarchies need explicit typing or inference-aware target selection. Semantica's own `run_shacl_validation` wrapper already calls pyshacl with `inference="none"`, so this pitfall only bites when calling `pyshacl.validate` directly with entailment enabled.
+- **Trusting `conforms: True` without checking the inference mode**: an inference-enabled run can hide the exact violations the shapes were written to catch (see above). Record which inference mode validation ran under alongside the result, and re-run shape sets that contain `sh:class`/`sh:node` with entailment off before treating a pass as authoritative.
 
 ---
 
@@ -396,7 +435,7 @@ A DoD CTI team enforces STIX-compatible constraints on a threat graph before sha
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 from semantica.ontology import OntologyGenerator, SHACLGenerator, PropertyShape
-from semantica.ontology.ontology_validator import _run_pyshacl
+from semantica.ontology import run_shacl_validation
 
 graph = ContextGraph()
 ctx   = AgentContext(
@@ -448,7 +487,7 @@ data_ttl = """
 <http://example.org/hammertoss> a ex:Malware .
 """
 
-report = _run_pyshacl(data_ttl, shacl_ttl)
+report = run_shacl_validation(data_ttl, shacl_ttl)
 print(f"CTI graph conforms : {report.conforms}")
 print(f"Violations         : {report.violation_count}")
 print(f"Warnings           : {report.warning_count}")
@@ -469,7 +508,7 @@ A SOC team validates zero-trust policy nodes before publishing them to the polic
 ```python
 from semantica.context import ContextGraph
 from semantica.ontology import OntologyGenerator, SHACLGenerator, PropertyShape
-from semantica.ontology.ontology_validator import _run_pyshacl
+from semantica.ontology import run_shacl_validation
 
 graph = ContextGraph()
 graph.add_node("policy-001", "Policy", "MFA Required for Tier-1 Resources",
@@ -516,7 +555,7 @@ data_ttl = """
 <http://example.org/policy-002> a ex:Policy .
 """
 
-report = _run_pyshacl(data_ttl, shacl_ttl)
+report = run_shacl_validation(data_ttl, shacl_ttl)
 print(f"Policy graph conforms: {report.conforms}")
 # Policy graph conforms: False
 
@@ -534,7 +573,7 @@ A clinical informatics team validates trial ontology nodes before loading them i
 
 ```python
 from semantica.ontology import LLMOntologyGenerator, SHACLGenerator, PropertyShape
-from semantica.ontology.ontology_validator import _run_pyshacl
+from semantica.ontology import run_shacl_validation
 from semantica.export import export_rdf
 import tempfile, os
 
@@ -586,7 +625,7 @@ with open(tmp.name) as f:
     data_ttl = f.read()
 os.unlink(tmp.name)
 
-report = _run_pyshacl(data_ttl, shacl_ttl)
+report = run_shacl_validation(data_ttl, shacl_ttl)
 print(f"Trial data conforms: {report.conforms}")
 print(f"Warnings           : {report.warning_count}")
 ```
@@ -600,7 +639,7 @@ A credit risk team validates every `LoanApplication` node against Basel III CRE2
 ```python
 from semantica.context import ContextGraph
 from semantica.ontology import OntologyGenerator, SHACLGenerator, PropertyShape
-from semantica.ontology.ontology_validator import _run_pyshacl
+from semantica.ontology import run_shacl_validation
 
 graph = ContextGraph()
 graph.add_node("loan-001", "LoanApplication", "Prime mortgage APP-2025-88421",
@@ -645,7 +684,7 @@ data_ttl = """
     ex:ltv "0.65" .
 """
 
-report = _run_pyshacl(data_ttl, shacl_ttl)
+report = run_shacl_validation(data_ttl, shacl_ttl)
 print(f"Loan portfolio conforms: {report.conforms}")
 # Loan portfolio conforms: False
 
@@ -675,14 +714,14 @@ Call this function as a pre-publish gate; exit code 1 blocks the pipeline.
 ```python
 import sys
 from semantica.ontology import OntologyGenerator, SHACLGenerator
-from semantica.ontology.ontology_validator import _run_pyshacl
+from semantica.ontology import run_shacl_validation
 
 def validate_before_publish(data_graph_str: str, ontology: dict) -> None:
     shacl_gen   = SHACLGenerator(base_uri="https://example.org/shapes/")
     shacl_graph = shacl_gen.generate(ontology)
     shacl_ttl   = shacl_gen.serialize(shacl_graph, format="turtle")
 
-    report = _run_pyshacl(data_graph_str, shacl_ttl)
+    report = run_shacl_validation(data_graph_str, shacl_ttl)
 
     if not report.conforms:
         print(f"Graph validation FAILED — {report.violation_count} violation(s)")
@@ -700,7 +739,6 @@ def validate_before_publish(data_graph_str: str, ontology: dict) -> None:
 
 - [Ontology Management](ontology) — generate the OWL ontology that SHACL shapes are derived from
 - [Reasoning & Rules](reasoning) — complement SHACL structural constraints with logical inference rules
-- [Export & Serialization](export) — serialize graph data to Turtle/RDF/XML for `_run_pyshacl` input
+- [Export & Serialization](export) — serialize graph data to Turtle/RDF/XML for `run_shacl_validation` input
 - [Conflict Resolution](conflict-resolution) — detect and resolve data conflicts before SHACL validation
 - [Change Management](change-management) — version-gate SHACL shapes alongside ontology versions
-

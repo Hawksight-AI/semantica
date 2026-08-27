@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from semantica.ingest import FileIngestor, WebIngestor, DBIngestor, StreamIngestor, FeedIngestor
 from semantica.kg import GraphBuilder, EntityResolver, ProvenanceTracker
+from semantica.provenance import InMemoryStorage, ProvenanceManager
 from semantica.conflicts import ConflictDetector
 
 pytestmark = pytest.mark.integration
@@ -75,13 +76,30 @@ class TestNotebook06MultiSourceIntegration:
             for entity in all_entities:
                 provenance_tracker.track_entity(entity.get("id"), entity.get("source"), entity)
                 
+        # Endpoints stay on "source"/"target", which is what GraphBuilder's
+        # dict normalization expects; the originating document moves to
+        # "document". The literal previously set "source" twice, so the
+        # endpoint id was silently overwritten by the document name.
         relationships = [
-            {"source": "e2", "target": "e1", "type": "CEO_of", "source": "file1"}
+            {"id": "r1", "source": "e2", "target": "e1",
+             "type": "CEO_of", "document": "file1"}
         ]
-        
-        with patch.object(provenance_tracker, 'track_relationship'):
-            for rel in relationships:
-                provenance_tracker.track_relationship(rel.get("source"), rel.get("target"), rel.get("source"), rel)
+
+        # kg.ProvenanceTracker has no track_relationship and never did; that
+        # lives on ProvenanceManager, which is where ProvenanceTracker's own
+        # DeprecationWarning points callers. Called for real rather than
+        # patched, so this step actually exercises something.
+        #
+        # Storage is pinned to in-memory: with no argument, ProvenanceManager
+        # falls back to the mutable class-level _default_storage_path, so an
+        # earlier test setting it would make this write SQLite to disk and
+        # turn the result order-dependent.
+        provenance_manager = ProvenanceManager(storage=InMemoryStorage())
+        for rel in relationships:
+            entry = provenance_manager.track_relationship(
+                rel["id"], rel["document"], metadata=rel
+            )
+            assert entry is not None
 
         # --- Step 5: Build Unified KG ---
         builder = GraphBuilder()

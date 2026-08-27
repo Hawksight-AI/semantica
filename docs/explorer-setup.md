@@ -162,7 +162,7 @@ semantica-explorer --graph my_graph.json --no-browser
 ```
 
 <Warning>
-  `--host 0.0.0.0` makes Explorer reachable on every network interface. The server has no built-in authentication. Only use this on a trusted private network.
+  `--host 0.0.0.0` makes Explorer reachable on every network interface. Since v0.6.5 the Explorer API requires `SEMANTICA_API_KEY` (sent as the `X-API-Key` header) and fails closed with `503` when unconfigured; unauthenticated access is only possible when `SEMANTICA_ALLOW_ANONYMOUS=true` is set explicitly. Only use this on a trusted private network.
 </Warning>
 
 
