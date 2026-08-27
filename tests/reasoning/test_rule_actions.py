@@ -11,7 +11,10 @@ from semantica.reasoning import (
     AssertAction,
     CallAction,
     EmitEventAction,
+    Fact,
+    Match,
     Reasoner,
+    ReteEngine,
     RetractAction,
 )
 
@@ -320,6 +323,74 @@ class TestRuleActionRegressions(unittest.TestCase):
         self.assertAlmostEqual(
             min(r.confidence for r in results), 0.8, places=6
         )
+
+
+class TestReteActionExecution(unittest.TestCase):
+    def setUp(self):
+        self.calls = []
+        self.reasoner = Reasoner()
+        self.rule = self.reasoner.add_rule("IF Person(?x) THEN Adult(?x)")
+        self.rule.actions = [
+            CallAction(
+                lambda bindings, reasoner: self.calls.append(dict(bindings))
+            )
+        ]
+        self.match = Match(
+            rule=self.rule,
+            facts=[Fact("person-1", "Person", ["John"])],
+            bindings={"x": "John"},
+        )
+        self.engine = ReteEngine(reasoner=self.reasoner)
+
+    def test_rete_repeated_execute_matches_fires_activation_once(self):
+        first_results = self.engine.execute_matches([self.match])
+        second_results = self.engine.execute_matches([self.match])
+
+        self.assertEqual(first_results, ["Adult(?x)"])
+        self.assertEqual(second_results, ["Adult(?x)"])
+        self.assertEqual(self.calls, [{"x": "John"}])
+
+    def test_rete_duplicate_match_preserves_results_but_fires_once(self):
+        results = self.engine.execute_matches([self.match, self.match])
+
+        self.assertEqual(results, ["Adult(?x)", "Adult(?x)"])
+        self.assertEqual(self.calls, [{"x": "John"}])
+
+    def test_rete_distinct_fact_ids_create_distinct_activations(self):
+        other_match = Match(
+            rule=self.rule,
+            facts=[Fact("person-2", "Person", ["John"])],
+            bindings={"x": "John"},
+        )
+
+        self.engine.execute_matches([self.match])
+        self.engine.execute_matches([other_match])
+
+        self.assertEqual(self.calls, [{"x": "John"}, {"x": "John"}])
+
+    def test_rete_reset_action_history_allows_deliberate_replay(self):
+        self.engine.execute_matches([self.match])
+
+        self.engine.reset_action_history()
+        self.engine.execute_matches([self.match])
+
+        self.assertEqual(self.calls, [{"x": "John"}, {"x": "John"}])
+
+    def test_rete_reset_allows_action_replay(self):
+        self.engine.execute_matches([self.match])
+
+        self.engine.reset()
+        self.engine.execute_matches([self.match])
+
+        self.assertEqual(self.calls, [{"x": "John"}, {"x": "John"}])
+
+    def test_rete_build_network_allows_action_replay(self):
+        self.engine.execute_matches([self.match])
+
+        self.engine.build_network([self.rule])
+        self.engine.execute_matches([self.match])
+
+        self.assertEqual(self.calls, [{"x": "John"}, {"x": "John"}])
 
 
 if __name__ == "__main__":

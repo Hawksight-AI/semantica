@@ -39,7 +39,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from .reasoner import Fact, Rule
+from .reasoner import Fact, Rule, _make_activation_key
 
 
 def _extract_bindings(condition: Any, fact: Fact) -> Dict[str, Any]:
@@ -212,6 +212,9 @@ class ReteEngine:
         self.facts: List[Fact] = []
         self.fact_counter = 0
         self.node_counter = 0
+        self._executed_activations: Set[
+            Tuple[str, Tuple[Tuple[str, str], ...], Tuple[str, ...]]
+        ] = set()
         # Optional Reasoner used to fire rule-driven actions on match. When
         # set, execute_matches() runs each matched rule's ``actions`` (and any
         # legacy ``handler``) through the Reasoner's action machinery so that
@@ -237,6 +240,7 @@ class ReteEngine:
         )
 
         try:
+            self.reset_action_history()
             self.network.clear()
 
             self.progress_tracker.update_tracking(
@@ -427,7 +431,14 @@ class ReteEngine:
                     if self.reasoner is not None and (
                         match.rule.actions or match.rule.handler is not None
                     ):
-                        self.reasoner._fire_actions(match.rule, match.bindings)
+                        activation_key = _make_activation_key(
+                            match.rule.rule_id,
+                            match.bindings,
+                            [f"{fact.fact_id}:{fact}" for fact in match.facts],
+                        )
+                        if activation_key not in self._executed_activations:
+                            self._executed_activations.add(activation_key)
+                            self.reasoner._fire_actions(match.rule, match.bindings)
                     result = match.rule.conclusion
                     results.append(result)
                 except Exception as e:
@@ -446,9 +457,14 @@ class ReteEngine:
             )
             raise
 
+    def reset_action_history(self) -> None:
+        """Allow previously executed activations to fire their actions again."""
+        self._executed_activations.clear()
+
     def reset(self) -> None:
-        """Reset Rete engine."""
+        """Reset Rete working memory and action activation history."""
         self.facts.clear()
+        self.reset_action_history()
         for node in self.network.values():
             if isinstance(node, AlphaNode) or isinstance(node, BetaNode):
                 node.matches.clear()

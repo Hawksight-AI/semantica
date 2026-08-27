@@ -54,7 +54,11 @@ def _make_activation_key(
             for name, value in bindings.items()
         )
     )
-    return rule_id, canonical_bindings, tuple(sorted(str(token) for token in fact_tokens))
+    return (
+        rule_id,
+        canonical_bindings,
+        tuple(sorted(str(token) for token in fact_tokens)),
+    )
 
 
 def _parse_fact(fact: str) -> Optional[Tuple[str, List[str]]]:
