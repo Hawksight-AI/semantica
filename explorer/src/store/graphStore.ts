@@ -68,7 +68,6 @@ export interface EdgeAttributes {
   baseColor?: string;
   mutedColor?: string;
   type?: string;
-  label?: string;
   curvature?: number;
   visualPriority?: number;
   edgeFamily?: "line" | "parallel" | "bidirectional" | "path";
