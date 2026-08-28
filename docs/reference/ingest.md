@@ -28,6 +28,7 @@ icon: "database"
 | `DBIngestor` | SQL databases via SQLAlchemy: tables, views, and custom queries |
 | `SnowflakeIngestor` | Snowflake data warehouse queries and table exports |
 | `DatabricksIngestor` | Databricks Unity Catalog metadata, Delta table queries, and lineage |
+| `SAPIngestor` | SAP OData services (S/4HANA Cloud, SuccessFactors, NetWeaver Gateway): entity-set discovery and ingestion with v2/v4 pagination |
 | `ParquetIngestor` | Apache Parquet files and partitioned datasets with column selection |
 | `ArrowIngestor` | Apache Arrow IPC and Feather file processing |
 | `XMLIngestor` | XXE-safe XML parsing with optional XSD schema validation |
