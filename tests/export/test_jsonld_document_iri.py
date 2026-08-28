@@ -67,7 +67,7 @@ def test_merging_repeated_exports_yields_one_graph_node(tmp_path):
     assert len(kg_nodes) == 1
 
     entity_nodes = set(
-        merged.subjects(RDF.type, URIRef("https://semantica.dev/ns#ORG"))
+        merged.subjects(RDF.type, URIRef("https://semantica.dev/ns#Entity"))
     )
     assert len(entity_nodes) == 1
 
