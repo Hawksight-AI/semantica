@@ -126,6 +126,7 @@ db-databricks = ["databricks-sdk>=0.60.0", "databricks-sql-connector>=4.0.0"]
 db-arrow = ["pyarrow>=24.0.0"]
 ingest-parquet = ["pyarrow>=24.0.0"]
 ingest-arrow = ["pyarrow>=24.0.0"]
+ingest-sap = ["requests>=2.28.0"]
 
 db-all = [
   "semantica[db-snowflake,db-databricks,db-arrow]"
