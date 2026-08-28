@@ -42,7 +42,7 @@ icon: "rocket"
       Verify installation:
       ```python
       import semantica
-      print(semantica.__version__)  # 0.6.6
+      print(semantica.__version__)  # 0.6.7
       ```
     </Check>
   </Step>
