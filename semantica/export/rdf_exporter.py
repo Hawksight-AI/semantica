@@ -1229,7 +1229,7 @@ class RDFSerializer:
         # Initialize JSON-LD structure with context
         jsonld = {
             "@context": {
-                "@vocab": "https://semantica.dev/vocab/",
+                "@vocab": SEMANTICA_NS,
                 "semantica": "https://semantica.dev/ns#",
                 "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
                 "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
