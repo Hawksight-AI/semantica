@@ -1226,11 +1226,14 @@ class RDFSerializer:
         metadata_terms = _resolve_metadata_terms(options.pop("metadata_terms", None))
         graph_uri: Optional[str] = options.pop("graph_uri", None)
 
-        # Initialize JSON-LD structure with context
+        # Initialize JSON-LD structure with context. No @vocab: it applied to
+        # every bare term in caller data, so an extracted type like "ORG"
+        # became ns#ORG and a metadata key like "source" collided with the
+        # real sem:source object property (#1146). Only explicit semantica:
+        # terms resolve now.
         jsonld = {
             "@context": {
-                "@vocab": SEMANTICA_NS,
-                "semantica": "https://semantica.dev/ns#",
+                "semantica": SEMANTICA_NS,
                 "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
                 "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
             },
@@ -1252,11 +1255,20 @@ class RDFSerializer:
             # and was dropped in full by a JSON-LD parser, silently.
             entity_id = entity.get("id") or mint_entity_iri(entity.get("text", ""))
 
+            # The caller's type label is data, not a class we define: minting
+            # it into @type expanded it through @vocab into ns#ORG and
+            # friends, terms that look official but do not exist (#1146).
+            # The node is always a semantica:Entity and the label travels as
+            # semantica:type, matching the relationship node below and
+            # JSONExporter._entity_to_jsonld.
             node = {
                 "@id": entity_id,
-                "@type": entity.get("type", "semantica:Entity"),
+                "@type": "semantica:Entity",
                 "semantica:text": entity.get("text") or entity.get("label", ""),
             }
+            entity_type = entity.get("type")
+            if entity_type:
+                node["semantica:type"] = entity_type
             confidence = normalize_confidence(entity.get("confidence", 1.0))
             if confidence is None:
                 self.logger.warning(
