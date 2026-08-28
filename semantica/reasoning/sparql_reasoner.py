@@ -29,10 +29,11 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import copy
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
@@ -200,6 +201,16 @@ class SPARQLReasoner:
 
         Returns:
             Results with inferences
+
+        Note:
+            The original bindings are preserved verbatim, in order and
+            with their duplicates: SPARQL result rows form a bag, and a
+            query without DISTINCT keeps repeated solutions. Only the
+            *newly inferred* rows are de-duplicated (against each other
+            and against the originals) before being appended. This also
+            guarantees ``inferred_count`` reflects what inference added,
+            rather than shrinking (even below zero) when the original
+            rows contained duplicates.
         """
         tracking_id = self.progress_tracker.start_tracking(
             module="reasoning",
@@ -208,7 +219,8 @@ class SPARQLReasoner:
         )
 
         try:
-            inferred_bindings = list(query_results.bindings)
+            original_bindings = list(query_results.bindings)
+            new_bindings: List[Dict[str, Any]] = []
 
             # Apply inference rules
             if self.enable_inference:
@@ -219,20 +231,28 @@ class SPARQLReasoner:
 
                 for rule in rules:
                     # Check if rule can be applied to results
-                    new_bindings = self._apply_rule_to_results(
+                    rule_bindings = self._apply_rule_to_results(
                         rule, query_results.bindings
                     )
-                    inferred_bindings.extend(new_bindings)
+                    new_bindings.extend(rule_bindings)
 
-            # Remove duplicates
+            # De-duplicate only the inferred rows, against each other
+            # and against the originals (which are kept as-is).
             self.progress_tracker.update_tracking(
                 tracking_id, message="Removing duplicate bindings..."
             )
-            unique_bindings = self._deduplicate_bindings(inferred_bindings)
+            seen = {self._binding_key(b) for b in original_bindings}
+            added_bindings = []
+            for binding in new_bindings:
+                key = self._binding_key(binding)
+                if key not in seen:
+                    seen.add(key)
+                    added_bindings.append(binding)
 
-            inferred_count = len(unique_bindings) - len(query_results.bindings)
+            final_bindings = original_bindings + added_bindings
+            inferred_count = len(added_bindings)
             result = SPARQLQueryResult(
-                bindings=unique_bindings,
+                bindings=final_bindings,
                 variables=query_results.variables,
                 metadata={
                     **query_results.metadata,
@@ -298,7 +318,10 @@ class SPARQLReasoner:
         self, rule: Rule, binding: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Generate new binding from rule conclusion."""
-        new_binding = binding.copy()
+        # Deep copy: binding values may themselves be mutable dicts
+        # (SPARQL JSON result rows), which must not be shared with the
+        # inferred row.
+        new_binding = copy.deepcopy(binding)
 
         # Parse conclusion
         if " is_a " in rule.conclusion:
@@ -313,6 +336,21 @@ class SPARQLReasoner:
 
         return new_binding
 
+    @staticmethod
+    def _binding_key(binding: Dict[str, Any]) -> Tuple:
+        """Build a hashable key for a binding row.
+
+        Binding values are not guaranteed to be hashable: stores that
+        follow the SPARQL JSON results format return nested dicts
+        (``{"type": ..., "value": ...}``) for each value. Such values
+        are normalized to ``repr()`` so they can participate in the
+        deduplication key (issue: unhashable-dict TypeError).
+        """
+        normalized = tuple(
+            (str(name), repr(binding[name])) for name in sorted(binding, key=str)
+        )
+        return normalized
+
     def _deduplicate_bindings(
         self, bindings: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
@@ -321,8 +359,7 @@ class SPARQLReasoner:
         unique = []
 
         for binding in bindings:
-            # Create hashable representation
-            binding_key = tuple(sorted(binding.items()))
+            binding_key = self._binding_key(binding)
             if binding_key not in seen:
                 seen.add(binding_key)
                 unique.append(binding)
@@ -347,8 +384,14 @@ class SPARQLReasoner:
         Note: the *original* query is executed, not the output of
         ``expand_query()``: that output annotates the query with rule
         comments and ``=>`` pseudo-patterns that no SPARQL engine can
-        parse. Inference is applied to the *results* instead, through
-        ``infer_results()``.
+        parse. Inference still runs without rewriting the query:
+
+        * on the rdflib fallback path, ``is_a`` rules are materialized
+          into the in-memory graph *before* the query executes, so
+          inferred triples participate in pattern matching;
+        * afterwards, ``infer_results()`` applies the rules to the
+          *results* as well (rules that could not be materialized are
+          covered by this step).
 
         Args:
             query: SPARQL query string
@@ -450,15 +493,21 @@ class SPARQLReasoner:
         result: SPARQLQueryResult, cached: Optional[bool] = None
     ) -> SPARQLQueryResult:
         """Return a copy whose mutable containers are not shared with
-        ``result``: the binding dicts and the metadata dict are copied
-        one level deep, so mutating either object leaves the other
-        intact.
+        ``result``.
+
+        The copy is deep: binding values and metadata entries can be
+        arbitrarily nested containers themselves (SPARQL JSON results
+        use ``{"type": ..., "value": ...}`` dicts per value, and
+        ``metadata["triples"]`` holds lists of lists). A shallow copy
+        would leave those nested structures shared, so mutation of
+        one result could still reach the other through them.
+        ``cached`` (when given) is recorded on the copy only.
         """
-        metadata = dict(result.metadata)
+        metadata = copy.deepcopy(result.metadata)
         if cached is not None:
             metadata["cached"] = cached
         return SPARQLQueryResult(
-            bindings=[dict(binding) for binding in result.bindings],
+            bindings=[copy.deepcopy(binding) for binding in result.bindings],
             variables=list(result.variables),
             metadata=metadata,
         )
@@ -493,10 +542,38 @@ class SPARQLReasoner:
         return self._execute_on_rdflib_graph(query)
 
     def _coerce_query_result(self, raw_result: Any) -> SPARQLQueryResult:
-        """Normalize a store result (QueryResult or dict) into
-        SPARQLQueryResult."""
+        """Normalize a store result (QueryResult, dict, or list of
+        binding rows) into SPARQLQueryResult."""
         if isinstance(raw_result, SPARQLQueryResult):
             return raw_result
+
+        if isinstance(raw_result, (list, tuple)):
+            # Some stores hand back the raw solution sequence as a list
+            # of binding dicts (the ``bindings`` rows of the SPARQL JSON
+            # results format). Without this branch the list would fall
+            # through to the generic object path below, where
+            # ``getattr(result, "bindings")`` finds nothing and the rows
+            # are silently coerced into an empty result.
+            bindings = [
+                dict(item) for item in raw_result if isinstance(item, dict)
+            ]
+            if len(bindings) != len(raw_result):
+                self.logger.warning(
+                    "Triplet store execute_query() returned a sequence "
+                    "with %d non-dict items; they were dropped while "
+                    "coercing the result to SPARQLQueryResult.",
+                    len(raw_result) - len(bindings),
+                )
+            variables: List[str] = []
+            for binding in bindings:
+                for name in binding:
+                    name = str(name)
+                    if name not in variables:
+                        variables.append(name)
+            return SPARQLQueryResult(
+                bindings=bindings,
+                variables=variables,
+            )
 
         if isinstance(raw_result, dict):
             bindings = raw_result.get("bindings") or []
@@ -526,9 +603,16 @@ class SPARQLReasoner:
 
     def _execute_on_rdflib_graph(self, query: str) -> SPARQLQueryResult:
         """Execute the query locally on an in-memory rdflib graph built
-        from the store's triplets."""
+        from the store's triplets.
+
+        Inference (``is_a`` rules) is materialized into the graph
+        *before* the query runs, so triples that only exist through
+        inference can still satisfy the query's patterns. Rules that
+        cannot be expressed as ``is_a`` triples are left to
+        ``infer_results()``, which runs on the *results* instead.
+        """
         try:
-            from rdflib import Graph, Literal, URIRef
+            from rdflib import Graph
         except ImportError as e:
             raise ProcessingError(
                 "rdflib is required for the in-memory SPARQL fallback."
@@ -545,18 +629,28 @@ class SPARQLReasoner:
         start_time = time.time()
         graph = Graph()
         for triplet in get_triplets():
-            subject = self._triplet_value(triplet, "subject")
-            predicate = self._triplet_value(triplet, "predicate")
-            obj = self._triplet_value(triplet, "object")
-            if not subject or not predicate or obj is None:
+            subject = self._subject_term(triplet)
+            predicate = self._predicate_term(triplet)
+            obj = self._object_term(triplet)
+            if subject is None or predicate is None or obj is None:
                 continue
-            if obj.startswith(
-                ("http://", "https://", "urn:", "mailto:",
-                 "ftp://", "file://", "tag:", "doi:")
-            ):
-                graph.add((URIRef(subject), URIRef(predicate), URIRef(obj)))
-            else:
-                graph.add((URIRef(subject), URIRef(predicate), Literal(obj)))
+            graph.add((subject, predicate, obj))
+
+        if len(graph) == 0:
+            # An empty graph yields a result set ("no bindings", or
+            # false for ASK) that callers would misread as "no
+            # matches" when it really means "no data": refuse loudly
+            # instead, mirroring the no-store behaviour (issue #1083).
+            raise ProcessingError(
+                "The in-memory rdflib fallback graph is empty: "
+                "get_triplets() returned no usable triples. Executing "
+                "the query would return a result set misread as 'no "
+                "matches', so the query is refused instead."
+            )
+
+        inferred_triples = 0
+        if self.enable_inference and self.reasoner.rules:
+            inferred_triples = self._materialize_inference(graph)
 
         try:
             raw_result = graph.query(query)
@@ -566,22 +660,244 @@ class SPARQLReasoner:
         execution_time = time.time() - start_time
         result = self._rdflib_result_to_sparql_result(raw_result)
         result.metadata["execution_time"] = execution_time
+        if inferred_triples:
+            result.metadata["inferred_triples"] = inferred_triples
         return result
 
-    @staticmethod
-    def _triplet_value(triplet: Any, key: str) -> Optional[str]:
-        """Read a field from a Triplet object or a plain dict.
+    # ── rdflib term construction ───────────────────────────────────────
 
-        Missing fields return None; present values are coerced with
-        ``str()`` so that non-string values (e.g. numeric IDs) are not
-        silently dropped from the fallback graph.
+    _URI_PREFIXES = (
+        "http://",
+        "https://",
+        "urn:",
+        "mailto:",
+        "ftp://",
+        "file://",
+        "tag:",
+        "doi:",
+    )
+
+    @classmethod
+    def _triplet_field(cls, triplet: Any, key: str) -> Any:
+        """Read a field from a Triplet object or a plain dict, *without*
+        coercing it to ``str``.
+
+        Values that are already native RDF terms (``URIRef`` /
+        ``BNode`` / ``Literal``) must survive untouched so the fallback
+        graph keeps their types; ``str()`` here would degrade them to
+        plain literals. ``str()`` coercion is applied later, only for
+        values that genuinely need it.
         """
         getter = getattr(triplet, "get", None)
         if callable(getter):
             value = getter(key)
         else:
             value = getattr(triplet, key, None)
-        return None if value is None else str(value)
+        return value
+
+    @classmethod
+    def _triplet_metadata(cls, triplet: Any) -> Dict[str, Any]:
+        """Return the triplet's metadata dict (empty when absent)."""
+        metadata = cls._triplet_field(triplet, "metadata")
+        return metadata if isinstance(metadata, dict) else {}
+
+    @classmethod
+    def _node_term(cls, triplet: Any, key: str, blank_prefix_ok: bool = False):
+        """Build the subject or predicate term for the fallback graph.
+
+        Native RDF terms pass through; strings become ``URIRef`` (a
+        ``_:``-prefixed string becomes a blank node when
+        ``blank_prefix_ok`` -- blank nodes are only legal as subjects
+        or objects, not predicates). Non-string values are coerced to
+        their string form, mirroring the previous ``str()`` behaviour.
+        """
+        from rdflib import BNode, Literal, URIRef
+
+        value = cls._triplet_field(triplet, key)
+        if value is None or isinstance(value, (URIRef, BNode)):
+            return value
+        if isinstance(value, Literal):
+            # Literals are not legal subjects/predicates; degrade to a
+            # URIRef of the literal's text.
+            return URIRef(str(value))
+        if blank_prefix_ok and isinstance(value, str) and value.startswith("_:"):
+            return BNode(value[2:])
+        return URIRef(str(value))
+
+    @classmethod
+    def _subject_term(cls, triplet: Any):
+        """Build the subject term (blank-node prefix allowed)."""
+        return cls._node_term(triplet, "subject", blank_prefix_ok=True)
+
+    @classmethod
+    def _predicate_term(cls, triplet: Any):
+        """Build the predicate term (always a URIRef/term, no blanks)."""
+        return cls._node_term(triplet, "predicate")
+
+    @classmethod
+    def _object_term(cls, triplet: Any):
+        """Build the object term, preserving RDF typing information.
+
+        Values that are already native RDF terms pass through
+        unchanged. Otherwise the term is chosen by:
+
+        * ``_:``-prefixed string -> blank node
+        * URI-looking string (known scheme prefixes) -> ``URIRef``
+        * triplet metadata ``lang``/``language`` -> language-tagged
+          ``Literal``
+        * triplet metadata ``datatype``/``literal_datatype`` -> typed
+          ``Literal`` (resolved through ``resolve_datatype_iri``)
+        * anything else -> plain ``Literal`` of ``str(value)``
+
+        This mirrors the triplet-store behaviour (see
+        ``oxigraph_store._object_from_triplet``) so the fallback graph
+        answers typed-literal and language-tag queries the same way
+        the native backend would, instead of flattening every object
+        to an untyped literal.
+        """
+        from rdflib import BNode, Literal, URIRef
+
+        value = cls._triplet_field(triplet, "object")
+        if value is None or isinstance(value, (URIRef, BNode, Literal)):
+            return value
+        if isinstance(value, str) and value.startswith("_:"):
+            return BNode(value[2:])
+        if isinstance(value, str) and value.startswith(cls._URI_PREFIXES):
+            return URIRef(value)
+
+        metadata = cls._triplet_metadata(triplet)
+        language = metadata.get("lang") or metadata.get("language")
+        datatype = metadata.get("datatype") or metadata.get("literal_datatype")
+        text = str(value)
+        if language:
+            return Literal(text, lang=str(language))
+        if datatype:
+            datatype_iri = cls._resolve_datatype_iri(str(datatype))
+            if datatype_iri:
+                return Literal(text, datatype=URIRef(datatype_iri))
+        return Literal(text)
+
+    @staticmethod
+    def _resolve_datatype_iri(datatype: str) -> Optional[str]:
+        """Resolve a datatype name/IRI (e.g. ``xsd:integer``) to a bare
+        IRI string, or ``None`` when it cannot be resolved (the value
+        then stays an untyped literal instead of failing the query)."""
+        try:
+            from ..triplet_store.sparql_escaping import resolve_datatype_iri
+        except ImportError:
+            return None
+        try:
+            iri = resolve_datatype_iri(datatype)
+        except (ValueError, TypeError):
+            return None
+        return iri.strip("<>") if isinstance(iri, str) else None
+
+    # ── inference materialization (fallback path) ─────────────────────
+
+    @staticmethod
+    def _parse_is_a(pattern: Any) -> Optional[Tuple[str, str]]:
+        """Parse ``"?x is_a Class"`` into ``(var, class)``; None when the
+        pattern does not follow that form."""
+        if not isinstance(pattern, str):
+            return None
+        if " is_a " not in pattern:
+            return None
+        var, class_name = pattern.split(" is_a ", 1)
+        var = var.strip().lstrip("?").strip()
+        class_name = class_name.strip()
+        if not var or not class_name:
+            return None
+        return var, class_name
+
+    def _materialize_inference(self, graph: Any) -> int:
+        """Materialize ``is_a`` inference rules into ``graph``.
+
+        Rules of the form ``IF ?x is_a Sub THEN ?x is_a Super`` are
+        turned into extra ``rdf:type``-style triples *before* the query
+        runs, so matches that only exist through inference can satisfy
+        the query's WHERE clause (the query itself is never rewritten:
+        ``expand_query`` output is not executable SPARQL). Rules whose
+        conditions or conclusion do not fit the ``is_a`` form, or whose
+        variables do not line up, are skipped -- they are still handled
+        at the result level by ``infer_results()``.
+
+        Returns the number of inferred triples added.
+        """
+        rules = list(self.reasoner.rules)
+        added_total = 0
+        # Fixpoint iteration: a rule chain (A is_a B, B is_a C) may only
+        # enable another rule after the first one fires. At most one
+        # productive pass per rule is needed.
+        for _ in range(max(1, len(rules))):
+            added_this_pass = 0
+            for rule in rules:
+                added_this_pass += self._materialize_rule(graph, rule)
+            added_total += added_this_pass
+            if added_this_pass == 0:
+                break
+        return added_total
+
+    def _materialize_rule(self, graph: Any, rule: Rule) -> int:
+        """Add the triples inferred by one ``is_a`` rule; 0 when the
+        rule cannot be materialized."""
+        conclusion = self._parse_is_a(rule.conclusion)
+        if conclusion is None:
+            return 0
+        conclusion_var, conclusion_class = conclusion
+
+        # All conditions must be ``is_a`` constraints on the conclusion
+        # variable for the rule to be expressible as triple rewrites.
+        constraints = []
+        for condition in rule.conditions or []:
+            parsed = self._parse_is_a(condition)
+            if parsed is None or parsed[0] != conclusion_var:
+                return 0
+            constraints.append(parsed[1])
+        if not constraints:
+            return 0
+
+        added = 0
+        for subject, predicate, obj in list(graph):
+            if not all(
+                self._term_matches_class(obj, class_name)
+                for class_name in constraints
+            ):
+                continue
+            if self._term_matches_class(obj, conclusion_class):
+                continue
+            inferred = (subject, predicate, self._term_for_class(obj, conclusion_class))
+            if inferred not in graph:
+                graph.add(inferred)
+                added += 1
+        return added
+
+    @staticmethod
+    def _term_matches_class(term: Any, class_name: str) -> bool:
+        """Whether ``term`` denotes ``class_name`` (exact text, or a
+        URI whose local name is ``class_name``)."""
+        text = str(term)
+        if text == class_name:
+            return True
+        for separator in ("#", "/"):
+            index = text.rfind(separator)
+            if index != -1 and text[index + 1:] == class_name:
+                return True
+        return False
+
+    @staticmethod
+    def _term_for_class(term: Any, class_name: str) -> Any:
+        """Build the term for ``class_name`` in the namespace of
+        ``term`` when possible, else a bare ``URIRef``/``Literal``."""
+        from rdflib import Literal, URIRef
+
+        if isinstance(term, Literal):
+            return Literal(class_name)
+        text = str(term)
+        for separator in ("#", "/"):
+            index = text.rfind(separator)
+            if index != -1:
+                return URIRef(text[: index + 1] + class_name)
+        return URIRef(class_name)
 
     @staticmethod
     def _rdflib_result_to_sparql_result(
