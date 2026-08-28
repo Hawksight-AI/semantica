@@ -29,14 +29,15 @@ Author: Semantica Contributors
 License: MIT
 """
 
-import re
+import json
+import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from .reasoner import Rule, Reasoner
+from .reasoner import Reasoner, Rule
 
 
 @dataclass
@@ -84,9 +85,8 @@ class SPARQLReasoner:
         self.triplet_store = self.config.get("triplet_store")
         self.enable_inference = self.config.get("enable_inference", True)
 
-        # Reserved for query caching once a triplet-store execution path
-        # lands. execute_query() raises NotImplementedError until then, so
-        # the cache cannot be populated through any public path yet.
+        # Cache for executed queries, keyed by (query, options) and
+        # populated by execute_query(); cleared via clear_cache().
         self.query_cache: Dict[str, Any] = {}
 
     def expand_query(self, query: str, **options) -> str:
@@ -333,33 +333,310 @@ class SPARQLReasoner:
         """
         Execute SPARQL query with reasoning.
 
-        Not implemented: no triplet-store execution path exists yet, so the
-        query is refused loudly instead of returning an empty result set
-        that callers would read as "no matches" (issue #1083).
+        The query is executed against the configured triplet store via its
+        ``execute_query`` method (validation and optimization are handled
+        by the store's query engine). When the store cannot execute SPARQL
+        natively -- no ``execute_query`` method, or a backend without
+        ``execute_sparql`` -- the triplets are pulled via ``get_triplets``
+        into an in-memory rdflib graph and the query is executed locally.
+
+        Without a triplet store the query is refused loudly instead of
+        returning an empty result set that callers would read as "no
+        matches" (issue #1083).
+
+        Note: the *original* query is executed, not the output of
+        ``expand_query()``: that output annotates the query with rule
+        comments and ``=>`` pseudo-patterns that no SPARQL engine can
+        parse. Inference is applied to the *results* instead, through
+        ``infer_results()``.
 
         Args:
             query: SPARQL query string
-            **options: Additional options
+            **options: Additional options forwarded to the triplet
+                store (e.g. ``graph``, ``graphs``). They only apply
+                on the native execution path; the rdflib fallback
+                always queries the full triplet set (a warning is
+                logged when options are dropped).
+
+        Returns:
+            SPARQLQueryResult with bindings and variables
 
         Raises:
-            NotImplementedError: always, until a triplet-store execution
-                path lands.
+            ProcessingError: No triplet store configured, or the store
+                supports neither SPARQL execution nor triplet retrieval
+            ValidationError: The query is not valid SPARQL
+
+        Note:
+            Results are cached per ``(query, options)``. The cache has
+            no invalidation: it does not observe changes to the store's
+            triplets or to the inference rules, so call
+            ``clear_cache()`` after mutating either.
         """
-        raise NotImplementedError(
-            "SPARQLReasoner.execute_query() is not implemented: no "
-            "triplet-store execution path exists yet. Returning an empty "
-            "result set would be misread as 'no matches', so the query "
-            "is refused instead."
+        tracking_id = self.progress_tracker.start_tracking(
+            module="reasoning",
+            submodule="SPARQLReasoner",
+            message="Executing SPARQL query",
         )
 
-    def clear_cache(self) -> None:
-        """Clear query cache.
+        try:
+            if self.triplet_store is None:
+                raise ProcessingError(
+                    "SPARQLReasoner.execute_query() requires a triplet "
+                    "store: pass triplet_store=... when constructing the "
+                    "reasoner. Returning an empty result set would be "
+                    "misread as 'no matches', so the query is refused "
+                    "instead."
+                )
 
-        Reserved for when a triplet-store execution path lands: until then,
-        ``execute_query()`` raises ``NotImplementedError`` and nothing can
-        populate the cache.
-        """
+            cache_key = self._cache_key(query, options)
+            if cache_key in self.query_cache:
+                cached_result = self.query_cache[cache_key]
+                self.progress_tracker.stop_tracking(
+                    tracking_id,
+                    status="completed",
+                    message="Returned cached result",
+                )
+                return self._copy_result(cached_result, cached=True)
+            self.progress_tracker.update_tracking(
+                tracking_id, message="Executing query on triplet store..."
+            )
+            result = self._execute_on_store(query, **options)
+
+            if self.enable_inference and self.reasoner.rules:
+                self.progress_tracker.update_tracking(
+                    tracking_id, message="Applying inference rules..."
+                )
+                result = self.infer_results(result)
+
+            result.metadata.setdefault("cached", False)
+            # Store a private copy: mutating the returned result (or the
+            # cached one) must never corrupt the other.
+            self.query_cache[cache_key] = self._copy_result(result)
+
+            self.progress_tracker.stop_tracking(
+                tracking_id,
+                status="completed",
+                message=f"Query executed: {len(result.bindings)} results",
+            )
+            return result
+
+        except (ValidationError, ProcessingError) as e:
+            self.progress_tracker.stop_tracking(
+                tracking_id, status="failed", message=str(e)
+            )
+            raise
+        except Exception as e:
+            self.progress_tracker.stop_tracking(
+                tracking_id, status="failed", message=str(e)
+            )
+            raise ProcessingError(f"Query execution failed: {e}") from e
+
+    def clear_cache(self) -> None:
+        """Clear the query cache populated by execute_query()."""
         self.query_cache.clear()
+
+    # ── Execution-path helpers ────────────────────────────────────────────
+
+    def _cache_key(self, query: str, options: Dict[str, Any]) -> str:
+        """Build a deterministic cache key from the query and its options."""
+        try:
+            options_part = json.dumps(options, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            options_part = str(sorted(options.items(), key=str))
+        return f"{query}\n{options_part}"
+
+    @staticmethod
+    def _copy_result(
+        result: SPARQLQueryResult, cached: Optional[bool] = None
+    ) -> SPARQLQueryResult:
+        """Return a copy whose mutable containers are not shared with
+        ``result``: the binding dicts and the metadata dict are copied
+        one level deep, so mutating either object leaves the other
+        intact.
+        """
+        metadata = dict(result.metadata)
+        if cached is not None:
+            metadata["cached"] = cached
+        return SPARQLQueryResult(
+            bindings=[dict(binding) for binding in result.bindings],
+            variables=list(result.variables),
+            metadata=metadata,
+        )
+
+    def _execute_on_store(self, query: str, **options) -> SPARQLQueryResult:
+        """Execute the query through the triplet store, with fallback."""
+        store = self.triplet_store
+        execute = getattr(store, "execute_query", None)
+
+        # Only fall back when we can positively determine that the store
+        # backend cannot execute SPARQL; duck-typed stores without a
+        # ``_store_backend`` attribute are trusted to handle the query.
+        backend = getattr(store, "_store_backend", None)
+        backend_blocks_sparql = backend is not None and not callable(
+            getattr(backend, "execute_sparql", None)
+        )
+
+        if callable(execute) and not backend_blocks_sparql:
+            raw_result = execute(query, **options)
+            return self._coerce_query_result(raw_result)
+
+        self.logger.info(
+            "Triplet store has no native SPARQL execution path; falling "
+            "back to an in-memory rdflib graph."
+        )
+        if options:
+            self.logger.warning(
+                "Falling back to the in-memory rdflib graph, where query "
+                "options %s are not applied: the fallback always queries "
+                "the full triplet set." % (options,)
+            )
+        return self._execute_on_rdflib_graph(query)
+
+    def _coerce_query_result(self, raw_result: Any) -> SPARQLQueryResult:
+        """Normalize a store result (QueryResult or dict) into
+        SPARQLQueryResult."""
+        if isinstance(raw_result, SPARQLQueryResult):
+            return raw_result
+
+        if isinstance(raw_result, dict):
+            bindings = raw_result.get("bindings") or []
+            variables = raw_result.get("variables") or []
+            metadata = dict(raw_result.get("metadata") or {})
+            triples = raw_result.get("triples") or []
+            execution_time = raw_result.get("execution_time") or 0.0
+        else:
+            bindings = getattr(raw_result, "bindings", None) or []
+            variables = getattr(raw_result, "variables", None) or []
+            metadata = dict(getattr(raw_result, "metadata", None) or {})
+            triples = getattr(raw_result, "triples", None) or []
+            execution_time = (
+                getattr(raw_result, "execution_time", 0.0) or 0.0
+            )
+
+        result = SPARQLQueryResult(
+            bindings=list(bindings),
+            variables=list(variables),
+            metadata=metadata,
+        )
+        if execution_time:
+            result.metadata["execution_time"] = execution_time
+        if triples:
+            result.metadata["triples"] = [tuple(t) for t in triples]
+        return result
+
+    def _execute_on_rdflib_graph(self, query: str) -> SPARQLQueryResult:
+        """Execute the query locally on an in-memory rdflib graph built
+        from the store's triplets."""
+        try:
+            from rdflib import Graph, Literal, URIRef
+        except ImportError as e:
+            raise ProcessingError(
+                "rdflib is required for the in-memory SPARQL fallback."
+            ) from e
+
+        get_triplets = getattr(self.triplet_store, "get_triplets", None)
+        if not callable(get_triplets):
+            raise ProcessingError(
+                "Triplet store supports neither SPARQL execution "
+                "(execute_query) nor triplet retrieval (get_triplets); "
+                "cannot execute the query."
+            )
+
+        start_time = time.time()
+        graph = Graph()
+        for triplet in get_triplets():
+            subject = self._triplet_value(triplet, "subject")
+            predicate = self._triplet_value(triplet, "predicate")
+            obj = self._triplet_value(triplet, "object")
+            if not subject or not predicate or obj is None:
+                continue
+            if obj.startswith(
+                ("http://", "https://", "urn:", "mailto:",
+                 "ftp://", "file://", "tag:", "doi:")
+            ):
+                graph.add((URIRef(subject), URIRef(predicate), URIRef(obj)))
+            else:
+                graph.add((URIRef(subject), URIRef(predicate), Literal(obj)))
+
+        try:
+            raw_result = graph.query(query)
+        except Exception as e:
+            raise ValidationError(f"Invalid SPARQL query: {e}") from e
+
+        execution_time = time.time() - start_time
+        result = self._rdflib_result_to_sparql_result(raw_result)
+        result.metadata["execution_time"] = execution_time
+        return result
+
+    @staticmethod
+    def _triplet_value(triplet: Any, key: str) -> Optional[str]:
+        """Read a field from a Triplet object or a plain dict.
+
+        Missing fields return None; present values are coerced with
+        ``str()`` so that non-string values (e.g. numeric IDs) are not
+        silently dropped from the fallback graph.
+        """
+        getter = getattr(triplet, "get", None)
+        if callable(getter):
+            value = getter(key)
+        else:
+            value = getattr(triplet, key, None)
+        return None if value is None else str(value)
+
+    @staticmethod
+    def _rdflib_result_to_sparql_result(
+        raw_result: Any,
+    ) -> SPARQLQueryResult:
+        """Convert an rdflib query result into SPARQLQueryResult."""
+        result_type = getattr(raw_result, "type", None) or "SELECT"
+        metadata = {"executed_via": "rdflib_in_memory"}
+
+        if result_type in ("CONSTRUCT", "DESCRIBE"):
+            triples_graph = getattr(raw_result, "graph", None) or raw_result
+            triples = [(str(s), str(p), str(o)) for s, p, o in triples_graph]
+            return SPARQLQueryResult(
+                bindings=[],
+                variables=[],
+                metadata={
+                    **metadata,
+                    "result_type": result_type,
+                    "triples": triples,
+                },
+            )
+
+        if result_type == "ASK":
+            ask_value = getattr(raw_result, "askAnswer", None)
+            if ask_value is None:
+                ask_value = getattr(raw_result, "boolean", None)
+            if ask_value is None:
+                ask_value = bool(raw_result)
+            return SPARQLQueryResult(
+                bindings=[],
+                variables=[],
+                metadata={
+                    **metadata,
+                    "result_type": "ASK",
+                    "boolean": bool(ask_value),
+                },
+            )
+
+        # SELECT
+        variables = [
+            str(var) for var in (getattr(raw_result, "vars", None) or [])
+        ]
+        bindings = []
+        for row in raw_result:
+            binding = {}
+            for var in (getattr(raw_result, "vars", None) or []):
+                value = row.get(var) if hasattr(row, "get") else None
+                if value is not None:
+                    binding[str(var)] = str(value)
+            bindings.append(binding)
+        return SPARQLQueryResult(
+            bindings=bindings,
+            variables=variables,
+            metadata={**metadata, "result_type": "SELECT"},
+        )
 
     def add_inference_rule(self, rule_definition: str, **options) -> Rule:
         """Add inference rule."""
