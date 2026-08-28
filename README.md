@@ -142,7 +142,7 @@ compliant = graph.check_decision_rules({"category": "vendor_selection"})  # poli
 ```bash
 semantica doctor
 # Python 3.11.9         pass
-# semantica 0.6.6       pass
+# semantica 0.6.7       pass
 # faiss vector store    pass
 # Config file           pass    ~/.semantica/config.yaml
 ```
@@ -1463,18 +1463,18 @@ For contributor / dev-server setup: **[explorer/README.md: Local Setup Guide](ex
 
 ---
 
-## What's New in v0.6.6
+## What's New in v0.6.7
 
-**Security release — upgrading is strongly recommended.** Fixes for a privately disclosed batch of vulnerabilities spanning backup/restore, database export, outbound requests, and triplet-store backends, plus SSRF hardening across ingestion:
+**Feature release**, plus one SSRF hardening fix and a large batch of correctness fixes across the RDF/ontology export pipeline:
 
-- **Tarball restore path traversal**: `semantica backup restore` now validates every archive member for path containment and rejects symlink/hardlink escapes before extraction
-- **Latent SQL injection in `DataExporter.export_table_data()`**: table/schema names are now identifier-allowlisted and `where`/`order_by` fragments are blocklist-checked
-- **DNS-rebinding TOCTOU in the shared SSRF guard**: the resolved IP that passes validation is now the one the connection is pinned to, closing the check-then-use race (also closes the `100.64.0.0/10` CGNAT gap)
-- **Stored XSS in HTML report generation** and **unvalidated SPARQL object IRIs in AnzoStore** (SPARQL injection): both now escape/validate before interpolation
-- **`Authorization`/`Proxy-Authorization` credential leakage across redirects**, plus **SSRF gaps in `FeedIngestor`/`FeedMonitor`, `RepoIngestor`, and the MCP/public-API ingest paths**: all now route through the shared, redirect-safe SSRF guard
-- **HTTP response header injection and an unbounded-memory DoS** in the Explorer API, and a **`fastapi`/`python-multipart` ReDoS** (PYSEC-2024-38): floors raised, inputs sanitized, candidate pools capped
+- **First-class LangChain integration** (`semantica[langchain]`): a `BaseRetriever` and `VectorStore` over `HybridSearch`, plus graph/decision-query tools
+- **SAP OData ingestor** (`semantica[ingest-sap]`): OAuth2/Basic-auth, SSRF-guarded ingestion for Business Partners and Sales Orders, following the existing Snowflake/Databricks connector pattern
+- **`ContextGraph` gains deterministic, human-editable Markdown round-trip persistence** alongside the existing JSON API, and the Explorer graph inspector gains a read-only Markdown content viewer
+- **`reasoning` gains a structured Action layer**: rule-driven `Assert`/`Retract`/`Call`/`EmitEvent` actions with optional provenance, turning the reasoner into a production-rule system
+- **`run_shacl_validation` is now a public, documented API**, and a dozen ontology/RDF export correctness fixes land: OWL property/class export, SHACL target-namespace resolution, one canonical confidence datatype across all four RDF formats, reachable OWL-Time reification, JSON-LD default-graph and content-derived document identity, and full metadata passthrough on every RDF serializer
+- **Security**: Agno's `AgnoKnowledgeGraph.load_urls()` and OpenClaw's MCP tool now route outbound requests through the shared SSRF guard
 
-Also ships: **first-class CrewAI integration** (`semantica[crewai]`, extraction/decision tools + a knowledge source), **`ContextGraph` retraction and purge** (GDPR-style erasure without a full `clear()`), a declared **Semantica RDF vocabulary with deterministic entity/relationship IRIs** (stable, diffable exports), and **timezone-aware timestamps** across `export/` and `provenance/`.
+Also fixes: `PipelineBuilder.set_parallelism()` now actually parallelizes independent pipeline steps, `flatten_dict()` no longer silently drops data on a key collision, `Config.get()` honors boolean environment overrides, and the MCP server's `export_graph` tool works again on every format.
 
 → [Full release notes](RELEASE_NOTES.md) · [Changelog](CHANGELOG.md)
 
