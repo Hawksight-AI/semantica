@@ -117,6 +117,8 @@ class PropertyGenerator:
             data_properties = self._infer_data_properties(entities, classes, **options)
             properties.extend(data_properties)
 
+            properties = self._coalesce_normalized_properties(properties)
+
             self.progress_tracker.stop_tracking(
                 tracking_id,
                 status="completed",
@@ -192,6 +194,67 @@ class PropertyGenerator:
                 properties.append(property_def)
 
         return properties
+
+    def _coalesce_normalized_properties(
+        self, properties: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Merge same-kind properties that normalize to the same name."""
+        property_kinds = defaultdict(set)
+        for prop in properties:
+            property_kinds[prop["name"]].add(prop.get("type"))
+
+        collisions = {
+            name: sorted(kind for kind in kinds if kind is not None)
+            for name, kinds in property_kinds.items()
+            if len({kind for kind in kinds if kind is not None}) > 1
+        }
+        if collisions:
+            raise ValidationError(
+                "Normalized property names cannot be shared by object and "
+                "data properties.",
+                validation_context={"property_kind_collisions": collisions},
+            )
+
+        merged: Dict[tuple, Dict[str, Any]] = {}
+        result = []
+        for prop in properties:
+            key = (prop.get("type"), prop["name"])
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = prop
+                result.append(prop)
+                continue
+
+            existing["domain"] = self._merge_property_values(
+                existing.get("domain", []), prop.get("domain", [])
+            )
+            if prop.get("type") == "object":
+                existing["range"] = self._merge_property_values(
+                    existing.get("range", []), prop.get("range", [])
+                )
+                existing_metadata = existing.setdefault("metadata", {})
+                existing_metadata["occurrence_count"] = (
+                    existing_metadata.get("occurrence_count", 0)
+                    + prop.get("metadata", {}).get("occurrence_count", 0)
+                )
+            elif existing.get("range") != prop.get("range"):
+                existing["range"] = self._get_more_general_type(
+                    existing["range"], prop["range"]
+                )
+
+        return result
+
+    @staticmethod
+    def _merge_property_values(current: Any, incoming: Any) -> List[Any]:
+        """Merge scalar-or-list property values while preserving input order."""
+        values = list(current) if isinstance(current, list) else [current]
+        incoming_values = (
+            incoming if isinstance(incoming, list) else [incoming]
+        )
+        for value in incoming_values:
+            if value not in values:
+                values.append(value)
+        return [value for value in values if value is not None]
 
     def _infer_data_properties(
         self, entities: List[Dict[str, Any]], classes: List[Dict[str, Any]], **options

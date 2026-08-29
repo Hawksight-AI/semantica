@@ -875,6 +875,57 @@ schema = connector.get_schema(engine)
         print(f"  {table_name}: {[col['name'] for col in columns]}")
 ```
 
+## SAP OData Ingestion
+
+`SAPIngestor` reads an Entity Set from a SAP OData service — S/4HANA Cloud,
+SuccessFactors, or an on-prem NetWeaver Gateway over its REST surface. It
+follows OData v2/v4 server-driven pagination and flattens each record into a
+document dict via `export_as_documents()`.
+
+Install with `pip install 'semantica[ingest-sap]'`.
+
+### Connector Construction & Authentication
+
+```python
+from semantica.ingest import SAPIngestor
+
+# OAuth2 client-credentials (BTP / S/4HANA Cloud)
+ing = SAPIngestor(
+    base_url="https://my-sap.example.com/sap/opu/odata/sap/API_BUSINESS_PARTNER",
+    client_id="...", client_secret="...",
+    token_url="https://my-sap.example.com/oauth/token",
+)
+# On-prem NetWeaver often uses Basic auth instead — swap the block above for:
+# ing = SAPIngestor(base_url="...", username="erp_user", password="...")
+```
+
+### Entity-Set Ingestion & Document Export
+
+```python
+# 1. Discover entity sets + field types from $metadata
+sets = ing.discover_service()
+
+# 2. Page-walk an Entity Set (v2/v4 next links handled automatically)
+partners = ing.ingest_entity_set(
+    entity_set="A_BusinessPartnerSet",
+    select="BusinessPartner,BusinessPartnerFullName",
+    top=1000,
+)
+
+# 3. Flatten to document dicts that GraphBuilder can consume directly
+docs = ing.export_as_documents(partners)
+```
+
+- Use `expand="to_Item"` on a sales-order header set to pull nested line items
+  in one request — handy for modeling order → line-item → material relations.
+- Every outbound request, including the OAuth2 token exchange, is routed through
+  the SSRF guard, and pagination never follows a next link that points to a
+  different host than the service root.
+
+> **Security Note:** Never hardcode credentials (`client_secret`, `password`);
+> pass them via environment variables (`SAP_CLIENT_SECRET`, `SAP_PASSWORD`) or a
+> secrets manager.
+
 ## MCP Server Ingestion
 
 **IMPORTANT**: This implementation supports **ONLY Python-based MCP servers and FastMCP servers**. Users can bring their own Python or FastMCP MCP servers via URL connections. JavaScript, TypeScript, C#, Java, and other language implementations are **NOT supported**.
