@@ -283,6 +283,13 @@ class ErasureCoordinator:
         leg makes the same call moments later and reports the failure, so the
         receipt is still incomplete. Swallowing it there instead would be the
         bug this method exists to fix.
+
+        Mirrors the memory leg's pagination: sweeps until dry rather than
+        calling find_by_entity() once with a large limit. A single call with
+        limit=500 would only collect vectors from the first 500 items, while
+        _erase_memory() continues paging and deletes all 501+, leaving the
+        501st item's vector behind -- the exact failure mode this method
+        exists to prevent.
         """
         ids: List[str] = list(vector_ids) if vector_ids is not None else [entity_id]
         if self.memory is None:
@@ -290,16 +297,25 @@ class ErasureCoordinator:
 
         seen = set(ids)
         try:
-            for item in self.memory.find_by_entity(
-                entity_id, limit=_MEMORY_SWEEP_BATCH
-            ):
-                memory_id = _memory_item_id(item)
-                if not memory_id:
-                    continue
-                for vector_id in self.memory.vector_ids_for(memory_id):
-                    if vector_id not in seen:
-                        seen.add(vector_id)
-                        ids.append(vector_id)
+            # Page until dry, matching _erase_memory()'s loop: collect vector
+            # ids from ALL memory items BEFORE any are deleted. A single
+            # find_by_entity(..., limit=500) would miss item 501+.
+            while True:
+                found = self.memory.find_by_entity(entity_id, limit=_MEMORY_SWEEP_BATCH)
+                if not found:
+                    break
+
+                for item in found:
+                    memory_id = _memory_item_id(item)
+                    if not memory_id:
+                        continue
+                    for vector_id in self.memory.vector_ids_for(memory_id):
+                        if vector_id not in seen:
+                            seen.add(vector_id)
+                            ids.append(vector_id)
+
+                if len(found) < _MEMORY_SWEEP_BATCH:
+                    break
         except Exception as exc:
             self.logger.warning(
                 "Could not enumerate memory-owned vector ids for %r: %s; "

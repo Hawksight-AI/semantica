@@ -637,6 +637,89 @@ def _memory_with_embedding(entity_id, store):
     return memory
 
 
+class TestSeparateVectorStoreHandling(unittest.TestCase):
+    """Verify correct behavior when coordinator.vector_store != memory.vector_store.
+
+    AgentMemory.delete_memory() has its own best-effort vector cascade that
+    logs failures but returns True. When the coordinator's vector_store differs
+    from (or is disabled vs) memory.vector_store, a vector remaining in
+    memory.vector_store must not be hidden by the coordinator's receipt.
+    """
+
+    def test_vector_store_false_disables_vector_leg_entirely(self):
+        """vector_store=False must disable the vector leg, not try memory.vector_store."""
+        memory_store = _SelectiveDeleteStore()
+        memory = _memory_with_embedding("customer-4471", memory_store)
+
+        # Disable vector leg explicitly
+        receipt = ErasureCoordinator(
+            graph=_graph(), memory=memory, vector_store=False
+        ).erase_entity("customer-4471")
+
+        # Vector leg should report not_configured, not attempt deletion
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_NOT_CONFIGURED)
+        # Memory's own cascade still runs, but coordinator doesn't track it
+        self.assertTrue(receipt.complete)
+
+    def test_separate_vector_store_only_handles_coordinator_store(self):
+        """When coordinator has a different vector_store, it only handles that one.
+
+        If memory.vector_store contains a memory-owned vector and fails to delete
+        it, that's memory's problem -- the coordinator only reports on the store
+        it was given. This test verifies the coordinator correctly collects IDs
+        from memory items and attempts deletion on its own store, independent of
+        memory.vector_store.
+        """
+        # Memory has its own store with a vector
+        memory_store = _SelectiveDeleteStore()
+        memory = _memory_with_embedding("customer-4471", memory_store)
+        memory_vector_id = list(memory_store.live)[0]
+
+        # Coordinator has a separate store that refuses to delete
+        coordinator_store = _SelectiveDeleteStore(refuse={memory_vector_id})
+
+        receipt = ErasureCoordinator(
+            graph=_graph(), memory=memory, vector_store=coordinator_store
+        ).erase_entity("customer-4471")
+
+        # The coordinator's store should have been asked to delete the memory-owned vector
+        self.assertIn(memory_vector_id, coordinator_store.attempts[0])
+        # The coordinator's store refused, so receipt is incomplete
+        self.assertFalse(receipt.complete)
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_FAILED)
+
+        # Memory's own store was used by delete_memory()'s cascade (best-effort)
+        # but the coordinator's receipt only reflects the coordinator's store
+        self.assertNotIn(memory_vector_id, memory_store.live)  # memory deleted it
+
+    def test_memory_vector_store_failure_is_not_reported_when_coordinator_has_separate_store(
+        self,
+    ):
+        """If memory.vector_store fails but coordinator.vector_store succeeds, receipt is complete.
+
+        The coordinator reports only on its own store. Memory's delete_memory()
+        cascade is best-effort and logs failures, but the coordinator doesn't
+        re-check memory.vector_store after deletion.
+        """
+        # Memory's store will fail to delete (but delete_memory catches it)
+        memory_store = _SelectiveDeleteStore(refuse={"vec-0"})
+        memory = _memory_with_embedding("customer-4471", memory_store)
+
+        # Coordinator has a separate, cooperative store
+        coordinator_store = _SelectiveDeleteStore()
+
+        receipt = ErasureCoordinator(
+            graph=_graph(), memory=memory, vector_store=coordinator_store
+        ).erase_entity("customer-4471")
+
+        # Coordinator's store succeeded
+        self.assertTrue(receipt.complete)
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_ERASED)
+
+        # But memory's store still has the vector (delete_memory logged it)
+        self.assertIn("vec-0", memory_store.live)
+
+
 class TestMemoryOwnedVectorsAreReported(unittest.TestCase):
     """A memory item's embedding must not survive a `complete` receipt.
 
@@ -702,6 +785,64 @@ class TestMemoryOwnedVectorsAreReported(unittest.TestCase):
         memory_id = next(iter(memory.memory_items))
         self.assertEqual(memory.vector_ids_for(memory_id), [memory_id])
         self.assertEqual(memory.vector_ids_for("no-such-item"), [])
+
+    def test_pagination_collects_vectors_from_all_501_items(self):
+        """Regression: _all_vector_ids must page to collect ALL vectors.
+
+        The original implementation called find_by_entity(limit=500) once,
+        collecting only the first 500 items' vectors, while _erase_memory()
+        continued paging and deleted all 501+ items. The vector belonging to
+        item 501 remained, yet the receipt reported complete=True -- the exact
+        failure mode the coordinator exists to prevent.
+
+        This test creates 501 memory items (> _MEMORY_SWEEP_BATCH of 500),
+        gives each one an embedding, and refuses deletion of the 501st vector.
+        The receipt MUST report incomplete, proving all vectors were collected
+        before deletion.
+        """
+        store = _SelectiveDeleteStore(refuse={"vec-500"})  # 0-indexed: item 501
+        memory = AgentMemory(vector_store=store)
+
+        # Create 501 memory items with embeddings for one entity
+        entity_id = "customer-with-many-memories"
+        for i in range(501):
+            memory.store(
+                f"Memory {i} about {entity_id}",
+                entities=[{"id": entity_id, "name": entity_id}],
+                embedding=np.zeros(4),
+                skip_graph=True,
+            )
+
+        # Verify we have exactly 501 items
+        self.assertEqual(len(memory.memory_items), 501)
+        # Verify the 501st vector exists (vec-500 at index 500)
+        self.assertIn("vec-500", store.live)
+
+        receipt = ErasureCoordinator(graph=_graph(), memory=memory).erase_entity(
+            entity_id
+        )
+
+        # The 501st embedding is demonstrably still there...
+        self.assertIn("vec-500", store.live)
+        # ...so the receipt MUST NOT claim complete erasure
+        self.assertFalse(
+            receipt.complete,
+            "Receipt claimed complete=True while vec-500 (item 501) remains; "
+            "_all_vector_ids() only collected the first 500 items' vectors",
+        )
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_FAILED)
+        self.assertIn("vectors", receipt.incomplete_stores)
+
+        # Verify all 501 vector IDs were attempted (proving pagination worked)
+        all_attempted = set()
+        for batch in store.attempts:
+            all_attempted.update(batch)
+        self.assertEqual(len(all_attempted), 502)  # 501 owned + 1 entity-keyed
+        self.assertIn(
+            "vec-500",
+            all_attempted,
+            "vec-500 was never sent to the vector store; pagination failed",
+        )
 
 
 if __name__ == "__main__":
