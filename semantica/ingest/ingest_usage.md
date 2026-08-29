@@ -875,56 +875,95 @@ schema = connector.get_schema(engine)
         print(f"  {table_name}: {[col['name'] for col in columns]}")
 ```
 
-## SAP OData Ingestion
+## Salesforce CRM Ingestion
 
-`SAPIngestor` reads an Entity Set from a SAP OData service — S/4HANA Cloud,
-SuccessFactors, or an on-prem NetWeaver Gateway over its REST surface. It
-follows OData v2/v4 server-driven pagination and flattens each record into a
-document dict via `export_as_documents()`.
+Salesforce ingestion requires `simple-salesforce`:
 
-Install with `pip install 'semantica[ingest-sap]'`.
-
-### Connector Construction & Authentication
-
-```python
-from semantica.ingest import SAPIngestor
-
-# OAuth2 client-credentials (BTP / S/4HANA Cloud)
-ing = SAPIngestor(
-    base_url="https://my-sap.example.com/sap/opu/odata/sap/API_BUSINESS_PARTNER",
-    client_id="...", client_secret="...",
-    token_url="https://my-sap.example.com/oauth/token",
-)
-# On-prem NetWeaver often uses Basic auth instead — swap the block above for:
-# ing = SAPIngestor(base_url="...", username="erp_user", password="...")
+```bash
+pip install "semantica[db-salesforce]"
 ```
 
-### Entity-Set Ingestion & Document Export
+### Basic Usage
 
 ```python
-# 1. Discover entity sets + field types from $metadata
-sets = ing.discover_service()
+from semantica.ingest import SalesforceIngestor
+import os
 
-# 2. Page-walk an Entity Set (v2/v4 next links handled automatically)
-partners = ing.ingest_entity_set(
-    entity_set="A_BusinessPartnerSet",
-    select="BusinessPartner,BusinessPartnerFullName",
-    top=1000,
+ingestor = SalesforceIngestor(
+    username=os.getenv("SALESFORCE_USERNAME"),
+    password=os.getenv("SALESFORCE_PASSWORD"),
+    security_token=os.getenv("SALESFORCE_SECURITY_TOKEN"),
+    domain="login",   # "test" for sandbox
 )
 
-# 3. Flatten to document dicts that GraphBuilder can consume directly
-docs = ing.export_as_documents(partners)
+# Ingest Account records
+data = ingestor.ingest_sobject(
+    "Account",
+    fields=["Id", "Name", "Industry", "BillingCity"],
+    where="Type = 'Customer'",
+    limit=5000,
+)
+print(f"Retrieved {data.row_count} of {data.total_size} matching records")
 ```
 
-- Use `expand="to_Item"` on a sales-order header set to pull nested line items
-  in one request — handy for modeling order → line-item → material relations.
-- Every outbound request, including the OAuth2 token exchange, is routed through
-  the SSRF guard, and pagination never follows a next link that points to a
-  different host than the service root.
+`SalesforceIngestor()` with no arguments reads from `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, `SALESFORCE_SECURITY_TOKEN`, and `SALESFORCE_DOMAIN` environment variables automatically.
 
-> **Security Note:** Never hardcode credentials (`client_secret`, `password`);
-> pass them via environment variables (`SAP_CLIENT_SECRET`, `SAP_PASSWORD`) or a
-> secrets manager.
+### Custom Objects and Raw SOQL
+
+```python
+# Custom object (API name ends in __c)
+data = ingestor.ingest_sobject("My_Custom_Object__c", fields=["Id", "Name", "Custom_Field__c"])
+
+# Raw SOQL G�� pagination is handled automatically
+data = ingestor.ingest_query("""
+    SELECT Id, Name, StageName, Amount
+    FROM Opportunity
+    WHERE IsClosed = false
+    ORDER BY CloseDate ASC
+""")
+print(f"Open opportunities: {data.row_count}")
+```
+
+### Document Export
+
+```python
+documents = ingestor.export_as_documents(
+    data,
+    id_field="Id",                      # Salesforce 18-char record Id
+    text_fields=["Name", "Description"],
+)
+# Each document: {"id": "001...", "text": "...", "metadata": {"source": "salesforce", ...}}
+```
+
+### Convenience Function
+
+```python
+from semantica.ingest import ingest_salesforce
+
+# Fetch records
+data = ingest_salesforce(
+    method="sobject",
+    sobject_name="Account",
+    fields=["Id", "Name"],
+    limit=500,
+)
+
+# Ingest and export as documents in one call
+docs = ingest_salesforce(
+    method="documents",
+    sobject_name="Account",
+    text_fields=["Name", "Description"],
+)
+
+# Using the unified dispatcher
+from semantica.ingest import ingest
+result = ingest(None, source_type="salesforce", method="sobject",
+                sobject_name="Account", fields=["Id", "Name"])
+data = result["data"]
+```
+
+See [Salesforce Integration](https://docs.getsemantica.ai/integrations/salesforce) for full documentation including sandbox, schema discovery, pagination details, and troubleshooting.
+
 
 ## MCP Server Ingestion
 
@@ -1664,3 +1703,54 @@ for source_type, source_list in sources.items():
    for batch in process_in_batches(large_dataset, batch_size=1000):
        result = ingest(batch)
    ```
+
+## SAP OData Ingestion
+
+`SAPIngestor` reads an Entity Set from a SAP OData service — S/4HANA Cloud,
+SuccessFactors, or an on-prem NetWeaver Gateway over its REST surface. It
+follows OData v2/v4 server-driven pagination and flattens each record into a
+document dict via `export_as_documents()`.
+
+Install with `pip install 'semantica[ingest-sap]'`.
+
+### Connector Construction & Authentication
+
+```python
+from semantica.ingest import SAPIngestor
+
+# OAuth2 client-credentials (BTP / S/4HANA Cloud)
+ing = SAPIngestor(
+    base_url="https://my-sap.example.com/sap/opu/odata/sap/API_BUSINESS_PARTNER",
+    client_id="...", client_secret="...",
+    token_url="https://my-sap.example.com/oauth/token",
+)
+# On-prem NetWeaver often uses Basic auth instead — swap the block above for:
+# ing = SAPIngestor(base_url="...", username="erp_user", password="...")
+```
+
+### Entity-Set Ingestion & Document Export
+
+```python
+# 1. Discover entity sets + field types from $metadata
+sets = ing.discover_service()
+
+# 2. Page-walk an Entity Set (v2/v4 next links handled automatically)
+partners = ing.ingest_entity_set(
+    entity_set="A_BusinessPartnerSet",
+    select="BusinessPartner,BusinessPartnerFullName",
+    top=1000,
+)
+
+# 3. Flatten to document dicts that GraphBuilder can consume directly
+docs = ing.export_as_documents(partners)
+```
+
+- Use `expand="to_Item"` on a sales-order header set to pull nested line items
+  in one request — handy for modeling order → line-item → material relations.
+- Every outbound request, including the OAuth2 token exchange, is routed through
+  the SSRF guard, and pagination never follows a next link that points to a
+  different host than the service root.
+
+> **Security Note:** Never hardcode credentials (`client_secret`, `password`);
+> pass them via environment variables (`SAP_CLIENT_SECRET`, `SAP_PASSWORD`) or a
+> secrets manager.

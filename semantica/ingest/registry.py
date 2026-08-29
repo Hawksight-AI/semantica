@@ -66,6 +66,7 @@ class MethodRegistry:
         "parquet": {},
         "arrow": {},
         "xml": {},
+        "salesforce": {},
         "ingest": {},
     }
 
