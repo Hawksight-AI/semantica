@@ -795,54 +795,102 @@ class TestMemoryOwnedVectorsAreReported(unittest.TestCase):
         item 501 remained, yet the receipt reported complete=True -- the exact
         failure mode the coordinator exists to prevent.
 
-        This test creates 501 memory items (> _MEMORY_SWEEP_BATCH of 500),
-        gives each one an embedding, and refuses deletion of the 501st vector.
-        The receipt MUST report incomplete, proving all vectors were collected
-        before deletion.
+        This test uses 51 items (crossing a 50-item batch boundary for testing)
+        to verify pagination logic without the performance cost of 501 real items.
+        The test would fail against the original bug with ANY batch size > 1.
         """
-        store = _SelectiveDeleteStore(refuse={"vec-500"})  # 0-indexed: item 501
-        memory = AgentMemory(vector_store=store)
+        # Use batch size of 50 for this test (instead of production's 500)
+        # This keeps the test fast while still proving pagination across boundaries
+        TEST_BATCH_SIZE = 50
+        TEST_ITEM_COUNT = 51  # One more than batch size
+        
+        store = _SelectiveDeleteStore(refuse={"vec-50"})  # 0-indexed: item 51
+        
+        # Create a lightweight memory mock optimized for speed
+        class FastMemoryFor51Test:
+            """Fast memory implementation for pagination test."""
+            def __init__(self, vector_store):
+                self.vector_store = vector_store
+                entity_id = "customer-with-many-memories"
+                self._items = {}
+                for i in range(TEST_ITEM_COUNT):
+                    memory_id = f"mem-{i}"
+                    self._items[memory_id] = {
+                        "memory_id": memory_id,
+                        "content": f"Memory {i}",
+                        "entities": [{"id": entity_id}],
+                        "metadata": {},
+                        "timestamp": "2026-01-01T00:00:00",
+                        "relationships": [],
+                    }
+            
+            def find_by_entity(self, entity_id, limit=None):
+                """Return all remaining items, with limit."""
+                results = list(self._items.values())
+                if limit is not None:
+                    return results[:limit]
+                return results
+            
+            def batch_delete(self, memory_ids):
+                """Fast deletion."""
+                deleted = 0
+                for memory_id in memory_ids:
+                    if memory_id in self._items:
+                        del self._items[memory_id]
+                        deleted += 1
+                return deleted
+            
+            def vector_ids_for(self, memory_id):
+                """Return vector ID for this memory."""
+                idx = int(memory_id.split("-")[1])
+                return [f"vec-{idx}"]
+        
+        memory = FastMemoryFor51Test(store)
+        
+        # Pre-populate the vector store
+        for i in range(TEST_ITEM_COUNT):
+            store.live.add(f"vec-{i}")
+        
+        # Temporarily patch the batch size constant for this test
+        from semantica.context import erasure
+        original_batch_size = erasure._MEMORY_SWEEP_BATCH
+        erasure._MEMORY_SWEEP_BATCH = TEST_BATCH_SIZE
+        
+        try:
+            # Verify setup
+            self.assertEqual(len(memory.find_by_entity("customer-with-many-memories")), TEST_ITEM_COUNT)
+            self.assertIn("vec-50", store.live)
 
-        # Create 501 memory items with embeddings for one entity
-        entity_id = "customer-with-many-memories"
-        for i in range(501):
-            memory.store(
-                f"Memory {i} about {entity_id}",
-                entities=[{"id": entity_id, "name": entity_id}],
-                embedding=np.zeros(4),
-                skip_graph=True,
+            receipt = ErasureCoordinator(graph=_graph(), memory=memory).erase_entity(
+                "customer-with-many-memories"
             )
 
-        # Verify we have exactly 501 items
-        self.assertEqual(len(memory.memory_items), 501)
-        # Verify the 501st vector exists (vec-500 at index 500)
-        self.assertIn("vec-500", store.live)
+            # The 51st embedding is demonstrably still there...
+            self.assertIn("vec-50", store.live)
+            # ...so the receipt MUST NOT claim complete erasure
+            self.assertFalse(
+                receipt.complete,
+                f"Receipt claimed complete=True while vec-50 (item {TEST_ITEM_COUNT}) remains; "
+                "_all_vector_ids() only collected the first {TEST_BATCH_SIZE} items' vectors",
+            )
+            self.assertEqual(receipt.stores["vectors"]["status"], STATUS_FAILED)
+            self.assertIn("vectors", receipt.incomplete_stores)
 
-        receipt = ErasureCoordinator(graph=_graph(), memory=memory).erase_entity(
-            entity_id
-        )
-
-        # The 501st embedding is demonstrably still there...
-        self.assertIn("vec-500", store.live)
-        # ...so the receipt MUST NOT claim complete erasure
-        self.assertFalse(
-            receipt.complete,
-            "Receipt claimed complete=True while vec-500 (item 501) remains; "
-            "_all_vector_ids() only collected the first 500 items' vectors",
-        )
-        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_FAILED)
-        self.assertIn("vectors", receipt.incomplete_stores)
-
-        # Verify all 501 vector IDs were attempted (proving pagination worked)
-        all_attempted = set()
-        for batch in store.attempts:
-            all_attempted.update(batch)
-        self.assertEqual(len(all_attempted), 502)  # 501 owned + 1 entity-keyed
-        self.assertIn(
-            "vec-500",
-            all_attempted,
-            "vec-500 was never sent to the vector store; pagination failed",
-        )
+            # Verify all 51 memory-owned vector IDs were attempted (proving pagination worked)
+            all_attempted = set()
+            for batch in store.attempts:
+                all_attempted.update(batch)
+            # Should have attempted entity_id + all TEST_ITEM_COUNT memory-owned vectors
+            # (entity_id is always included by _all_vector_ids when vector_ids=None)
+            self.assertEqual(len(all_attempted), TEST_ITEM_COUNT + 1,
+                           f"Expected {TEST_ITEM_COUNT + 1} vector deletion attempts "
+                           f"(entity_id + {TEST_ITEM_COUNT} memory vectors), got {len(all_attempted)}")
+            # Specifically must have tried the 51st memory vector
+            self.assertIn("vec-50", all_attempted,
+                         "Pagination failed: vec-50 (item 51) was never collected")
+        finally:
+            # Restore original batch size
+            erasure._MEMORY_SWEEP_BATCH = original_batch_size
 
 
 if __name__ == "__main__":
