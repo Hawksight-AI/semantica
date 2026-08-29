@@ -7,18 +7,52 @@ Tests provenance tracking workflows using only available methods.
 import pytest
 import networkx as nx
 import time
+from datetime import datetime, timedelta
 from typing import Dict, List, Any
 import uuid
 
 from semantica.kg import (
     GraphBuilderWithProvenance,
     AlgorithmTrackerWithProvenance,
-    NodeEmbedder,
     SimilarityCalculator,
     LinkPredictor,
     CentralityCalculator,
     CommunityDetector
 )
+
+
+def _stored(owner, entity_id):
+    """Read a provenance record back. Fails if tracking only minted an ID."""
+    record = owner._prov_manager.get_provenance(entity_id)
+    assert record is not None, (
+        f"no stored provenance for {entity_id!r} — an ID was generated without a write"
+    )
+    assert record.get("entity_id") == entity_id
+    return record
+
+
+def _assert_utc_iso(value, field="timestamp"):
+    assert value, f"missing {field}"
+    parsed = datetime.fromisoformat(value)
+    assert parsed.tzinfo is not None, (
+        f"{field}={value!r} is naive (datetime.utcnow leftover)"
+    )
+    assert parsed.utcoffset() == timedelta(0), f"{field}={value!r} is not UTC"
+    return parsed
+
+
+def _assert_tracked(owner, entity_id, source, **metadata):
+    record = _stored(owner, entity_id)
+    assert record["source_document"] == source
+    actual = record.get("metadata") or {}
+    for key, expected in metadata.items():
+        assert actual.get(key) == expected, (
+            f"{entity_id} metadata[{key!r}]={actual.get(key)!r}, expected {expected!r}"
+        )
+    _assert_utc_iso(record["timestamp"], "timestamp")
+    if record.get("last_updated"):
+        _assert_utc_iso(record["last_updated"], "last_updated")
+    return record
 
 
 class TestProvenanceWorkflowsSimple:
@@ -93,11 +127,19 @@ class TestProvenanceWorkflowsSimple:
             source=workflow_id
         )
         
-        assert embed_id is not None
+        _assert_tracked(
+            tracker,
+            embed_id,
+            source=workflow_id,
+            algorithm='node2vec',
+            node_count=6,
+            embedding_dimension=4,
+        )
         assert embed_id.startswith('embedding_')
-        
-        print(f"Simple embedding workflow completed: {workflow_id}")
-        return workflow_id
+        for node_id in workflow_embeddings:
+            node_record = _stored(tracker, f"embedding_{node_id}")
+            assert node_record['metadata']['execution_id'] == embed_id
+            assert node_record['metadata']['node_id'] == node_id
     
     def test_similarity_workflow_simple(self, workflow_embeddings):
         """Test simple similarity workflow with provenance."""
@@ -124,11 +166,15 @@ class TestProvenanceWorkflowsSimple:
             source=workflow_id
         )
         
-        assert sim_id is not None
+        _assert_tracked(
+            tracker,
+            sim_id,
+            source=workflow_id,
+            method='cosine',
+            similarities_count=len(similarities),
+        )
         assert sim_id.startswith('similarity_')
-        
-        print(f"Simple similarity workflow completed: {workflow_id}")
-        return workflow_id
+        assert len(similarities) == 3
     
     def test_link_prediction_workflow_simple(self, workflow_graph):
         """Test simple link prediction workflow with provenance."""
@@ -153,11 +199,15 @@ class TestProvenanceWorkflowsSimple:
             source=workflow_id
         )
         
-        assert link_id is not None
+        _assert_tracked(
+            tracker,
+            link_id,
+            source=workflow_id,
+            method='preferential_attachment',
+            predictions_count=len(predictions),
+        )
         assert link_id.startswith('link_prediction_')
-        
-        print(f"Simple link prediction workflow completed: {workflow_id}")
-        return workflow_id
+        assert len(predictions) >= 1
     
     def test_centrality_workflow_simple(self, workflow_graph):
         """Test simple centrality workflow with provenance."""
@@ -184,11 +234,15 @@ class TestProvenanceWorkflowsSimple:
             source=workflow_id
         )
         
-        assert cent_id is not None
+        _assert_tracked(
+            tracker,
+            cent_id,
+            source=workflow_id,
+            method='degree',
+            scores_count=len(degree_cent['centrality']),
+        )
         assert cent_id.startswith('centrality_')
-        
-        print(f"Simple centrality workflow completed: {workflow_id}")
-        return workflow_id
+        assert set(degree_cent['centrality']) == set(workflow_graph.nodes())
     
     def test_community_detection_workflow_simple(self, workflow_graph):
         """Test simple community detection workflow with provenance."""
@@ -215,11 +269,15 @@ class TestProvenanceWorkflowsSimple:
             source=workflow_id
         )
         
-        assert comm_id is not None
+        _assert_tracked(
+            tracker,
+            comm_id,
+            source=workflow_id,
+            method='label_propagation',
+            communities_count=len(communities['communities']),
+        )
         assert comm_id.startswith('community_')
-        
-        print(f"Simple community detection workflow completed: {workflow_id}")
-        return workflow_id
+        assert len(communities['communities']) >= 1
     
     def test_graph_construction_workflow_simple(self, workflow_data):
         """Test simple graph construction workflow with provenance."""
@@ -237,23 +295,27 @@ class TestProvenanceWorkflowsSimple:
         assert len(graph_result['entities']) == 4
         assert len(graph_result['relationships']) == 3
         
-        # Track graph construction using embedding computation method as proxy
-        construction_id = tracker.track_embedding_computation(
-            graph={'nodes': list(graph_result['entities']), 'edges': list(graph_result['relationships'])},
-            algorithm='graph_construction',
-            embeddings={'graph_size': len(graph_result['entities'])},
-            parameters={
-                'entities_count': len(graph_result['entities']),
-                'relationships_count': len(graph_result['relationships'])
-            },
+        construction_id = tracker.track_graph_construction(
+            input_data=workflow_data,
+            output_graph=graph_result,
+            entities_count=len(graph_result['entities']),
+            relationships_count=len(graph_result['relationships']),
+            construction_time=0.0,
             source=workflow_id
         )
-        
-        assert construction_id is not None
-        assert construction_id.startswith('embedding_')  # Using embedding method as proxy
-        
-        print(f"Simple graph construction workflow completed: {workflow_id}")
-        return workflow_id
+        _assert_tracked(
+            tracker,
+            construction_id,
+            source=workflow_id,
+            entity_type='graph_construction',
+            entities_count=4,
+            relationships_count=3,
+        )
+        assert construction_id.startswith('graph_construction_')
+        for entity in graph_result['entities']:
+            built = _stored(builder, entity['id'])
+            assert built['metadata']['operation'] == 'build_entity'
+            _assert_utc_iso(built['activity_started_at_time'], 'activity_started_at_time')
     
     def test_comprehensive_workflow_simple(self, workflow_data, workflow_graph, workflow_embeddings):
         """Test comprehensive workflow with all available methods."""
@@ -271,11 +333,12 @@ class TestProvenanceWorkflowsSimple:
         # Phase 1: Graph Construction
         graph_result = builder.build_single_source(workflow_data)
         
-        construction_id = tracker.track_embedding_computation(
-            graph={'nodes': list(graph_result['entities']), 'edges': list(graph_result['relationships'])},
-            algorithm='graph_construction',
-            embeddings={'graph_size': len(graph_result['entities'])},
-            parameters={'entities_count': len(graph_result['entities'])},
+        construction_id = tracker.track_graph_construction(
+            input_data=workflow_data,
+            output_graph=graph_result,
+            entities_count=len(graph_result['entities']),
+            relationships_count=len(graph_result['relationships']),
+            construction_time=0.0,
             source=master_workflow_id
         )
         execution_ids['construction'] = construction_id
@@ -351,27 +414,25 @@ class TestProvenanceWorkflowsSimple:
         )
         execution_ids['community_detection'] = comm_id
         
-        # Verify all execution IDs
+        expected = {
+            'construction': ('graph_construction_', 'graph_construction'),
+            'embedding': ('embedding_', 'embedding_computation'),
+            'similarity': ('similarity_', 'similarity_calculation'),
+            'link_prediction': ('link_prediction_', 'link_prediction'),
+            'centrality': ('centrality_', 'centrality_calculation'),
+            'community_detection': ('community_', 'community_detection'),
+        }
         assert len(execution_ids) == 6
         for phase, exec_id in execution_ids.items():
-            assert exec_id is not None
-            assert len(exec_id) > 10
-        
-        # Verify all IDs are unique
-        all_ids = list(execution_ids.values())
-        assert len(set(all_ids)) == len(all_ids)
-        
-        # Verify ID prefixes
-        assert execution_ids['embedding'].startswith('embedding_')
-        assert execution_ids['similarity'].startswith('similarity_')
-        assert execution_ids['link_prediction'].startswith('link_prediction_')
-        assert execution_ids['centrality'].startswith('centrality_')
-        assert execution_ids['community_detection'].startswith('community_')
-        
-        print(f"Comprehensive workflow completed: {master_workflow_id}")
-        print(f"Execution IDs: {list(execution_ids.keys())}")
-        
-        return master_workflow_id
+            prefix, entity_type = expected[phase]
+            assert exec_id.startswith(prefix)
+            _assert_tracked(
+                tracker,
+                exec_id,
+                source=master_workflow_id,
+                entity_type=entity_type,
+            )
+        assert len(set(execution_ids.values())) == len(execution_ids)
     
     def test_provenance_data_integrity_simple(self, workflow_graph, workflow_embeddings):
         """Test provenance data integrity with available methods."""
@@ -412,24 +473,19 @@ class TestProvenanceWorkflowsSimple:
         )
         operations.append(('link_prediction', link_id))
         
-        # Verify data integrity
+        expected = {
+            'embedding': 'embedding_computation',
+            'similarity': 'similarity_calculation',
+            'link_prediction': 'link_prediction',
+        }
         for op_type, op_id in operations:
-            assert op_id is not None
-            assert len(op_id) > 10
-            
-            # Verify ID format consistency
-            if op_type == 'embedding':
-                assert op_id.startswith('embedding_')
-            elif op_type == 'similarity':
-                assert op_id.startswith('similarity_')
-            elif op_type == 'link_prediction':
-                assert op_id.startswith('link_prediction_')
-        
-        # Verify workflow consistency
-        workflow_ids = [op_id for _, op_id in operations]
-        assert len(set(workflow_ids)) == len(workflow_ids)  # All unique
-        
-        print(f"Provenance data integrity test completed: {workflow_id}")
+            _assert_tracked(
+                tracker,
+                op_id,
+                source=workflow_id,
+                entity_type=expected[op_type],
+            )
+        assert len(set(op_id for _, op_id in operations)) == 3
     
     def test_provenance_error_recovery_simple(self):
         """Test provenance system error recovery."""
@@ -443,25 +499,25 @@ class TestProvenanceWorkflowsSimple:
             parameters={}
         )
         
-        assert result is None  # Should return None when provenance is disabled
-        
-        # Test error handling during tracking
+        assert result is None
+        assert tracker_no_prov._prov_manager is None
+
         tracker = AlgorithmTrackerWithProvenance(provenance=True)
-        
-        # This should not raise exceptions even with invalid data
-        try:
-            result = tracker.track_embedding_computation(
-                graph=None,  # Invalid graph
-                algorithm='test',
-                embeddings={},
-                parameters={}
-            )
-            # Should either return None or handle gracefully
-        except Exception as e:
-            # If it raises, it should be a controlled exception
-            assert isinstance(e, (ValueError, TypeError))
-        
-        print("Provenance error recovery test completed")
+        result = tracker.track_embedding_computation(
+            graph=None,
+            algorithm='test',
+            embeddings={},
+            parameters={},
+            source='error_recovery'
+        )
+        _assert_tracked(
+            tracker,
+            result,
+            source='error_recovery',
+            algorithm='test',
+            input_data_type='NoneType',
+            node_count=0,
+        )
 
 
 if __name__ == '__main__':

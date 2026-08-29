@@ -28,7 +28,7 @@ License: MIT
 
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 from rdflib import Graph, Literal
@@ -67,7 +67,8 @@ class RDF4JStore:
             self.progress_tracker.enabled = True
 
         self.endpoint = endpoint.rstrip("/")
-        self.repository_id = config.get("repository_id", "default")
+        self.repository_id = repository_id or config.get("repository_id", "default")
+        self._encoded_repository_id = quote(self.repository_id, safe="")
         self.username = config.get("username")
         self.password = config.get("password")
         self.timeout = config.get("timeout", 30)
@@ -79,7 +80,7 @@ class RDF4JStore:
         """Connect to RDF4J server."""
         try:
             # Test connection
-            test_url = f"{self.endpoint}/repositories/{self.repository_id}"
+            test_url = f"{self.endpoint}/repositories/{self._encoded_repository_id}"
             response = requests.get(
                 test_url,
                 timeout=self.timeout,
@@ -100,11 +101,11 @@ class RDF4JStore:
 
     def _get_sparql_endpoint(self) -> str:
         """Get SPARQL query endpoint."""
-        return f"{self.endpoint}/repositories/{self.repository_id}"
+        return f"{self.endpoint}/repositories/{self._encoded_repository_id}"
 
     def _get_update_endpoint(self) -> str:
         """Get SPARQL Update endpoint."""
-        return f"{self.endpoint}/repositories/{self.repository_id}/statements"
+        return f"{self.endpoint}/repositories/{self._encoded_repository_id}/statements"
 
     def _is_construct_query(self, query: str) -> bool:
         """
@@ -163,7 +164,7 @@ class RDF4JStore:
         """
         # RDF4J transaction support
         transaction_url = (
-            f"{self.endpoint}/repositories/{self.repository_id}/transactions"
+            f"{self.endpoint}/repositories/{self._encoded_repository_id}/transactions"
         )
 
         try:

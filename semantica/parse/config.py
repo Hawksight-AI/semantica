@@ -98,7 +98,7 @@ class ParseConfig:
             if value:
                 try:
                     if type_func == bool:
-                        self._configs[config_key] = value.lower() in (
+                        self._configs[config_key] = value.strip().lower() in (
                             "true",
                             "1",
                             "yes",
@@ -113,8 +113,8 @@ class ParseConfig:
         for key, value in os.environ.items():
             if key.startswith(env_prefix) and key not in env_mappings:
                 config_key = key[len(env_prefix) :].lower()
-                if value.lower() in ("true", "false"):
-                    self._configs[config_key] = value.lower() == "true"
+                if value.strip().lower() in ("true", "false"):
+                    self._configs[config_key] = value.strip().lower() == "true"
                 elif value.isdigit():
                     self._configs[config_key] = int(value)
                 else:
@@ -136,12 +136,12 @@ class ParseConfig:
         value = os.getenv(env_key)
         if value:
             try:
-                if isinstance(default, int):
+                if isinstance(default, bool):
+                    return value.strip().lower() in ("true", "1", "yes", "on")
+                elif isinstance(default, int):
                     return int(value)
                 elif isinstance(default, float):
                     return float(value)
-                elif isinstance(default, bool):
-                    return value.lower() in ("true", "1", "yes", "on")
                 return value
             except (ValueError, TypeError):
                 pass

@@ -13,26 +13,25 @@ icon: "quote-left"
   <Tab title="BibTeX">
     ```bibtex
     @software{semantica2026,
-      title   = {Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems},
-      author  = {Semantica},
-      year    = {2026},
-      url     = {https://github.com/semantica-agi/semantica},
-      version = {0.6.5},
-      doi     = {10.5281/zenodo.XXXXXXX}
+      title  = {Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems},
+      author = {Semantica},
+      year   = {2026},
+      url    = {https://github.com/semantica-agi/semantica},
+      doi    = {10.5281/zenodo.XXXXXXX}
     }
     ```
   </Tab>
   <Tab title="APA">
-    Semantica. (2026). *Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems* (Version 0.6.5) \[Computer software\]. https://github.com/semantica-agi/semantica
+    Semantica. (2026). *Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems* \[Computer software\]. https://github.com/semantica-agi/semantica
   </Tab>
   <Tab title="MLA">
-    Semantica. *Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems*. Version 0.6.5, GitHub, 2026, https://github.com/semantica-agi/semantica.
+    Semantica. *Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems*. GitHub, 2026, https://github.com/semantica-agi/semantica.
   </Tab>
   <Tab title="Chicago">
-    Semantica. *Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems*. Version 0.6.5. GitHub, 2026. https://github.com/semantica-agi/semantica.
+    Semantica. *Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems*. GitHub, 2026. https://github.com/semantica-agi/semantica.
   </Tab>
   <Tab title="IEEE">
-    Semantica, "Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems," Version 0.6.5, GitHub, 2026. \[Online\]. Available: https://github.com/semantica-agi/semantica
+    Semantica, "Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems," GitHub, 2026. \[Online\]. Available: https://github.com/semantica-agi/semantica
   </Tab>
 </Tabs>
 

@@ -8,6 +8,13 @@ and native Datalog evaluation.
 """
 
 from .reasoner import Reasoner, InferenceResult, Rule, Fact, RuleType
+from .reasoner import (
+    Action,
+    AssertAction,
+    RetractAction,
+    CallAction,
+    EmitEventAction,
+)
 from .graph_reasoner import GraphReasoner
 from .explanation_generator import (
     Explanation,
@@ -37,6 +44,12 @@ __all__ = [
     "Rule",
     "Fact",
     "RuleType",
+    # Rule-driven actions
+    "Action",
+    "AssertAction",
+    "RetractAction",
+    "CallAction",
+    "EmitEventAction",
     # Rete engine
     "ReteEngine",
     "ReteNode",

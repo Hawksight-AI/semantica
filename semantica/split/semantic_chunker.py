@@ -36,7 +36,8 @@ from ..utils.helpers import safe_import
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 
-spacy, SPACY_AVAILABLE = safe_import("spacy")
+
+_, SPACY_AVAILABLE = safe_import("spacy")
 
 
 @dataclass
@@ -79,10 +80,18 @@ class SemanticChunker:
         if SPACY_AVAILABLE:
             model_name = config.get("model", "en_core_web_sm")
             try:
-                self.nlp = spacy.load(model_name)
+                from ..semantic_extract.methods import load_spacy_model
+                self.nlp = load_spacy_model(model_name)
             except OSError:
                 self.logger.warning(
                     f"spaCy model {model_name} not found. Using fallback chunking."
+                )
+            except Exception:
+                self.logger.warning(
+                    "spaCy model %s failed to initialize and will be disabled "
+                    "for this chunker instance. Using fallback chunking.",
+                    model_name,
+                    exc_info=True,
                 )
 
     def chunk(self, text: str, **options) -> List[Chunk]:
