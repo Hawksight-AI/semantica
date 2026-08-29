@@ -45,6 +45,28 @@ DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 200
 MAX_TOP_K = 10
 FILTER_OVERFETCH = 3
+MAX_FILTER_MATCHES = 10_000
+MAX_CHUNKS_PER_DOC = 10_000
+
+# Metadata fields owned by the upsert logic.  Caller-supplied metadata
+# can add extra context but must not rewrite provenance: overwriting
+# source/version/hash/status would break the (source, version) upsert
+# key, the idempotent no-op check, and retrieval filters.
+PROTECTED_META_KEYS = frozenset(
+    {
+        "chunk_id",
+        "text",
+        "source",
+        "authority",
+        "version",
+        "hash",
+        "status",
+        "chunk_index",
+        "char_start",
+        "char_end",
+        "project",
+    }
+)
 
 
 def _chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> List[Tuple[int, int, str]]:
@@ -75,27 +97,36 @@ def _doc_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def _find_matching_ids(store: Any, source: str, version: str) -> List[str]:
-    """Return every vector id whose metadata matches (source, version)."""
+def _find_matching_rows(store: Any, source: str, version: str) -> List[Dict[str, Any]]:
+    """
+    Return rows (``{id, vector, metadata}``) matching (source, version).
+
+    The persistent branch pulls whole rows (vector included) into memory;
+    the limit keeps the scan bounded.  Documents beyond MAX_CHUNKS_PER_DOC
+    chunks are rejected at ingestion, so the cap cannot leave stale
+    chunks behind on update/remove.
+    """
     if getattr(store, "backend", "") == "inmemory":
-        return [
-            vid
-            for vid, meta in getattr(store, "metadata", {}).items()
-            if meta.get("source") == source and meta.get("version") == version
-        ]
+        rows = []
+        for vid, vec in getattr(store, "vectors", {}).items():
+            meta = getattr(store, "metadata", {}).get(vid) or {}
+            if meta.get("source") == source and meta.get("version") == version:
+                rows.append({"id": vid, "vector": vec, "metadata": meta})
+        return rows
     backend_store = getattr(store, "_backend_store", None)
     if backend_store is not None and hasattr(backend_store, "filter_by_metadata"):
-        # filter_by_metadata pulls whole rows (vector included) into
-        # memory; 10k chunks is far above any single document's chunk
-        # count while keeping the scan bounded.
-        hits = backend_store.filter_by_metadata(
-            {"source": source, "version": version}, limit=10_000
+        return backend_store.filter_by_metadata(
+            {"source": source, "version": version}, limit=MAX_FILTER_MATCHES
         )
-        return [h["id"] for h in hits]
     raise NotImplementedError(
         f"Backend {type(backend_store).__name__} does not support metadata lookup; "
         "cannot locate chunks for update/remove"
     )
+
+
+def _find_matching_ids(store: Any, source: str, version: str) -> List[str]:
+    """Return every vector id whose metadata matches (source, version)."""
+    return [row["id"] for row in _find_matching_rows(store, source, version)]
 
 
 def _remove_ids(store: Any, remove_ids: List[str]) -> None:
@@ -137,15 +168,23 @@ def _remove_ids(store: Any, remove_ids: List[str]) -> None:
     store.delete_vectors(remove_ids)
 
 
-def _persist(store: Any) -> None:
-    """Persist the store when SEMANTICA_VECTOR_PATH is configured."""
+def _persist(store: Any) -> Any:
+    """
+    Persist the store when SEMANTICA_VECTOR_PATH is configured.
+
+    Returns ``None`` when no path is configured, ``True`` on success and
+    ``False`` when saving failed — surfaced in tool results so a caller
+    can tell an in-memory-only write from a durable one.
+    """
     path = os.environ.get("SEMANTICA_VECTOR_PATH", "").strip()
     if not path:
-        return
+        return None
     try:
         store.save(path)
     except Exception as exc:
         log.warning("Could not persist vector store to %s: %s", path, exc)
+        return False
+    return True
 
 
 def _node_source(meta: Any) -> str:
@@ -243,6 +282,8 @@ def _upsert(args: dict, action: str) -> dict:
     if chunk_overlap >= chunk_size:
         return {"error": "chunk_overlap must be smaller than chunk_size"}
     extra = args.get("metadata") or {}
+    if not isinstance(extra, dict):
+        return {"error": "metadata must be an object"}
     doc_hash = _doc_hash(content)
 
     try:
@@ -267,6 +308,14 @@ def _upsert(args: dict, action: str) -> dict:
                 }
 
         chunks = _chunk_text(content, chunk_size, chunk_overlap)
+        if len(chunks) > MAX_CHUNKS_PER_DOC:
+            return {
+                "error": (
+                    f"document produces {len(chunks)} chunks, above the "
+                    f"{MAX_CHUNKS_PER_DOC}-chunk limit; split it into smaller "
+                    "documents or raise chunk_size"
+                )
+            }
         vectors = np.asarray(
             embedder.generate_embeddings([c_text for _, _, c_text in chunks])
         )
@@ -283,7 +332,12 @@ def _upsert(args: dict, action: str) -> dict:
         final_authority = authority or existing_first.get("authority") or "unknown"
         final_project = project or existing_first.get("project")
 
+        old_rows: List[Dict[str, Any]] = []
         if existing_ids:
+            # Snapshot the rows being replaced so a failed write of the
+            # new chunks can put the old document back instead of leaving
+            # (source, version) silently empty.
+            old_rows = _find_matching_rows(store, source, version)
             _remove_ids(store, existing_ids)
 
         metas = []
@@ -305,11 +359,33 @@ def _upsert(args: dict, action: str) -> dict:
             }
             if final_project:
                 meta["project"] = final_project
-            meta.update(extra)
+            for key in extra:
+                if key in PROTECTED_META_KEYS:
+                    log.debug(
+                        "Ignoring caller metadata key %r: provenance field is "
+                        "managed by the tool",
+                        key,
+                    )
+                else:
+                    meta[key] = extra[key]
             metas.append(meta)
 
-        store.store_vectors(list(vectors), metas)
-        _persist(store)
+        try:
+            store.store_vectors(list(vectors), metas)
+        except Exception:
+            if old_rows:
+                log.warning(
+                    "Storing new chunks failed for (%s, %s); restoring the "
+                    "previous document",
+                    source,
+                    version,
+                )
+                store.store_vectors(
+                    [row["vector"] for row in old_rows],
+                    [row["metadata"] for row in old_rows],
+                )
+            raise
+        persisted = _persist(store)
         return {
             "status": "stored" if action == "store" else "updated",
             "source": source,
@@ -317,6 +393,7 @@ def _upsert(args: dict, action: str) -> dict:
             "chunk_ids": chunk_ids,
             "chunk_count": len(chunk_ids),
             "hash": doc_hash,
+            "persisted": persisted,
         }
     except Exception as exc:
         log.exception("%s_document failed", action)
@@ -366,6 +443,8 @@ def handle_retrieve_context(args: dict) -> dict:
                     "authority": meta.get("authority"),
                     "version": meta.get("version"),
                     "project": meta.get("project"),
+                    "status": meta.get("status"),
+                    "hash": meta.get("hash"),
                 }
             )
             if len(results) >= top_k:
@@ -395,12 +474,13 @@ def handle_remove_document(args: dict) -> dict:
         if not existing_ids:
             return {"status": "not_found", "source": source, "version": version}
         _remove_ids(store, existing_ids)
-        _persist(store)
+        persisted = _persist(store)
         return {
             "status": "removed",
             "source": source,
             "version": version,
             "removed_chunks": len(existing_ids),
+            "persisted": persisted,
         }
     except Exception as exc:
         log.exception("remove_document failed")

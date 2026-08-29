@@ -14,6 +14,12 @@ from typing import Any, Optional
 
 log = logging.getLogger("semantica.mcp.session")
 
+# Backends the retrieval tools can actually support end to end.  faiss
+# and pgvector have no metadata-scoped delete, so update_document and
+# remove_document cannot work on them; selecting them fails fast here
+# instead of blowing up mid-update.
+SUPPORTED_VECTOR_BACKENDS = ("inmemory", "sqlite")
+
 _graph: Optional[Any] = None
 _embedder: Optional[Any] = None
 _vector_store: Optional[Any] = None
@@ -69,19 +75,30 @@ def get_vector_store() -> Any:
 
     Backend selection:
 
-    • ``SEMANTICA_VECTOR_BACKEND`` — one of VectorStore.SUPPORTED_BACKENDS
-      (default: ``inmemory``).  The ``sqlite`` backend additionally
-      requires ``SEMANTICA_VECTOR_DB_PATH``.
+    • ``SEMANTICA_VECTOR_BACKEND`` — ``inmemory`` (default) or ``sqlite``.
+      The ``sqlite`` backend additionally requires
+      ``SEMANTICA_VECTOR_DB_PATH``.  Other VectorStore backends (faiss,
+      pgvector) are rejected: they lack the metadata-scoped delete the
+      update/remove tools need.
     • ``SEMANTICA_VECTOR_PATH`` — a *directory* previously written by
       ``VectorStore.save()``.  If it exists, the store is loaded from it
       on start.  Note this is a directory, unlike SEMANTICA_KG_PATH which
-      is a single JSON file.
+      is a single JSON file.  The persisted dimension must match the
+      active embedder or startup fails — otherwise queries would either
+      error on shape mismatch or silently rank across incompatible
+      embedding spaces.
     """
     global _vector_store
     if _vector_store is None:
         from semantica.vector_store import VectorStore
 
         backend = os.environ.get("SEMANTICA_VECTOR_BACKEND", "inmemory").strip().lower()
+        if backend not in SUPPORTED_VECTOR_BACKENDS:
+            raise ValueError(
+                f"SEMANTICA_VECTOR_BACKEND={backend!r} is not supported by the "
+                "MCP retrieval tools; supported backends: "
+                + ", ".join(SUPPORTED_VECTOR_BACKENDS)
+            )
         config: dict = {}
         if backend == "sqlite":
             db_path = os.environ.get("SEMANTICA_VECTOR_DB_PATH", "").strip()
@@ -91,13 +108,12 @@ def get_vector_store() -> Any:
                     "SEMANTICA_VECTOR_DB_PATH to point at the database file"
                 )
             config["db_path"] = db_path
-        if backend in ("inmemory", "sqlite", "faiss", "pgvector"):
-            # These backends need an explicit dimension; VectorStore
-            # defaults to 768, which does not match the default embedding
-            # model (all-MiniLM-L6-v2 = 384, hash fallback = 128).  Always
-            # derive it from the embedder so store and queries stay
-            # consistent.
-            config["dimension"] = get_embedder().text_embedder.get_embedding_dimension()
+        # VectorStore defaults to dimension 768, which does not match the
+        # default embedding model (all-MiniLM-L6-v2 = 384, hash fallback
+        # = 128).  Always derive it from the embedder so store and
+        # queries stay consistent.
+        embedder = get_embedder()
+        config["dimension"] = embedder.text_embedder.get_embedding_dimension()
 
         store = VectorStore(backend=backend, config=config)
 
@@ -108,6 +124,14 @@ def get_vector_store() -> Any:
                 log.info("Vector store loaded from %s", vector_path)
             except Exception as exc:
                 log.warning("Could not load vector store from %s: %s", vector_path, exc)
+            loaded_dim = getattr(store, "dimension", None)
+            if loaded_dim and loaded_dim != config["dimension"]:
+                raise ValueError(
+                    f"Persisted vector store at {vector_path} has dimension "
+                    f"{loaded_dim}, but the active embedder produces "
+                    f"{config['dimension']}. Re-embed the corpus or point "
+                    "SEMANTICA_VECTOR_PATH at a store built with the same model."
+                )
 
         _vector_store = store
         log.info("Vector store initialised (backend=%s)", backend)

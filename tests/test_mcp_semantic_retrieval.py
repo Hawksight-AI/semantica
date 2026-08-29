@@ -212,6 +212,56 @@ class TestStoreDocument(InmemoryBackendTestBase):
         result = handle_store_document({"content": "text", "source": "doc"})
         self.assertIn("error", result)
 
+    def test_caller_metadata_cannot_override_provenance(self):
+        result = handle_store_document(
+            {
+                "content": make_doc("alpha"),
+                "source": "real_source",
+                "authority": "official",
+                "metadata": {
+                    "source": "spoofed_source",
+                    "authority": "backdated",
+                    "status": "tombstone",
+                    "hash": "deadbeef",
+                    "version": "v99",
+                    "project": "shadow_project",
+                    "dept": "risk",
+                },
+            }
+        )
+        self.assertNotIn("error", result)
+
+        store = get_vector_store()
+        meta = next(
+            m
+            for m in store.metadata.values()
+            if m.get("chunk_id") == result["chunk_ids"][0]
+        )
+        self.assertEqual(meta["source"], "real_source")
+        self.assertEqual(meta["authority"], "official")
+        self.assertEqual(meta["status"], "active")
+        self.assertEqual(meta["hash"], result["hash"])
+        self.assertEqual(meta["version"], "v1")
+        self.assertNotIn("project", meta)
+        # Non-provenance keys still land.
+        self.assertEqual(meta["dept"], "risk")
+
+        # Provenance stays intact, so the idempotent no-op still works.
+        again = handle_store_document(
+            {
+                "content": make_doc("alpha"),
+                "source": "real_source",
+                "authority": "official",
+            }
+        )
+        self.assertEqual(again["status"], "unchanged")
+
+    def test_non_dict_metadata_rejected(self):
+        result = handle_store_document(
+            {"content": "text", "source": "doc", "authority": "official", "metadata": ["bad"]}
+        )
+        self.assertIn("error", result)
+
 
 class TestRetrieveContext(InmemoryBackendTestBase):
     def setUp(self):
@@ -244,6 +294,8 @@ class TestRetrieveContext(InmemoryBackendTestBase):
         self.assertEqual(top["source"], "lending_policy")
         self.assertEqual(top["authority"], "official")
         self.assertEqual(top["version"], "v1")
+        self.assertEqual(top["status"], "active")
+        self.assertTrue(top["hash"])
         self.assertIsInstance(top["score"], float)
 
     def test_top_k_is_capped_at_ten(self):
@@ -318,6 +370,48 @@ class TestUpdateDocument(InmemoryBackendTestBase):
         # Authority is inherited from the stored version when omitted.
         self.assertEqual(hits[0]["authority"], "official")
         self.assertEqual(get_vector_store().count(), 1)
+
+    def test_update_rolls_back_when_new_write_fails(self):
+        handle_store_document(
+            {
+                "content": make_doc("oldterm", "legacy"),
+                "source": "handbook",
+                "authority": "official",
+            }
+        )
+        store = get_vector_store()
+        real_store_vectors = store.store_vectors
+
+        def failing_write(vectors, metas):
+            if any("phoenix" in (m.get("text") or "") for m in metas):
+                raise RuntimeError("simulated write failure")
+            return real_store_vectors(vectors, metas)
+
+        with patch.object(store, "store_vectors", side_effect=failing_write):
+            result = handle_update_document(
+                {"content": make_doc("phoenix"), "source": "handbook"}
+            )
+        self.assertIn("error", result)
+        self.assertIn("simulated write failure", result["error"])
+
+        # The old document must survive the failed replacement, with no
+        # trace of the new content.
+        store = get_vector_store()
+        self.assertEqual(store.count(), 2)
+        old = [
+            h
+            for h in handle_retrieve_context({"query": "oldterm"})["results"]
+            if h["score"] and h["score"] > 0
+        ]
+        self.assertTrue(old and "oldterm" in old[0]["text"])
+        self.assertEqual(old[0]["source"], "handbook")
+        self.assertEqual(old[0]["authority"], "official")
+        phoenix = [
+            h
+            for h in handle_retrieve_context({"query": "phoenix"})["results"]
+            if h["score"] and h["score"] > 0
+        ]
+        self.assertEqual(phoenix, [])
 
 
 class TestRemoveDocument(InmemoryBackendTestBase):
@@ -398,6 +492,35 @@ class TestInMemoryIdCollisionRegression(InmemoryBackendTestBase):
             self.assertEqual(hits[0]["source"], expected_source)
 
 
+class TestBackendPolicy(InmemoryBackendTestBase):
+    def test_unsupported_backend_fails_fast(self):
+        # faiss/pgvector lack a metadata-scoped delete, so update/remove
+        # cannot work on them; selecting them must fail at startup, not
+        # mid-update.
+        for backend in ("faiss", "pgvector"):
+            with self.subTest(backend=backend):
+                os.environ["SEMANTICA_VECTOR_BACKEND"] = backend
+                with self.assertRaises(ValueError) as ctx:
+                    get_vector_store()
+                self.assertIn("not supported", str(ctx.exception))
+
+    def test_oversized_document_rejected_before_embedding(self):
+        # chunk_size=1 turns a 12k-char body into 12k chunks, crossing
+        # the ingestion cap without any expensive embedding work.
+        result = handle_store_document(
+            {
+                "content": "ab" * 6000,
+                "source": "bigdoc",
+                "authority": "official",
+                "chunk_size": 1,
+                "chunk_overlap": 0,
+            }
+        )
+        self.assertIn("error", result)
+        self.assertIn("chunks", result["error"])
+        self.assertEqual(get_vector_store().count(), 0)
+
+
 class TestToolRegistration(unittest.TestCase):
     def test_retrieval_tools_are_registered(self):
         retrieval = {
@@ -415,83 +538,159 @@ class TestSqliteBackend(unittest.TestCase):
     def setUp(self):
         try:
             import sqlite_vec  # noqa: F401
-
-            self.skip_if_missing = False
         except ImportError:
-            self.skip_if_missing = True
-
-    def test_sqlite_backend_roundtrip(self):
-        if self.skip_if_missing:
             self.skipTest("sqlite_vec extension not installed")
-
-        tmpdir = tempfile.mkdtemp(prefix="semantica_sqlite_test_")
-        patches = patch_embedding_generators()
-        try:
-            for p in patches:
-                p.start()
-            _clear_retrieval_env()
-            os.environ["SEMANTICA_VECTOR_BACKEND"] = "sqlite"
-            os.environ["SEMANTICA_VECTOR_DB_PATH"] = os.path.join(tmpdir, "vectors.db")
-            session._embedder = FakeEmbedder()
-            session._vector_store = None
-
-            handle_store_document(
-                {
-                    "content": make_doc("alpha", "beta"),
-                    "source": "docS",
-                    "authority": "official",
-                }
-            )
-            hits = handle_retrieve_context({"query": "beta"})["results"]
-            self.assertTrue(hits and "beta" in hits[0]["text"])
-            self.assertEqual(hits[0]["source"], "docS")
-
-            updated = handle_update_document(
-                {"content": make_doc("gamma"), "source": "docS"}
-            )
-            self.assertEqual(updated["status"], "updated")
-            # NB: score scales differ across backends (sqlite maps distance
-            # through 1/(1+d), so an orthogonal chunk still scores 0.5).
-            # Assert on text, the only backend-independent signal.
-            stale = [
-                h
-                for h in handle_retrieve_context({"query": "beta"})["results"]
-                if "beta" in (h.get("text") or "")
-            ]
-            self.assertEqual(stale, [])
-            self.assertTrue(handle_retrieve_context({"query": "gamma"})["results"])
-
-            removed = handle_remove_document({"source": "docS"})
-            self.assertEqual(removed["status"], "removed")
-        finally:
-            for p in patches:
-                p.stop()
-            session._embedder = None
-            reset_vector_store()
-            _clear_retrieval_env()
-            import shutil
-
-            shutil.rmtree(tmpdir, ignore_errors=True)
-
-    def test_sqlite_without_db_path_raises(self):
-        if self.skip_if_missing:
-            self.skipTest("sqlite_vec extension not installed")
+        self.tmpdir = tempfile.mkdtemp(prefix="semantica_sqlite_test_")
+        self.patches = patch_embedding_generators()
+        for p in self.patches:
+            p.start()
         _clear_retrieval_env()
         os.environ["SEMANTICA_VECTOR_BACKEND"] = "sqlite"
-        patches = patch_embedding_generators()
-        try:
-            for p in patches:
-                p.start()
-            session._embedder = FakeEmbedder(8)
-            session._vector_store = None
-            with self.assertRaises(ValueError):
-                get_vector_store()
-        finally:
-            for p in patches:
-                p.stop()
-            session._embedder = None
-            reset_vector_store()
-            _clear_retrieval_env()
+        os.environ["SEMANTICA_VECTOR_DB_PATH"] = os.path.join(self.tmpdir, "vectors.db")
+        session._embedder = FakeEmbedder()
+        session._vector_store = None
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        session._embedder = None
+        reset_vector_store()
+        _clear_retrieval_env()
+        import shutil
+
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_sqlite_backend_roundtrip(self):
+        handle_store_document(
+            {
+                "content": make_doc("alpha", "beta"),
+                "source": "docS",
+                "authority": "official",
+            }
+        )
+        hits = handle_retrieve_context({"query": "beta"})["results"]
+        self.assertTrue(hits and "beta" in hits[0]["text"])
+        self.assertEqual(hits[0]["source"], "docS")
+
+        updated = handle_update_document(
+            {"content": make_doc("gamma"), "source": "docS"}
+        )
+        self.assertEqual(updated["status"], "updated")
+        # NB: score scales differ across backends (sqlite maps distance
+        # through 1/(1+d), so an orthogonal chunk still scores 0.5).
+        # Assert on text, the only backend-independent signal.
+        stale = [
+            h
+            for h in handle_retrieve_context({"query": "beta"})["results"]
+            if "beta" in (h.get("text") or "")
+        ]
+        self.assertEqual(stale, [])
+        self.assertTrue(handle_retrieve_context({"query": "gamma"})["results"])
+
+        removed = handle_remove_document({"source": "docS"})
+        self.assertEqual(removed["status"], "removed")
+        self.assertEqual(get_vector_store().count(), 0)
+
+    def test_sqlite_multi_document_isolation(self):
+        handle_store_document(
+            {
+                "content": make_doc("harbor", "vessel"),
+                "source": "nav_docs",
+                "authority": "official",
+            }
+        )
+        handle_store_document(
+            {
+                "content": make_doc("ledger", "invoice"),
+                "source": "fin_docs",
+                "authority": "draft",
+                "version": "v2",
+            }
+        )
+
+        nav = [
+            h
+            for h in handle_retrieve_context({"query": "vessel"})["results"]
+            if "vessel" in (h.get("text") or "")
+        ]
+        self.assertTrue(nav)
+        self.assertEqual(nav[0]["source"], "nav_docs")
+        self.assertEqual(nav[0]["authority"], "official")
+        self.assertEqual(nav[0]["status"], "active")
+        self.assertTrue(nav[0]["hash"])
+
+        # Updating one document must leave the other untouched.
+        updated = handle_update_document(
+            {"content": make_doc("anchor"), "source": "nav_docs"}
+        )
+        self.assertEqual(updated["status"], "updated")
+        fin = [
+            h
+            for h in handle_retrieve_context({"query": "invoice"})["results"]
+            if "invoice" in (h.get("text") or "")
+        ]
+        self.assertTrue(fin)
+        self.assertEqual(fin[0]["source"], "fin_docs")
+        self.assertEqual(fin[0]["authority"], "draft")
+        vessel_stale = [
+            h
+            for h in handle_retrieve_context({"query": "vessel"})["results"]
+            if "vessel" in (h.get("text") or "")
+        ]
+        self.assertEqual(vessel_stale, [])
+
+        # Removing the other document must leave the first intact.
+        removed = handle_remove_document({"source": "fin_docs", "version": "v2"})
+        self.assertEqual(removed["status"], "removed")
+        anchor = [
+            h
+            for h in handle_retrieve_context({"query": "anchor"})["results"]
+            if "anchor" in (h.get("text") or "")
+        ]
+        self.assertTrue(anchor and anchor[0]["source"] == "nav_docs")
+        ledger_stale = [
+            h
+            for h in handle_retrieve_context({"query": "ledger"})["results"]
+            if "ledger" in (h.get("text") or "")
+        ]
+        self.assertEqual(ledger_stale, [])
+
+    def test_sqlite_update_rolls_back_on_write_failure(self):
+        # Persistent path: removal is a direct delete_vectors, so the
+        # rollback has to re-store the snapshotted rows (plain lists,
+        # not arrays) when the new write fails.
+        handle_store_document(
+            {
+                "content": make_doc("oldterm", "legacy"),
+                "source": "handbook",
+                "authority": "official",
+            }
+        )
+        store = get_vector_store()
+        real_store_vectors = store.store_vectors
+
+        def failing_write(vectors, metas):
+            if any("phoenix" in (m.get("text") or "") for m in metas):
+                raise RuntimeError("simulated write failure")
+            return real_store_vectors(vectors, metas)
+
+        with patch.object(store, "store_vectors", side_effect=failing_write):
+            result = handle_update_document(
+                {"content": make_doc("phoenix"), "source": "handbook"}
+            )
+        self.assertIn("error", result)
+        self.assertEqual(get_vector_store().count(), 2)
+        old = [
+            h
+            for h in handle_retrieve_context({"query": "oldterm"})["results"]
+            if "oldterm" in (h.get("text") or "")
+        ]
+        self.assertTrue(old and old[0]["source"] == "handbook")
+
+    def test_sqlite_without_db_path_raises(self):
+        os.environ.pop("SEMANTICA_VECTOR_DB_PATH", None)
+        with self.assertRaises(ValueError):
+            get_vector_store()
 
 
 class TestPersistence(InmemoryBackendTestBase):
@@ -499,9 +698,10 @@ class TestPersistence(InmemoryBackendTestBase):
         tmpdir = tempfile.mkdtemp(prefix="semantica_vec_test_")
         try:
             os.environ["SEMANTICA_VECTOR_PATH"] = tmpdir
-            handle_store_document(
+            result = handle_store_document(
                 {"content": make_doc("persist"), "source": "docP", "authority": "official"}
             )
+            self.assertTrue(result["persisted"])
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "store_data.json")))
 
             # Fresh session state: the store must reload from disk.
@@ -509,6 +709,42 @@ class TestPersistence(InmemoryBackendTestBase):
             hits = handle_retrieve_context({"query": "persist"})["results"]
             self.assertTrue(hits and "persist" in hits[0]["text"])
             self.assertEqual(hits[0]["source"], "docP")
+        finally:
+            import shutil
+
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_persist_failure_is_reported_not_silent(self):
+        tmpdir = tempfile.mkdtemp(prefix="semantica_vec_test_")
+        try:
+            os.environ["SEMANTICA_VECTOR_PATH"] = tmpdir
+            store = get_vector_store()
+            with patch.object(store, "save", side_effect=RuntimeError("disk full")):
+                result = handle_store_document(
+                    {"content": make_doc("volatile"), "source": "docV", "authority": "official"}
+                )
+            # The write itself succeeded; only the durable copy failed.
+            self.assertEqual(result["status"], "stored")
+            self.assertFalse(result["persisted"])
+        finally:
+            import shutil
+
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_reload_dimension_mismatch_rejected(self):
+        tmpdir = tempfile.mkdtemp(prefix="semantica_vec_test_")
+        try:
+            os.environ["SEMANTICA_VECTOR_PATH"] = tmpdir
+            handle_store_document(
+                {"content": make_doc("persist"), "source": "docP", "authority": "official"}
+            )
+            # A different embedder dimension must not silently rank
+            # vectors from an incompatible embedding space.
+            session._embedder = FakeEmbedder(32)
+            reset_vector_store()
+            with self.assertRaises(ValueError) as ctx:
+                get_vector_store()
+            self.assertIn("dimension", str(ctx.exception))
         finally:
             import shutil
 
