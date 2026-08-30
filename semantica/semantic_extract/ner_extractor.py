@@ -512,22 +512,24 @@ class NERExtractor:
                 if key not in entity_counts:
                     entity_counts[key] = {
                         "entity": entity,
-                        "score": 0.0,
+                        "score_sum": 0.0,
                         "count": 0,
-                        "scored": 0,
+                        "scored_count": 0,
                     }
                 # Only measured confidences participate in the average;
                 # unknown (None) must not bias the vote
                 if entity.confidence is not None:
-                    entity_counts[key]["score"] += entity.confidence
-                    entity_counts[key]["scored"] += 1
+                    entity_counts[key]["score_sum"] += entity.confidence
+                    entity_counts[key]["scored_count"] += 1
                 entity_counts[key]["count"] += 1
 
         # Return entities that meet threshold
         voted = []
         for key, data in entity_counts.items():
             avg_score = (
-                data["score"] / data["scored"] if data["scored"] else None
+                data["score_sum"] / data["scored_count"]
+                if data["scored_count"]
+                else None
             )
             if meets_confidence_threshold(avg_score, threshold):
                 entity = data["entity"]
