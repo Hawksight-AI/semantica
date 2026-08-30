@@ -28,6 +28,7 @@ The `semantica.llms` module provides a unified interface for connecting to Large
 ## When To Use / When Not To Use
 
 **Use LLM integrations for:**
+
 - Text generation, summarization, and question-answering tasks
 - Complex reasoning that requires natural language understanding
 - Structured data extraction from unstructured text
@@ -35,6 +36,7 @@ The `semantica.llms` module provides a unified interface for connecting to Large
 - Tasks where context, ambiguity, or domain knowledge matter
 
 **Deterministic tools may be better for:**
+
 - Pattern matching that regular expressions can handle
 - Simple rule-based classification with clear criteria
 - Mathematical calculations or statistical analysis
@@ -42,6 +44,7 @@ The `semantica.llms` module provides a unified interface for connecting to Large
 - Data transformations with known logic
 
 **A full LLM may be unnecessary for:**
+
 - Simple keyword search or exact string matching
 - Deterministic workflows with predefined decision trees
 - High-frequency, low-latency operations where inference overhead matters
@@ -142,6 +145,58 @@ risk_data = oai.generate_structured(
 ```
 
 The default model `gpt-3.5-turbo` is fine for classification and light extraction. Switch to `gpt-4o` for complex multi-step regulatory reasoning or document understanding.
+
+## Anthropic — Complex Reasoning and Structured Extraction
+
+**Anthropic** provides the Claude model family, built with an emphasis on careful, instruction-following behavior and strong performance on multi-step reasoning, long-document analysis, and code-related tasks. Claude models tend to be more cautious about ambiguous instructions than other providers. That matters when the cost of a confidently wrong answer is high.
+
+The `Anthropic` provider wraps the Claude API. Reach for it when the task involves reasoning through several dependent steps (not just single-turn extraction), when you're processing long source documents that need to stay in context, or when you need schema-validated structured output rather than best-effort JSON.
+
+Install with `pip install "semantica[llm-anthropic]"` (or just `pip install anthropic`) before using this provider.
+
+```python
+from semantica.llms import Anthropic
+
+claude = Anthropic(model="claude-sonnet-4-6", api_key="YOUR_ANTHROPIC_KEY")
+# api_key falls back to the ANTHROPIC_API_KEY environment variable
+
+# is_available() only confirms a client was constructed from some key.
+# It does not validate the key or check network reachability - an
+# invalid or expired key still passes this check and fails at generate().
+if not claude.is_available():
+    raise RuntimeError("Anthropic provider not configured - set ANTHROPIC_API_KEY")
+
+# Plain generation - multi-step reasoning over a contract clause
+verdict = claude.generate(
+    "A vendor contract has a 30-day termination-for-convenience clause "
+    "but a 90-day data-return obligation that survives termination. "
+    "If the customer terminates on day 1, when must vendor-held data "
+    "be returned? Answer with the date basis only.",
+    temperature=0.1,
+)
+print(verdict)
+# "Day 120 from termination notice. The 90-day return period runs from
+#  the termination date (day 30), not from the notice date."
+
+# Structured, schema-validated output
+from pydantic import BaseModel
+
+class ContractRisk(BaseModel):
+    clause: str
+    risk_level: str
+    days_to_deadline: int
+
+risk = claude.generate_typed(
+    "Extract the termination clause risk from: vendor contract, "
+    "30-day termination for convenience, 90-day post-termination "
+    "data return obligation.",
+    schema=ContractRisk,
+)
+print(risk.risk_level, risk.days_to_deadline)
+# "medium" 90
+```
+
+Model selection follows the same tier structure as the other providers: a Haiku model for high-volume classification where cost matters more than depth, a Sonnet model as the default for most extraction and reasoning tasks, an Opus model when a task genuinely needs the deepest reasoning available and latency/cost are secondary. Check Anthropic's docs for the current model identifiers, since they're versioned and change over time.
 
 ## LiteLLM — One Interface, 100+ Providers
 

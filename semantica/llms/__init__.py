@@ -10,9 +10,10 @@ Supported Providers:
     - OpenAI: OpenAI API (GPT-3.5, GPT-4, etc.)
     - HuggingFaceLLM: HuggingFace Transformers for local LLM inference
     - LiteLLM: Unified interface to 100+ LLM providers (OpenAI, Anthropic, Groq, Azure, Bedrock, Vertex AI, etc.)
+    - Anthropic: Anthropic Claude API (Claude sonnet, Opus, Haiku, etc.)
 
 Example Usage:
-    >>> from semantica.llms import Groq, OpenAI, HuggingFaceLLM, LiteLLM
+    >>> from semantica.llms import Groq, OpenAI, HuggingFaceLLM, LiteLLM, Anthropic
     >>> 
     >>> # Groq provider
     >>> groq = Groq(model="llama-3.1-8b-instant", api_key="your-key")
@@ -32,6 +33,10 @@ Example Usage:
     >>> # Or use other providers via LiteLLM
     >>> llm = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
     >>> response = llm.generate("Hello, world!")
+    >>>
+    >>> # Anthropic provider
+    >>> claude = Anthropic(model="claude-sonnet-4-6", api_key="the-key")
+    >>> response = claude.generate("Hello, world!")
 
 Author: Semantica Contributors
 License: MIT
@@ -41,6 +46,7 @@ from .groq import Groq
 from .openai import OpenAI
 from .huggingface import HuggingFaceLLM
 from .litellm import LiteLLM
+from .anthropic import Anthropic
 
-__all__ = ["Groq", "OpenAI", "HuggingFaceLLM", "LiteLLM"]
+__all__ = ["Groq", "OpenAI", "HuggingFaceLLM", "LiteLLM", "Anthropic"]
 
