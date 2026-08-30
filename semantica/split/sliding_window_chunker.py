@@ -64,6 +64,8 @@ class SlidingWindowChunker:
             raise ValidationError("overlap must be non-negative")
         if self.overlap >= self.chunk_size:
             raise ValidationError("overlap must be less than chunk_size")
+        if self.stride <= 0:
+            raise ValidationError("stride must be positive")
 
     def chunk(self, text: str, **options) -> List[Chunk]:
         """
@@ -215,15 +217,20 @@ class SlidingWindowChunker:
         Returns:
             list: List of chunks
         """
+        if overlap_size is None:
+            return self.chunk(text)
+        if overlap_size < 0:
+            raise ValidationError("overlap_size must be non-negative")
+        if overlap_size >= self.chunk_size:
+            raise ValidationError("overlap_size must be less than chunk_size")
+
         original_overlap = self.overlap
-        if overlap_size is not None:
+        original_stride = self.stride
+
+        try:
             self.overlap = overlap_size
             self.stride = self.chunk_size - self.overlap
-
-        chunks = self.chunk(text)
-
-        # Restore original overlap
-        self.overlap = original_overlap
-        self.stride = self.chunk_size - self.overlap
-
-        return chunks
+            return self.chunk(text)
+        finally:
+            self.overlap = original_overlap
+            self.stride = original_stride

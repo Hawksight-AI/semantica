@@ -28,12 +28,14 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   MSDO:
     # currently only windows-latest is supported
     runs-on: windows-latest
+    permissions:
+      contents: read
+      security-events: write  # for github/codeql-action/upload-sarif below
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -57,7 +59,7 @@ jobs:
         # avoiding the guardian.cmd/checkov exit-code bug in the MSDO wrapper.
         tools: eslint,templateanalyzer,terrascan
     - name: Upload results to Security tab
-      uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+      uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
       with:
         sarif_file: ${{ steps.msdo.outputs.sarifFile }}
 
@@ -82,7 +84,7 @@ jobs:
         }
 
     - name: Upload Checkov results to Security tab
-      uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+      uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
       if: always()
       with:
         sarif_file: reports/checkov.sarif

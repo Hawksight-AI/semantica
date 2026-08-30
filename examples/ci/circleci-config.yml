@@ -1,0 +1,40 @@
+# Drop this in as .circleci/config.yml in your own project.
+version: 2.1
+
+jobs:
+  test:
+    docker:
+      - image: cimg/python:3.11
+    steps:
+      - checkout
+      # A content-hashed cache key (e.g. `{{ checksum "requirements.txt" }}`)
+      # is more precise but breaks if that exact file doesn't exist in your
+      # project - swap in one matched to however you declare dependencies
+      # once you've adjusted the install step below.
+      - restore_cache:
+          keys:
+            - pip-cache-v1
+      - run:
+          name: Install dependencies
+          command: |
+            pip install --upgrade pip
+            pip install semantica
+            # Install your own project's dependencies however your project
+            # declares them - adjust this to match, e.g. `pip install -e .`
+            # for pyproject.toml / setup.cfg, or `poetry install`.
+            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - save_cache:
+          key: pip-cache-v1
+          paths:
+            - ~/.cache/pip
+      - run:
+          name: Smoke test
+          command: python -c "import semantica; print('semantica', semantica.__version__)"
+      - run:
+          name: Run tests
+          command: pytest
+
+workflows:
+  test:
+    jobs:
+      - test

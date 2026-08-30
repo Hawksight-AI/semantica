@@ -203,6 +203,7 @@ if TYPE_CHECKING:
     from .ontology_ingestor import OntologyData
     from .parquet_ingestor import ParquetData
     from .public_api_ingestor import PublicAPIDetection
+    from .salesforce_ingestor import SalesforceData
     from .stream_ingestor import StreamProcessor
     from .web_ingestor import WebContent
     from .xml_ingestor import XMLIngestionData
@@ -1126,6 +1127,213 @@ def ingest_database(
         raise
 
 
+def ingest_salesforce(
+    source: Optional[Dict[str, Any]] = None,
+    method: str = "sobject",
+    **kwargs,
+) -> Union["SalesforceData", List[Dict[str, Any]], Dict[str, Any]]:
+    """Ingest data from Salesforce CRM (convenience function).
+
+    A user-friendly wrapper around :class:`~semantica.ingest.SalesforceIngestor`
+    that connects, ingests, and returns data in a single call.
+
+    Args:
+        source: Optional credential/configuration dictionary.  Keys mirror the
+            :class:`~semantica.ingest.SalesforceConnector` constructor:
+            ``username``, ``password``, ``security_token``, ``domain``
+            (``"login"`` for production, ``"test"`` for sandbox),
+            ``instance_url``, ``session_id``, ``api_version``.
+            When ``None``, credentials are read from environment variables
+            (``SALESFORCE_USERNAME`` / ``SALESFORCE_PASSWORD`` /
+            ``SALESFORCE_SECURITY_TOKEN`` etc.).
+        method: Ingestion method:
+
+            * ``"sobject"`` *(default)* — fetch records from a named sObject
+              (requires ``sobject_name`` kwarg).
+            * ``"query"`` — execute a raw SOQL query string (requires
+              ``soql`` kwarg).
+            * ``"list_sobjects"`` — return a sorted list of accessible sObject
+              API names.
+            * ``"schema"`` — return field metadata for a named sObject
+              (requires ``sobject_name`` kwarg).
+            * ``"documents"`` — ingest an sObject and convert to the Semantica
+              document format in one step (requires ``sobject_name`` kwarg;
+              optional ``text_fields`` and ``id_field`` kwargs).
+
+        **kwargs: Additional options forwarded to the ingestor method.
+            Common kwargs for ``"sobject"`` / ``"documents"``:
+
+            * ``sobject_name`` — Salesforce sObject API name (e.g.
+              ``"Account"``, ``"My_Custom__c"``).
+            * ``fields`` — list of field API names to select.  When omitted
+              all selectable fields are fetched via ``describe()``.
+            * ``where`` — SOQL ``WHERE`` clause fragment (trusted input only).
+            * ``order_by`` — SOQL ``ORDER BY`` clause fragment.
+            * ``limit`` — maximum number of records.
+
+            For ``"query"``:
+
+            * ``soql`` — full SOQL query string.
+
+            For ``"schema"``:
+
+            * ``sobject_name`` — sObject to describe.
+
+    Returns:
+        * ``"sobject"`` / ``"query"`` → :class:`~semantica.ingest.SalesforceData`
+        * ``"documents"`` → ``List[Dict[str, Any]]`` (Semantica document format)
+        * ``"list_sobjects"`` → ``List[str]``
+        * ``"schema"`` → ``Dict[str, Any]``
+
+    Raises:
+        :class:`~semantica.utils.exceptions.ConfigurationError`: If
+            ``simple-salesforce`` is not installed.
+        :class:`~semantica.utils.exceptions.ValidationError`: If credentials
+            are incomplete or an sObject / field name is invalid.
+        :class:`~semantica.utils.exceptions.ProcessingError`: If the
+            Salesforce API call fails.
+
+    Examples::
+
+        >>> from semantica.ingest import ingest_salesforce
+
+        >>> # Fetch Account records (credentials from env vars)
+        >>> data = ingest_salesforce(
+        ...     method="sobject",
+        ...     sobject_name="Account",
+        ...     fields=["Id", "Name", "Industry"],
+        ...     limit=500,
+        ... )
+
+        >>> # Execute a raw SOQL query (credentials from environment variables)
+        >>> data = ingest_salesforce(
+        ...     method="query",
+        ...     soql="SELECT Id, Name FROM Contact WHERE IsActive = true",
+        ... )
+
+        >>> # Ingest and export as documents for GraphBuilder in one step
+        >>> docs = ingest_salesforce(
+        ...     method="documents",
+        ...     sobject_name="Account",
+        ...     text_fields=["Name", "Description"],
+        ...     limit=1000,
+        ... )
+
+        >>> # List all accessible sObjects in the connected org
+        >>> sobject_names = ingest_salesforce(method="list_sobjects")
+
+        >>> # Use sandbox org
+        >>> data = ingest_salesforce(
+        ...     method="sobject",
+        ...     sobject_name="Account",
+        ... )  # set SALESFORCE_DOMAIN=test in environment for sandbox
+    """
+    # Registry hook — allows callers to register a custom "salesforce" method
+    custom_method = method_registry.get("salesforce", method)
+    if custom_method and custom_method != ingest_salesforce:
+        fallback = kwargs.pop("fallback_on_custom_error", False)
+        result = call_custom_method(
+            logger, method, custom_method, source,
+            fallback_on_custom_error=fallback, **kwargs,
+        )
+        if result is not CUSTOM_METHOD_FELL_BACK:
+            return result
+
+    try:
+        from .salesforce_ingestor import SalesforceIngestor
+    except ModuleNotFoundError as exc:
+        if _is_missing_dependency(exc, "simple_salesforce"):
+            raise _missing_optional_dependency(
+                "Salesforce ingestion", "simple-salesforce"
+            ) from exc
+        raise
+
+    # Unpack credential dict (if given); everything else stays in kwargs.
+    creds: Dict[str, Any] = {}
+    if source is not None:
+        if not isinstance(source, dict):
+            raise ProcessingError(
+                "ingest_salesforce() source must be a credential dict or None. "
+                "Pass sobject_name / soql as keyword arguments."
+            )
+        creds = dict(source)
+
+    # Merge any ingest_config method config under "salesforce".
+    # get_method_config() now returns a copy, so this dict is safe to mutate.
+    # We build the final connector config in order of increasing priority:
+    #   1. base method config (lowest — global defaults set by operator)
+    #   2. per-call credential dict supplied via `source`
+    #   3. per-call connector params supplied as kwargs
+    # Credentials are extracted from kwargs and removed so they don't also
+    # flow into the ingest method call (which doesn't understand them).
+    _CONNECTOR_PARAMS = frozenset({
+        "username", "password", "security_token", "domain",
+        "instance_url", "session_id", "api_version",
+    })
+    connector_kwargs = {k: v for k, v in kwargs.items() if k in _CONNECTOR_PARAMS}
+    for k in _CONNECTOR_PARAMS:
+        kwargs.pop(k, None)
+
+    # Build a fresh per-call config dict — never mutate the global store.
+    config: Dict[str, Any] = {
+        **ingest_config.get_method_config("salesforce"),  # base (already a copy)
+        **creds,                                           # source dict credentials
+        **connector_kwargs,                                # kwarg credentials
+    }
+
+    ingestor = SalesforceIngestor(**config)
+
+    if method == "sobject":
+        sobject_name = kwargs.pop("sobject_name", None)
+        if not sobject_name:
+            raise ProcessingError(
+                "ingest_salesforce() with method='sobject' requires "
+                "sobject_name keyword argument."
+            )
+        return ingestor.ingest_sobject(sobject_name, **kwargs)
+
+    elif method == "query":
+        soql = kwargs.pop("soql", None)
+        if not soql:
+            raise ProcessingError(
+                "ingest_salesforce() with method='query' requires "
+                "soql keyword argument."
+            )
+        return ingestor.ingest_query(soql, **kwargs)
+
+    elif method == "list_sobjects":
+        return ingestor.list_sobjects()
+
+    elif method == "schema":
+        sobject_name = kwargs.pop("sobject_name", None)
+        if not sobject_name:
+            raise ProcessingError(
+                "ingest_salesforce() with method='schema' requires "
+                "sobject_name keyword argument."
+            )
+        return ingestor.get_sobject_schema(sobject_name)
+
+    elif method == "documents":
+        sobject_name = kwargs.pop("sobject_name", None)
+        if not sobject_name:
+            raise ProcessingError(
+                "ingest_salesforce() with method='documents' requires "
+                "sobject_name keyword argument."
+            )
+        id_field = kwargs.pop("id_field", "Id")
+        text_fields = kwargs.pop("text_fields", None)
+        data = ingestor.ingest_sobject(sobject_name, **kwargs)
+        return ingestor.export_as_documents(data, id_field=id_field,
+                                            text_fields=text_fields)
+
+    else:
+        raise ProcessingError(
+            f"Unknown ingest_salesforce method: {method!r}. "
+            "Valid methods: 'sobject', 'query', 'list_sobjects', 'schema', "
+            "'documents'."
+        )
+
+
 def ingest_mcp(
     source: Union[str, Dict[str, Any]],
     method: str = "resources",
@@ -1306,6 +1514,7 @@ def ingest(
             - "ontology": Ontology ingestion
             - "parquet": Apache Parquet file or directory ingestion
             - "xml": XML file or directory ingestion
+            - "salesforce": Salesforce CRM ingestion (pass credentials via kwargs)
         method: Optional specific ingestion method
         **kwargs: Additional options passed to ingestor
 
@@ -1428,6 +1637,9 @@ def ingest(
         return {"ontology": ingest_ontology(sources, method=method or "file", **kwargs)}
     elif source_type == "mcp":
         return {"data": ingest_mcp(sources, method=method or "resources", **kwargs)}
+    elif source_type == "salesforce":
+        return {"data": ingest_salesforce(sources,
+                                          method=method or "sobject", **kwargs)}
     else:
         raise ProcessingError(f"Unknown source type: {source_type}")
 
@@ -1540,3 +1752,9 @@ method_registry.register("ontology", "file", ingest_ontology)
 method_registry.register("ontology", "directory", ingest_ontology)
 method_registry.register("ingest", "default", ingest)
 method_registry.register("ingest", "unified", ingest)
+method_registry.register("salesforce", "default", ingest_salesforce)
+method_registry.register("salesforce", "sobject", ingest_salesforce)
+method_registry.register("salesforce", "query", ingest_salesforce)
+method_registry.register("salesforce", "list_sobjects", ingest_salesforce)
+method_registry.register("salesforce", "schema", ingest_salesforce)
+method_registry.register("salesforce", "documents", ingest_salesforce)

@@ -318,6 +318,20 @@ interface EdgeListResponse {
 
 const PAGE_LIMIT = 1000;
 
+/** Surface the server's `detail` message (e.g. auth/setup guidance) on non-OK responses. */
+async function fetchErrorDetail(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    const detail = (body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string" && detail.trim()) {
+      return ` — ${detail.trim()}`;
+    }
+  } catch {
+    // Non-JSON or unreadable body: fall back to the status-only message.
+  }
+  return "";
+}
+
 async function fetchAllNodes(
   signal: AbortSignal,
   onProgress?: (progress: GraphLoadProgress) => void,
@@ -335,7 +349,7 @@ async function fetchAllNodes(
 
     const response = await fetch(url.toString(), { signal });
     if (!response.ok) {
-      throw new Error(`Fetch failed: ${response.status}`);
+      throw new Error(`Fetch failed: ${response.status}${await fetchErrorDetail(response)}`);
     }
 
     const data: NodeListResponse = await response.json();
@@ -390,7 +404,7 @@ async function fetchAllEdges(
 
     const response = await fetch(url.toString(), { signal });
     if (!response.ok) {
-      throw new Error(`Fetch failed: ${response.status}`);
+      throw new Error(`Fetch failed: ${response.status}${await fetchErrorDetail(response)}`);
     }
 
     const data: EdgeListResponse = await response.json();
