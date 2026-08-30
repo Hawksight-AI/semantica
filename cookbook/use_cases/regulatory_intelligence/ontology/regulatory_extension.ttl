@@ -1,0 +1,117 @@
+# Regulatory Intelligence — small domain extension.
+#
+# This is schema, not data: no facts, figures, or claims live here. It adds
+# the handful of classes/properties this use case needs that the vendored
+# real ontologies (ORG, PROV-O, DCAT, SKOS, OWL-Time, FRBR — see external/)
+# don't already provide, and aligns every new term to one of them rather
+# than duplicating what they already model.
+#
+# - Regulation      subClassOf dcat:Dataset  (each ingested document is both)
+# - RequirementClause  a specific obligation extracted from a Regulation
+# - Agency          subClassOf org:Organization
+# - Sector          individuals are skos:Concept instances in regulatory_taxonomy.ttl
+
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix org:   <http://www.w3.org/ns/org#> .
+@prefix dcat:  <http://www.w3.org/ns/dcat#> .
+@prefix prov:  <http://www.w3.org/ns/prov#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+@prefix time:  <http://www.w3.org/2006/time#> .
+@prefix frbr:  <http://purl.org/vocab/frbr/core#> .
+@prefix reg:   <https://semantica.dev/cookbook/regulatory-intelligence/ontology#> .
+
+<https://semantica.dev/cookbook/regulatory-intelligence/ontology>
+    a owl:Ontology ;
+    rdfs:label "Regulatory Intelligence — domain extension" ;
+    rdfs:comment "Small extension aligning Regulation/RequirementClause/Agency to the vendored ORG, DCAT, PROV-O, SKOS, OWL-Time, and FRBR ontologies." ;
+    owl:imports <http://www.w3.org/ns/org#> ,
+                <http://www.w3.org/ns/dcat#> ,
+                <http://www.w3.org/ns/prov#> ,
+                <http://www.w3.org/2004/02/skos/core#> ,
+                <http://www.w3.org/2006/time#> ,
+                <http://purl.org/vocab/frbr/core#> .
+
+# ---- Classes ----------------------------------------------------------
+
+reg:Regulation
+    a owl:Class ;
+    rdfs:subClassOf dcat:Dataset , prov:Entity ;
+    rdfs:label "Regulation" ;
+    rdfs:comment "A regulation, standard, executive order, memorandum, or governance guidance document ingested into the platform." .
+
+reg:RequirementClause
+    a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "Requirement Clause" ;
+    rdfs:comment "A single obligation, control, or requirement extracted from a Regulation." .
+
+reg:Agency
+    a owl:Class ;
+    rdfs:subClassOf org:Organization ;
+    rdfs:label "Agency" ;
+    rdfs:comment "A government agency or regulator (e.g. NIST, OMB, HHS, the Federal Reserve) that issues or is bound by a Regulation." .
+
+# ---- Object properties --------------------------------------------------
+
+reg:issuedBy
+    a owl:ObjectProperty ;
+    rdfs:domain reg:Regulation ;
+    rdfs:range reg:Agency ;
+    rdfs:label "issued by" .
+
+reg:hasRequirement
+    a owl:ObjectProperty ;
+    rdfs:domain reg:Regulation ;
+    rdfs:range reg:RequirementClause ;
+    rdfs:label "has requirement" .
+
+reg:appliesToSector
+    a owl:ObjectProperty ;
+    rdfs:domain reg:RequirementClause ;
+    rdfs:range skos:Concept ;
+    rdfs:label "applies to sector" ;
+    rdfs:comment "Links a requirement clause to a sector concept (e.g. Healthcare, Finance) in regulatory_taxonomy.ttl." .
+
+reg:supersedes
+    a owl:ObjectProperty ;
+    rdfs:domain reg:Regulation ;
+    rdfs:range reg:Regulation ;
+    rdfs:label "supersedes" .
+
+reg:amends
+    a owl:ObjectProperty ;
+    rdfs:domain reg:Regulation ;
+    rdfs:range reg:Regulation ;
+    rdfs:label "amends" .
+
+reg:implements
+    a owl:ObjectProperty ;
+    rdfs:domain reg:Regulation ;
+    rdfs:range reg:Regulation ;
+    rdfs:label "implements" ;
+    rdfs:comment "e.g. an agency compliance plan implementing an OMB memorandum." .
+
+reg:conflictsWith
+    a owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:domain reg:RequirementClause ;
+    rdfs:range reg:RequirementClause ;
+    rdfs:label "conflicts with" .
+
+reg:effectiveInterval
+    a owl:ObjectProperty ;
+    rdfs:domain reg:RequirementClause ;
+    rdfs:range time:Interval ;
+    rdfs:label "effective interval" ;
+    rdfs:comment "The requirement's validity window, modeled with OWL-Time rather than a bare date string." .
+
+# ---- Datatype properties -------------------------------------------------
+
+reg:sourceCitation
+    a owl:DatatypeProperty ;
+    rdfs:domain reg:RequirementClause ;
+    rdfs:range xsd:string ;
+    rdfs:label "source citation" ;
+    rdfs:comment "Human-readable citation (e.g. '45 CFR 164.306(a)(1)') pointing at the exact real-document location this clause was extracted from." .

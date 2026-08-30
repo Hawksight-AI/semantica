@@ -1,0 +1,435 @@
+<?xml version="1.0"?>
+<DIV6 N="C" TYPE="SUBPART" VOLUME="2" hierarchy_metadata="{&amp;quot;path&amp;quot;:&amp;quot;/on/_SUBSTITUTE_DATE_/title-45/part-164/subpart-C&amp;quot;,&amp;quot;citation&amp;quot;:&amp;quot;45 CFR Part 164 Subpart C&amp;quot;}">
+<HEAD>Subpart C&#x2014;Security Standards for the Protection of Electronic Protected Health Information</HEAD>
+<AUTH>
+<HED>Authority:</HED><PSPACE>42 U.S.C. 1320d-2 and 1320d-4; sec. 13401, Pub. L. 111-5, 123 Stat. 260.
+</PSPACE></AUTH>
+<SOURCE>
+<HED>Source:</HED><PSPACE>68 FR 8376, Feb. 20, 2003, unless otherwise noted.
+</PSPACE></SOURCE>
+<DIV8 N="164.302" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.302&quot;,&quot;citation&quot;:&quot;45 CFR 164.302&quot;}">
+<HEAD>&#xA7; 164.302 Applicability.</HEAD>
+<P>A covered entity or business associate must comply with the applicable standards, implementation specifications, and requirements of this subpart with respect to electronic protected health information of a covered entity.</P>
+<CITA TYPE="N">[78 FR 5693, Jan. 25, 2013]
+</CITA>
+</DIV8>
+
+<DIV8 N="164.304" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.304&quot;,&quot;citation&quot;:&quot;45 CFR 164.304&quot;}">
+<HEAD>&#xA7; 164.304 Definitions.</HEAD>
+<P>As used in this subpart, the following terms have the following meanings:</P>
+<P><I>Access</I> means the ability or the means necessary to read, write, modify, or communicate data/information or otherwise use any system resource. (This definition applies to &#x201C;access&#x201D; as used in this subpart, not as used in subparts D or E of this part.)</P>
+<P><I>Administrative safeguards</I> are administrative actions, and policies and procedures, to manage the selection, development, implementation, and maintenance of security measures to protect electronic protected health information and to manage the conduct of the covered entity's or business associate's workforce in relation to the protection of that information.</P>
+<P><I>Authentication</I> means the corroboration that a person is the one claimed.</P>
+<P><I>Availability</I> means the property that data or information is accessible and useable upon demand by an authorized person.</P>
+<P><I>Confidentiality</I> means the property that data or information is not made available or disclosed to unauthorized persons or processes.</P>
+<P><I>Encryption</I> means the use of an algorithmic process to transform data into a form in which there is a low probability of assigning meaning without use of a confidential process or key.</P>
+<P><I>Facility</I> means the physical premises and the interior and exterior of a building(s).</P>
+<P><I>Information system</I> means an interconnected set of information resources under the same direct management control that shares common functionality. A system normally includes hardware, software, information, data, applications, communications, and people.</P>
+<P><I>Integrity</I> means the property that data or information have not been altered or destroyed in an unauthorized manner.</P>
+<P><I>Malicious software</I> means software, for example, a virus, designed to damage or disrupt a system.</P>
+<P><I>Password</I> means confidential authentication information composed of a string of characters.</P>
+<P><I>Physical safeguards</I> are physical measures, policies, and procedures to protect a covered entity's or business associate's electronic information systems and related buildings and equipment, from natural and environmental hazards, and unauthorized intrusion.</P>
+<P><I>Security or Security measures</I> encompass all of the administrative, physical, and technical safeguards in an information system.</P>
+<P><I>Security incident</I> means the attempted or successful unauthorized access, use, disclosure, modification, or destruction of information or interference with system operations in an information system.</P>
+<P><I>Technical safeguards</I> means the technology and the policy and procedures for its use that protect electronic protected health information and control access to it.</P>
+<P><I>User</I> means a person or entity with authorized access.</P>
+<P><I>Workstation</I> means an electronic computing device, for example, a laptop or desktop computer, or any other device that performs similar functions, and electronic media stored in its immediate environment.</P>
+<CITA TYPE="N">[68 FR 8376, Feb. 20, 2003, as amended at 74 FR 42767, Aug. 24, 2009; 78 FR 5693, Jan. 25, 2013]
+</CITA>
+</DIV8>
+
+<DIV8 N="164.306" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.306&quot;,&quot;citation&quot;:&quot;45 CFR 164.306&quot;}">
+<HEAD>&#xA7; 164.306 Security standards: General rules.</HEAD>
+<P>(a) <I>General requirements.</I> Covered entities and business associates must do the following:</P>
+<P>(1) Ensure the confidentiality, integrity, and availability of all electronic protected health information the covered entity or business associate creates, receives, maintains, or transmits.</P>
+<P>(2) Protect against any reasonably anticipated threats or hazards to the security or integrity of such information.</P>
+<P>(3) Protect against any reasonably anticipated uses or disclosures of such information that are not permitted or required under subpart E of this part.</P>
+<P>(4) Ensure compliance with this subpart by its workforce.</P>
+<P>(b) <I>Flexibility of approach.</I> (1) Covered entities and business associates may use any security measures that allow the covered entity or business associate to reasonably and appropriately implement the standards and implementation specifications as specified in this subpart.</P>
+<P>(2) In deciding which security measures to use, a covered entity or business associate must take into account the following factors:</P>
+<P>(i) The size, complexity, and capabilities of the covered entity or business associate.</P>
+<P>(ii) The covered entity's or the business associate's technical infrastructure, hardware, and software security capabilities.</P>
+<P>(iii) The costs of security measures.</P>
+<P>(iv) The probability and criticality of potential risks to electronic protected health information.</P>
+<P>(c) <I>Standards.</I> A covered entity or business associate must comply with the applicable standards as provided in this section and in &#xA7;&#xA7; 164.308, 164.310, 164.312, 164.314 and 164.316 with respect to all electronic protected health information.</P>
+<P>(d) <I>Implementation specifications.</I> In this subpart:</P>
+<P>(1) Implementation specifications are required or addressable. If an implementation specification is required, the word &#x201C;Required&#x201D; appears in parentheses after the title of the implementation specification. If an implementation specification is addressable, the word &#x201C;Addressable&#x201D; appears in parentheses after the title of the implementation specification.</P>
+<P>(2) When a standard adopted in &#xA7; 164.308, &#xA7; 164.310, &#xA7; 164.312, &#xA7; 164.314, or &#xA7; 164.316 includes required implementation specifications, a covered entity or business associate must implement the implementation specifications.</P>
+<P>(3) When a standard adopted in &#xA7; 164.308, &#xA7; 164.310, &#xA7; 164.312, &#xA7; 164.314, or &#xA7; 164.316 includes addressable implementation specifications, a covered entity or business associate must&#x2014;</P>
+<P>(i) Assess whether each implementation specification is a reasonable and appropriate safeguard in its environment, when analyzed with reference to the likely contribution to protecting electronic protected health information; and</P>
+<P>(ii) As applicable to the covered entity or business associate&#x2014;</P>
+<P>(A) Implement the implementation specification if reasonable and appropriate; or</P>
+<P>(B) If implementing the implementation specification is not reasonable and appropriate&#x2014;</P>
+<P>$(<I>1</I>) Document why it would not be reasonable and appropriate to implement the implementation specification; and</P>
+<P>$(<I>2</I>) Implement an equivalent alternative measure if reasonable and appropriate.</P>
+<P>(e) <I>Maintenance.</I> A covered entity or business associate must review and modify the security measures implemented under this subpart as needed to continue provision of reasonable and appropriate protection of electronic protected health information, and update documentation of such security measures in accordance with &#xA7; 164.316(b)(2)(iii).</P>
+<CITA TYPE="N">[68 FR 8376, Feb. 20, 2003; 68 FR 17153, Apr. 8, 2003; 78 FR 5693, Jan. 25, 2013]
+</CITA>
+</DIV8>
+
+<DIV8 N="164.308" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.308&quot;,&quot;citation&quot;:&quot;45 CFR 164.308&quot;}">
+<HEAD>&#xA7; 164.308 Administrative safeguards.</HEAD>
+<P>(a) A covered entity or business associate must, in accordance with &#xA7; 164.306:</P>
+<P>(1)(i) <I>Standard: Security management process.</I> Implement policies and procedures to prevent, detect, contain, and correct security violations.</P>
+<P>(ii) <I>Implementation specifications:</I></P>
+<P>(A) <I>Risk analysis (Required).</I> Conduct an accurate and thorough assessment of the potential risks and vulnerabilities to the confidentiality, integrity, and availability of electronic protected health information held by the covered entity or business associate.</P>
+<P>(B) <I>Risk management (Required).</I> Implement security measures sufficient to reduce risks and vulnerabilities to a reasonable and appropriate level to comply with &#xA7; 164.306(a).</P>
+<P>(C) <I>Sanction policy (Required).</I> Apply appropriate sanctions against workforce members who fail to comply with the security policies and procedures of the covered entity or business associate.</P>
+<P>(D) <I>Information system activity review (Required).</I> Implement procedures to regularly review records of information system activity, such as audit logs, access reports, and security incident tracking reports.</P>
+<P>(2) <I>Standard: Assigned security responsibility.</I> Identify the security official who is responsible for the development and implementation of the policies and procedures required by this subpart for the covered entity or business associate.</P>
+<P>(3)(i) <I>Standard: Workforce security.</I> Implement policies and procedures to ensure that all members of its workforce have appropriate access to electronic protected health information, as provided under paragraph (a)(4) of this section, and to prevent those workforce members who do not have access under paragraph (a)(4) of this section from obtaining access to electronic protected health information.</P>
+<P>(ii) <I>Implementation specifications:</I></P>
+<P>(A) <I>Authorization and/or supervision (Addressable).</I> Implement procedures for the authorization and/or supervision of workforce members who work with electronic protected health information or in locations where it might be accessed.</P>
+<P>(B) <I>Workforce clearance procedure (Addressable).</I> Implement procedures to determine that the access of a workforce member to electronic protected health information is appropriate.</P>
+<P>(C) <I>Termination procedures (Addressable).</I> Implement procedures for terminating access to electronic protected health information when the employment of, or other arrangement with, a workforce member ends or as required by determinations made as specified in paragraph (a)(3)(ii)(B) of this section.</P>
+<P>(4)(i) <I>Standard: Information access management.</I> Implement policies and procedures for authorizing access to electronic protected health information that are consistent with the applicable requirements of subpart E of this part.</P>
+<P>(ii) <I>Implementation specifications:</I></P>
+<P>(A) <I>Isolating health care clearinghouse functions (Required).</I> If a health care clearinghouse is part of a larger organization, the clearinghouse must implement policies and procedures that protect the electronic protected health information of the clearinghouse from unauthorized access by the larger organization.</P>
+<P>(B) <I>Access authorization (Addressable).</I> Implement policies and procedures for granting access to electronic protected health information, for example, through access to a workstation, transaction, program, process, or other mechanism.</P>
+<P>(C) <I>Access establishment and modification (Addressable).</I> Implement policies and procedures that, based upon the covered entity's or the business associate's access authorization policies, establish, document, review, and modify a user's right of access to a workstation, transaction, program, or process.</P>
+<P>(5)(i) <I>Standard: Security awareness and training.</I> Implement a security awareness and training program for all members of its workforce (including management).</P>
+<P>(ii) <I>Implementation specifications.</I> Implement:</P>
+<P>(A) <I>Security reminders (Addressable).</I> Periodic security updates.</P>
+<P>(B) <I>Protection from malicious software (Addressable).</I> Procedures for guarding against, detecting, and reporting malicious software.</P>
+<P>(C) <I>Log-in monitoring (Addressable).</I> Procedures for monitoring log-in attempts and reporting discrepancies.</P>
+<P>(D) <I>Password management (Addressable).</I> Procedures for creating, changing, and safeguarding passwords.</P>
+<P>(6)(i) <I>Standard: Security incident procedures.</I> Implement policies and procedures to address security incidents.</P>
+<P>(ii) <I>Implementation specification: Response and reporting (Required).</I> Identify and respond to suspected or known security incidents; mitigate, to the extent practicable, harmful effects of security incidents that are known to the covered entity or business associate; and document security incidents and their outcomes.</P>
+<P>(7)(i) <I>Standard: Contingency plan.</I> Establish (and implement as needed) policies and procedures for responding to an emergency or other occurrence (for example, fire, vandalism, system failure, and natural disaster) that damages systems that contain electronic protected health information.</P>
+<P>(ii) <I>Implementation specifications:</I></P>
+<P>(A) <I>Data backup plan (Required).</I> Establish and implement procedures to create and maintain retrievable exact copies of electronic protected health information.</P>
+<P>(B) <I>Disaster recovery plan (Required).</I> Establish (and implement as needed) procedures to restore any loss of data.</P>
+<P>(C) <I>Emergency mode operation plan (Required).</I> Establish (and implement as needed) procedures to enable continuation of critical business processes for protection of the security of electronic protected health information while operating in emergency mode.</P>
+<P>(D) <I>Testing and revision procedures (Addressable).</I> Implement procedures for periodic testing and revision of contingency plans.</P>
+<P>(E) <I>Applications and data criticality analysis (Addressable).</I> Assess the relative criticality of specific applications and data in support of other contingency plan components.</P>
+<P>(8) <I>Standard: Evaluation.</I> Perform a periodic technical and nontechnical evaluation, based initially upon the standards implemented under this rule and, subsequently, in response to environmental or operational changes affecting the security of electronic protected health information, that establishes the extent to which a covered entity's or business associate's security policies and procedures meet the requirements of this subpart.</P>
+<P>(b)(1) <I>Business associate contracts and other arrangements.</I> A covered entity may permit a business associate to create, receive, maintain, or transmit electronic protected health information on the covered entity's behalf only if the covered entity obtains satisfactory assurances, in accordance with &#xA7; 164.314(a), that the business associate will appropriately safeguard the information. A covered entity is not required to obtain such satisfactory assurances from a business associate that is a subcontractor.</P>
+<P>(2) A business associate may permit a business associate that is a subcontractor to create, receive, maintain, or transmit electronic protected health information on its behalf only if the business associate obtains satisfactory assurances, in accordance with &#xA7; 164.314(a), that the subcontractor will appropriately safeguard the information.</P>
+<P>(3) <I>Implementation specifications: Written contract or other arrangement (Required).</I> Document the satisfactory assurances required by paragraph (b)(1) or (b)(2) of this section through a written contract or other arrangement with the business associate that meets the applicable requirements of &#xA7; 164.314(a).</P>
+<CITA TYPE="N">[68 FR 8376, Feb. 20, 2003, as amended at 78 FR 5694, Jan. 25, 2013]
+</CITA>
+</DIV8>
+
+<DIV8 N="164.310" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.310&quot;,&quot;citation&quot;:&quot;45 CFR 164.310&quot;}">
+<HEAD>&#xA7; 164.310 Physical safeguards.</HEAD>
+<P>A covered entity or business associate must, in accordance with &#xA7; 164.306:</P>
+<P>(a)(1) <I>Standard: Facility access controls.</I> Implement policies and procedures to limit physical access to its electronic information systems and the facility or facilities in which they are housed, while ensuring that properly authorized access is allowed.</P>
+<P>(2) <I>Implementation specifications:</I></P>
+<P>(i) <I>Contingency operations (Addressable).</I> Establish (and implement as needed) procedures that allow facility access in support of restoration of lost data under the disaster recovery plan and emergency mode operations plan in the event of an emergency.</P>
+<P>(ii) <I>Facility security plan (Addressable).</I> Implement policies and procedures to safeguard the facility and the equipment therein from unauthorized physical access, tampering, and theft.</P>
+<P>(iii) <I>Access control and validation procedures (Addressable).</I> Implement procedures to control and validate a person's access to facilities based on their role or function, including visitor control, and control of access to software programs for testing and revision.</P>
+<P>(iv) <I>Maintenance records (Addressable).</I> Implement policies and procedures to document repairs and modifications to the physical components of a facility which are related to security (for example, hardware, walls, doors, and locks).</P>
+<P>(b) <I>Standard: Workstation use.</I> Implement policies and procedures that specify the proper functions to be performed, the manner in which those functions are to be performed, and the physical attributes of the surroundings of a specific workstation or class of workstation that can access electronic protected health information.</P>
+<P>(c) <I>Standard: Workstation security.</I> Implement physical safeguards for all workstations that access electronic protected health information, to restrict access to authorized users.</P>
+<P>(d)(1) <I>Standard: Device and media controls.</I> Implement policies and procedures that govern the receipt and removal of hardware and electronic media that contain electronic protected health information into and out of a facility, and the movement of these items within the facility.</P>
+<P>(2) <I>Implementation specifications:</I></P>
+<P>(i) <I>Disposal (Required).</I> Implement policies and procedures to address the final disposition of electronic protected health information, and/or the hardware or electronic media on which it is stored.</P>
+<P>(ii) <I>Media re-use (Required).</I> Implement procedures for removal of electronic protected health information from electronic media before the media are made available for re-use.</P>
+<P>(iii) <I>Accountability (Addressable).</I> Maintain a record of the movements of hardware and electronic media and any person responsible therefore.</P>
+<P>(iv) <I>Data backup and storage (Addressable).</I> Create a retrievable, exact copy of electronic protected health information, when needed, before movement of equipment.</P>
+<CITA TYPE="N">[68 FR 8376, Feb. 20, 2003, as amended at 78 FR 5694, Jan. 25, 2013]
+</CITA>
+</DIV8>
+
+<DIV8 N="164.312" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.312&quot;,&quot;citation&quot;:&quot;45 CFR 164.312&quot;}">
+<HEAD>&#xA7; 164.312 Technical safeguards.</HEAD>
+<P>A covered entity or business associate must, in accordance with &#xA7; 164.306:</P>
+<P>(a)(1) <I>Standard: Access control.</I> Implement technical policies and procedures for electronic information systems that maintain electronic protected health information to allow access only to those persons or software programs that have been granted access rights as specified in &#xA7; 164.308(a)(4).</P>
+<P>(2) <I>Implementation specifications:</I></P>
+<P>(i) <I>Unique user identification (Required).</I> Assign a unique name and/or number for identifying and tracking user identity.</P>
+<P>(ii) <I>Emergency access procedure (Required).</I> Establish (and implement as needed) procedures for obtaining necessary electronic protected health information during an emergency.</P>
+<P>(iii) <I>Automatic logoff (Addressable).</I> Implement electronic procedures that terminate an electronic session after a predetermined time of inactivity.</P>
+<P>(iv) <I>Encryption and decryption (Addressable).</I> Implement a mechanism to encrypt and decrypt electronic protected health information.</P>
+<P>(b) <I>Standard: Audit controls.</I> Implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems that contain or use electronic protected health information.</P>
+<P>(c)(1) <I>Standard: Integrity.</I> Implement policies and procedures to protect electronic protected health information from improper alteration or destruction.</P>
+<P>(2) <I>Implementation specification: Mechanism to authenticate electronic protected health information (Addressable).</I> Implement electronic mechanisms to corroborate that electronic protected health information has not been altered or destroyed in an unauthorized manner.</P>
+<P>(d) <I>Standard: Person or entity authentication.</I> Implement procedures to verify that a person or entity seeking access to electronic protected health information is the one claimed.</P>
+<P>(e)(1) <I>Standard: Transmission security.</I> Implement technical security measures to guard against unauthorized access to electronic protected health information that is being transmitted over an electronic communications network.</P>
+<P>(2) <I>Implementation specifications:</I></P>
+<P>(i) <I>Integrity controls (Addressable).</I> Implement security measures to ensure that electronically transmitted electronic protected health information is not improperly modified without detection until disposed of.</P>
+<P>(ii) <I>Encryption (Addressable).</I> Implement a mechanism to encrypt electronic protected health information whenever deemed appropriate.</P>
+<CITA TYPE="N">[68 FR 8376, Feb. 20, 2003, as amended at 78 FR 5694, Jan. 25, 2013]
+</CITA>
+</DIV8>
+
+<DIV8 N="164.314" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.314&quot;,&quot;citation&quot;:&quot;45 CFR 164.314&quot;}">
+<HEAD>&#xA7; 164.314 Organizational requirements.</HEAD>
+<P>(a)(1) <I>Standard: Business associate contracts or other arrangements.</I> The contract or other arrangement required by &#xA7; 164.308(b)(3) must meet the requirements of paragraph (a)(2)(i), (a)(2)(ii), or (a)(2)(iii) of this section, as applicable.</P>
+<P>(2) <I>Implementation specifications (Required)</I>&#x2014;(i) <I>Business associate contracts.</I> The contract must provide that the business associate will&#x2014;</P>
+<P>(A) Comply with the applicable requirements of this subpart;</P>
+<P>(B) In accordance with &#xA7; 164.308(b)(2), ensure that any subcontractors that create, receive, maintain, or transmit electronic protected health information on behalf of the business associate agree to comply with the applicable requirements of this subpart by entering into a contract or other arrangement that complies with this section; and</P>
+<P>(C) Report to the covered entity any security incident of which it becomes aware, including breaches of unsecured protected health information as required by &#xA7; 164.410.</P>
+<P>(ii) <I>Other arrangements.</I> The covered entity is in compliance with paragraph (a)(1) of this section if it has another arrangement in place that meets the requirements of &#xA7; 164.504(e)(3).</P>
+<P>(iii) <I>Business associate contracts with subcontractors.</I> The requirements of paragraphs (a)(2)(i) and (a)(2)(ii) of this section apply to the contract or other arrangement between a business associate and a subcontractor required by &#xA7; 164.308(b)(4) in the same manner as such requirements apply to contracts or other arrangements between a covered entity and business associate.</P>
+<P>(b)(1) <I>Standard: Requirements for group health plans.</I> Except when the only electronic protected health information disclosed to a plan sponsor is disclosed pursuant to &#xA7; 164.504(f)(1)(ii) or (iii), or as authorized under &#xA7; 164.508, a group health plan must ensure that its plan documents provide that the plan sponsor will reasonably and appropriately safeguard electronic protected health information created, received, maintained, or transmitted to or by the plan sponsor on behalf of the group health plan.</P>
+<P>(2) <I>Implementation specifications (Required).</I> The plan documents of the group health plan must be amended to incorporate provisions to require the plan sponsor to&#x2014;</P>
+<P>(i) Implement administrative, physical, and technical safeguards that reasonably and appropriately protect the confidentiality, integrity, and availability of the electronic protected health information that it creates, receives, maintains, or transmits on behalf of the group health plan;</P>
+<P>(ii) Ensure that the adequate separation required by &#xA7; 164.504(f)(2)(iii) is supported by reasonable and appropriate security measures;</P>
+<P>(iii) Ensure that any agent to whom it provides this information agrees to implement reasonable and appropriate security measures to protect the information; and</P>
+<P>(iv) Report to the group health plan any security incident of which it becomes aware.</P>
+<CITA TYPE="N">[68 FR 8376, Feb. 20, 2003, as amended at 78 FR 5694, Jan. 25, 2013; 78 FR 34266, June 7, 2013]
+</CITA>
+</DIV8>
+
+<DIV8 N="164.316" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.316&quot;,&quot;citation&quot;:&quot;45 CFR 164.316&quot;}">
+<HEAD>&#xA7; 164.316 Policies and procedures and documentation requirements.</HEAD>
+<P>A covered entity or business associate must, in accordance with &#xA7; 164.306:</P>
+<P>(a) <I>Standard: Policies and procedures.</I> Implement reasonable and appropriate policies and procedures to comply with the standards, implementation specifications, or other requirements of this subpart, taking into account those factors specified in &#xA7; 164.306(b)(2)(i), (ii), (iii), and (iv). This standard is not to be construed to permit or excuse an action that violates any other standard, implementation specification, or other requirements of this subpart. A covered entity or business associate may change its policies and procedures at any time, provided that the changes are documented and are implemented in accordance with this subpart.</P>
+<P>(b)(1) <I>Standard: Documentation.</I> (i) Maintain the policies and procedures implemented to comply with this subpart in written (which may be electronic) form; and</P>
+<P>(ii) If an action, activity or assessment is required by this subpart to be documented, maintain a written (which may be electronic) record of the action, activity, or assessment.</P>
+<P>(2) <I>Implementation specifications:</I></P>
+<P>(i) <I>Time limit (Required).</I> Retain the documentation required by paragraph (b)(1) of this section for 6 years from the date of its creation or the date when it last was in effect, whichever is later.</P>
+<P>(ii) <I>Availability (Required).</I> Make documentation available to those persons responsible for implementing the procedures to which the documentation pertains.</P>
+<P>(iii) <I>Updates (Required).</I> Review documentation periodically, and update as needed, in response to environmental or operational changes affecting the security of the electronic protected health information.</P>
+<CITA TYPE="N">[68 FR 8376, Feb. 20, 2003, as amended at 78 FR 5695, Jan. 25, 2013]
+</CITA>
+</DIV8>
+
+<DIV8 N="164.318" TYPE="SECTION" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/section-164.318&quot;,&quot;citation&quot;:&quot;45 CFR 164.318&quot;}">
+<HEAD>&#xA7; 164.318 Compliance dates for the initial implementation of the security standards.</HEAD>
+<P>(a) <I>Health plan.</I> (1) A health plan that is not a small health plan must comply with the applicable requirements of this subpart no later than April 20, 2005.</P>
+<P>(2) A small health plan must comply with the applicable requirements of this subpart no later than April 20, 2006.</P>
+<P>(b) <I>Health care clearinghouse.</I> A health care clearinghouse must comply with the applicable requirements of this subpart no later than April 20, 2005.</P>
+<P>(c) <I>Health care provider.</I> A covered health care provider must comply with the applicable requirements of this subpart no later than April 20, 2005.</P>
+</DIV8>
+
+<DIV9 N="Appendix A to Subpart C of Part 164" TYPE="APPENDIX" hierarchy_metadata="{&quot;path&quot;:&quot;/on/_SUBSTITUTE_DATE_/title-45/part-164/appendix-Appendix A to Subpart C of Part 164&quot;,&quot;citation&quot;:&quot;Appendix A to Subpart C of Part 164, Title 45&quot;}">
+<HEAD>Appendix A to Subpart C of Part 164&#x2014;Security Standards: Matrix
+</HEAD>
+<DIV width="100%"><DIV class="gpotbl_div">
+<TABLE border="1" cellpadding="1" cellspacing="1" class="gpo_table" frame="void" width="100%">
+<THEAD>
+<TR>
+<TH class="center border-top-single border-bottom-single border-right-single">Standards</TH>
+<TH class="center border-top-single border-bottom-single border-right-single">Sections</TH>
+<TH class="center border-top-single border-bottom-single">Implementation Specifications (R) = Required, (A) = Addressable</TH>
+</TR>
+</THEAD>
+<TBODY>
+<TR>
+<TD colspan="3" class="center border-bottom-single"><strong class="minor-caps">Administrative Safeguards</strong>
+</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Security Management Process</TD>
+<TD class="left border-right-single">164.308(a)(1)</TD>
+<TD class="left">Risk Analysis (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Risk Management (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Sanction Policy (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Information System Activity Review (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Assigned Security Responsibility</TD>
+<TD class="left border-right-single">164.308(a)(2)</TD>
+<TD class="left">(R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Workforce Security</TD>
+<TD class="left border-right-single">164.308(a)(3)</TD>
+<TD class="left">Authorization and/or Supervision (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"/>
+<TD class="left border-right-single"/>
+<TD class="left">Workforce Clearance Procedure</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Termination Procedures (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Information Access Management</TD>
+<TD class="left border-right-single">164.308(a)(4)</TD>
+<TD class="left">Isolating Health care Clearinghouse Function (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Access Authorization (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Access Establishment and Modification (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Security Awareness and Training</TD>
+<TD class="left border-right-single">164.308(a)(5)</TD>
+<TD class="left">Security Reminders (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Protection from Malicious Software (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Log-in Monitoring (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Password Management (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Security Incident Procedures</TD>
+<TD class="left border-right-single">164.308(a)(6)</TD>
+<TD class="left">Response and Reporting (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Contingency Plan</TD>
+<TD class="left border-right-single">164.308(a)(7)</TD>
+<TD class="left">Data Backup Plan (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Disaster Recovery Plan (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Emergency Mode Operation Plan (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Testing and Revision Procedure (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Applications and Data Criticality Analysis (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Evaluation</TD>
+<TD class="left border-right-single">164.308(a)(8)</TD>
+<TD class="left">(R)</TD>
+</TR>
+<TR>
+<TD class="left border-bottom-single border-right-single">Business Associate Contracts and Other Arrangement</TD>
+<TD class="left border-bottom-single border-right-single">164.308(b)(1)</TD>
+<TD class="left border-bottom-single">Written Contract or Other Arrangement (R)</TD>
+</TR>
+<TR>
+<TD colspan="3" class="center border-bottom-single"><strong class="minor-caps">Physical Safeguards</strong>
+</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Facility Access Controls</TD>
+<TD class="left border-right-single">164.310(a)(1)</TD>
+<TD class="left">Contingency Operations (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Facility Security Plan (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Access Control and Validation Procedures (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Maintenance Records (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Workstation Use</TD>
+<TD class="left border-right-single">164.310(b)</TD>
+<TD class="left">(R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Workstation Security</TD>
+<TD class="left border-right-single">164.310(c)</TD>
+<TD class="left">(R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Device and Media Controls</TD>
+<TD class="left border-right-single">164.310(d)(1)</TD>
+<TD class="left">Disposal (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Media Re-use (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Accountability (A)</TD>
+</TR>
+<TR>
+<TD class="left border-bottom-single border-right-single"> </TD>
+<TD class="left border-bottom-single border-right-single"> </TD>
+<TD class="left border-bottom-single">Data Backup and Storage (A)</TD>
+</TR>
+<TR>
+<TD colspan="3" class="center border-bottom-single"><strong class="minor-caps">Technical Safeguards</strong> (see &#xA7; 164.312)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Access Control</TD>
+<TD class="left border-right-single">164.312(a)(1)</TD>
+<TD class="left">Unique User Identification (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Emergency Access Procedure (R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Automatic Logoff (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single"> </TD>
+<TD class="left border-right-single"/>
+<TD class="left">Encryption and Decryption (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Audit Controls</TD>
+<TD class="left border-right-single">164.312(b)</TD>
+<TD class="left">(R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Integrity</TD>
+<TD class="left border-right-single">164.312(c)(1)</TD>
+<TD class="left">Mechanism to Authenticate Electronic Protected Health Information (A)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Person or Entity Authentication</TD>
+<TD class="left border-right-single">164.312(d)</TD>
+<TD class="left">(R)</TD>
+</TR>
+<TR>
+<TD class="left border-right-single">Transmission Security</TD>
+<TD class="left border-right-single">164.312(e)(1)</TD>
+<TD class="left">Integrity Controls (A)</TD>
+</TR>
+<TR>
+<TD class="left border-bottom-single border-right-single"> </TD>
+<TD class="left border-bottom-single border-right-single"/>
+<TD class="left border-bottom-single">Encryption (A)</TD>
+</TR>
+</TBODY>
+</TABLE>
+</DIV></DIV>
+</DIV9>
+
+</DIV6>

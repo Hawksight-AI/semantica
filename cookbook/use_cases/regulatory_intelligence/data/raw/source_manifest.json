@@ -1,0 +1,83 @@
+[
+  {
+    "filename": "nist_ai_rmf_1.0.pdf",
+    "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf",
+    "type": "pdf",
+    "description": "NIST AI Risk Management Framework (AI RMF 1.0), NIST AI 100-1",
+    "retrieved_at": "2026-08-04T17:51:30.539157+00:00",
+    "size_bytes": 1946127,
+    "status_code": 200
+  },
+  {
+    "filename": "nist_csf_1.1.pdf",
+    "url": "https://nvlpubs.nist.gov/nistpubs/cswp/nist.cswp.04162018.pdf",
+    "type": "pdf",
+    "description": "NIST Cybersecurity Framework, Version 1.1 (April 2018)",
+    "retrieved_at": "2026-08-04T17:51:33.569305+00:00",
+    "size_bytes": 1062822,
+    "status_code": 200
+  },
+  {
+    "filename": "nist_csf_2.0.pdf",
+    "url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf",
+    "type": "pdf",
+    "description": "The NIST Cybersecurity Framework (CSF) 2.0, NIST CSWP 29 (February 2024)",
+    "retrieved_at": "2026-08-04T17:51:36.871034+00:00",
+    "size_bytes": 1518858,
+    "status_code": 200
+  },
+  {
+    "filename": "nist_sp800-66r2_hipaa_security.pdf",
+    "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-66r2.pdf",
+    "type": "pdf",
+    "description": "NIST SP 800-66 Rev. 2: Implementing the HIPAA Security Rule: A Cybersecurity Resource Guide",
+    "retrieved_at": "2026-08-04T17:51:40.264756+00:00",
+    "size_bytes": 1626188,
+    "status_code": 200
+  },
+  {
+    "filename": "hipaa_security_rule_45cfr164_subpart_c.xml",
+    "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-07-31/title-45.xml?part=164&subpart=C",
+    "type": "xml",
+    "description": "HIPAA Security Rule, 45 CFR Part 164 Subpart C (current eCFR text, via the public eCFR versioner API)",
+    "retrieved_at": "2026-08-04T17:51:42.108482+00:00",
+    "size_bytes": 37860,
+    "status_code": 200
+  },
+  {
+    "filename": "eo_14110_safe_secure_trustworthy_ai.pdf",
+    "url": "https://www.govinfo.gov/content/pkg/FR-2023-11-01/pdf/2023-24283.pdf",
+    "type": "pdf",
+    "description": "Executive Order 14110: Safe, Secure, and Trustworthy Development and Use of AI (Federal Register, Nov 1, 2023)",
+    "retrieved_at": "2026-08-04T17:51:44.635684+00:00",
+    "size_bytes": 437813,
+    "status_code": 200
+  },
+  {
+    "filename": "omb_m24-10_ai_governance.pdf",
+    "url": "https://www.whitehouse.gov/wp-content/uploads/2024/03/M-24-10-Advancing-Governance-Innovation-and-Risk-Management-for-Agency-Use-of-Artificial-Intelligence.pdf",
+    "type": "pdf",
+    "description": "OMB Memorandum M-24-10: Advancing Governance, Innovation, and Risk Management for Agency Use of Artificial Intelligence (March 2024)",
+    "retrieved_at": "2026-08-04T17:51:45.590508+00:00",
+    "size_bytes": 530549,
+    "status_code": 200
+  },
+  {
+    "filename": "nist_ai_600-1_genai_profile.pdf",
+    "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+    "type": "pdf",
+    "description": "NIST AI 600-1: Artificial Intelligence Risk Management Framework: Generative Artificial Intelligence Profile (2024)",
+    "retrieved_at": "2026-08-04T17:51:50.286354+00:00",
+    "size_bytes": 1174643,
+    "status_code": 200
+  },
+  {
+    "filename": "fed_compliance_plan_omb_m24-10.pdf",
+    "url": "https://www.federalreserve.gov/publications/files/compliance-plan-for-omb-memorandum-m-24-10-202409.pdf",
+    "type": "pdf",
+    "description": "Board of Governors of the Federal Reserve System: Compliance Plan for OMB Memorandum M-24-10 (September 2024)",
+    "retrieved_at": "2026-08-04T17:51:51.144492+00:00",
+    "size_bytes": 1092733,
+    "status_code": 200
+  }
+]

@@ -56,6 +56,13 @@ Deep dive into advanced features, customization, and complex workflows.
 - **[Change Management](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/24_Change_Management.ipynb)** — Versioning, audit trails, and data-integrity checks for knowledge graphs and ontologies. Topics: ChangeLogEntry, Version Storage, Data Integrity · *Advanced*
 
 
+## Use Cases
+
+Self-contained, end-to-end examples built from real public data and real external ontologies, not synthetic samples. Each one is a folder with its own `data/` (source documents + download script) and `ontology/` (vendored real ontologies + a small domain extension) alongside the notebook.
+
+- **[Regulatory Intelligence](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/regulatory_intelligence/README.md)** — Turns 9 real U.S. federal AI-governance and cybersecurity-regulation documents (NIST AI RMF, NIST CSF 1.1/2.0, HIPAA Security Rule, Executive Order 14110, OMB M-24-10, and more) into an explainable, ontology-driven knowledge graph. Full pipeline: ingestion, chunking every document, automatic entity/relation/triplet extraction across the corpus, ontology import/generation/evaluation, entity resolution, graph construction, SHACL validation, deterministic rule-based reasoning, PROV-O provenance, a persistent RDF database (Oxigraph on disk, plus Semantica's `TripletStore` for a production server), conflict detection, temporal reasoning, SPARQL, JSON-LD, GraphRAG, and a five-agent Decision Intelligence workflow, reusing real W3C ontologies (ORG, PROV-O, SKOS, DCAT, OWL-Time, FRBR). Topics: Regulatory Intelligence, Decision Intelligence, Explainable AI · *Advanced*
+
+
 ## How to Run
 
 <Steps>

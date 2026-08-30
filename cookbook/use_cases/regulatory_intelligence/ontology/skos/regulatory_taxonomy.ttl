@@ -1,0 +1,183 @@
+# Regulatory Intelligence — SKOS taxonomy.
+#
+# Every concept below is lifted directly from a defined term, section
+# heading, or function name that actually appears in one of the 9 real
+# documents in data/raw/ (verified by text-searching the real PDFs/XML
+# before writing this file — see skos:scopeNote on each concept for the
+# exact source). This is schema/vocabulary, not data: no facts about the
+# world are asserted here, only the controlled vocabulary used to tag them.
+
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+@prefix regv:  <https://semantica.dev/cookbook/regulatory-intelligence/vocabulary#> .
+
+regv:RegulatoryTopics
+    a skos:ConceptScheme ;
+    skos:prefLabel "Regulatory Intelligence — Topic Vocabulary"@en ;
+    skos:definition "Controlled vocabulary of functions, safeguards, governance concepts, and sectors drawn directly from the 9 real documents ingested by this use case."@en .
+
+# ---- NIST Cybersecurity Framework 2.0 — the six Functions ---------------
+# Source: nist_csf_2.0.pdf (NIST CSWP 29)
+
+regv:Govern
+    a skos:Concept ;
+    skos:inScheme regv:RegulatoryTopics ;
+    skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Govern"@en ;
+    skos:definition "CSF 2.0 Function: establish and monitor the organization's cybersecurity risk management strategy, expectations, and policy."@en ;
+    skos:scopeNote "NIST CSWP 29 (CSF 2.0) — added relative to CSF 1.1."@en ;
+    skos:related regv:AIGovern .
+
+regv:Identify
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Identify"@en ;
+    skos:definition "CSF Function: understand the organization's current cybersecurity risks."@en ;
+    skos:scopeNote "NIST CSWP 29 / nist.cswp.04162018 (CSF 1.1 and 2.0)."@en .
+
+regv:Protect
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Protect"@en ;
+    skos:definition "CSF Function: use safeguards to manage the organization's cybersecurity risks."@en ;
+    skos:scopeNote "NIST CSWP 29 / nist.cswp.04162018 (CSF 1.1 and 2.0)."@en .
+
+regv:Detect
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Detect"@en ;
+    skos:definition "CSF Function: find and analyze possible cybersecurity attacks and compromises."@en ;
+    skos:scopeNote "NIST CSWP 29 / nist.cswp.04162018 (CSF 1.1 and 2.0)."@en .
+
+regv:Respond
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Respond"@en ;
+    skos:definition "CSF Function: take action regarding a detected cybersecurity incident."@en ;
+    skos:scopeNote "NIST CSWP 29 / nist.cswp.04162018 (CSF 1.1 and 2.0)."@en .
+
+regv:Recover
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Recover"@en ;
+    skos:definition "CSF Function: restore assets and operations affected by a cybersecurity incident."@en ;
+    skos:scopeNote "NIST CSWP 29 / nist.cswp.04162018 (CSF 1.1 and 2.0)."@en .
+
+# ---- NIST AI Risk Management Framework 1.0 — the four Functions ---------
+# Source: nist_ai_rmf_1.0.pdf (NIST AI 100-1)
+
+regv:AIGovern
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ;
+    skos:prefLabel "Govern (AI RMF)"@en ;
+    skos:definition "AI RMF Function: cultivate a culture of AI risk management and establish accountability structures across the AI lifecycle."@en ;
+    skos:scopeNote "NIST AI 100-1 (AI RMF 1.0)."@en ;
+    skos:related regv:Govern .
+
+regv:Map
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ;
+    skos:prefLabel "Map"@en ;
+    skos:definition "AI RMF Function: establish the context to frame risks related to an AI system."@en ;
+    skos:scopeNote "NIST AI 100-1 (AI RMF 1.0)."@en .
+
+regv:Measure
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ;
+    skos:prefLabel "Measure"@en ;
+    skos:definition "AI RMF Function: employ quantitative, qualitative, or mixed-method tools to analyze and monitor AI risk."@en ;
+    skos:scopeNote "NIST AI 100-1 (AI RMF 1.0)."@en .
+
+regv:Manage
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ;
+    skos:prefLabel "Manage"@en ;
+    skos:definition "AI RMF Function: allocate resources to mapped and measured risks on a regular basis."@en ;
+    skos:scopeNote "NIST AI 100-1 (AI RMF 1.0)."@en .
+
+# ---- HIPAA Security Rule safeguard categories ----------------------------
+# Source: hipaa_security_rule_45cfr164_subpart_c.xml (45 CFR 164.308/.310/.312/.314)
+
+regv:AdministrativeSafeguards
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Administrative Safeguards"@en ;
+    skos:definition "Administrative actions, policies, and procedures to manage the selection, development, and execution of security measures to protect ePHI."@en ;
+    skos:scopeNote "45 CFR 164.308."@en .
+
+regv:PhysicalSafeguards
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Physical Safeguards"@en ;
+    skos:definition "Physical measures, policies, and procedures to protect electronic information systems and related buildings/equipment from hazards and unauthorized intrusion."@en ;
+    skos:scopeNote "45 CFR 164.310."@en .
+
+regv:TechnicalSafeguards
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Technical Safeguards"@en ;
+    skos:definition "The technology and policy/procedures for its use that protect ePHI and control access to it."@en ;
+    skos:scopeNote "45 CFR 164.312."@en .
+
+regv:OrganizationalRequirements
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Organizational Requirements"@en ;
+    skos:definition "Requirements governing business associate contracts and other arrangements involving ePHI."@en ;
+    skos:scopeNote "45 CFR 164.314."@en .
+
+# ---- OMB M-24-10 AI governance concepts ----------------------------------
+# Source: omb_m24-10_ai_governance.pdf
+
+regv:Transparency
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Transparency"@en ;
+    skos:definition "Public disclosure obligations for agency AI use, including AI use case inventories."@en ;
+    skos:scopeNote "OMB Memorandum M-24-10."@en .
+
+regv:RightsImpactingAI
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ;
+    skos:prefLabel "Rights-Impacting AI"@en ;
+    skos:broader regv:RiskClassification ;
+    skos:definition "AI whose output serves as a principal basis for a decision or action with a legal, material, or similarly significant effect on a person's civil rights or liberties."@en ;
+    skos:scopeNote "OMB Memorandum M-24-10."@en .
+
+regv:SafetyImpactingAI
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ;
+    skos:prefLabel "Safety-Impacting AI"@en ;
+    skos:broader regv:RiskClassification ;
+    skos:definition "AI whose output serves as a principal basis for a decision or action that has the potential to significantly impact the safety of human life or well-being."@en ;
+    skos:scopeNote "OMB Memorandum M-24-10."@en .
+
+regv:RiskClassification
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Risk Classification"@en ;
+    skos:definition "Categorizing an AI use case by the severity of its potential impact, driving which minimum risk-management practices apply."@en ;
+    skos:scopeNote "OMB Memorandum M-24-10; NIST AI 600-1."@en ;
+    skos:narrower regv:RightsImpactingAI , regv:SafetyImpactingAI .
+
+regv:ChiefAIOfficer
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ;
+    skos:prefLabel "Chief AI Officer"@en ;
+    skos:altLabel "CAIO"@en ;
+    skos:definition "The senior official each covered agency must designate to coordinate AI use and governance."@en ;
+    skos:scopeNote "OMB Memorandum M-24-10 (full term); Federal Reserve compliance plan (uses the abbreviation \"CAIO\")."@en .
+
+# ---- NIST AI 600-1 Generative AI Profile concepts ------------------------
+# Source: nist_ai_600-1_genai_profile.pdf
+
+regv:ContentProvenance
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Content Provenance"@en ;
+    skos:definition "Tracking the origin and history of generative-AI content, e.g. via metadata or watermarking, to distinguish it from human-generated content."@en ;
+    skos:scopeNote "NIST AI 600-1."@en .
+
+regv:Confabulation
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Confabulation"@en ;
+    skos:altLabel "Hallucination"@en ;
+    skos:definition "Confidently produced but erroneous or fabricated content generated by an AI system."@en ;
+    skos:scopeNote "NIST AI 600-1."@en .
+
+# ---- Sectors --------------------------------------------------------------
+# Used via reg:appliesToSector on RequirementClause instances.
+
+regv:Healthcare
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Healthcare"@en ;
+    skos:definition "The healthcare / public health sector."@en ;
+    skos:scopeNote "Sector governed by 45 CFR 164 Subpart C and NIST SP 800-66."@en .
+
+regv:FinancialServices
+    a skos:Concept ; skos:inScheme regv:RegulatoryTopics ; skos:topConceptOf regv:RegulatoryTopics ;
+    skos:prefLabel "Financial Services"@en ;
+    skos:definition "The financial services sector."@en ;
+    skos:scopeNote "Sector addressed by the Federal Reserve's OMB M-24-10 compliance plan."@en .
