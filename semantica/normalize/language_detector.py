@@ -73,11 +73,17 @@ class LanguageDetector:
             **config: Configuration options:
                 - default_language: Default language code (default: "en")
                 - min_confidence: Minimum confidence threshold (default: 0.5)
+                - min_text_length: Minimum stripped-text length required to run
+                  detection (default: 10). Inputs shorter than this return the
+                  fallback (``default_language``) instead of a detected
+                  language. Lower this for language mixes where short inputs
+                  carry enough signal (e.g. CJK text).
         """
         self.logger = get_logger("language_detector")
         self.config = config
         self.default_language = config.get("default_language", "en")
         self.min_confidence = config.get("min_confidence", 0.5)
+        self.min_text_length = config.get("min_text_length", 10)
 
         if not LANGDETECT_AVAILABLE:
             self.logger.warning(
@@ -94,6 +100,10 @@ class LanguageDetector:
             f"Language detector initialized (default={self.default_language})"
         )
 
+    def _min_text_length(self, options: Dict[str, Any]) -> int:
+        """Resolve the minimum text length, allowing per-call override."""
+        return options.get("min_text_length", self.min_text_length)
+
     def detect(self, text: str, **options) -> str:
         """
         Detect language of text.
@@ -103,16 +113,21 @@ class LanguageDetector:
 
         Args:
             text: Input text to analyze
-            **options: Detection options (unused)
+            **options: Detection options:
+                - min_text_length: Override the instance-level minimum text
+                  length for this call
 
         Returns:
             str: Detected language code (e.g., "en", "fr", "de")
 
         Note:
-            Requires minimum text length of 10 characters for reliable detection.
-            Returns default_language if text is too short or detection fails.
+            Inputs whose stripped length is below ``min_text_length``
+            (default: 10) never reach the underlying detector; the configured
+            ``default_language`` is returned as a fallback. This fallback is
+            not a detection result. The same fallback is returned if
+            detection fails.
         """
-        if not text or len(text.strip()) < 10:
+        if not text or len(text.strip()) < self._min_text_length(options):
             return self.default_language
 
         if not LANGDETECT_AVAILABLE:
@@ -140,14 +155,21 @@ class LanguageDetector:
 
         Args:
             text: Input text to analyze
-            **options: Detection options (unused)
+            **options: Detection options:
+                - min_text_length: Override the instance-level minimum text
+                  length for this call
 
         Returns:
             tuple: (language_code, confidence_score) where:
                 - language_code: Detected language code
                 - confidence_score: Confidence score between 0.0 and 1.0
+
+        Note:
+            Inputs whose stripped length is below ``min_text_length`` return
+            ``(default_language, 0.0)`` as a fallback; the 0.0 confidence
+            signals that no detection was performed.
         """
-        if not text or len(text.strip()) < 10:
+        if not text or len(text.strip()) < self._min_text_length(options):
             return (self.default_language, 0.0)
 
         if not LANGDETECT_AVAILABLE:
@@ -184,13 +206,20 @@ class LanguageDetector:
         Args:
             text: Input text to analyze
             top_n: Number of top languages to return (default: 3)
-            **options: Detection options (unused)
+            **options: Detection options:
+                - min_text_length: Override the instance-level minimum text
+                  length for this call
 
         Returns:
             list: List of (language_code, confidence_score) tuples, sorted by
                   confidence (highest first)
+
+        Note:
+            Inputs whose stripped length is below ``min_text_length`` return
+            ``[(default_language, 0.0)]`` as a fallback; the 0.0 confidence
+            signals that no detection was performed.
         """
-        if not text or len(text.strip()) < 10:
+        if not text or len(text.strip()) < self._min_text_length(options):
             return [(self.default_language, 0.0)]
 
         if not LANGDETECT_AVAILABLE:

@@ -37,6 +37,47 @@ class TestLanguageDetector(unittest.TestCase):
         self.assertEqual(lang, "en")
         self.assertGreater(conf, 0.5)
 
+    def test_default_min_text_length_preserved(self):
+        # Backward compatibility: default threshold stays at 10
+        self.assertEqual(self.detector.min_text_length, 10)
+        self.assertEqual(self.detector.detect("Short txt"), "en")
+
+    def test_short_text_fallback_has_zero_confidence(self):
+        # Fallback must be distinguishable from a genuine detection
+        lang, conf = self.detector.detect_with_confidence("Hi")
+        self.assertEqual((lang, conf), ("en", 0.0))
+        self.assertEqual(self.detector.detect_multiple("Hi"), [("en", 0.0)])
+
+    @unittest.skipUnless(LANGDETECT_AVAILABLE, "langdetect is not installed")
+    def test_short_non_latin_text_with_configured_threshold(self):
+        # 9 stripped chars: below the default threshold, silently falls back
+        text = "你好，这是中文文本"
+        self.assertEqual(self.detector.detect(text), "en")
+
+        # A configured threshold lets short CJK text reach the detector
+        detector = LanguageDetector(min_text_length=5)
+        self.assertTrue(detector.detect(text).startswith("zh"))
+
+        lang, conf = detector.detect_with_confidence(text)
+        self.assertTrue(lang.startswith("zh"))
+        self.assertGreater(conf, 0.5)
+
+        languages = detector.detect_multiple(text)
+        self.assertTrue(languages[0][0].startswith("zh"))
+
+    @unittest.skipUnless(LANGDETECT_AVAILABLE, "langdetect is not installed")
+    def test_min_text_length_per_call_override(self):
+        text = "你好，这是中文文本"
+        self.assertEqual(self.detector.detect(text), "en")
+        self.assertTrue(
+            self.detector.detect(text, min_text_length=5).startswith("zh")
+        )
+
+    def test_min_text_length_still_guards_empty_text(self):
+        detector = LanguageDetector(min_text_length=0)
+        self.assertEqual(detector.detect(""), "en")
+        self.assertEqual(detector.detect_with_confidence(""), ("en", 0.0))
+
     def test_get_language_name(self):
         self.assertEqual(self.detector.get_language_name("en"), "English")
         self.assertEqual(self.detector.get_language_name("fr"), "French")
