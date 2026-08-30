@@ -18,7 +18,14 @@ from semantica.semantic_extract.named_entity_recognizer import (
     EntityConfidenceScorer,
 )
 from semantica.semantic_extract.ner_extractor import NERExtractor
-from semantica.semantic_extract.types import Entity, meets_confidence_threshold
+from semantica.semantic_extract.types import (
+    CONFIDENCE_SOURCE_HEURISTIC,
+    CONFIDENCE_SOURCE_KEY,
+    CONFIDENCE_SOURCE_MODEL,
+    CONFIDENCE_SOURCE_UNAVAILABLE,
+    Entity,
+    meets_confidence_threshold,
+)
 
 
 def _fake_span(text, label, start, end, **extra):
@@ -56,7 +63,8 @@ class TestSpacyAdapter(unittest.TestCase):
         self.assertEqual(len(entities), 1)
         self.assertIsNone(entities[0].confidence)
         self.assertEqual(
-            entities[0].metadata["confidence_source"], "unavailable"
+            entities[0].metadata[CONFIDENCE_SOURCE_KEY],
+            CONFIDENCE_SOURCE_UNAVAILABLE,
         )
 
     def test_backend_provided_score_is_preserved(self):
@@ -75,10 +83,14 @@ class TestSpacyAdapter(unittest.TestCase):
             )
 
         self.assertEqual(entities[0].confidence, 0.83)
-        self.assertEqual(entities[0].metadata["confidence_source"], "model")
+        self.assertEqual(
+            entities[0].metadata[CONFIDENCE_SOURCE_KEY], CONFIDENCE_SOURCE_MODEL
+        )
         # A genuine 1.0 stays 1.0 and is marked as a real measurement
         self.assertEqual(entities[1].confidence, 1.0)
-        self.assertEqual(entities[1].metadata["confidence_source"], "model")
+        self.assertEqual(
+            entities[1].metadata[CONFIDENCE_SOURCE_KEY], CONFIDENCE_SOURCE_MODEL
+        )
 
 
 class TestEntityConfidenceScorer(unittest.TestCase):
@@ -89,7 +101,9 @@ class TestEntityConfidenceScorer(unittest.TestCase):
         entity = Entity(text="Apple", label="ORG", start_char=0, end_char=5)
         (scored,) = self.scorer.score_entities([entity])
         self.assertIsNotNone(scored.confidence)
-        self.assertEqual(scored.metadata["confidence_source"], "heuristic")
+        self.assertEqual(
+            scored.metadata[CONFIDENCE_SOURCE_KEY], CONFIDENCE_SOURCE_HEURISTIC
+        )
 
     def test_genuine_perfect_score_is_not_recalculated(self):
         # Lowercase ORG text would be penalized by the heuristic, so a
@@ -100,11 +114,13 @@ class TestEntityConfidenceScorer(unittest.TestCase):
             start_char=0,
             end_char=5,
             confidence=1.0,
-            metadata={"confidence_source": "model"},
+            metadata={CONFIDENCE_SOURCE_KEY: CONFIDENCE_SOURCE_MODEL},
         )
         (scored,) = self.scorer.score_entities([entity])
         self.assertEqual(scored.confidence, 1.0)
-        self.assertEqual(scored.metadata["confidence_source"], "model")
+        self.assertEqual(
+            scored.metadata[CONFIDENCE_SOURCE_KEY], CONFIDENCE_SOURCE_MODEL
+        )
 
     def test_backend_score_below_one_is_preserved(self):
         entity = Entity(
@@ -171,6 +187,46 @@ class TestConfidenceFiltering(unittest.TestCase):
         voted = extractor._vote_entities([[a], [b]], threshold=0.5)
         self.assertEqual(len(voted), 1)
         self.assertIsNone(voted[0].confidence)
+
+
+class TestPipelineFillsUnknownConfidence(unittest.TestCase):
+    def test_extract_emits_only_scored_entities(self):
+        # The extract() pipeline scores unknown confidences before filtering,
+        # so consumers of extract() never see None
+        ents = [_fake_span("Apple Inc.", "ORG", 0, 10)]
+        with patch(
+            "semantica.semantic_extract.methods.SPACY_AVAILABLE", True
+        ), patch(
+            "semantica.semantic_extract.methods.load_spacy_model",
+            return_value=_fake_nlp(ents),
+        ):
+            extractor = NERExtractor(method="ml")
+            entities = extractor.extract("Apple Inc. was founded.")
+
+        self.assertTrue(entities)
+        for entity in entities:
+            self.assertIsNotNone(entity.confidence)
+        self.assertEqual(
+            entities[0].metadata[CONFIDENCE_SOURCE_KEY],
+            CONFIDENCE_SOURCE_HEURISTIC,
+        )
+
+    def test_extract_preserves_measured_scores(self):
+        ents = [_fake_span("Apple Inc.", "ORG", 0, 10, score=0.83)]
+        with patch(
+            "semantica.semantic_extract.methods.SPACY_AVAILABLE", True
+        ), patch(
+            "semantica.semantic_extract.methods.load_spacy_model",
+            return_value=_fake_nlp(ents),
+        ):
+            entities = NERExtractor(method="ml").extract(
+                "Apple Inc. was founded."
+            )
+
+        self.assertEqual(entities[0].confidence, 0.83)
+        self.assertEqual(
+            entities[0].metadata[CONFIDENCE_SOURCE_KEY], CONFIDENCE_SOURCE_MODEL
+        )
 
 
 class TestWeightedConfidence(unittest.TestCase):

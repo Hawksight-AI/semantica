@@ -8,6 +8,15 @@ method dispatchers and extractors can share result models without import cycles.
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+# Provenance vocabulary for Entity.confidence, recorded under
+# metadata[CONFIDENCE_SOURCE_KEY]. Producers must use these constants so the
+# vocabulary stays greppable and typo-proof.
+CONFIDENCE_SOURCE_KEY = "confidence_source"
+CONFIDENCE_SOURCE_MODEL = "model"  # score produced by the extraction backend
+CONFIDENCE_SOURCE_HEURISTIC = "heuristic"  # filled by EntityConfidenceScorer
+CONFIDENCE_SOURCE_TYPE_SIMILARITY = "type_similarity"  # from entity_types weighting
+CONFIDENCE_SOURCE_UNAVAILABLE = "unavailable"  # backend exposes no score
+
 
 @dataclass
 class Entity:

@@ -52,6 +52,7 @@ from ..utils.exceptions import ProcessingError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .ner_extractor import Entity, NERExtractor
+from .types import CONFIDENCE_SOURCE_HEURISTIC, CONFIDENCE_SOURCE_KEY
 
 
 class NamedEntityRecognizer:
@@ -310,7 +311,9 @@ class EntityConfidenceScorer:
                 entity.confidence = self._calculate_confidence(entity, **options)
                 if entity.metadata is None:
                     entity.metadata = {}
-                entity.metadata["confidence_source"] = "heuristic"
+                entity.metadata[CONFIDENCE_SOURCE_KEY] = (
+                    CONFIDENCE_SOURCE_HEURISTIC
+                )
 
         return entities
 

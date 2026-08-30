@@ -118,7 +118,14 @@ from .providers import HuggingFaceModelLoader, create_provider
 from .registry import method_registry
 from .cache import ExtractionCache
 from .config import config
-from .types import Entity, Relation, Triplet
+from .types import (
+    CONFIDENCE_SOURCE_KEY,
+    CONFIDENCE_SOURCE_MODEL,
+    CONFIDENCE_SOURCE_UNAVAILABLE,
+    Entity,
+    Relation,
+    Triplet,
+)
 
 try:
     from .schemas import (
@@ -819,8 +826,10 @@ def extract_entities_ml(
                     "extraction_method": "ml",
                     "model": model,
                     "lemma": ent.lemma_ if hasattr(ent, "lemma_") else ent.text,
-                    "confidence_source": (
-                        "model" if confidence is not None else "unavailable"
+                    CONFIDENCE_SOURCE_KEY: (
+                        CONFIDENCE_SOURCE_MODEL
+                        if confidence is not None
+                        else CONFIDENCE_SOURCE_UNAVAILABLE
                     ),
                 },
             )

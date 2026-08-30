@@ -76,7 +76,12 @@ from ..utils.exceptions import ProcessingError
 from ..utils.helpers import safe_import
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
-from .types import Entity, meets_confidence_threshold
+from .types import (
+    CONFIDENCE_SOURCE_KEY,
+    CONFIDENCE_SOURCE_TYPE_SIMILARITY,
+    Entity,
+    meets_confidence_threshold,
+)
 
 spacy, SPACY_AVAILABLE = safe_import("spacy")
 
@@ -416,14 +421,18 @@ class NERExtractor:
                                 if not had_score and e.confidence is not None:
                                     if e.metadata is None:
                                         e.metadata = {}
-                                    e.metadata["confidence_source"] = (
-                                        "type_similarity"
+                                    e.metadata[CONFIDENCE_SOURCE_KEY] = (
+                                        CONFIDENCE_SOURCE_TYPE_SIMILARITY
                                     )
                         except ImportError:
                             pass
 
-                    # Filter by confidence (unknown confidence passes: absence
-                    # of a score is not evidence of low confidence)
+                    # Score any remaining unknown confidences so filtering,
+                    # voting and consumers downstream always see measured or
+                    # heuristic values, never None
+                    entities = self._fill_unknown_confidence(entities)
+
+                    # Filter by confidence
                     filtered = [
                         e
                         for e in entities
@@ -651,6 +660,22 @@ class NERExtractor:
             classified[entity.label].append(entity)
 
         return classified
+
+    def _fill_unknown_confidence(self, entities: List[Entity]) -> List[Entity]:
+        """Assign heuristic scores to entities without a measured confidence.
+
+        Runs inside the extract() pipeline before filtering, so the pipeline
+        guarantees every emitted entity carries a numeric confidence —
+        callers never have to reason about None. Filled scores are labeled
+        confidence_source="heuristic"; measured scores are never touched.
+        """
+        if all(e.confidence is not None for e in entities):
+            return entities
+        # Deferred import: named_entity_recognizer imports this module at
+        # module level, so a top-level import here would be circular
+        from .named_entity_recognizer import EntityConfidenceScorer
+
+        return EntityConfidenceScorer().score_entities(entities)
 
     def filter_by_confidence(
         self, entities: List[Entity], min_confidence: float
