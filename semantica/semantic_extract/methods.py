@@ -628,9 +628,9 @@ def calculate_weighted_confidence(
 
     Returns:
         float or None: Weighted confidence score (0.0-1.0). When
-        original_confidence is None the score is based on similarity alone;
-        None is passed through unchanged without valid_types or when the
-        similarity weight is disabled (<= 0).
+        original_confidence is None, returns the similarity score alone —
+        or None (still unknown) if valid_types is empty or the similarity
+        weight is disabled (<= 0).
     """
     if not valid_types:
         return original_confidence

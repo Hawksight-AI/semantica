@@ -25,9 +25,9 @@ class Entity:
     ``confidence`` is ``None`` when no confidence measurement is available
     (e.g. the extraction backend does not expose per-entity probabilities).
     ``None`` is distinct from any numeric score: it means "unknown", not
-    "certain". Producers should record where a score came from in
-    ``metadata["confidence_source"]`` (e.g. ``"model"``, ``"heuristic"``,
-    ``"unavailable"``).
+    "certain". Producers record where a score came from under
+    ``metadata[CONFIDENCE_SOURCE_KEY]``, using the ``CONFIDENCE_SOURCE_*``
+    constants above.
     """
 
     text: str

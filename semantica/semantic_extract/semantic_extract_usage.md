@@ -88,8 +88,9 @@ ner = NamedEntityRecognizer()
 entities = ner.extract_entities("Apple Inc. was founded by Steve Jobs in 1976.")
 
 for entity in entities:
-    # confidence is None when the extraction backend provides no per-entity
-    # score (e.g. standard spaCy models); check metadata["confidence_source"]
+    # metadata["confidence_source"] records where the score came from
+    # (model/heuristic/...); confidence is None only for entities that
+    # bypass the extraction pipeline without a backend score
     confidence = f"{entity.confidence:.2f}" if entity.confidence is not None else "N/A"
     print(f"{entity.text} ({entity.type}) - Confidence: {confidence}")
 ```
