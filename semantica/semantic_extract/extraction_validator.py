@@ -55,6 +55,7 @@ from ..utils.exceptions import ProcessingError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .ner_extractor import Entity
+from .types import meets_confidence_threshold
 from .relation_extractor import Relation
 
 
@@ -132,7 +133,8 @@ class ExtractionValidator:
             self.progress_tracker.update_tracking(
                 tracking_id, message="Checking confidence scores..."
             )
-            low_confidence = [e for e in entities if e.confidence < min_confidence]
+            scored = [e for e in entities if e.confidence is not None]
+            low_confidence = [e for e in scored if e.confidence < min_confidence]
             if low_confidence:
                 warnings.append(
                     f"{len(low_confidence)} entities below confidence threshold"
@@ -144,20 +146,22 @@ class ExtractionValidator:
             if empty_entities:
                 errors.append(f"{len(empty_entities)} empty entities found")
 
-            # Calculate metrics
+            # Calculate metrics (entities with unknown confidence are counted
+            # separately and excluded from the score buckets and average)
             metrics = {
                 "total_entities": len(entities),
-                "high_confidence": len([e for e in entities if e.confidence >= 0.8]),
+                "high_confidence": len([e for e in scored if e.confidence >= 0.8]),
                 "medium_confidence": len(
-                    [e for e in entities if min_confidence <= e.confidence < 0.8]
+                    [e for e in scored if min_confidence <= e.confidence < 0.8]
                 ),
                 "low_confidence": len(low_confidence),
+                "unscored": len(entities) - len(scored),
                 "unique_entities": len(set(e.text for e in entities)),
                 "entity_types": len(set(e.label for e in entities)),
-                "average_confidence": sum(e.confidence for e in entities)
-                / len(entities)
-                if entities
-                else 0.0,
+                "average_confidence": sum(e.confidence for e in scored)
+                / len(scored)
+                if scored
+                else None,
             }
 
             # Calculate score
@@ -302,9 +306,11 @@ class ExtractionValidator:
         dup_ratio = metrics.get("duplicates", 0) / metrics.get("total_entities", 1)
         score *= 1.0 - dup_ratio * 0.3
 
-        # Average confidence factor
-        avg_confidence = metrics.get("average_confidence", 0.0)
-        score *= 0.5 + avg_confidence * 0.5
+        # Average confidence factor (skipped when no entity carries a
+        # measured confidence: unknown is neutral, not zero)
+        avg_confidence = metrics.get("average_confidence")
+        if avg_confidence is not None:
+            score *= 0.5 + avg_confidence * 0.5
 
         return max(0.0, min(1.0, score))
 
@@ -346,12 +352,16 @@ class ExtractionValidator:
             min_confidence: Minimum confidence (uses default if None)
 
         Returns:
-            list: Filtered entities
+            list: Filtered entities (entities with unknown confidence pass)
         """
         threshold = (
             min_confidence if min_confidence is not None else self.min_confidence
         )
-        return [e for e in entities if e.confidence >= threshold]
+        return [
+            e
+            for e in entities
+            if meets_confidence_threshold(e.confidence, threshold)
+        ]
 
     def filter_relations_by_confidence(
         self, relations: List[Relation], min_confidence: Optional[float] = None

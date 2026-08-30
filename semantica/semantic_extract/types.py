@@ -6,19 +6,39 @@ method dispatchers and extractors can share result models without import cycles.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 @dataclass
 class Entity:
-    """Entity representation."""
+    """Entity representation.
+
+    ``confidence`` is ``None`` when no confidence measurement is available
+    (e.g. the extraction backend does not expose per-entity probabilities).
+    ``None`` is distinct from any numeric score: it means "unknown", not
+    "certain". Producers should record where a score came from in
+    ``metadata["confidence_source"]`` (e.g. ``"model"``, ``"heuristic"``,
+    ``"unavailable"``).
+    """
 
     text: str
     label: str
     start_char: int
     end_char: int
-    confidence: float = 1.0
+    confidence: Optional[float] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+def meets_confidence_threshold(
+    confidence: Optional[float], threshold: float
+) -> bool:
+    """Return True if a confidence value passes a minimum threshold.
+
+    Unknown confidence (``None``) passes: absence of a measurement is not
+    evidence of low confidence, and entities must not be silently dropped
+    just because their backend exposes no probabilities.
+    """
+    return confidence is None or confidence >= threshold
 
 
 @dataclass

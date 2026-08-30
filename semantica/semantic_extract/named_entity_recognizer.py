@@ -249,8 +249,12 @@ class EntityClassifier:
         matching = [c for c in candidates if c.label == entity_type]
 
         if matching:
-            # Return first match with highest confidence
-            return max(matching, key=lambda e: e.confidence)
+            # Return first match with highest confidence; unknown (None)
+            # must not outrank measured scores
+            return max(
+                matching,
+                key=lambda e: e.confidence if e.confidence is not None else -1.0,
+            )
 
         return candidates[0] if candidates else None
 
@@ -295,10 +299,18 @@ class EntityConfidenceScorer:
 
         Returns:
             list: Entities with updated confidence scores
+
+        Note:
+            Only entities without a confidence measurement (``None``) are
+            scored; a score supplied by an extraction backend — including a
+            genuine 1.0 — is preserved.
         """
         for entity in entities:
-            if entity.confidence == 1.0:  # Only recalculate if needed
+            if entity.confidence is None:
                 entity.confidence = self._calculate_confidence(entity, **options)
+                if entity.metadata is None:
+                    entity.metadata = {}
+                entity.metadata["confidence_source"] = "heuristic"
 
         return entities
 
