@@ -4,11 +4,12 @@ Anthropic LLM Provider
 Wrapper for Anthropic Claude API provider with clean interface
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional
 
 from ..semantic_extract.providers import AnthropicProvider
 from ..utils.exceptions import ProcessingError
 from ..utils.logging import get_logger
+from .types import JSONValue
 
 logger = get_logger("llms.anthropic")
 
@@ -67,7 +68,7 @@ class Anthropic:
             )
         return self.provider.generate(prompt, **kwargs)
 
-    def generate_structured(self, prompt: str, **kwargs) -> Union[Dict[str, Any], List[Any]]:
+    def generate_structured(self, prompt: str, **kwargs) -> JSONValue:
         """
         Generates structured JSON output.
 
@@ -76,8 +77,8 @@ class Anthropic:
             **kwargs: Generation options
 
         Returns:
-            Parsed JSON response. A dict for a top-level JSON object, or a
-            list if the model returns a top-level JSON array.
+            Parsed JSON response as an object, array, string, number, boolean,
+            or None.
 
         Raises:
             ProcessingError: If provider is not available or generation fails

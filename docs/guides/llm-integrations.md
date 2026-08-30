@@ -70,15 +70,21 @@ The unified interface means you can prototype with Groq for speed, validate accu
 
 ## The Shared Interface
 
-Every provider exposes the same two methods:
+Every provider exposes the same interface:
 
 ```python
-provider.generate(prompt: str, **kwargs) -> str
-provider.generate_structured(prompt: str, **kwargs) -> Union[Dict[str, Any], List[Any]]
-provider.is_available() -> bool
+from typing import Protocol
+
+from semantica.llms import JSONValue
+
+
+class LLMProvider(Protocol):
+    def generate(self, prompt: str, **kwargs) -> str: ...
+    def generate_structured(self, prompt: str, **kwargs) -> JSONValue: ...
+    def is_available(self) -> bool: ...
 ```
 
-`generate()` returns a plain string. `generate_structured()` instructs the model to respond in JSON and returns a `dict` for a top-level object or a `list` for a top-level array. `is_available()` lets you health-check the provider before committing to a call. This is useful in retry logic and warm-up checks.
+`generate()` returns a plain string. `generate_structured()` instructs the model to respond in JSON and returns any valid JSON value: an object, array, string, number, boolean, or `None` for JSON `null`. `is_available()` lets you health-check the provider before committing to a call. This is useful in retry logic and warm-up checks.
 
 This means every place in Semantica that accepts an LLM — `query_with_reasoning()`, semantic extraction, custom reasoning loops — accepts any of these providers interchangeably.
 

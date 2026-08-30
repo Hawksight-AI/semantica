@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union, get_type_hints
+from typing import get_args
 
 import pytest
 
@@ -8,13 +8,12 @@ from semantica.llms import (
     Gemini,
     Groq,
     HuggingFaceLLM,
+    JSONValue,
     LiteLLM,
     Novita,
     Ollama,
     OpenAI,
 )
-
-EXPECTED_RETURN = Union[Dict[str, Any], List[Any]]
 
 
 @pytest.mark.parametrize(
@@ -32,6 +31,12 @@ EXPECTED_RETURN = Union[Dict[str, Any], List[Any]]
     ],
 )
 def test_generate_structured_return_annotation(provider_class):
-    hints = get_type_hints(provider_class.generate_structured)
+    annotations = provider_class.generate_structured.__annotations__
 
-    assert hints["return"] == EXPECTED_RETURN
+    assert annotations["return"] == JSONValue
+
+
+def test_json_value_includes_scalar_results():
+    scalar_types = {str, int, float, bool, type(None)}
+
+    assert scalar_types.issubset(set(get_args(JSONValue)))

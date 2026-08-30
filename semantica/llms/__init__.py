@@ -71,6 +71,7 @@ from .gemini import Gemini
 from .ollama import Ollama
 from .deepseek import DeepSeek
 from .novita import Novita
+from .types import JSONValue
 
 __all__ = [
     "Groq",
@@ -82,4 +83,5 @@ __all__ = [
     "Ollama",
     "DeepSeek",
     "Novita",
+    "JSONValue",
 ]
