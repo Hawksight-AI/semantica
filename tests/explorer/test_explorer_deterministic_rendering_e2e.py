@@ -15,9 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from semantica.context.context_graph import ContextGraph
-from semantica.explorer.app import create_app
-from semantica.explorer.session import GraphSession
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this module
+# must skip rather than fail collection when it is absent. The guard has to sit
+# above the explorer imports below, which pull fastapi in transitively.
+pytest.importorskip("fastapi")
+
+from semantica.context.context_graph import ContextGraph  # noqa: E402
+from semantica.explorer.app import create_app  # noqa: E402
+from semantica.explorer.session import GraphSession  # noqa: E402
 
 try:
     from starlette.testclient import TestClient

@@ -14,18 +14,17 @@ from unittest.mock import patch
 import pytest
 
 from semantica.context.context_graph import ContextGraph
-from semantica.explorer.app import create_app
-from semantica.explorer.session import GraphSession
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this module
+# must skip rather than fail collection when it is absent. The guard has to sit
+# above the import below, which pulls fastapi in transitively.
+pytest.importorskip("fastapi")
 
-try:
-    from starlette.testclient import TestClient
-except ImportError:
-    pytest.skip(
-        "starlette TestClient is required for explorer tests. Install semantica[explorer].",
-        allow_module_level=True,
-    )
+from semantica.explorer.app import create_app  # noqa: E402
+from semantica.explorer.session import GraphSession  # noqa: E402
 
-import semantica.explorer.routes.sparql as sparql_mod
+from starlette.testclient import TestClient  # noqa: E402
+
+import semantica.explorer.routes.sparql as sparql_mod  # noqa: E402
 
 
 def _build_sample_graph() -> ContextGraph:
