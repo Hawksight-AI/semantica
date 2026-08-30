@@ -268,7 +268,8 @@ def extract_relations(text: str) -> dict:
 
     try:
         extractor = _get_relation_extractor()
-        raw_relations = extractor.extract_relations(text) or []
+        entities = extractor.extract_entities(text)
+        raw_relations = extractor.extract_relations(text, entities=entities) or []
 
         relations: List[Dict[str, Any]] = []
 

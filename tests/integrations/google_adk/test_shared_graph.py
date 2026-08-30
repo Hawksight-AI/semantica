@@ -2,8 +2,15 @@ import asyncio
 
 import pytest
 
+import sys
+import importlib
+from unittest.mock import patch
 
-pytest.importorskip("google.adk")
+@pytest.fixture(autouse=True)
+def require_adk(request):
+    """Skip tests if ADK is missing, unless testing missing dependency behavior."""
+    if "missing_adk" not in request.node.name:
+        pytest.importorskip("google.adk")
 
 
 from google.adk.events import Event

@@ -1,7 +1,14 @@
 import pytest
 
+import sys
+import importlib
+from unittest.mock import patch
 
-pytest.importorskip("google.adk")
+@pytest.fixture(autouse=True)
+def require_adk(request):
+    """Skip tests if ADK is missing, unless testing missing dependency behavior."""
+    if "missing_adk" not in request.node.name:
+        pytest.importorskip("google.adk")
 
 
 from integrations.google_adk.decision_tools import (
@@ -121,3 +128,15 @@ def test_semantica_decision_tools_names():
 
     assert "record_shared_decision" in names
     assert "query_shared_decisions" in names
+
+
+def test_missing_adk_graceful_failure(monkeypatch):
+    import pytest
+    import integrations.google_adk.decision_tools as decision_module
+
+    # Safely mock the flag to False just for this test
+    monkeypatch.setattr(decision_module, "ADK_AVAILABLE", False)
+
+    assert decision_module.ADK_AVAILABLE is False
+    with pytest.raises(ImportError, match="Google ADK is required"):
+        decision_module.semantica_decision_tools(None)

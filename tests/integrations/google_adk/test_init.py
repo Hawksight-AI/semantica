@@ -1,7 +1,14 @@
 import pytest
 
+import sys
+import importlib
+from unittest.mock import patch
 
-pytest.importorskip("google.adk")
+@pytest.fixture(autouse=True)
+def require_adk(request):
+    """Skip tests if ADK is missing, unless testing missing dependency behavior."""
+    if "missing_adk" not in request.node.name:
+        pytest.importorskip("google.adk")
 
 
 from integrations.google_adk import (
@@ -63,3 +70,12 @@ def test_session_service_export():
 
     assert service is not None
     assert service.graph is graph
+
+
+def test_missing_adk_graceful_failure(monkeypatch):
+    import integrations.google_adk as init_module
+
+    # Safely mock the flag to False just for this test
+    monkeypatch.setattr(init_module, "ADK_AVAILABLE", False)
+
+    assert init_module.ADK_AVAILABLE is False

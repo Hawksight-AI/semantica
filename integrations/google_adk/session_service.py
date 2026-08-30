@@ -9,25 +9,27 @@ Google ADK is an optional dependency.
 
 from __future__ import annotations
 
-from datetime import datetime
 import copy
+import inspect
 import threading
 import uuid
+from datetime import datetime
 from typing import Any, List, Optional
 
-
 try:
-    from google.adk.sessions import BaseSessionService
-    from google.adk.sessions.session import Event
-    from google.adk.sessions.session import Session
-
+    from google.adk.events import Event
+    from google.adk.sessions import BaseSessionService, Session
+    try:
+        from google.adk.sessions import ListSessionsResponse
+    except ImportError:
+        ListSessionsResponse = Any
     ADK_AVAILABLE = True
-
-except ImportError:
-    BaseSessionService = object  # type: ignore
-    Event = Any  # type: ignore
-    Session = Any  # type: ignore
+except (ImportError, ModuleNotFoundError):
     ADK_AVAILABLE = False
+    BaseSessionService = object
+    Session = Any
+    Event = Any
+    ListSessionsResponse = Any
 
 
 class SemanticaSessionService(BaseSessionService):
@@ -60,13 +62,12 @@ class SemanticaSessionService(BaseSessionService):
         self.graph = graph
         self._lock = threading.RLock()
 
-
     # Graph helpers
 
     @staticmethod
-    def _node_id(session_id: str) -> str:
+    def _node_id(app_name: str, user_id: str, session_id: str) -> str:
         """Return the internal ContextGraph node ID for a session."""
-        return f"adk-session:{session_id}"
+        return f"adk-session:{app_name}:{user_id}:{session_id}"
 
     @staticmethod
     def _event_node_id(event: Any) -> str:
@@ -112,19 +113,6 @@ class SemanticaSessionService(BaseSessionService):
     def _node_properties(node: Any) -> dict:
         """
         Extract application properties from a ContextGraph node.
-
-        ContextGraph.find_nodes() returns approximately:
-
-            {
-                "id": "...",
-                "type": "...",
-                "content": "...",
-                "metadata": {...}
-            }
-
-        The graph-level ``content`` is intentionally NOT merged into the
-        application properties. For ADK Event nodes, that field is merely
-        Semantica's graph label and must not become Event.content.
         """
         if isinstance(node, dict):
             metadata = node.get("metadata")
@@ -152,11 +140,13 @@ class SemanticaSessionService(BaseSessionService):
         return {}
 
     def _find_session_node(
-        self,
-        session_id: str,
+            self,
+            app_name: str,
+            user_id: str,
+            session_id: str,
     ) -> Optional[Any]:
         """Find a session node by its logical ADK session ID."""
-        expected_node_id = self._node_id(session_id)
+        expected_node_id = self._node_id(app_name, user_id, session_id)
 
         for node in self.graph.find_nodes() or []:
             if not isinstance(node, dict):
@@ -170,24 +160,22 @@ class SemanticaSessionService(BaseSessionService):
             metadata = node.get("metadata")
 
             if (
-                isinstance(metadata, dict)
-                and str(metadata.get("session_id"))
-                == str(session_id)
+                    isinstance(metadata, dict)
+                    and str(metadata.get("session_id")) == str(session_id)
+                    and str(metadata.get("app_name")) == str(app_name)
+                    and str(metadata.get("user_id")) == str(user_id)
             ):
                 return node
 
         return None
 
     def _find_node_by_id(
-        self,
-        node_id: str,
+            self,
+            node_id: str,
     ) -> Optional[Any]:
         """Find a ContextGraph node by graph node ID."""
         for node in self.graph.find_nodes() or []:
-            if (
-                isinstance(node, dict)
-                and str(node.get("id")) == str(node_id)
-            ):
+            if isinstance(node, dict) and str(node.get("id")) == str(node_id):
                 return node
 
         return None
@@ -202,13 +190,13 @@ class SemanticaSessionService(BaseSessionService):
         data = SemanticaSessionService._safe_dict(event)
 
         for field in (
-            "id",
-            "invocation_id",
-            "author",
-            "timestamp",
-            "partial",
-            "turn_complete",
-            "branch",
+                "id",
+                "invocation_id",
+                "author",
+                "timestamp",
+                "partial",
+                "turn_complete",
+                "branch",
         ):
             if field not in data and hasattr(event, field):
                 value = getattr(event, field)
@@ -221,11 +209,13 @@ class SemanticaSessionService(BaseSessionService):
         return data
 
     def _event_nodes(
-        self,
-        session_id: str,
+            self,
+            app_name: str,
+            user_id: str,
+            session_id: str,
     ) -> List[Any]:
         """Return all event nodes connected to a session."""
-        session_node_id = self._node_id(session_id)
+        session_node_id = self._node_id(app_name, user_id, session_id)
 
         events: List[Any] = []
 
@@ -244,9 +234,7 @@ class SemanticaSessionService(BaseSessionService):
             if target is None:
                 continue
 
-            node = self._find_node_by_id(
-                str(target)
-            )
+            node = self._find_node_by_id(str(target))
 
             if node is not None:
                 events.append(node)
@@ -256,10 +244,7 @@ class SemanticaSessionService(BaseSessionService):
     @staticmethod
     def _event_timestamp(node: Any) -> str:
         """Return a sortable timestamp for an event node."""
-        properties = SemanticaSessionService._node_properties(
-            node
-        )
-
+        properties = SemanticaSessionService._node_properties(node)
         timestamp = properties.get("timestamp")
 
         if timestamp is None:
@@ -268,43 +253,33 @@ class SemanticaSessionService(BaseSessionService):
         return str(timestamp)
 
     def _event_from_node(
-        self,
-        node: Any,
+            self,
+            node: Any,
     ) -> Any:
         """
         Reconstruct an ADK Event from its stored metadata.
-
-        Important: do not include the graph's top-level ``content`` field.
-        It is Semantica's node label, not ADK Event.content.
         """
         properties = self._node_properties(node)
 
-        graph_node_id = (
-            node.get("id")
-            if isinstance(node, dict)
-            else None
-        )
-
+        graph_node_id = node.get("id") if isinstance(node, dict) else None
         event_id = properties.get("id")
 
         if not event_id and graph_node_id:
             graph_node_id = str(graph_node_id)
-
             if graph_node_id.startswith("adk-event:"):
-                event_id = graph_node_id[
-                    len("adk-event:")
-                ]
+                event_id = graph_node_id[len("adk-event:"):]
 
         if event_id:
             properties["id"] = event_id
 
         # ContextGraph-specific values should never become Event fields.
         properties.pop("session_id", None)
+        properties.pop("app_name", None)
+        properties.pop("user_id", None)
 
         try:
             return Event(**properties)
         except Exception:
-            # Preserve the event data if the installed ADK schema changes.
             return properties
 
     # ------------------------------------------------------------------
@@ -313,11 +288,11 @@ class SemanticaSessionService(BaseSessionService):
 
     @staticmethod
     def _session_kwargs(
-        app_name: str,
-        user_id: str,
-        session_id: str,
-        state: Optional[dict],
-        events: Optional[List[Any]],
+            app_name: str,
+            user_id: str,
+            session_id: str,
+            state: Optional[dict],
+            events: Optional[List[Any]],
     ) -> dict:
         """Build kwargs for the ADK Session model."""
         return {
@@ -329,62 +304,43 @@ class SemanticaSessionService(BaseSessionService):
         }
 
     def _session_from_node(
-        self,
-        node: Any,
+            self,
+            node: Any,
     ) -> Session:
         """Reconstruct an ADK Session from a ContextGraph node."""
         properties = self._node_properties(node)
 
-        session_id = str(
-            properties.get("session_id")
-            or ""
-        )
+        session_id = str(properties.get("session_id") or "")
+        app_name = str(properties.get("app_name") or "")
+        user_id = str(properties.get("user_id") or "")
 
         # Fallback to the graph node ID.
         if not session_id:
-            graph_node_id = (
-                node.get("id")
-                if isinstance(node, dict)
-                else None
-            )
+            graph_node_id = node.get("id") if isinstance(node, dict) else None
 
             if graph_node_id:
                 graph_node_id = str(graph_node_id)
-
                 if graph_node_id.startswith("adk-session:"):
-                    session_id = graph_node_id[
-                        len("adk-session:")
-                    ]
+                    # the old format fallback, though we use composites now
+                    parts = graph_node_id.split(":")
+                    if len(parts) == 4:
+                        app_name = app_name or parts[1]
+                        user_id = user_id or parts[2]
+                        session_id = parts[3]
+                    else:
+                        session_id = graph_node_id[len("adk-session:"):]
                 else:
                     session_id = graph_node_id
-
-        app_name = str(
-            properties.get("app_name")
-            or ""
-        )
-
-        user_id = str(
-            properties.get("user_id")
-            or ""
-        )
 
         state = properties.get("state") or {}
 
         if not isinstance(state, dict):
             state = {}
 
-        event_nodes = self._event_nodes(
-            session_id
-        )
+        event_nodes = self._event_nodes(app_name, user_id, session_id)
+        event_nodes.sort(key=self._event_timestamp)
 
-        event_nodes.sort(
-            key=self._event_timestamp
-        )
-
-        events = [
-            self._event_from_node(node)
-            for node in event_nodes
-        ]
+        events = [self._event_from_node(node) for node in event_nodes]
 
         return Session(
             **self._session_kwargs(
@@ -401,38 +357,27 @@ class SemanticaSessionService(BaseSessionService):
     # ------------------------------------------------------------------
 
     async def create_session(
-        self,
-        *,
-        app_name: str,
-        user_id: str,
-        state: Optional[dict[str, Any]] = None,
-        session_id: Optional[str] = None,
+            self,
+            *,
+            app_name: str,
+            user_id: str,
+            state: Optional[dict[str, Any]] = None,
+            session_id: Optional[str] = None,
     ) -> Session:
         """Create and persist an ADK session."""
         with self._lock:
-            session_id = (
-                session_id
-                or str(uuid.uuid4())
-            )
+            session_id = session_id or str(uuid.uuid4())
 
-            if self._find_session_node(
-                session_id
-            ) is not None:
-                raise ValueError(
-                    f"Session already exists: {session_id}"
-                )
+            if self._find_session_node(app_name, user_id, session_id) is not None:
+                raise ValueError(f"Session already exists: {session_id}")
 
             self.graph.add_node(
-                node_id=self._node_id(
-                    session_id
-                ),
+                node_id=self._node_id(app_name, user_id, session_id),
                 node_type="ADKSession",
                 app_name=app_name,
                 user_id=user_id,
                 session_id=session_id,
-                state=copy.deepcopy(
-                    state or {}
-                ),
+                state=copy.deepcopy(state or {}),
                 created_at=datetime.now().isoformat(),
                 updated_at=datetime.now().isoformat(),
             )
@@ -448,59 +393,63 @@ class SemanticaSessionService(BaseSessionService):
             )
 
     async def get_session(
-        self,
-        *,
-        app_name: str,
-        user_id: str,
-        session_id: str,
-        config: Optional[Any] = None,
+            self,
+            *,
+            app_name: str,
+            user_id: str,
+            session_id: str,
+            config: Optional[Any] = None,
     ) -> Optional[Session]:
         """Retrieve an ADK session from ContextGraph."""
         del config
 
         with self._lock:
-            node = self._find_session_node(
-                session_id
-            )
+            node = self._find_session_node(app_name, user_id, session_id)
 
             if node is None:
                 return None
 
             properties = self._node_properties(node)
-
             if properties.get("app_name") != app_name:
                 return None
-
             if properties.get("user_id") != user_id:
                 return None
 
             return self._session_from_node(node)
 
     async def append_event(
-        self,
-        session: Session,
-        event: Event,
+            self,
+            session: Session,
+            event: Event,
     ) -> Event:
         """Persist an ADK event and associate it with a session."""
         with self._lock:
             session_id = str(session.id)
+            app_name = str(session.app_name)
+            user_id = str(session.user_id)
 
-            session_node = self._find_session_node(
-                session_id
-            )
+            session_node = self._find_session_node(app_name, user_id, session_id)
 
             if session_node is None:
-                raise ValueError(
-                    f"Session does not exist: {session_id}"
-                )
+                raise ValueError(f"Session does not exist: {session_id}")
 
-            event_node_id = self._event_node_id(
-                event
-            )
+            # Verify cross-tenant security
+            properties = self._node_properties(session_node)
+            if properties.get("app_name") != app_name or properties.get("user_id") != user_id:
+                raise ValueError("Cross-tenant session write denied: app_name or user_id mismatch.")
 
-            event_data = self._serialize_event(
-                event
-            )
+            # Apply ADK in-memory event and state delta semantics
+            if hasattr(super(), "append_event"):
+                if inspect.iscoroutinefunction(super().append_event):
+                    await super().append_event(session, event)
+                else:
+                    super().append_event(session, event)
+            else:
+                if hasattr(session, "events"):
+                    session.events.append(event)
+
+            event_node_id = self._event_node_id(event)
+            event_data = self._serialize_event(event)
 
             self.graph.add_node(
                 node_id=event_node_id,
@@ -510,68 +459,43 @@ class SemanticaSessionService(BaseSessionService):
             )
 
             self.graph.add_edge(
-                source_id=self._node_id(
-                    session_id
-                ),
+                source_id=self._node_id(app_name, user_id, session_id),
                 target_id=event_node_id,
                 edge_type="HAS_EVENT",
             )
 
             # ContextGraph's supported mutation API is add_node_attribute().
             self.graph.add_node_attribute(
-                self._node_id(session_id),
+                self._node_id(app_name, user_id, session_id),
                 {
-                    "state": self._safe_dict(
-                        getattr(
-                            session,
-                            "state",
-                            {},
-                        )
-                    ),
-                    "updated_at": (
-                        datetime.now().isoformat()
-                    ),
+                    "state": self._safe_dict(getattr(session, "state", {})),
+                    "updated_at": (datetime.now().isoformat()),
                 },
             )
 
             return event
 
     async def delete_session(
-        self,
-        *,
-        app_name: str,
-        user_id: str,
-        session_id: str,
+            self,
+            *,
+            app_name: str,
+            user_id: str,
+            session_id: str,
     ) -> None:
         """Delete a session and all of its graph-backed events."""
         with self._lock:
-            session_node = self._find_session_node(
-                session_id
-            )
-
+            session_node = self._find_session_node(app_name, user_id, session_id)
             if session_node is None:
                 return
 
-            properties = self._node_properties(
-                session_node
-            )
+            properties = self._node_properties(session_node)
 
-            if (
-                properties.get("app_name")
-                != app_name
-            ):
+            if properties.get("app_name") != app_name:
+                return
+            if properties.get("user_id") != user_id:
                 return
 
-            if (
-                properties.get("user_id")
-                != user_id
-            ):
-                return
-
-            session_node_id = self._node_id(
-                session_id
-            )
-
+            session_node_id = self._node_id(app_name, user_id, session_id)
             event_node_ids = []
 
             for edge in self.graph.find_edges() or []:
@@ -579,67 +503,45 @@ class SemanticaSessionService(BaseSessionService):
                     continue
 
                 if (
-                    edge.get("source")
-                    == session_node_id
-                    and edge.get("type")
-                    == "HAS_EVENT"
-                    and edge.get("target")
+                        edge.get("source") == session_node_id
+                        and edge.get("type") == "HAS_EVENT"
+                        and edge.get("target")
                 ):
-                    event_node_ids.append(
-                        str(edge["target"])
-                    )
+                    event_node_ids.append(str(edge["target"]))
 
-            # FIX: Use `purge_node` instead of `remove_node`
             for event_node_id in event_node_ids:
-                self.graph.purge_node(
-                    event_node_id
-                )
+                self.graph.purge_node(event_node_id)
 
-            # FIX: Use `purge_node` instead of `remove_node`
-            self.graph.purge_node(
-                session_node_id
-            )
+            self.graph.purge_node(session_node_id)
 
     async def list_sessions(
-        self,
-        *,
-        app_name: str,
-        user_id: str,
-    ) -> List[Session]:
+            self,
+            *,
+            app_name: str,
+            user_id: str,
+    ) -> ListSessionsResponse:
         """List all sessions for an application/user pair."""
         with self._lock:
             sessions: List[Session] = []
 
-            for node in self.graph.find_nodes(
-                node_type="ADKSession"
-            ) or []:
+            for node in self.graph.find_nodes(node_type="ADKSession") or []:
                 if not isinstance(node, dict):
                     continue
 
-                properties = self._node_properties(
-                    node
-                )
+                properties = self._node_properties(node)
 
-                if (
-                    properties.get("app_name")
-                    != app_name
-                ):
+                if properties.get("app_name") != app_name:
+                    continue
+                if properties.get("user_id") != user_id:
+                    continue
+                if not properties.get("session_id"):
                     continue
 
-                if (
-                    properties.get("user_id")
-                    != user_id
-                ):
-                    continue
+                sessions.append(self._session_from_node(node))
 
-                if not properties.get(
-                    "session_id"
-                ):
-                    continue
-
-                sessions.append(
-                    self._session_from_node(node)
-                )
+            # Return the wrapped ListSessionsResponse
+            if ListSessionsResponse is not Any and ListSessionsResponse is not object:
+                return ListSessionsResponse(sessions=sessions)
 
             return sessions
 

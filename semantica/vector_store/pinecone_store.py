@@ -336,7 +336,7 @@ class PineconeStore:
         # Check Pinecone availability
         if not PINECONE_AVAILABLE:
             self.logger.warning(
-                "Pinecone not available. Install with: pip install pinecone-client"
+                "Pinecone not available. Install with: pip install pinecone>=3.0.0 or pip install semantica[vectorstore-pinecone]"
             )
 
     def connect(self, **kwargs) -> bool:
@@ -351,7 +351,7 @@ class PineconeStore:
         """
         if not PINECONE_AVAILABLE:
             raise ProcessingError(
-                "Pinecone is not available. Install it with: pip install pinecone-client"
+                "Pinecone is not available. Install it with: pip install pinecone>=3.0.0 or pip install semantica[vectorstore-pinecone]"
             )
 
         api_key = kwargs.get("api_key") or self.api_key

@@ -3,7 +3,15 @@ import asyncio
 import pytest
 
 
-pytest.importorskip("google.adk")
+import sys
+import importlib
+from unittest.mock import patch
+
+@pytest.fixture(autouse=True)
+def require_adk(request):
+    """Skip tests if ADK is missing, unless testing missing dependency behavior."""
+    if "missing_adk" not in request.node.name:
+        pytest.importorskip("google.adk")
 
 
 from integrations.google_adk.session_service import (
@@ -364,4 +372,16 @@ def test_session_and_event_are_connected():
 
     edge = has_event_edges[0]
 
-    assert edge["source"] == f"adk-session:{session.id}"
+    assert edge["source"] == f"adk-session:{session.app_name}:{session.user_id}:{session.id}"
+
+
+def test_missing_adk_graceful_failure(monkeypatch):
+    import pytest
+    import integrations.google_adk.session_service as session_module
+
+    # Safely mock the flag to False just for this test
+    monkeypatch.setattr(session_module, "ADK_AVAILABLE", False)
+
+    assert session_module.ADK_AVAILABLE is False
+    with pytest.raises(ImportError, match="Google ADK is required"):
+        session_module.SemanticaSessionService()
