@@ -35,7 +35,11 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import hashlib
 import json
+import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -147,16 +151,72 @@ class FAISSIndex:
         path = Path(path)
         state = {
             "version": self._STATE_VERSION,
-            "vector_ids": self.vector_ids,
-            "metadata": self.metadata,
+            "vector_ids": list(self.vector_ids),
+            "metadata": dict(self.metadata),
         }
+        self._validate_logical_state(state, self.index.ntotal, self._state_path(path))
         try:
-            serialized_state = json.dumps(state, ensure_ascii=False, indent=2)
+            json.dumps(state, ensure_ascii=False, indent=2)
         except (TypeError, ValueError) as exc:
             raise ProcessingError("FAISS metadata must be JSON serializable") from exc
 
-        faiss.write_index(self.index, str(path))
-        self._state_path(path).write_text(f"{serialized_state}\n", encoding="utf-8")
+        state_path = self._state_path(path)
+        staged_index = None
+        staged_state = None
+        backup_state = None
+        backup_created = False
+        state_installed = False
+        preserve_backup = False
+
+        try:
+            staged_index = self._temporary_path(path)
+            staged_state = self._temporary_path(state_path)
+            faiss.write_index(self.index, str(staged_index))
+
+            state["index_sha256"] = self._file_sha256(staged_index)
+            serialized_state = json.dumps(state, ensure_ascii=False, indent=2)
+            staged_state.write_text(f"{serialized_state}\n", encoding="utf-8")
+
+            if state_path.exists():
+                backup_state = self._temporary_path(state_path)
+                shutil.copyfile(state_path, backup_state)
+                backup_created = True
+
+            os.replace(staged_state, state_path)
+            state_installed = True
+            os.replace(staged_index, path)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            rollback_error = None
+            try:
+                if backup_created:
+                    os.replace(backup_state, state_path)
+                    backup_created = False
+                elif state_installed:
+                    state_path.unlink(missing_ok=True)
+            except OSError as restore_exc:
+                rollback_error = restore_exc
+                preserve_backup = backup_created
+
+            message = f"Failed to save FAISS index to {path}: {exc}"
+            if rollback_error is not None:
+                if backup_state is not None:
+                    message += (
+                        "; metadata rollback failed; recovery copy remains at "
+                        f"{backup_state}: {rollback_error}"
+                    )
+                else:
+                    message += f"; metadata rollback failed: {rollback_error}"
+            raise ProcessingError(message) from exc
+        finally:
+            for temporary_path in (staged_index, staged_state, backup_state):
+                if temporary_path is None:
+                    continue
+                if preserve_backup and temporary_path == backup_state:
+                    continue
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     @classmethod
     def load(cls, path: Union[str, Path], dimension: int, index_type: str = "flat"):
@@ -173,7 +233,7 @@ class FAISSIndex:
 
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ProcessingError(
                 f"Failed to load FAISS metadata from {state_path}: {exc}"
             ) from exc
@@ -181,28 +241,80 @@ class FAISSIndex:
         if not isinstance(state, dict):
             raise ProcessingError(f"Invalid FAISS metadata state: {state_path}")
 
-        vector_ids = state.get("vector_ids")
-        metadata = state.get("metadata")
         if state.get("version") != cls._STATE_VERSION:
             raise ProcessingError(f"Unsupported FAISS metadata version in {state_path}")
+
+        cls._validate_logical_state(state, index.ntotal, state_path)
+        expected_checksum = state.get("index_sha256")
+        if not isinstance(expected_checksum, str) or len(expected_checksum) != 64:
+            raise ProcessingError(f"Invalid FAISS index checksum in {state_path}")
+        try:
+            int(expected_checksum, 16)
+        except ValueError as exc:
+            raise ProcessingError(
+                f"Invalid FAISS index checksum in {state_path}"
+            ) from exc
+        if cls._file_sha256(path) != expected_checksum.casefold():
+            raise ProcessingError(
+                "FAISS index checksum does not match its metadata state: "
+                f"{state_path}"
+            )
+
+        loaded.vector_ids = state["vector_ids"]
+        loaded.metadata = state["metadata"]
+        return loaded
+
+    @classmethod
+    def _validate_logical_state(
+        cls, state: Dict[str, Any], index_total: int, state_path: Path
+    ) -> None:
+        """Validate the logical ID and metadata state paired with an index."""
+        vector_ids = state.get("vector_ids")
+        metadata = state.get("metadata")
         if not isinstance(vector_ids, list) or not all(
             isinstance(vector_id, str) for vector_id in vector_ids
         ):
             raise ProcessingError(f"Invalid vector_ids in FAISS metadata: {state_path}")
-        if len(vector_ids) != index.ntotal:
+        if len(vector_ids) != index_total:
             raise ProcessingError(
                 "FAISS metadata vector count does not match the index: "
-                f"{len(vector_ids)} != {index.ntotal}"
+                f"{len(vector_ids)} != {index_total}"
+            )
+        if len(set(vector_ids)) != len(vector_ids):
+            raise ProcessingError(
+                f"Duplicate vector_ids in FAISS metadata: {state_path}"
             )
         if not isinstance(metadata, dict) or not all(
             isinstance(vector_id, str) and isinstance(value, dict)
             for vector_id, value in metadata.items()
         ):
             raise ProcessingError(f"Invalid metadata in FAISS state: {state_path}")
+        unknown_metadata_ids = set(metadata).difference(vector_ids)
+        if unknown_metadata_ids:
+            raise ProcessingError(
+                "FAISS metadata contains IDs not present in vector_ids: "
+                f"{state_path}"
+            )
 
-        loaded.vector_ids = vector_ids
-        loaded.metadata = metadata
-        return loaded
+    @staticmethod
+    def _temporary_path(target: Path) -> Path:
+        """Create a same-directory staging path suitable for atomic replacement."""
+        descriptor, temporary_name = tempfile.mkstemp(
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+        )
+        os.close(descriptor)
+        return Path(temporary_name)
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        """Return the SHA-256 digest for a persisted FAISS index."""
+        digest = hashlib.sha256()
+        with path.open("rb") as file_handle:
+            for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @classmethod
     def _state_path(cls, path: Union[str, Path]) -> Path:

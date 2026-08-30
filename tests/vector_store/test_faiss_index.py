@@ -1,9 +1,11 @@
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
+import semantica.vector_store.faiss_store as faiss_store_module
 from semantica.utils.exceptions import ProcessingError
 from semantica.vector_store.faiss_store import FAISSIndex, FAISSStore
 
@@ -46,7 +48,11 @@ def test_save_load_round_trip_preserves_vector_ids_and_metadata(tmp_path):
     assert restored.count() == 2
     assert restored.index.vector_ids == vector_ids
     assert restored.get_metadata("geometry-2") == metadata[1]
-    assert [item["id"] for item in restored.scan_vectors()] == vector_ids
+    scanned = restored.scan_vectors()
+    assert [item["id"] for item in scanned] == vector_ids
+    assert [item["metadata"] for item in scanned] == metadata
+    for item, expected_vector in zip(scanned, vectors):
+        np.testing.assert_array_equal(item["vector"], expected_vector)
     np.testing.assert_array_equal(restored.get_vector("geometry-2"), vectors[1])
 
     restored.add_vectors(vectors, ids=vector_ids, metadata=metadata)
@@ -90,6 +96,95 @@ def test_load_rejects_logical_state_with_wrong_vector_count(tmp_path):
     restored = FAISSStore(dimension=3)
     with pytest.raises(ProcessingError, match="vector count does not match"):
         restored.load_index(index_path, index_type="flat")
+
+
+@pytest.mark.parametrize(
+    ("vector_ids", "metadata", "error"),
+    [
+        (["algebra-1", "algebra-1"], {"algebra-1": {}}, "Duplicate vector_ids"),
+        (
+            ["algebra-1", "geometry-2"],
+            {"algebra-1": {}, "unknown-id": {}},
+            "IDs not present in vector_ids",
+        ),
+    ],
+)
+def test_load_rejects_inconsistent_logical_state(tmp_path, vector_ids, metadata, error):
+    pytest.importorskip("faiss")
+    index_path = tmp_path / "lessons.faiss"
+
+    store = FAISSStore(dimension=3)
+    store.create_index(index_type="flat")
+    store.add_vectors(
+        np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=np.float32),
+        ids=["algebra-1", "geometry-2"],
+    )
+    store.save_index(index_path)
+
+    state_path = tmp_path / "lessons.faiss.metadata.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["vector_ids"] = vector_ids
+    state["metadata"] = metadata
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    restored = FAISSStore(dimension=3)
+    with pytest.raises(ProcessingError, match=error):
+        restored.load_index(index_path, index_type="flat")
+
+
+def test_load_rejects_same_size_index_from_another_generation(tmp_path):
+    faiss = pytest.importorskip("faiss")
+    index_path = tmp_path / "lessons.faiss"
+
+    store = FAISSStore(dimension=3)
+    store.create_index(index_type="flat")
+    store.add_vectors(
+        np.array([[0.1, 0.2, 0.3]], dtype=np.float32),
+        ids=["algebra-1"],
+    )
+    store.save_index(index_path)
+
+    replacement = faiss.IndexFlatL2(3)
+    replacement.add(np.array([[9.0, 8.0, 7.0]], dtype=np.float32))
+    faiss.write_index(replacement, str(index_path))
+
+    restored = FAISSStore(dimension=3)
+    with pytest.raises(ProcessingError, match="checksum does not match"):
+        restored.load_index(index_path, index_type="flat")
+
+
+def test_save_rolls_back_metadata_when_index_install_fails(tmp_path, monkeypatch):
+    pytest.importorskip("faiss")
+    index_path = tmp_path / "lessons.faiss"
+
+    store = FAISSStore(dimension=3)
+    store.create_index(index_type="flat")
+    store.add_vectors(
+        np.array([[0.1, 0.2, 0.3]], dtype=np.float32),
+        ids=["algebra-1"],
+    )
+    store.save_index(index_path)
+    store.add_vectors(
+        np.array([[0.4, 0.5, 0.6]], dtype=np.float32),
+        ids=["geometry-2"],
+    )
+
+    original_replace = faiss_store_module.os.replace
+
+    def fail_index_install(source, destination):
+        if Path(destination) == index_path:
+            raise OSError("simulated index install failure")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(faiss_store_module.os, "replace", fail_index_install)
+
+    with pytest.raises(ProcessingError, match="simulated index install failure"):
+        store.save_index(index_path)
+
+    restored = FAISSStore(dimension=3)
+    restored.load_index(index_path, index_type="flat")
+    assert restored.index.vector_ids == ["algebra-1"]
+    assert restored.index.index.ntotal == 1
 
 
 def test_get_vector_reconstructs_vector_at_matching_id_position():
