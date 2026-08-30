@@ -2,6 +2,7 @@ import unittest
 
 from semantica.normalize.language_detector import (
     LANGDETECT_AVAILABLE,
+    UNKNOWN_LANGUAGE,
     LanguageDetector,
 )
 
@@ -25,9 +26,13 @@ class TestLanguageDetector(unittest.TestCase):
             self.detector.detect("Dies ist ein einfacher deutscher Satz."), "de"
         )
 
-    def test_detect_short_text(self):
-        # Should return default for very short text
-        self.assertEqual(self.detector.detect("Hi"), "en")
+    def test_detect_short_text_returns_unknown(self):
+        # Undetected input must not masquerade as a detected language
+        self.assertEqual(self.detector.detect("Hi"), UNKNOWN_LANGUAGE)
+
+    def test_configured_default_language_restores_assumption(self):
+        detector = LanguageDetector(default_language="en")
+        self.assertEqual(detector.detect("Hi"), "en")
 
     @unittest.skipUnless(LANGDETECT_AVAILABLE, "langdetect is not installed")
     def test_detect_with_confidence(self):
@@ -40,19 +45,21 @@ class TestLanguageDetector(unittest.TestCase):
     def test_default_min_text_length_preserved(self):
         # Backward compatibility: default threshold stays at 10
         self.assertEqual(self.detector.min_text_length, 10)
-        self.assertEqual(self.detector.detect("Short txt"), "en")
+        self.assertEqual(self.detector.detect("Short txt"), UNKNOWN_LANGUAGE)
 
     def test_short_text_fallback_has_zero_confidence(self):
         # Fallback must be distinguishable from a genuine detection
         lang, conf = self.detector.detect_with_confidence("Hi")
-        self.assertEqual((lang, conf), ("en", 0.0))
-        self.assertEqual(self.detector.detect_multiple("Hi"), [("en", 0.0)])
+        self.assertEqual((lang, conf), (UNKNOWN_LANGUAGE, 0.0))
+        self.assertEqual(
+            self.detector.detect_multiple("Hi"), [(UNKNOWN_LANGUAGE, 0.0)]
+        )
 
     @unittest.skipUnless(LANGDETECT_AVAILABLE, "langdetect is not installed")
     def test_short_non_latin_text_with_configured_threshold(self):
-        # 9 stripped chars: below the default threshold, silently falls back
+        # 9 stripped chars: below the default threshold, falls back to unknown
         text = "你好，这是中文文本"
-        self.assertEqual(self.detector.detect(text), "en")
+        self.assertEqual(self.detector.detect(text), UNKNOWN_LANGUAGE)
 
         # A configured threshold lets short CJK text reach the detector
         detector = LanguageDetector(min_text_length=5)
@@ -68,19 +75,24 @@ class TestLanguageDetector(unittest.TestCase):
     @unittest.skipUnless(LANGDETECT_AVAILABLE, "langdetect is not installed")
     def test_min_text_length_per_call_override(self):
         text = "你好，这是中文文本"
-        self.assertEqual(self.detector.detect(text), "en")
+        self.assertEqual(self.detector.detect(text), UNKNOWN_LANGUAGE)
         self.assertTrue(
             self.detector.detect(text, min_text_length=5).startswith("zh")
         )
 
     def test_min_text_length_still_guards_empty_text(self):
         detector = LanguageDetector(min_text_length=0)
-        self.assertEqual(detector.detect(""), "en")
-        self.assertEqual(detector.detect_with_confidence(""), ("en", 0.0))
+        self.assertEqual(detector.detect(""), UNKNOWN_LANGUAGE)
+        self.assertEqual(
+            detector.detect_with_confidence(""), (UNKNOWN_LANGUAGE, 0.0)
+        )
 
     def test_get_language_name(self):
         self.assertEqual(self.detector.get_language_name("en"), "English")
         self.assertEqual(self.detector.get_language_name("fr"), "French")
+        self.assertEqual(
+            self.detector.get_language_name(UNKNOWN_LANGUAGE), "Unknown"
+        )
         self.assertEqual(self.detector.get_language_name("xx"), "XX")
 
 
