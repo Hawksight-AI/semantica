@@ -120,6 +120,38 @@ class TestLanguageDetector(unittest.TestCase):
         finally:
             normalize_config.set_method_config("language", **original)
 
+    def test_unknown_option_names_are_reported_not_swallowed(self):
+        from unittest.mock import patch
+
+        detector = LanguageDetector(min_text_length=5)
+        with patch.object(detector, "logger") as mock_logger:
+            # Typo'd option name: must warn instead of silently ignoring
+            detector.detect("Hi", min_text_len=1)
+            detector.detect("Hi", min_text_len=1)
+
+        warnings = [
+            call.args[0] for call in mock_logger.warning.call_args_list
+        ]
+        self.assertEqual(len(warnings), 1)  # once per name, not per call
+        self.assertIn("min_text_len", warnings[0])
+
+        # Valid option names must not warn (threshold high enough that the
+        # guard short-circuits before any langdetect call can log)
+        with patch.object(detector, "logger") as mock_logger:
+            detector.detect("Hi", min_text_length=100)
+        mock_logger.warning.assert_not_called()
+
+    @unittest.skipUnless(LANGDETECT_AVAILABLE, "langdetect is not installed")
+    def test_detect_apis_share_one_semantic_core(self):
+        # detect() and detect_with_confidence() delegate to detect_multiple(),
+        # so all three must agree on the same input
+        text = "Ceci est une phrase française simple."
+        top_lang, top_conf = self.detector.detect_multiple(text, top_n=1)[0]
+        self.assertEqual(self.detector.detect(text), top_lang)
+        lang, conf = self.detector.detect_with_confidence(text)
+        self.assertEqual(lang, top_lang)
+        self.assertGreater(conf, 0.5)
+
     def test_get_language_name(self):
         self.assertEqual(self.detector.get_language_name("en"), "English")
         self.assertEqual(self.detector.get_language_name("fr"), "French")

@@ -714,10 +714,12 @@ def detect_language(
 
         detector = LanguageDetector(**config)
 
+        # kwargs were already consumed by the constructor above; forwarding
+        # them again would trip the detector's unknown-option warning
         if method == "confidence":
-            return detector.detect_with_confidence(text, **kwargs)
+            return detector.detect_with_confidence(text)
         else:
-            return detector.detect(text, **kwargs)
+            return detector.detect(text)
 
     except Exception as e:
         logger.error(f"Failed to detect language: {e}")

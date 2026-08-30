@@ -29,7 +29,7 @@ License: MIT
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
-    from langdetect import detect, detect_langs
+    from langdetect import detect_langs
     from langdetect.lang_detect_exception import LangDetectException
 
     LANGDETECT_AVAILABLE = True
@@ -44,9 +44,23 @@ from ..utils.progress_tracker import get_progress_tracker
 # Returned when no detection was performed (text too short, langdetect
 # unavailable) or detection failed. Distinct from every ISO language code,
 # so callers can never mistake a fallback for a detected language.
+#
+# Design note: unlike entity confidence (see semantic_extract.types, where
+# missing measurements are represented as None), the unknown language is an
+# out-of-band *string* rather than None. Language codes flow into dict keys,
+# file names and other string operations throughout the pipeline, so None
+# would trade one ambiguity for a crash surface; "unknown" stays inside the
+# str domain while remaining impossible to confuse with a real code. For
+# confidence there is no out-of-band float — every number is a plausible
+# score — hence None is the only honest representation there.
 UNKNOWN_LANGUAGE = "unknown"
 
 DEFAULT_MIN_TEXT_LENGTH = 10
+
+# Per-call options accepted by the detection APIs. Anything else is almost
+# certainly a typo (e.g. min_text_len) and is reported instead of being
+# silently ignored.
+KNOWN_DETECTION_OPTIONS = frozenset({"min_text_length"})
 
 
 class LanguageDetector:
@@ -97,6 +111,7 @@ class LanguageDetector:
             config.get("min_text_length", DEFAULT_MIN_TEXT_LENGTH),
             DEFAULT_MIN_TEXT_LENGTH,
         )
+        self._warned_options: set = set()
 
         if not LANGDETECT_AVAILABLE:
             self.logger.warning(
@@ -147,12 +162,28 @@ class LanguageDetector:
             return True
         return not LANGDETECT_AVAILABLE
 
+    def _warn_unknown_options(self, options: Dict[str, Any]) -> None:
+        """Report option names that no detection API understands.
+
+        **options would otherwise swallow typos silently (e.g. min_text_len),
+        making the caller believe an override took effect when nothing
+        happened. Warns once per unknown name per detector instance so batch
+        calls do not flood the log.
+        """
+        unknown = set(options) - KNOWN_DETECTION_OPTIONS - self._warned_options
+        if unknown:
+            self._warned_options |= unknown
+            self.logger.warning(
+                f"Ignoring unknown detection option(s) {sorted(unknown)}; "
+                f"supported options: {sorted(KNOWN_DETECTION_OPTIONS)}"
+            )
+
     def detect(self, text: str, **options) -> str:
         """
         Detect language of text.
 
-        This method detects the language of input text using langdetect.
-        Returns the default language if detection fails or text is too short.
+        Returns the most likely language code regardless of confidence; use
+        detect_with_confidence() to apply the min_confidence threshold.
 
         Args:
             text: Input text to analyze
@@ -169,20 +200,7 @@ class LanguageDetector:
             ``default_language`` (``"unknown"`` unless overridden) is returned
             as a fallback. The same fallback is returned if detection fails.
         """
-        if self._cannot_detect(text, options):
-            return self.default_language
-
-        try:
-            language = detect(text)
-            return language
-        except LangDetectException:
-            self.logger.warning(
-                f"Failed to detect language, using default: {self.default_language}"
-            )
-            return self.default_language
-        except Exception as e:
-            self.logger.error(f"Language detection error: {e}")
-            return self.default_language
+        return self.detect_multiple(text, top_n=1, **options)[0][0]
 
     def detect_with_confidence(self, text: str, **options) -> Tuple[str, float]:
         """
@@ -190,7 +208,8 @@ class LanguageDetector:
 
         This method detects the language of text and returns both the language
         code and confidence score. Only returns detected language if confidence
-        meets the minimum threshold.
+        meets the minimum threshold; otherwise the configured
+        ``default_language`` is returned with the observed confidence.
 
         Args:
             text: Input text to analyze
@@ -208,27 +227,10 @@ class LanguageDetector:
             ``(default_language, 0.0)`` as a fallback; the 0.0 confidence
             signals that no detection was performed.
         """
-        if self._cannot_detect(text, options):
-            return (self.default_language, 0.0)
-
-        try:
-            languages = detect_langs(text)
-            if languages:
-                top_language = languages[0]
-                if top_language.prob >= self.min_confidence:
-                    return (top_language.lang, top_language.prob)
-                else:
-                    return (self.default_language, top_language.prob)
-            else:
-                return (self.default_language, 0.0)
-        except LangDetectException:
-            self.logger.warning(
-                f"Failed to detect language, using default: {self.default_language}"
-            )
-            return (self.default_language, 0.0)
-        except Exception as e:
-            self.logger.error(f"Language detection error: {e}")
-            return (self.default_language, 0.0)
+        language, confidence = self.detect_multiple(text, top_n=1, **options)[0]
+        if confidence >= self.min_confidence:
+            return (language, confidence)
+        return (self.default_language, confidence)
 
     def detect_multiple(
         self, text: str, top_n: int = 3, **options
@@ -236,8 +238,9 @@ class LanguageDetector:
         """
         Detect top N languages with confidence scores.
 
-        This method detects multiple candidate languages for text, returning
-        the top N languages sorted by confidence.
+        This is the single detection core: detect() and
+        detect_with_confidence() delegate here, so guard, fallback and
+        error-handling semantics live in exactly one place.
 
         Args:
             text: Input text to analyze
@@ -255,6 +258,8 @@ class LanguageDetector:
             ``[(default_language, 0.0)]`` as a fallback; the 0.0 confidence
             signals that no detection was performed.
         """
+        self._warn_unknown_options(options)
+
         if self._cannot_detect(text, options):
             return [(self.default_language, 0.0)]
 
