@@ -1160,9 +1160,9 @@ cymem==2.0.13 \
     #   preshed
     #   spacy
     #   thinc
-d3blocks==1.8.1 \
-    --hash=sha256:2c4834bc8496547b1a7144ac3e6f89281d5450bd286ccb05fa635f036f1f9ead \
-    --hash=sha256:510d2a443f6c9bf47e75739357a69d0eb9be2436f2f68e3801dd9d85a801cadb
+d3blocks==1.8.6 \
+    --hash=sha256:0aa8966bfc714281d1d447e85c48c28dd03d343e691f9e5d1f3cdc359dfb4c1a \
+    --hash=sha256:a08d5a112f10fb38e5df1aca3aaf543e1ef457095bca1974ed9a5a690d8432c7
     # via semantica (pyproject.toml)
 d3graph==3.0.1 \
     --hash=sha256:345254d65e50d0de3a1a099c6bc99139a9fba59179b8c6b2212b80af6b8d2775 \
