@@ -93,7 +93,10 @@ class LanguageDetector:
         self.config = config
         self.default_language = config.get("default_language", UNKNOWN_LANGUAGE)
         self.min_confidence = config.get("min_confidence", 0.5)
-        self.min_text_length = config.get("min_text_length", DEFAULT_MIN_TEXT_LENGTH)
+        self.min_text_length = self._normalize_min_text_length(
+            config.get("min_text_length", DEFAULT_MIN_TEXT_LENGTH),
+            DEFAULT_MIN_TEXT_LENGTH,
+        )
 
         if not LANGDETECT_AVAILABLE:
             self.logger.warning(
@@ -110,9 +113,28 @@ class LanguageDetector:
             f"Language detector initialized (default={self.default_language})"
         )
 
+    def _normalize_min_text_length(self, value: Any, fallback: int) -> int:
+        """Coerce a min_text_length value to a non-negative int.
+
+        Invalid values (None, non-numeric strings, ...) must degrade to the
+        fallback instead of raising during the length comparison, where no
+        detection exception handler protects the caller.
+        """
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            self.logger.warning(
+                f"Invalid min_text_length {value!r}, using {fallback}"
+            )
+            return fallback
+
     def _resolve_min_text_length(self, options: Dict[str, Any]) -> int:
         """Resolve the minimum text length, allowing per-call override."""
-        return options.get("min_text_length", self.min_text_length)
+        if "min_text_length" not in options:
+            return self.min_text_length
+        return self._normalize_min_text_length(
+            options["min_text_length"], self.min_text_length
+        )
 
     def _cannot_detect(self, text: str, options: Dict[str, Any]) -> bool:
         """True when detection cannot run for this input.

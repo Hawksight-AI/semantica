@@ -87,6 +87,39 @@ class TestLanguageDetector(unittest.TestCase):
             detector.detect_with_confidence(""), (UNKNOWN_LANGUAGE, 0.0)
         )
 
+    def test_invalid_min_text_length_degrades_to_fallback(self):
+        # Invalid values must not raise TypeError during the length check
+        for invalid in (None, "abc", object()):
+            detector = LanguageDetector(min_text_length=invalid)
+            self.assertEqual(detector.min_text_length, 10)
+            self.assertEqual(detector.detect("Hi"), UNKNOWN_LANGUAGE)
+
+        # Invalid per-call override falls back to the instance value
+        detector = LanguageDetector(min_text_length=3)
+        self.assertEqual(
+            detector.detect("Hi", min_text_length=None), UNKNOWN_LANGUAGE
+        )
+
+        # Numeric-ish values are coerced; negatives clamp to zero
+        self.assertEqual(LanguageDetector(min_text_length="5").min_text_length, 5)
+        self.assertEqual(LanguageDetector(min_text_length=-1).min_text_length, 0)
+        self.assertEqual(LanguageDetector(min_text_length=2.9).min_text_length, 2)
+
+    def test_detect_language_wrapper_does_not_mutate_global_config(self):
+        from semantica.normalize.config import normalize_config
+        from semantica.normalize.methods import detect_language
+
+        original = dict(normalize_config.get_method_config("language"))
+        normalize_config.set_method_config("language", default_language="en")
+        try:
+            detect_language("Hi", min_text_length=1)
+            self.assertNotIn(
+                "min_text_length",
+                normalize_config.get_method_config("language"),
+            )
+        finally:
+            normalize_config.set_method_config("language", **original)
+
     def test_get_language_name(self):
         self.assertEqual(self.detector.get_language_name("en"), "English")
         self.assertEqual(self.detector.get_language_name("fr"), "French")
