@@ -11,6 +11,7 @@ Key Features:
     - Batch processing
     - Top N language detection
     - Language code to name mapping
+    - Configurable minimum text length with an "unknown" fallback
 
 Main Classes:
     - LanguageDetector: Language detection coordinator
@@ -76,6 +77,7 @@ class LanguageDetector:
         - Batch processing
         - Top N language detection
         - Language code to name mapping
+        - Configurable minimum text length with an "unknown" fallback
 
     Example Usage:
         >>> detector = LanguageDetector()
@@ -88,7 +90,8 @@ class LanguageDetector:
         """
         Initialize language detector.
 
-        Sets up the detector with default language and minimum confidence threshold.
+        Sets up the fallback language, the confidence threshold and the
+        minimum text length required to run detection.
 
         Args:
             **config: Configuration options:
@@ -111,7 +114,7 @@ class LanguageDetector:
             config.get("min_text_length", DEFAULT_MIN_TEXT_LENGTH),
             DEFAULT_MIN_TEXT_LENGTH,
         )
-        self._warned_options: set = set()
+        self._warned_options = set()
 
         if not LANGDETECT_AVAILABLE:
             self.logger.warning(
