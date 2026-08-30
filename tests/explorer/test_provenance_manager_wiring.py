@@ -5,13 +5,18 @@ Tests for ProvenanceManager wiring into Explorer routes and application startup.
 from unittest.mock import patch
 
 import pytest
-from starlette.testclient import TestClient
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this module
+# must skip rather than fail collection when it is absent. The guard has to sit
+# above the starlette/explorer imports below, which need that extra.
+pytest.importorskip("fastapi")
 
-from semantica.context.context_graph import ContextGraph
-from semantica.explorer.app import create_app
-from semantica.explorer.session import GraphSession
-from semantica.provenance import ProvenanceManager
-from semantica.provenance.storage import SQLiteStorage
+from starlette.testclient import TestClient  # noqa: E402
+
+from semantica.context.context_graph import ContextGraph  # noqa: E402
+from semantica.explorer.app import create_app  # noqa: E402
+from semantica.explorer.session import GraphSession  # noqa: E402
+from semantica.provenance import ProvenanceManager  # noqa: E402
+from semantica.provenance.storage import SQLiteStorage  # noqa: E402
 
 
 @pytest.fixture

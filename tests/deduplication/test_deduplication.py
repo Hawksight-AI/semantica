@@ -291,8 +291,8 @@ class TestDeduplication(unittest.TestCase):
 class TestProgressTrackerEncoding(unittest.TestCase):
     """Regression tests for issue #531 — Unicode crash on cp1252 Windows consoles."""
 
-    def _make_cp1252_stdout(self):
-        """Return a stdout-like object that raises UnicodeEncodeError for non-cp1252 chars."""
+    def _make_cp1252_stream(self):
+        """Return a stream that raises UnicodeEncodeError for non-cp1252 chars."""
         class CP1252Writer:
             encoding = "cp1252"
             def write(self, text):
@@ -304,39 +304,39 @@ class TestProgressTrackerEncoding(unittest.TestCase):
     def test_safe_write_does_not_crash_on_cp1252(self):
         """_safe_write must not raise UnicodeEncodeError on a cp1252 console."""
         display = ConsoleProgressDisplay()
-        orig = sys.stdout
-        sys.stdout = self._make_cp1252_stdout()
+        orig = sys.stderr
+        sys.stderr = self._make_cp1252_stream()
         try:
             display._safe_write("🧠 Semantica - 📊 Current Progress\n")
         except UnicodeEncodeError:
-            self.fail("_safe_write raised UnicodeEncodeError on cp1252 stdout")
+            self.fail("_safe_write raised UnicodeEncodeError on a cp1252 stream")
         finally:
-            sys.stdout = orig
+            sys.stderr = orig
 
     def test_update_pipeline_header_does_not_crash_on_cp1252(self):
         """update() pipeline header write must not crash on a cp1252 console (issue #531)."""
         from semantica.utils.progress_tracker import ProgressItem
         display = ConsoleProgressDisplay()
         display.use_emoji = True  # force emoji path to exercise the fixed branch
-        orig = sys.stdout
-        sys.stdout = self._make_cp1252_stdout()
+        orig = sys.stderr
+        sys.stderr = self._make_cp1252_stream()
         try:
             display._safe_write("🧠 Semantica - 📊 Current Progress\n")
             display._safe_write("=" * 150 + "\n")
         except UnicodeEncodeError:
             self.fail("Pipeline header write raised UnicodeEncodeError on cp1252 stdout")
         finally:
-            sys.stdout = orig
+            sys.stderr = orig
 
     def test_emoji_detection_disables_on_cp1252(self):
-        """ConsoleProgressDisplay should auto-disable emoji when stdout is cp1252."""
-        orig = sys.stdout
-        sys.stdout = self._make_cp1252_stdout()
+        """ConsoleProgressDisplay should auto-disable emoji when the progress stream is cp1252."""
+        orig = sys.stderr
+        sys.stderr = self._make_cp1252_stream()
         try:
             display = ConsoleProgressDisplay()
-            self.assertFalse(display.use_emoji, "use_emoji should be False on cp1252 stdout")
+            self.assertFalse(display.use_emoji, "use_emoji should be False on a cp1252 progress stream")
         finally:
-            sys.stdout = orig
+            sys.stderr = orig
 
 
 class TestResultLimiting(unittest.TestCase):

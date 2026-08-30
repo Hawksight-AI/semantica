@@ -1359,6 +1359,101 @@ class TestStore:
         result = runner.invoke(cli_module.main, ["store", "migrate", "--from", "faiss"])
         assert result.exit_code != 0
 
+    def test_migrate_refuses_unsupported_backend_pair(self, runner):
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "faiss", "--to", "qdrant"])
+        assert result.exit_code != 0
+        assert "faiss, pgvector, sqlite" in result.output
+
+    def _fake_migrate_store_module(self, source_items, stored, dest_configs=None):
+        class _FakeBackendStore:
+            def __init__(self, dimension=None):
+                self.dimension = dimension
+
+        class _FakeStore:
+            def __init__(self, backend, config=None, **kw):
+                self.backend = backend
+                self._config = config or {}
+                dim = self._config.get("dimension")
+                self._backend_store = _FakeBackendStore(dimension=dim)
+                if dest_configs is not None:
+                    dest_configs[backend] = dict(self._config)
+
+            def iter_vectors(self, batch_size=500):
+                if self.backend == "sqlite":
+                    yield from source_items
+                    return
+                return
+                yield  # pragma: no cover - makes this a generator for other backends
+
+            def store_vectors(self, vectors, metadata, ids=None):
+                for vec_id, meta in zip(ids, metadata):
+                    stored[vec_id] = meta
+
+        return _fake_module(VectorStore=_FakeStore)
+
+    def test_migrate_runs_between_supported_backends(self, runner, monkeypatch):
+        source_items = [
+            {"id": "a", "vector": [0.1, 0.2], "metadata": {"tag": "x"}},
+            {"id": "b", "vector": [0.3, 0.4], "metadata": {}},
+        ]
+        stored = {}
+        fake_vs = self._fake_migrate_store_module(source_items, stored)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "sqlite", "--to", "pgvector",
+                                      "--namespace", "prod", "--json"])
+        _ok(result)
+        data = _json_output(result)
+        assert data == {"from": "sqlite", "to": "pgvector", "migrated": 2}
+        assert stored == {"a": {"tag": "x", "namespace": "prod"}, "b": {"namespace": "prod"}}
+
+    def test_migrate_reports_zero_for_empty_source(self, runner, monkeypatch):
+        stored = {}
+        fake_vs = self._fake_migrate_store_module([], stored)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "sqlite", "--to", "pgvector", "--json"])
+        _ok(result)
+        assert _json_output(result)["migrated"] == 0
+        assert stored == {}
+
+    def test_migrate_inherits_source_dimension_into_dest(self, runner, monkeypatch):
+        source_items = [{"id": "a", "vector": [0.1, 0.2, 0.3], "metadata": {}}]
+        stored = {}
+        dest_configs: dict = {}
+        fake_vs = self._fake_migrate_store_module(source_items, stored, dest_configs)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+        monkeypatch.setattr(
+            cli_module.Config, "to_dict",
+            lambda self: {"vector_store": {"sqlite": {"dimension": 3}, "pgvector": {}}},
+        )
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "sqlite", "--to", "pgvector", "--json"])
+        _ok(result)
+        assert dest_configs["pgvector"].get("dimension") == 3
+
+    def test_migrate_faiss_source_requires_index_path(self, runner, monkeypatch):
+        fake_vs = _fake_module(VectorStore=lambda **kw: MagicMock())
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "faiss", "--to", "sqlite"])
+        assert result.exit_code != 0
+        assert "index_path" in result.output
+
+    def test_migrate_faiss_dest_requires_index_path(self, runner, monkeypatch):
+        fake_vs = _fake_module(VectorStore=lambda **kw: MagicMock())
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "sqlite", "--to", "faiss"])
+        assert result.exit_code != 0
+        assert "index_path" in result.output
+
     def test_flush_requires_confirm(self, runner):
         result = runner.invoke(cli_module.main, ["store", "flush"])
         assert result.exit_code != 0

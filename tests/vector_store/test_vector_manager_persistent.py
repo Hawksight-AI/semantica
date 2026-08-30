@@ -121,6 +121,78 @@ class VectorStoreCountTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# VectorStore.scan_vectors() / iter_vectors() dispatch tests
+# ---------------------------------------------------------------------------
+
+class _ScanningBackendStore:
+    """Fake persistent backend store that supports scan_vectors()."""
+
+    def __init__(self, items):
+        self._items = items
+
+    def scan_vectors(self, offset=0, limit=100):
+        return self._items[offset:offset + limit]
+
+
+class _NonScanningBackendStore:
+    """Fake persistent backend store without any scan capability."""
+
+
+class VectorStoreScanVectorsTests(unittest.TestCase):
+    """VectorStore.scan_vectors() / iter_vectors() backend-agnostic accessors."""
+
+    def setUp(self):
+        self.vectors = [np.array([1.0, 0.0]), np.array([0.0, 1.0]), np.array([1.0, 1.0])]
+        self.metadata = [{"type": "a"}, {"type": "b"}, {"type": "c"}]
+
+    def test_scan_inmemory_pages_through_all_vectors(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        ids = store.store_vectors(self.vectors, self.metadata)
+
+        page1 = store.scan_vectors(offset=0, limit=2)
+        page2 = store.scan_vectors(offset=2, limit=2)
+
+        self.assertEqual([p["id"] for p in page1], ids[:2])
+        self.assertEqual([p["id"] for p in page2], ids[2:])
+        self.assertEqual(page2[0]["metadata"], {"type": "c"})
+
+    def test_scan_inmemory_empty_store(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        self.assertEqual(store.scan_vectors(offset=0, limit=10), [])
+
+    def test_scan_zero_limit_returns_empty_list(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.store_vectors(self.vectors, self.metadata)
+        self.assertEqual(store.scan_vectors(offset=0, limit=0), [])
+
+    def test_scan_delegates_to_backend_store(self):
+        items = [{"id": "a", "metadata": {}, "vector": None}]
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.backend = "faiss"
+        store._backend_store = _ScanningBackendStore(items)
+        self.assertEqual(store.scan_vectors(offset=0, limit=10), items)
+
+    def test_scan_raises_not_implemented_without_backend_support(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.backend = "faiss"
+        store._backend_store = _NonScanningBackendStore()
+        with self.assertRaises(NotImplementedError):
+            store.scan_vectors(offset=0, limit=10)
+
+    def test_iter_vectors_walks_every_page(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        ids = store.store_vectors(self.vectors, self.metadata)
+
+        collected = list(store.iter_vectors(batch_size=2))
+
+        self.assertEqual([item["id"] for item in collected], ids)
+
+    def test_iter_vectors_empty_store_yields_nothing(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        self.assertEqual(list(store.iter_vectors(batch_size=2)), [])
+
+
+# ---------------------------------------------------------------------------
 # VectorManager tests — inmemory backend
 # ---------------------------------------------------------------------------
 
