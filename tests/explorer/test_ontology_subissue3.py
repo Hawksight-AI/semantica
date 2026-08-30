@@ -12,7 +12,10 @@ from semantica.context.context_graph import ContextGraph
 pytest.importorskip("fastapi")
 
 from semantica.explorer.app import create_app  # noqa: E402
-from semantica.explorer.routes.ontology import OntologyEntry  # noqa: E402
+from semantica.explorer.routes.ontology import (  # noqa: E402
+    OntologyEntry,
+    _convert_ontology_to_graph,
+)
 from semantica.explorer.session import GraphSession  # noqa: E402
 
 from starlette.testclient import TestClient  # noqa: E402
@@ -129,6 +132,93 @@ def test_health_returns_dimensions_and_issues(client):
         "documentation",
     }
     assert isinstance(payload["issues"], list)
+
+
+def test_ontology_graph_returns_editable_schema_nodes_and_edges(client):
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    node_ids = {node["id"] for node in payload["nodes"]}
+    assert "http://example.org/onto-a" in node_ids
+    assert "http://example.org/onto-a#Person" in node_ids
+    assert "http://example.org/onto-a#name" in node_ids
+    assert any(
+        edge["source"] == "http://example.org/onto-a#name"
+        and edge["target"] == "http://example.org/onto-a#Person"
+        and edge["type"] == "rdfs:domain"
+        for edge in payload["edges"]
+    )
+
+
+def test_ontology_graph_rejects_unregistered_namespace(client):
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_ontology_graph_excludes_separately_registered_nested_ontology(client):
+    graph = client.app.state.session.graph
+    nested = "http://example.org/onto-a/nested"
+    nested_class = f"{nested}#PrivateClass"
+    graph.add_node(nested, node_type="owl:Ontology", content="Nested Ontology")
+    graph.add_node(nested_class, node_type="owl:Class", content="Private Class")
+
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 200
+    node_ids = {node["id"] for node in response.json()["nodes"]}
+    assert nested not in node_ids
+    assert nested_class not in node_ids
+
+
+def test_ontology_graph_prefers_explicit_ownership_over_uri_namespace(client):
+    graph = client.app.state.session.graph
+    explicit_member = "http://unrelated.example/Person"
+    graph.add_node(
+        explicit_member,
+        node_type="owl:Class",
+        content="Explicit Member",
+        scheme_uri="http://example.org/onto-a",
+    )
+
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 200
+    assert explicit_member in {node["id"] for node in response.json()["nodes"]}
+
+
+def test_ontology_graph_ignores_unrelated_data_when_enforcing_size_limit(client):
+    graph = client.app.state.session.graph
+    for index in range(5_001):
+        graph.add_node(
+            f"urn:unrelated:{index}",
+            node_type="owl:Class",
+            content="Unrelated",
+            scheme_uri="http://example.org/onto-b",
+        )
+
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 200
+    assert "http://example.org/onto-a#Person" in {
+        node["id"] for node in response.json()["nodes"]
+    }
 
 
 def test_shacl_generate_and_shapes(client):
@@ -696,6 +786,29 @@ def test_ontology_load_does_not_swallow_422_from_ingestor_success_path(client):
     fallback_parse.assert_not_called()
 
 
+def test_convert_ontology_uses_standard_property_types_and_scheme_uri():
+    ontology_uri = "http://example.org/onto"
+    nodes, _ = _convert_ontology_to_graph(
+        {
+            "uri": ontology_uri,
+            "name": "Example Ontology",
+            "classes": [
+                {"uri": f"{ontology_uri}#Person", "name": "Person"},
+            ],
+            "properties": [
+                {"uri": f"{ontology_uri}#name", "name": "name", "type": "data"},
+                {"uri": f"{ontology_uri}#knows", "name": "knows", "type": "object"},
+            ],
+        }
+    )
+
+    by_id = {node["id"]: node for node in nodes}
+    assert by_id[f"{ontology_uri}#Person"]["properties"]["scheme_uri"] == ontology_uri
+    assert by_id[f"{ontology_uri}#name"]["type"] == "owl:DatatypeProperty"
+    assert by_id[f"{ontology_uri}#knows"]["type"] == "owl:ObjectProperty"
+    assert by_id[f"{ontology_uri}#name"]["properties"]["scheme_uri"] == ontology_uri
+
+
 # ---------------------------------------------------------------------------
 # refresh_ontology — single combined add_nodes_and_edges() coverage (#775)
 # ---------------------------------------------------------------------------
@@ -789,5 +902,3 @@ def test_refresh_ontology_missing_source_url_returns_422(client):
     response = client.post(f"/api/ontology/{encoded_uri}/refresh")
     assert response.status_code == 422
     assert "source url" in response.json()["detail"].lower()
-
-
