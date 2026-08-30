@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "semantica"
-version = "0.6.5"
-description = "Accountability and context layer for AI agents. Context graphs, decision intelligence, full provenance tracking, and explainable reasoning engines — every AI decision traceable, every output auditable."
+version = "0.6.7"
+description = "Graph-Native Infrastructure for Context and Accountable AI Systems: context graphs, decision intelligence, full provenance tracking, and explainable reasoning engines — every AI decision traceable, every output auditable."
 readme = "README.md"
 license = { text = "MIT" }
 
@@ -85,7 +85,8 @@ dependencies = [
   "loguru>=0.7.3",
   "structlog>=22.1.0",
   "gensim>=4.4.0",
-  "httpx<0.29.0"
+  "httpx<0.29.0",
+  "pyarrow>=14.0.0"
 ]
 
 [project.urls]
@@ -103,13 +104,11 @@ Discord       = "https://discord.gg/sV34vps5hH"
 llm-openai = ["openai>=1.0.0"]
 llm-groq = ["groq>=0.4.0"]
 llm-gemini = ["google-genai>=0.1.0"]
-llm-anthropic = ["anthropic>=0.18.0"]
+llm-anthropic = ["anthropic>=0.122.0"]
 llm-ollama = ["ollama>=0.1.0"]
 llm-deepseek = ["openai>=1.0.0"]
 llm-litellm = ["litellm>=1.83.9"]
 llm-instructor = ["instructor>=1.15.3"]
-google-adk = ["google-adk"]
-crewai = ["crewai>=0.80.0"]
 
 llm-all = [
   "semantica[llm-openai,llm-groq,llm-gemini,llm-anthropic,llm-ollama,llm-deepseek,llm-litellm,llm-instructor]"
@@ -127,6 +126,7 @@ db-databricks = ["databricks-sdk>=0.60.0", "databricks-sql-connector>=4.0.0"]
 db-arrow = ["pyarrow>=24.0.0"]
 ingest-parquet = ["pyarrow>=24.0.0"]
 ingest-arrow = ["pyarrow>=24.0.0"]
+ingest-sap = ["requests>=2.28.0"]
 
 db-all = [
   "semantica[db-snowflake,db-databricks,db-arrow]"
@@ -207,6 +207,8 @@ agno = ["agno>=1.0.0"]
 # needed (it pulls vulnerable transitive deps like chromadb) and would only
 # duplicate the prebuilt tooling users can install separately.
 crewai = ["crewai>=0.80.0"]
+langchain = ["langchain-core>=0.3.0"]
+google-adk = ["google-adk>=0.1.0; python_version >= '3.10'"]
 
 # ---- File Watching ----
 watch = ["watchdog>=6.0.0"]
@@ -254,7 +256,7 @@ explorer-lite = [
 # dependency-audit/security gates.  Install it explicitly via ``semantica[crewai]``.
 all = [
   "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,explorer]",
-  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno]"
+  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno,langchain,google-adk]"
 ]
 
 # ---------------- ENTRYPOINTS ----------------
@@ -273,7 +275,7 @@ include = ["semantica*", "integrations*"]
 [tool.setuptools.package-data]
 # Explicit patterns are more reliable than **/* across setuptools versions.
 # static/* covers index.html / favicon; static/assets/* covers all JS/CSS chunks.
-"semantica" = ["static/*", "static/assets/*"]
+"semantica" = ["static/*", "static/assets/*", "ontology/vocabulary/*.ttl"]
 
 [tool.black]
 line-length = 88
