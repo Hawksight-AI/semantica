@@ -386,13 +386,25 @@ class OntologyIngestor:
             prop_def["description"] = str(comment)
             
         # Domain and Range
-        domain = graph.value(subject, RDFS.domain)
-        if domain and isinstance(domain, rdflib.URIRef):
-            prop_def["domain"] = str(domain)
-            
-        range_val = graph.value(subject, RDFS.range)
-        if range_val and isinstance(range_val, rdflib.URIRef):
-            prop_def["range"] = str(range_val)
+        domains = sorted(
+            {
+                str(domain)
+                for domain in graph.objects(subject, RDFS.domain)
+                if isinstance(domain, rdflib.URIRef)
+            }
+        )
+        if domains:
+            prop_def["domain"] = domains[0] if len(domains) == 1 else domains
+
+        ranges = sorted(
+            {
+                str(range_val)
+                for range_val in graph.objects(subject, RDFS.range)
+                if isinstance(range_val, rdflib.URIRef)
+            }
+        )
+        if ranges:
+            prop_def["range"] = ranges[0] if len(ranges) == 1 else ranges
             
         properties_dict[uri] = prop_def
 

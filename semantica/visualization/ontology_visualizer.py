@@ -945,12 +945,18 @@ class OntologyVisualizer:
 
             domain = prop.get("domain")
             if domain:
-                edges.append({"source": prop_name, "target": domain, "type": "domain"})
+                domains = domain if isinstance(domain, list) else [domain]
+                edges.extend(
+                    {"source": prop_name, "target": value, "type": "domain"}
+                    for value in domains
+                )
 
             range_val = prop.get("range")
             if range_val:
-                edges.append(
-                    {"source": prop_name, "target": range_val, "type": "range"}
+                ranges = range_val if isinstance(range_val, list) else [range_val]
+                edges.extend(
+                    {"source": prop_name, "target": value, "type": "range"}
+                    for value in ranges
                 )
 
         # Use similar approach as KG visualizer
