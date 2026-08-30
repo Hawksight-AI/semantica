@@ -35,6 +35,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -56,6 +57,9 @@ except (ImportError, OSError):
 
 class FAISSIndex:
     """FAISS index wrapper."""
+
+    _STATE_SUFFIX = ".metadata.json"
+    _STATE_VERSION = 1
 
     def __init__(self, index: Any, dimension: int, index_type: str = "flat"):
         """Initialize FAISS index wrapper."""
@@ -136,20 +140,74 @@ class FAISSIndex:
         return self.metadata.get(vector_id)
 
     def save(self, path: Union[str, Path]):
-        """Save index to disk."""
-        if FAISS_AVAILABLE:
-            faiss.write_index(self.index, str(path))
-        else:
-            raise ProcessingError("FAISS not available")
-
-    @classmethod
-    def load(cls, path: Union[str, Path], dimension: int, index_type: str = "flat"):
-        """Load index from disk."""
+        """Save the FAISS index and its logical IDs and metadata to disk."""
         if not FAISS_AVAILABLE:
             raise ProcessingError("FAISS not available")
 
+        path = Path(path)
+        state = {
+            "version": self._STATE_VERSION,
+            "vector_ids": self.vector_ids,
+            "metadata": self.metadata,
+        }
+        try:
+            serialized_state = json.dumps(state, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError) as exc:
+            raise ProcessingError("FAISS metadata must be JSON serializable") from exc
+
+        faiss.write_index(self.index, str(path))
+        self._state_path(path).write_text(f"{serialized_state}\n", encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: Union[str, Path], dimension: int, index_type: str = "flat"):
+        """Load an index and restore its logical state when present."""
+        if not FAISS_AVAILABLE:
+            raise ProcessingError("FAISS not available")
+
+        path = Path(path)
         index = faiss.read_index(str(path))
-        return cls(index, dimension, index_type)
+        loaded = cls(index, dimension, index_type)
+        state_path = cls._state_path(path)
+        if not state_path.exists():
+            return loaded
+
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProcessingError(
+                f"Failed to load FAISS metadata from {state_path}: {exc}"
+            ) from exc
+
+        if not isinstance(state, dict):
+            raise ProcessingError(f"Invalid FAISS metadata state: {state_path}")
+
+        vector_ids = state.get("vector_ids")
+        metadata = state.get("metadata")
+        if state.get("version") != cls._STATE_VERSION:
+            raise ProcessingError(f"Unsupported FAISS metadata version in {state_path}")
+        if not isinstance(vector_ids, list) or not all(
+            isinstance(vector_id, str) for vector_id in vector_ids
+        ):
+            raise ProcessingError(f"Invalid vector_ids in FAISS metadata: {state_path}")
+        if len(vector_ids) != index.ntotal:
+            raise ProcessingError(
+                "FAISS metadata vector count does not match the index: "
+                f"{len(vector_ids)} != {index.ntotal}"
+            )
+        if not isinstance(metadata, dict) or not all(
+            isinstance(vector_id, str) and isinstance(value, dict)
+            for vector_id, value in metadata.items()
+        ):
+            raise ProcessingError(f"Invalid metadata in FAISS state: {state_path}")
+
+        loaded.vector_ids = vector_ids
+        loaded.metadata = metadata
+        return loaded
+
+    @classmethod
+    def _state_path(cls, path: Union[str, Path]) -> Path:
+        """Return the JSON sidecar path for a FAISS index file."""
+        return Path(f"{path}{cls._STATE_SUFFIX}")
 
 
 class FAISSSearch:
@@ -453,6 +511,10 @@ class FAISSStore:
 
         Returns:
             True if successful
+
+        Notes:
+            Logical IDs and metadata are stored in ``<path>.metadata.json``.
+            Keep the sidecar file with the FAISS index when moving it.
         """
         if self.index is None:
             raise ProcessingError("No index to save")
@@ -477,6 +539,10 @@ class FAISSStore:
 
         Returns:
             FAISSIndex instance
+
+        Notes:
+            Restores logical IDs and metadata from ``<path>.metadata.json``
+            when the sidecar is present. Legacy index files still load without it.
         """
         if not FAISS_AVAILABLE:
             raise ProcessingError("FAISS not available")
