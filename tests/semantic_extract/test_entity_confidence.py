@@ -187,6 +187,29 @@ class TestWeightedConfidence(unittest.TestCase):
         self.assertGreaterEqual(score, 0.0)
         self.assertLessEqual(score, 1.0)
 
+    def test_none_stays_unknown_when_similarity_disabled(self):
+        # Similarity explicitly disabled and no measured confidence:
+        # the result must remain unknown, not a fabricated similarity score
+        self.assertIsNone(
+            calculate_weighted_confidence(
+                "PERSON",
+                None,
+                valid_types=["PERSON"],
+                item_text="Steve Jobs",
+                weight_method=1.0,
+                weight_similarity=0.0,
+            )
+        )
+        self.assertIsNone(
+            calculate_weighted_confidence(
+                "PERSON",
+                None,
+                valid_types=["PERSON"],
+                weight_method=0.0,
+                weight_similarity=0.0,
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
