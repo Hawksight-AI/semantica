@@ -41,67 +41,132 @@ from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .reasoner import Fact, Rule, _make_activation_key
 
+logger = get_logger("rete_engine")
 
-def _extract_bindings(condition: Any, fact: Fact) -> Dict[str, Any]:
-    """Extract ``?var`` bindings by matching a condition pattern against a fact.
 
-    ``condition`` is the pattern stored on the alpha node (typically a string
-    like ``"Person(?x)"``); ``fact`` is the working-memory :class:`Fact`. The
-    fact's canonical string form (``Predicate(arg1, arg2, ...)``) is matched
-    against the pattern using the same ``?\\w+`` placeholder convention as the
-    Reasoner, so downstream actions receive real bindings (e.g. ``{"x": "John"}``)
-    instead of the empty dict that previously left ``?x`` placeholders
-    unsubstituted.
+def _build_condition_regex(
+    pattern: str,
+    initial_bindings: Optional[Dict[str, str]] = None,
+) -> str:
+    """Build an anchored regex string for a condition pattern.
 
-    Returns an empty dict when the condition is not a string pattern or does
-    not match -- callers treat that as "no bindings extracted".
+    Splits the pattern on ``?var`` placeholders, escaping the literal
+    segments so surrounding parentheses/commas match literally. Variables
+    become named groups (or backreferences when repeated); variables already
+    present in ``initial_bindings`` are inlined as their literal value.
+
+    Args:
+        pattern: The condition pattern string (e.g. ``"Person(?x)"``).
+        initial_bindings: Bindings already established upstream. Variables
+            already bound are matched as literals rather than captured.
+
+    Returns:
+        An anchored regex string (``^...$``) suitable for ``re.compile`` /
+        ``re.match``.
     """
-    if not isinstance(condition, str):
-        return {}
-
-    segments = re.split(r"(\?\w+)", condition)
+    bindings = initial_bindings or {}
+    segments = re.split(r"(\?\w+)", pattern)
     seen_vars: Set[str] = set()
     p_regex = ""
     for seg in segments:
         if seg.startswith("?"):
             var_name = seg[1:]
-            if var_name in seen_vars:
+            if var_name in bindings:
+                # Already bound — require the exact literal value.
+                p_regex += re.escape(bindings[var_name])
+            elif var_name in seen_vars:
+                # Same variable used twice — enforce a backreference.
                 p_regex += f"(?P={var_name})"
             else:
                 p_regex += f"(?P<{var_name}>.+?)"
                 seen_vars.add(var_name)
         else:
             p_regex += re.escape(seg)
-    p_regex = f"^{p_regex}$"
+    return f"^{p_regex}$"
+
+
+def unify_condition(
+    condition: Any,
+    fact: Fact,
+    initial_bindings: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, str]]:
+    """Unify a condition pattern against a fact.
+
+    A condition is a pattern string such as ``"Person(?x)"`` or
+    ``"knows(?x, ?y)"`` where tokens beginning with ``?`` are variables.
+    The fact is rendered via its ``__str__`` representation
+    (``predicate(arg1, arg2)``) and matched against the pattern.
+
+    This mirrors ``Reasoner._match_pattern`` but is self-contained so the
+    RETE engine does not need a live ``Reasoner`` instance.
+
+    Args:
+        condition: The condition pattern (string). Non-string conditions
+            are stringified before matching.
+        fact: The fact to test.
+        initial_bindings: Bindings already established upstream. Variables
+            already bound must match the corresponding literal in the fact.
+
+    Returns:
+        A dict of variable bindings if the fact unifies with the condition,
+        otherwise ``None``.
+    """
+    bindings = dict(initial_bindings or {})
+    pattern = condition if isinstance(condition, str) else str(condition)
+    fact_str = str(fact)
+
+    # Build the anchored regex once (variables already bound are inlined as
+    # literals). See ``_build_condition_regex`` for the segment handling.
+    p_regex = _build_condition_regex(pattern, bindings)
 
     try:
-        match = re.match(p_regex, str(fact))
-    except re.error:
-        return {}
+        match = re.match(p_regex, fact_str)
+    except re.error as e:
+        logger.warning(
+            "unify_condition failed to compile/match condition "
+            "%r (regex: %r) against fact %r: %s",
+            pattern,
+            p_regex,
+            fact_str,
+            e,
+        )
+        return None
+    except Exception as e:  # noqa: BLE001 - mirror Reasoner._match_pattern
+        logger.warning(
+            "unify_condition unexpected error matching condition "
+            "%r (regex: %r) against fact %r: %s",
+            pattern,
+            p_regex,
+            fact_str,
+            e,
+        )
+        return None
     if not match:
-        return {}
-    return {k: v for k, v in match.groupdict().items() if v is not None}
+        return None
 
-
-def _bindings_for_rule(rule: Rule, facts: List[Fact]) -> Dict[str, Any]:
-    """Merge ``?var`` bindings from matching a rule's conditions against facts.
-
-    Each fact is matched against every condition of the rule; the first
-    condition that yields bindings for a fact contributes them. Bindings from
-    all facts are merged so multi-condition (joined) rules receive the full
-    variable environment. Later conflicting values do not overwrite earlier
-    ones, preserving the binding that a join already validated.
-    """
-    bindings: Dict[str, Any] = {}
-    for fact in facts:
-        for condition in rule.conditions:
-            extracted = _extract_bindings(condition, fact)
-            if not extracted:
-                continue
-            for key, value in extracted.items():
-                bindings.setdefault(key, value)
-            break
+    for var, value in match.groupdict().items():
+        if var in bindings and bindings[var] != value:
+            return None  # Binding conflict.
+        bindings[var] = value
     return bindings
+
+
+@dataclass
+class Token:
+    """A partial match flowing through the Rete network.
+
+    A token represents an ordered collection of concrete facts that have
+    been unified so far, together with the consistent variable bindings
+    accumulated across those facts.
+
+    Alpha nodes emit single-fact tokens. Beta nodes merge a left token and
+    a right token into a new token whose ``facts`` are the concatenation of
+    both sides (preserving condition order) and whose ``bindings`` are the
+    consistent union of both sides.
+    """
+
+    facts: List[Fact] = field(default_factory=list)
+    bindings: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -128,19 +193,68 @@ class AlphaNode(ReteNode):
     def __init__(self, node_id: str, condition: Any):
         super().__init__(node_id)
         self.condition = condition
-        self.matches: List[Fact] = []
+        # Single-fact tokens produced by unifying each matched fact with
+        # this node's condition.
+        self.tokens: List[Token] = []
+        # Pre-compile the condition regex once. Alpha nodes never have
+        # initial bindings, so the pattern is stable for the node's lifetime
+        # and every incoming fact reuses this compiled matcher instead of
+        # rebuilding it (avoids repeated regex construction overhead).
+        pattern = condition if isinstance(condition, str) else str(condition)
+        self._compiled: Optional[re.Pattern] = None
+        try:
+            self._compiled = re.compile(_build_condition_regex(pattern))
+        except re.error as e:
+            logger.warning(
+                "AlphaNode %r failed to compile condition %r: %s; "
+                "node will never match",
+                node_id,
+                pattern,
+                e,
+            )
 
-    def add_fact(self, fact: Fact) -> bool:
-        """Add fact if it matches condition."""
-        if self._matches(fact):
-            self.matches.append(fact)
-            return True
-        return False
+    def add_fact(self, fact: Fact) -> Optional[Token]:
+        """Add fact if it matches the condition, returning its token.
 
-    def _matches(self, fact: Fact) -> bool:
-        """Check if fact matches condition."""
-        # Simple matching - can be enhanced
-        return True
+        Returns the single-fact ``Token`` produced by unification when the
+        fact matches, otherwise ``None``.
+        """
+        bindings = self._matches(fact)
+        if bindings is not None:
+            token = Token(facts=[fact], bindings=dict(bindings))
+            self.tokens.append(token)
+            return token
+        return None
+
+    def _matches(self, fact: Fact) -> Optional[Dict[str, str]]:
+        """Check if fact matches the alpha node condition.
+
+        Uses the pre-compiled regex built in ``__init__`` for performance,
+        since RETE evaluates many facts against every alpha node.
+
+        Returns the variable bindings produced by unification if the fact
+        matches, otherwise ``None``. An empty dict signals a match with no
+        variables (still distinct from ``None``).
+        """
+        if self._compiled is None:
+            # Compilation failed at build time; treat as non-matching.
+            return None
+        fact_str = str(fact)
+        try:
+            match = self._compiled.match(fact_str)
+        except Exception as e:  # noqa: BLE001 - mirror unify_condition
+            logger.warning(
+                "AlphaNode %r unexpected error matching condition "
+                "%r against fact %r: %s",
+                self.node_id,
+                self.condition,
+                fact_str,
+                e,
+            )
+            return None
+        if not match:
+            return None
+        return match.groupdict()
 
 
 class BetaNode(ReteNode):
@@ -150,19 +264,28 @@ class BetaNode(ReteNode):
         super().__init__(node_id)
         self.left = left
         self.right = right
-        self.matches: List[Tuple[Fact, Fact]] = []
+        # Token memories for each side. Incoming tokens are stored here so
+        # that later-arriving tokens on the opposite side can be joined
+        # against every token already seen (chained joins).
+        self.left_tokens: List[Token] = []
+        self.right_tokens: List[Token] = []
 
-    def join(self, left_fact: Fact, right_fact: Fact) -> bool:
-        """Join facts from left and right nodes."""
-        if self._can_join(left_fact, right_fact):
-            self.matches.append((left_fact, right_fact))
-            return True
-        return False
+    def join(self, left_token: Token, right_token: Token) -> Optional[Token]:
+        """Join a left token with a right token.
 
-    def _can_join(self, left_fact: Fact, right_fact: Fact) -> bool:
-        """Check if facts can be joined."""
-        # Simple join logic - can be enhanced
-        return True
+        Returns a new merged ``Token`` (facts concatenated in condition
+        order, bindings unified) when the two tokens are consistent,
+        otherwise ``None`` on a binding conflict.
+        """
+        merged = dict(left_token.bindings)
+        for var, value in right_token.bindings.items():
+            if var in merged and merged[var] != value:
+                return None  # Binding conflict — cannot join.
+            merged[var] = value
+        return Token(
+            facts=list(left_token.facts) + list(right_token.facts),
+            bindings=merged,
+        )
 
 
 class TerminalNode(ReteNode):
@@ -248,12 +371,16 @@ class ReteEngine:
                 self._add_rule_to_network(rule)
 
             self.logger.info(
-                f"Built Rete network with {len(self.network)} nodes for {len(rules)} rules"
+                f"Built Rete network with {len(self.network)} nodes "
+                f"for {len(rules)} rules"
             )
             self.progress_tracker.stop_tracking(
                 tracking_id,
                 status="completed",
-                message=f"Built Rete network with {len(self.network)} nodes for {len(rules)} rules",
+                message=(
+                    f"Built Rete network with {len(self.network)} nodes "
+                    f"for {len(rules)} rules"
+                ),
             )
 
         except Exception as e:
@@ -281,6 +408,10 @@ class ReteEngine:
                 self.node_counter += 1
                 beta_node = BetaNode(node_id, current, alpha_nodes[i])
                 self.network[node_id] = beta_node
+                # Wire the beta node as a child of both its inputs so facts
+                # propagating from either side reach the join.
+                current.children.append(beta_node)
+                alpha_nodes[i].children.append(beta_node)
                 current = beta_node
             final_node = current
         else:
@@ -311,39 +442,57 @@ class ReteEngine:
         # Find matching alpha nodes
         for node_id, node in self.network.items():
             if isinstance(node, AlphaNode):
-                if node.add_fact(fact):
-                    # Propagate to children
-                    self._propagate_from_alpha(node, fact)
+                token = node.add_fact(fact)
+                if token is not None:
+                    # Propagate the single-fact token to children.
+                    self._propagate_token(node, token)
 
-    def _propagate_from_alpha(self, alpha_node: AlphaNode, fact: Fact) -> None:
-        """Propagate from alpha node to children."""
-        for child in alpha_node.children:
+    def _propagate_token(self, source: ReteNode, token: Token) -> None:
+        """Propagate ``token`` (arriving from ``source``) to its children.
+
+        A ``Token`` carries the ordered facts and consistent bindings of a
+        partial match. Beta children attempt joins and, on success, emit a
+        new merged token downstream; terminal children turn the token into a
+        rule activation using the token's complete facts and bindings.
+        """
+        for child in source.children:
             if isinstance(child, BetaNode):
-                # Join with matches from left side
-                for left_fact in alpha_node.matches:
-                    if child.join(left_fact, fact):
-                        # Propagate to children
-                        for grandchild in child.children:
-                            if isinstance(grandchild, TerminalNode):
-                                facts = [left_fact, fact]
-                                match = Match(
-                                    rule=grandchild.rule,
-                                    facts=facts,
-                                    bindings=_bindings_for_rule(
-                                        grandchild.rule, facts
-                                    ),
-                                    confidence=1.0,
-                                )
-                                grandchild.activate(match)
+                self._propagate_to_beta(child, source, token)
             elif isinstance(child, TerminalNode):
-                # Direct activation
                 match = Match(
                     rule=child.rule,
-                    facts=[fact],
-                    bindings=_bindings_for_rule(child.rule, [fact]),
+                    facts=list(token.facts),
+                    bindings=dict(token.bindings),
                     confidence=1.0,
                 )
                 child.activate(match)
+
+    def _propagate_to_beta(
+        self,
+        beta: "BetaNode",
+        source: ReteNode,
+        token: Token,
+    ) -> None:
+        """Attempt joins at ``beta`` for a token arriving from one side.
+
+        The incoming token is stored in the corresponding side's memory,
+        then joined against every token already recorded on the opposite
+        side. Each successful join produces a new merged token that is
+        propagated further downstream, enabling correct chained joins across
+        three or more conditions.
+        """
+        if source is beta.left:
+            beta.left_tokens.append(token)
+            for right_token in list(beta.right_tokens):
+                merged = beta.join(token, right_token)
+                if merged is not None:
+                    self._propagate_token(beta, merged)
+        elif source is beta.right:
+            beta.right_tokens.append(token)
+            for left_token in list(beta.left_tokens):
+                merged = beta.join(left_token, token)
+                if merged is not None:
+                    self._propagate_token(beta, merged)
 
     def match_patterns(self, facts: Optional[List[Fact]] = None) -> List[Match]:
         """
@@ -468,8 +617,11 @@ class ReteEngine:
         self.facts.clear()
         self.reset_action_history()
         for node in self.network.values():
-            if isinstance(node, AlphaNode) or isinstance(node, BetaNode):
-                node.matches.clear()
+            if isinstance(node, AlphaNode):
+                node.tokens.clear()
+            elif isinstance(node, BetaNode):
+                node.left_tokens.clear()
+                node.right_tokens.clear()
             elif isinstance(node, TerminalNode):
                 node.activations.clear()
 

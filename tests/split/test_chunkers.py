@@ -60,6 +60,11 @@ class TestSlidingWindowChunker:
         with pytest.raises(ValidationError):
             SlidingWindowChunker(chunk_size=100, overlap=100)
 
+    @pytest.mark.parametrize("stride", [0, -1])
+    def test_init_rejects_non_positive_stride(self, stride):
+        with pytest.raises(ValidationError, match="stride must be positive"):
+            SlidingWindowChunker(chunk_size=100, stride=stride)
+
     def test_empty_text_returns_empty(self):
         chunker = SlidingWindowChunker(chunk_size=50, overlap=10)
         assert chunker.chunk("") == []
@@ -97,6 +102,49 @@ class TestSlidingWindowChunker:
         chunks = chunker.chunk_with_overlap(text, overlap_size=15)
         assert len(chunks) >= 2
         assert chunker.overlap == 0
+        assert chunker.stride == 50
+
+    @pytest.mark.parametrize("overlap_size", [-1, 50, 51])
+    def test_chunk_with_overlap_rejects_invalid_override(self, overlap_size):
+        chunker = SlidingWindowChunker(chunk_size=50)
+
+        with pytest.raises(ValidationError):
+            chunker.chunk_with_overlap(
+                "non-empty input", overlap_size=overlap_size
+            )
+
+    def test_chunk_with_overlap_accepts_largest_valid_override(self):
+        chunker = SlidingWindowChunker(chunk_size=5)
+
+        chunks = chunker.chunk_with_overlap("abcdefghij", overlap_size=4)
+
+        assert [chunk.start_index for chunk in chunks] == list(range(10))
+
+    def test_chunk_with_overlap_restores_custom_stride(self):
+        chunker = SlidingWindowChunker(chunk_size=10, overlap=2, stride=3)
+
+        chunker.chunk_with_overlap(
+            "abcdefghijklmnopqrstuvwxyz", overlap_size=4
+        )
+
+        assert chunker.overlap == 2
+        assert chunker.stride == 3
+
+    def test_chunk_with_overlap_restores_state_when_chunk_raises(
+        self, monkeypatch
+    ):
+        chunker = SlidingWindowChunker(chunk_size=10, overlap=2, stride=3)
+
+        def raise_error(text):
+            raise RuntimeError("chunk failed")
+
+        monkeypatch.setattr(chunker, "chunk", raise_error)
+
+        with pytest.raises(RuntimeError, match="chunk failed"):
+            chunker.chunk_with_overlap("non-empty input", overlap_size=4)
+
+        assert chunker.overlap == 2
+        assert chunker.stride == 3
 
     def test_boundary_preservation_avoids_mid_word_when_possible(self):
         text = (

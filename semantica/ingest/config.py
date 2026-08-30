@@ -186,8 +186,13 @@ class IngestConfig:
         self._method_configs[method] = config
 
     def get_method_config(self, method: str) -> Dict:
-        """Get method-specific configuration."""
-        return self._method_configs.get(method, {})
+        """Get method-specific configuration.
+
+        Returns a **copy** of the stored method configuration so callers can
+        safely mutate it (e.g. to merge per-call options) without poisoning the
+        global configuration for subsequent calls.
+        """
+        return dict(self._method_configs.get(method, {}))
 
     def get_all(self) -> Dict[str, Any]:
         """Get all configuration."""

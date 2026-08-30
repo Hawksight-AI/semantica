@@ -673,6 +673,7 @@ class GeminiProvider(BaseProvider):
         self.model = model
         self.client = None
         self._use_new_genai = False
+        self._legacy_model_cache: Dict[str, Any] = {}
         self._init_client()
 
     def _init_client(self):
@@ -693,6 +694,38 @@ class GeminiProvider(BaseProvider):
         except Exception:
             self.client = None
             self.logger.warning("Gemini SDK not installed. Install with: pip install semantica[llm-gemini]")
+
+    def _legacy_client_for(self, requested_model: str):
+        """Return a legacy-SDK GenerativeModel bound to this instance's own
+        API key, for the given model name.
+
+        The legacy google-generativeai package keeps its API key as
+        module-level state (genai.configure()), so any GenerativeModel built
+        by a different GeminiProvider instance in the same process can leave
+        that state pointing at a different key. Re-asserting configure()
+        with this instance's key right before use, instead of only once at
+        construction, keeps sequential calls across instances from reading
+        each other's credentials. A cache keyed by model name avoids
+        rebuilding a GenerativeModel on every call for the common case of
+        one model being reused.
+        """
+        try:
+            import google.generativeai as old_genai
+            old_genai.configure(api_key=self.api_key)
+        except Exception:
+            # _init_client() already required this import to reach the
+            # legacy path in the first place, so this only happens when
+            # self.client was injected directly (tests). Fall back to it
+            # without reasserting credentials rather than failing calls
+            # that never needed the real SDK.
+            return self.client
+        if requested_model == self.model:
+            return self.client
+        cached = self._legacy_model_cache.get(requested_model)
+        if cached is None:
+            cached = old_genai.GenerativeModel(requested_model)
+            self._legacy_model_cache[requested_model] = cached
+        return cached
 
     def is_available(self) -> bool:
         """Check if provider is available."""
@@ -724,7 +757,8 @@ class GeminiProvider(BaseProvider):
             )
             return self._resp_text(resp)
         else:
-            response = self.client.generate_content(prompt, generation_config=config or None)
+            legacy_client = self._legacy_client_for(kwargs.get("model", self.model))
+            response = legacy_client.generate_content(prompt, generation_config=config or None)
             return self._resp_text(response)
 
     def generate_structured(self, prompt: str, **kwargs) -> dict:
@@ -733,15 +767,24 @@ class GeminiProvider(BaseProvider):
             raise ProcessingError("Gemini client not initialized.")
 
         json_prompt = f"{prompt}\n\nReturn the response as valid JSON only."
+
+        config = {}
+        self._add_if_set(config, kwargs, "temperature", "top_p", "top_k", "stop_sequences", "candidate_count")
+        if "max_tokens" in kwargs:
+            config["max_output_tokens"] = kwargs["max_tokens"]
+
         if self._use_new_genai:
             model = kwargs.get("model", self.model)
-            resp = self.client.models.generate_content(model=model, contents=json_prompt)
+            resp = self.client.models.generate_content(
+                model=model, contents=json_prompt, config=config or None
+            )
             try:
                 return self._parse_json(self._resp_text(resp))
             except Exception as e:
                 raise ProcessingError(f"Failed to parse JSON from Gemini response: {e}")
         else:
-            response = self.client.generate_content(json_prompt)
+            legacy_client = self._legacy_client_for(kwargs.get("model", self.model))
+            response = legacy_client.generate_content(json_prompt, generation_config=config or None)
             try:
                 return self._parse_json(self._resp_text(response))
             except Exception as e:
@@ -967,6 +1010,8 @@ class OllamaProvider(BaseProvider):
 
     def is_available(self) -> bool:
         """Check if provider is available."""
+        if self.client is None:
+            self._init_client()
         return self.client is not None
 
     def _build_options(self, kwargs: dict) -> Optional[dict]:
@@ -1018,7 +1063,6 @@ class DeepSeekProvider(BaseProvider):
         self.api_key = api_key or config.get_api_key("deepseek")
         self.base_url = "https://api.deepseek.com/v1"
         self.model = model
-        self.base_url = "https://api.deepseek.com/v1"
         self.client = None
         self._init_client()
 
@@ -1045,7 +1089,7 @@ class DeepSeekProvider(BaseProvider):
             "model": kwargs.get("model", self.model),
             "messages": [{"role": "user", "content": prompt}],
         }
-        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens")
+        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty", "seed", "stop", "user")
 
         response = self.client.chat.completions.create(**create_kwargs)
         return response.choices[0].message.content
@@ -1058,8 +1102,9 @@ class DeepSeekProvider(BaseProvider):
         create_kwargs = {
             "model": kwargs.get("model", self.model),
             "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
         }
-        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens")
+        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty", "seed", "stop", "user")
 
         response = self.client.chat.completions.create(**create_kwargs)
         try:
@@ -1103,7 +1148,7 @@ class NovitaProvider(BaseProvider):
             "model": kwargs.get("model", self.model),
             "messages": [{"role": "user", "content": prompt}],
         }
-        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens")
+        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty", "seed", "stop", "user")
 
         response = self.client.chat.completions.create(**create_kwargs)
         return response.choices[0].message.content
@@ -1118,7 +1163,7 @@ class NovitaProvider(BaseProvider):
             "messages": [{"role": "user", "content": prompt}],
             "response_format": {"type": "json_object"},
         }
-        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens")
+        self._add_if_set(create_kwargs, kwargs, "temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty", "seed", "stop", "user")
 
         response = self.client.chat.completions.create(**create_kwargs)
         try:

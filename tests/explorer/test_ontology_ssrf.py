@@ -21,7 +21,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from semantica.explorer.routes import ontology as ontology_mod
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this module
+# must skip rather than fail collection when it is absent. The guard has to sit
+# above the import below, which pulls fastapi in transitively.
+pytest.importorskip("fastapi")
+
+from semantica.explorer.routes import ontology as ontology_mod  # noqa: E402
 
 
 def _fake_getaddrinfo(host, *args, **kwargs):

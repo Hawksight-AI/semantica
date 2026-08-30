@@ -70,7 +70,8 @@ sem:metadata a owl:AnnotationProperty ;
     rdfs:label "metadata" ;
     rdfs:comment """Free-form metadata carried through from extraction. An
 annotation property because its value is an arbitrary structure rather than a
-modelled one.""" ;
+modelled one; in the JSON-LD export the whole mapping is written as one
+rdf:JSON literal so caller keys never expand into this namespace (#1146).""" ;
     rdfs:isDefinedBy <https://semantica.dev/ns> .
 
 # ── Relationship terms (JSON-LD export) ──────────────────────────────────────
@@ -96,10 +97,10 @@ sem:target a owl:ObjectProperty ;
 
 sem:type a owl:DatatypeProperty ;
     rdfs:label "type" ;
-    rdfs:comment """The relationship type as a label, as emitted in the JSON-LD
-export. Distinct from rdf:type, which relates a node to a class rather than to
-a string.""" ;
-    rdfs:domain sem:Relationship ;
+    rdfs:comment """The entity or relationship type as a label, as emitted in
+the JSON-LD export. Distinct from rdf:type, which relates a node to a class
+rather than to a string. Emitted for both entities and relationships, so the
+domain is left open rather than tied to sem:Relationship.""" ;
     rdfs:range xsd:string ;
     rdfs:isDefinedBy <https://semantica.dev/ns> .
 
