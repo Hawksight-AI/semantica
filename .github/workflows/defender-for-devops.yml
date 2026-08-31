@@ -68,7 +68,7 @@ jobs:
         python-version: "3.12"
 
     - name: Install Checkov
-      run: python -m pip install checkov==3.3.1
+      run: pip install -r .github/requirements/checkov.txt --require-hashes
 
     - name: Run Checkov
       shell: pwsh

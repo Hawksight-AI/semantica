@@ -1,0 +1,13 @@
+rdflib
+neo4j
+faiss-cpu
+torch
+pyarrow
+pdfplumber
+python-pptx
+openpyxl
+lxml
+python-docx
+beautifulsoup4
+chardet
+langdetect
