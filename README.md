@@ -18,7 +18,7 @@
 
 > Ingest your enterprise data, extract what matters, build a Context Graph and knowledge graph (KG), and run graph analytics and causal reasoning over all of it, with full decision provenance baked in. Explainable, traceable, and trustworthy by design.
 
-**Decision Intelligence &nbsp;·&nbsp; Context Management &nbsp;·&nbsp; Deterministic Reasoning &nbsp;·&nbsp; Ontology Management &nbsp;·&nbsp; Knowledge Modeling &nbsp;·&nbsp; End-to-End Traceability**
+**Context Management &nbsp;·&nbsp; Knowledge Modeling &nbsp;·&nbsp; Deterministic Reasoning &nbsp;·&nbsp; Ontology Management &nbsp;·&nbsp; Decision Intelligence &nbsp;·&nbsp; End-to-End Traceability**
 
 **Open Source &nbsp;·&nbsp; Self-Hostable &nbsp;·&nbsp; Auditable &nbsp;·&nbsp; Governed &nbsp;·&nbsp; Zero Vendor Lock-In**
 
@@ -56,9 +56,7 @@ pip install semantica
 
 ---
 
-Most AI agents act without a trail. They store embeddings, not meaning: context that can't be explained, decisions that can't be audited. In lending, that gap is a compliance exposure, not an inconvenience: an underwriting agent's approval has to survive a regulator's "why" months later.
-
-Semantica sits underneath your LLM, vector store, and agent framework as a deterministic infrastructure layer: no LLM required for graph construction, reasoning, or provenance.
+Most AI agents run on embeddings, not meaning: similarity scores with no structure, no relationships, and no way to explain why a result came back. Semantica is the semantic/context layer underneath your LLM, vector store, and agent framework: a deterministic infrastructure layer (no LLM required for graph construction, reasoning, or provenance) that turns fragmented enterprise data into a structured, queryable Context Graph and knowledge graph, governed by ontologies and controlled vocabularies (OWL, SHACL, SKOS) so the meaning of your data is explicit, not just its embedding. Decision provenance and audit trails fall out of that structure as a property, not the product itself; in domains a regulator can question, that same structure just happens to double as a straight answer to "why."
 
 > ⚠️ **System-level explainability, not foundation-model explainability.** Semantica does not expose or reconstruct what happens *inside* the LLM — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. Semantica explains what's *outside* the model: the context and data fed in, the decision produced, its provenance, relevant relationships, applied policies, and the full execution trail.
 
@@ -279,7 +277,7 @@ retrieved = ctx.retrieve("who approved the Acme contract?")
 
 ## Recipe: Audit Trail for a Regulated Decision
 
-The flagship pattern: record a causally-linked decision chain, attach provenance to every entity, and export a regulator-ready audit trail.
+One pattern built on the same Context Graph: record a causally-linked decision chain, attach provenance to every entity, and export a regulator-ready audit trail.
 
 ```python
 from semantica.context import ContextGraph
@@ -1030,7 +1028,7 @@ team = Team(agents=[researcher, analyst], mode="coordinate")
 
 ## More Recipes
 
-The flagship audit-trail recipe is [above](#recipe-audit-trail-for-a-regulated-decision). Here are three more common patterns.
+The audit-trail recipe is [above](#recipe-audit-trail-for-a-regulated-decision). Here are three more common patterns.
 
 <details>
 <summary><b>End-to-End GraphRAG Pipeline</b></summary>
