@@ -191,6 +191,41 @@ trip = TripletExtractor(method=["llm", "pattern"])
 entities = ner.extract(text)
 ```
 
+### NER Merge Strategies
+
+`NERExtractor` uses `merge_strategy="fallback"` by default, so a method list remains an ordered fallback chain. To run several methods together, choose one of the explicit strategies below:
+
+| Strategy | Behavior |
+| :--- | :--- |
+| `fallback` | Return the first non-empty method result. |
+| `union` | Keep candidates from any method. Same-label boundary variants are aligned, while distinct labels remain available. |
+| `consensus` | Require cross-method support for an offset-aligned candidate. `min_votes` defaults to `2`. |
+
+```python
+from semantica.semantic_extract import NERExtractor
+
+ner = NERExtractor(
+    method=["spacy", "huggingface"],
+    merge_strategy="consensus",
+    min_votes=2,
+    min_agreement=0.75,  # optional support-ratio requirement
+    method_weights={"spacy": 0.8, "huggingface": 1.0},
+)
+entities = ner.extract(text)
+
+for entity in entities:
+    print(entity.metadata["supporting_methods"])
+    print(entity.metadata["vote_count"], entity.metadata["agreement"])
+```
+
+Consensus counts support against the configured eligible methods, not only methods that emitted a candidate. An empty or failed eligible method is therefore a non-supporting vote. Use `eligible_methods=[...]` to restrict the consensus denominator when the configured methods have different coverage, or use `merge_strategy="union"` for complementary rule extractors. `method_weights` only break an otherwise eligible exact-span cross-label tie; they never turn one method into multiple votes.
+
+Each merged entity includes `supporting_methods`, `vote_count`, `eligible_method_count`, `agreement`, and per-method `method_scores` in its metadata. Consensus treats compatible label aliases such as `PER`/`PERSON` and `ORGANIZATION`/`ORG` as the same vote. It resolves a cross-label conflict only when the final spans are identical, using method weight, vote count, confidence, and a stable label order; nested entities at different spans remain available. `ml` and `spacy` are one backend for both voting and weights, so their weights are interchangeable (conflicting values are rejected). Boundary candidates are matched one-to-one only when their span IoU is at least 0.5 with every existing vote in that candidate; equal-confidence variants prefer the longer span. If a provider omits offsets, Semantica resolves its entity text against whole-word document matches before merging. This keeps repeated mentions with the same text distinct and prevents one broad span from acting as a vote for multiple mentions.
+
+`ensemble_voting=True` is deprecated and maps to `merge_strategy="union"` during migration. Use `merge_strategy="consensus"` when method agreement is required.
+
+Unlike `fallback`, `union` and `consensus` never inject a pattern-derived entity after the configured methods return no candidates. An empty result is therefore meaningful in those strategies.
+
 
 ## Quick Start
 
