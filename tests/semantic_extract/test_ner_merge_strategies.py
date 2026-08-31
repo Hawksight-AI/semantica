@@ -482,6 +482,37 @@ def test_extract_consensus_recovers_missing_llm_offsets_before_voting():
     assert result[0].metadata["supporting_methods"] == ["llm", "regex"]
 
 
+@pytest.mark.parametrize("start, end", [(0, 0), (None, None)])
+def test_union_discards_unresolved_invalid_offsets(start, end):
+    """Unresolvable default or nullable spans cannot leak into union output."""
+    extractor = NERExtractor(method="llm", merge_strategy="union")
+    responses = {"llm": [entity("Absent", "ORG", start, end, 0.9)]}
+
+    with patch(
+        "semantica.semantic_extract.methods.get_entity_method",
+        side_effect=lambda method_name: lambda _text, **_options: responses[
+            method_name
+        ],
+    ):
+        assert extractor.extract_entities("Apple") == []
+
+
+def test_union_recovers_nullable_offsets_when_text_matches():
+    """Nullable custom offsets remain usable when they can be aligned safely."""
+    extractor = NERExtractor(method="custom", merge_strategy="union")
+    responses = {"custom": [entity("Apple", "ORG", None, None, 0.9)]}
+
+    with patch(
+        "semantica.semantic_extract.methods.get_entity_method",
+        side_effect=lambda method_name: lambda _text, **_options: responses[
+            method_name
+        ],
+    ):
+        result = extractor.extract_entities("Apple")
+
+    assert [(item.start_char, item.end_char) for item in result] == [(0, 5)]
+
+
 def test_missing_offsets_are_assigned_to_distinct_repeated_mentions():
     """Text-only duplicate output is aligned in occurrence order before merging."""
     extractor = NERExtractor(method="llm", merge_strategy="union")

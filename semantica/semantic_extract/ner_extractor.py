@@ -368,9 +368,10 @@ class NERExtractor:
 
         Some providers, notably typed LLM extraction, can return text and
         labels without offsets. For a single method that is harmless, but a
-        consensus merge needs document locations. Missing spans are therefore
+        span-based merge needs document locations. Missing spans are therefore
         aligned by a deterministic, per-label text search. Valid provider
-        offsets are preserved and input entities are never mutated.
+        offsets are preserved; candidates that cannot be aligned are excluded
+        because union and consensus cannot safely merge them.
         """
         next_offsets = {}
         occupied_offsets = {}
@@ -378,8 +379,7 @@ class NERExtractor:
 
         for entity in entities:
             needle = entity.text
-            if not needle:
-                aligned.append(entity)
+            if not isinstance(needle, str) or not needle:
                 continue
 
             key = (needle.casefold(), self._canonical_label(entity.label))
@@ -425,7 +425,6 @@ class NERExtractor:
                     break
 
             if match is None:
-                aligned.append(entity)
                 continue
 
             resolved_start = match_offset + match.start()
