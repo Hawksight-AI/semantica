@@ -448,10 +448,11 @@ class MilvusStore:
                 not pk
                 or pk[0].name != "id"
                 or getattr(getattr(pk[0], "dtype", None), "name", None) != "VARCHAR"
+                or getattr(pk[0], "auto_id", False)
             ):
                 raise ProcessingError(
                     f"Collection '{collection_name}' has an invalid primary key: "
-                    "expected VARCHAR field 'id'"
+                    "expected VARCHAR field 'id' without auto_id"
                 )
             vector_field = next((f for f in fields if f.name == "vector"), None)
             if vector_field is None:
@@ -466,9 +467,15 @@ class MilvusStore:
                     f"Collection '{collection_name}' has an invalid vector field: "
                     "expected FLOAT_VECTOR 'vector'"
                 )
-            if not any(f.name == "metadata" for f in fields):
+            metadata_field = next((f for f in fields if f.name == "metadata"), None)
+            if metadata_field is None:
                 raise ProcessingError(
                     f"Collection '{collection_name}' is missing required field 'metadata'"
+                )
+            if getattr(getattr(metadata_field, "dtype", None), "name", None) != "JSON":
+                raise ProcessingError(
+                    f"Collection '{collection_name}' has an invalid metadata field: "
+                    "expected JSON 'metadata'"
                 )
 
             self.collection = MilvusCollection(collection, collection_name)

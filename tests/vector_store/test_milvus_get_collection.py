@@ -7,10 +7,11 @@ from semantica.vector_store.milvus_store import MilvusStore
 from semantica.utils.exceptions import ProcessingError
 
 
-def _field(name, dtype_name, primary=False):
+def _field(name, dtype_name, primary=False, auto_id=False):
     f = MagicMock()
     f.name = name
     f.is_primary = primary
+    f.auto_id = auto_id
     f.dtype.name = dtype_name
     return f
 
@@ -118,3 +119,23 @@ class MilvusGetCollectionSchemaTest(TestCase):
         ]
         store = self._make_store(coll)
         self._assert_rejected(store, "has an invalid vector field")
+
+    def test_rejects_auto_id_primary_key(self):
+        coll = MagicMock()
+        coll.schema.fields = [
+            _field("id", "VARCHAR", primary=True, auto_id=True),
+            _field("vector", "FLOAT_VECTOR"),
+            _field("metadata", "JSON"),
+        ]
+        store = self._make_store(coll)
+        self._assert_rejected(store, "has an invalid primary key")
+
+    def test_rejects_non_json_metadata(self):
+        coll = MagicMock()
+        coll.schema.fields = [
+            _field("id", "VARCHAR", primary=True),
+            _field("vector", "FLOAT_VECTOR"),
+            _field("metadata", "STRING"),
+        ]
+        store = self._make_store(coll)
+        self._assert_rejected(store, "has an invalid metadata field")
