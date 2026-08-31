@@ -33,10 +33,24 @@ class TestNERConfigurations(unittest.TestCase):
         # Mock LLM provider
         mock_provider = MagicMock()
         mock_provider.is_available.return_value = True
-        mock_provider.generate_structured.return_value = [
-            {"text": "Apple Inc.", "label": "ORG", "start": 0, "end": 10, "confidence": 0.95},
-            {"text": "Steve Jobs", "label": "PERSON", "start": 26, "end": 36, "confidence": 0.98}
+        # The LLM path uses generate_typed (Pydantic schema validation), not
+        # generate_structured. Build a typed response object whose .entities
+        # carries simple namespace-like items.
+        def _entity(text, label, start, end, confidence):
+            item = MagicMock()
+            item.text = text
+            item.label = label
+            item.start = start
+            item.end = end
+            item.confidence = confidence
+            return item
+
+        typed_response = MagicMock()
+        typed_response.entities = [
+            _entity("Apple Inc.", "ORG", 0, 10, 0.95),
+            _entity("Steve Jobs", "PERSON", 26, 36, 0.98),
         ]
+        mock_provider.generate_typed.return_value = typed_response
         mock_create_provider.return_value = mock_provider
         
         # Initialize extractor with LLM method
@@ -56,7 +70,7 @@ class TestNERConfigurations(unittest.TestCase):
         self.assertEqual(len(entities), 2)
         self.assertEqual(entities[0].text, "Apple Inc.")
         self.assertEqual(entities[0].label, "ORG")
-        self.assertEqual(entities[0].metadata["extraction_method"], "llm")
+        self.assertEqual(entities[0].metadata["extraction_method"], "llm_typed")
         self.assertEqual(entities[0].metadata["model"], "gpt-4")
 
     @patch('semantica.semantic_extract.methods.spacy')
@@ -115,7 +129,6 @@ class TestNERConfigurations(unittest.TestCase):
         with patch('semantica.semantic_extract.ner_extractor.SPACY_AVAILABLE', True):
             extractor = NERExtractor(method="ml", model="en_core_web_sm")
 
-        self.assertIsNone(extractor.nlp)
         self.assertFalse(extractor._ml_runtime_usable)
 
     @patch('semantica.semantic_extract.methods.get_entity_method')
@@ -183,7 +196,7 @@ class TestNERConfigurations(unittest.TestCase):
         
         self.assertTrue(len(entities) >= 2)
         texts = [e.text for e in entities]
-        self.assertIn("Apple Inc", texts) # Regex pattern does not capture the trailing dot
+        self.assertIn("Apple Inc.", texts)  # The ORG pattern includes the trailing dot via (?:\.|\b)
         # Actually methods.py regex: r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:Inc|Corp|LLC|Ltd|Company))\b"
         # "Apple Inc." -> "Apple Inc" (dot is outside \b if not matched?)
         # Let's check the result strictly

@@ -52,7 +52,7 @@ jobs:
           # Tooling AFTER the pinned set: installing safety/bandit/semgrep/jq
           # first lets the pinned requirements overwrite their transitive deps
           # (e.g. rich), which breaks the safety CLI at runtime.
-          pip install safety bandit semgrep jq
+          pip install safety==3.8.1 bandit==1.9.4 semgrep==1.175.0 jq==1.12.0
 
       - name: Run Safety Check (Package Vulnerabilities)
         run: |

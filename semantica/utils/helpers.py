@@ -680,6 +680,35 @@ _TRIPLET_KEYS = ("triplets",)
 # 'metadata' and 'count'.
 _CONTEXT_KEYS = ("metadata", "statistics", "count")
 
+# Validation errors below interpolate caller-controlled keys. A pathological
+# key (megabytes long) would otherwise size the exception string and, through
+# the export wrappers that log the full exception, the log entry. The display
+# keeps the offending key recognizable while bounding the message.
+_MAX_KEY_DISPLAY = 64
+
+
+def _truncate_key(key: Any) -> str:
+    """Render a mapping key for an error message, bounded in length."""
+    value = str(key)
+    if len(value) > _MAX_KEY_DISPLAY:
+        return value[:_MAX_KEY_DISPLAY] + "…"
+    return value
+
+
+# Truncating each key bounds the per-key cost; capping the count of keys
+# shown bounds the total, so a payload carrying many unknown keys cannot
+# size the message (or the log entry that records it) either.
+_MAX_KEYS_DISPLAY = 8
+
+
+def _truncate_key_list(keys: Iterable[Any]) -> str:
+    """Render keys for an error message, bounded in count and length."""
+    rendered = [_truncate_key(key) for key in keys]
+    if len(rendered) <= _MAX_KEYS_DISPLAY:
+        return ", ".join(f"'{key}'" for key in rendered)
+    shown = ", ".join(f"'{key}'" for key in rendered[:_MAX_KEYS_DISPLAY])
+    return f"{shown}, and {len(rendered) - _MAX_KEYS_DISPLAY} more"
+
 
 def _require_recognized_keys(
     payload: Mapping, recognized_keys: Sequence[str], *, what: str
@@ -702,7 +731,7 @@ def _require_recognized_keys(
     if not payload or any(key in payload for key in recognized_keys):
         return
 
-    supplied = ", ".join(f"'{key}'" for key in sorted(map(str, payload)))
+    supplied = _truncate_key_list(sorted(map(str, payload)))
     expected = ", ".join(f"'{key}'" for key in recognized_keys)
     raise ValidationError(
         f"{what} has no recognized key. Supplied: {supplied}. "
@@ -753,7 +782,7 @@ def _require_nothing_dropped(
     if not dropped:
         return
 
-    named = ", ".join(f"'{key}'" for key in dropped)
+    named = _truncate_key_list(dropped)
     expected = ", ".join(f"'{key}'" for key in recognized_keys)
     raise ValidationError(
         f"{what} resolved to nothing, but {named} still holds records. "

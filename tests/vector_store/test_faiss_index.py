@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from semantica.vector_store.faiss_store import FAISSIndex
+from semantica.vector_store.faiss_store import FAISSIndex, FAISSStore
 
 
 def test_get_vector_reconstructs_from_flat_l2_index():
@@ -120,3 +120,90 @@ def test_get_vector_reconstructs_from_real_ivfflat_index_without_prior_direct_ma
     result = index.get_vector("vec_target")
 
     np.testing.assert_allclose(result, vectors[3], atol=1e-6)
+
+
+def _store_with_fake_index(ids, metadata_by_id=None):
+    backend_index = MagicMock()
+    backend_index.reconstruct.side_effect = lambda idx: [float(idx)] * 3
+    index = FAISSIndex(backend_index, dimension=3)
+    index.vector_ids = list(ids)
+    index.metadata = dict(metadata_by_id or {})
+
+    store = FAISSStore(dimension=3)
+    store.index = index
+    return store
+
+
+def test_scan_vectors_returns_all_across_pages():
+    store = _store_with_fake_index(["a", "b", "c", "d", "e"])
+
+    seen_ids = []
+    offset = 0
+    while True:
+        page = store.scan_vectors(offset=offset, limit=2)
+        if not page:
+            break
+        seen_ids.extend(p["id"] for p in page)
+        offset += len(page)
+
+    assert seen_ids == ["a", "b", "c", "d", "e"]
+
+
+def test_scan_vectors_includes_vector_and_metadata():
+    store = _store_with_fake_index(["a"], {"a": {"tag": "only"}})
+
+    page = store.scan_vectors(offset=0, limit=10)
+
+    assert len(page) == 1
+    assert page[0]["id"] == "a"
+    assert page[0]["metadata"] == {"tag": "only"}
+    np.testing.assert_array_equal(page[0]["vector"], np.array([0.0, 0.0, 0.0], dtype=np.float32))
+
+
+def test_scan_vectors_no_index_returns_empty_list():
+    store = FAISSStore(dimension=3)
+    assert store.scan_vectors(offset=0, limit=10) == []
+
+
+def test_scan_vectors_zero_limit_returns_empty_list():
+    store = _store_with_fake_index(["a"])
+    assert store.scan_vectors(offset=0, limit=0) == []
+
+
+def test_scan_vectors_offset_past_end_returns_empty_list():
+    store = _store_with_fake_index(["a"])
+    assert store.scan_vectors(offset=100, limit=10) == []
+
+
+def test_add_vectors_retry_with_same_ids_does_not_duplicate():
+    """Re-running add_vectors with ids already in the index (e.g. retrying
+    an interrupted migration) must not create a second physical vector
+    under the same id."""
+    backend_index = MagicMock()
+    store = FAISSStore(dimension=3)
+    store.index = FAISSIndex(backend_index, dimension=3)
+
+    vectors = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]], dtype=np.float32)
+    ids = ["a", "b", "c", "d"]
+
+    store.add_vectors(vectors, ids=ids, metadata=[{"i": i} for i in range(4)])
+    assert store.count() == 4
+
+    store.add_vectors(vectors, ids=ids, metadata=[{"i": i} for i in range(4)])
+
+    assert store.count() == 4
+    assert store.index.vector_ids == ids
+
+
+def test_add_vectors_retry_with_partial_overlap_only_adds_new_ids():
+    backend_index = MagicMock()
+    store = FAISSStore(dimension=3)
+    store.index = FAISSIndex(backend_index, dimension=3)
+
+    store.add_vectors(np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32), ids=["a", "b"])
+    store.add_vectors(np.array([[1, 2, 3], [7, 8, 9]], dtype=np.float32), ids=["a", "c"])
+
+    assert store.index.vector_ids == ["a", "b", "c"]
+    second_call_vectors = backend_index.add.call_args[0][0]
+    assert second_call_vectors.shape[0] == 1
+    np.testing.assert_array_equal(second_call_vectors[0], np.array([7, 8, 9], dtype=np.float32))

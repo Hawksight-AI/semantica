@@ -6,6 +6,7 @@
 !README.md
 !LICENSE
 !MANIFEST.in
+!requirements-ci.txt
 !semantica/
 !semantica/**
 !integrations/

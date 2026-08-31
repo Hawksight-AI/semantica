@@ -66,6 +66,93 @@ class TestPipelineModule(unittest.TestCase):
         self.assertEqual(result.output, 12) # (5 + 1) * 2 = 12
         self.assertEqual(pipeline.steps[0].status, StepStatus.COMPLETED)
 
+    def test_registered_step_handler_executes(self):
+        """A handler registered by step type should execute."""
+        def increment(data):
+            return data + 1
+
+        builder = PipelineBuilder()
+        builder.register_step_handler("math", increment)
+        builder.add_step("increment", "math")
+
+        result = ExecutionEngine().execute_pipeline(
+            builder.build("registered"), data=1
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output, 2)
+
+    def test_explicit_handler_does_not_receive_control_fields(self):
+        """Builder-only fields should not be passed to strict handlers."""
+        def source(data):
+            return data
+
+        def increment(data, amount):
+            return data + amount
+
+        builder = PipelineBuilder()
+        builder.add_step("source", "source", handler=source)
+        step = builder.add_step(
+            "increment",
+            "math",
+            handler=increment,
+            dependencies=["source"],
+            amount=2,
+        )
+
+        result = ExecutionEngine().execute_pipeline(
+            builder.build("strict"), data=1
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output, 3)
+        self.assertEqual(step.config, {"amount": 2})
+
+    def test_explicit_handler_overrides_registered_handler(self):
+        """An explicit step handler should take precedence over the registry."""
+        builder = PipelineBuilder()
+        builder.register_step_handler("math", lambda data: data + 100)
+        builder.add_step("increment", "math", handler=lambda data: data + 1)
+
+        result = ExecutionEngine().execute_pipeline(
+            builder.build("override"), data=1
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output, 2)
+
+    def test_step_without_handler_passes_input_through(self):
+        """A step with no explicit or registered handler should be a no-op."""
+        builder = PipelineBuilder()
+        builder.add_step("passthrough", "unregistered")
+
+        result = ExecutionEngine().execute_pipeline(
+            builder.build("handlerless"), data={"value": 1}
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output, {"value": 1})
+
+    def test_falsy_explicit_handler_is_invoked(self):
+        """A handler whose __bool__ is False must still be dispatched."""
+
+        class FalseyHandler:
+            def __bool__(self):
+                return False
+
+            def __call__(self, data):
+                return {"explicit": data}
+
+        builder = PipelineBuilder()
+        builder.add_step("step1", "mytype", handler=FalseyHandler())
+
+        result = ExecutionEngine().execute_pipeline(
+            builder.build("falsy"), data=1
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output, {"explicit": 1})
+
     def test_execution_engine_failure(self):
         """Test pipeline failure handling."""
         def failing_handler(data, **kwargs):
@@ -112,8 +199,8 @@ class TestPipelineModule(unittest.TestCase):
 
         _ = semantica.pipeline
 
-        from semantica.pipeline import PipelineBuilder, PipelineValidator
         from semantica.deduplication import DuplicateDetector
+        from semantica.pipeline import PipelineBuilder, PipelineValidator
 
         builder = PipelineBuilder()
         builder.add_step("step1", "dummy")

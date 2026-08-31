@@ -510,6 +510,9 @@ class TemporalGraphQuery:
                     - "count": Number of relationships
                     - "diversity": Number of unique relationship types
                     - "stability": Relationship duration/stability measure
+                      (mean valid-time duration in seconds across
+                      relationships that have both ``valid_from`` and
+                      ``valid_until`` set)
             **options: Additional analysis options (unused)
 
         Returns:
@@ -582,14 +585,17 @@ class TemporalGraphQuery:
             result["diversity"] = len(rel_types)
 
         if "stability" in metrics:
-            # Calculate stability based on relationship duration
+            # Stability is the mean duration (in seconds) that relationships
+            # remain valid. Relationships without a bounded validity interval
+            # (missing/open ``valid_from`` or ``valid_until``) are skipped, and
+            # non-positive intervals are clamped to zero.
             durations = []
             for rel in relationships:
                 valid_from = self._parse_time(rel.get("valid_from"))
                 valid_until = self._parse_time(rel.get("valid_until"))
                 if valid_from and valid_until:
-                    # Simplified duration calculation
-                    durations.append(1)  # Placeholder
+                    duration_seconds = (valid_until - valid_from).total_seconds()
+                    durations.append(max(0.0, duration_seconds))
             result["stability"] = sum(durations) / len(durations) if durations else 0
 
         return result

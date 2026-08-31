@@ -2,7 +2,14 @@
 
 from types import SimpleNamespace
 
-from semantica.explorer.routes.provenance import (
+import pytest
+
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this module
+# must skip rather than fail collection when it is absent. The guard has to sit
+# above the import below, which pulls fastapi in transitively.
+pytest.importorskip("fastapi")
+
+from semantica.explorer.routes.provenance import (  # noqa: E402
     _add_chain_edges,
     _build_provenance,
     _render_markdown,

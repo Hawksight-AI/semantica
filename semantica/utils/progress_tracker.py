@@ -43,7 +43,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, TextIO, Tuple, Union
 
 from .logging import get_logger
 
@@ -63,6 +63,29 @@ def _progress_disabled_from_env() -> bool:
         "yes",
         "on",
     )
+
+
+def _progress_forced_from_env() -> bool:
+    """Return whether console progress is forced on despite a non-interactive stdout."""
+    return os.getenv("SEMANTICA_FORCE_PROGRESS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _stdout_is_tty() -> bool:
+    """Return whether stdout is an interactive terminal.
+
+    Replacement streams do not always implement ``isatty`` and closed streams can
+    raise, so both cases are treated as non-interactive.
+    """
+    try:
+        return bool(sys.stdout is not None and sys.stdout.isatty())
+    except (AttributeError, ValueError):
+        return False
+
 
 # Try to import IPython for Jupyter support
 try:
@@ -121,14 +144,37 @@ class ProgressDisplay(ABC):
 class ConsoleProgressDisplay(ProgressDisplay):
     """Console progress display with real-time updates."""
 
-    def __init__(self, use_emoji: bool = True, update_interval: float = 0.1):
+    def __init__(
+        self,
+        use_emoji: bool = True,
+        update_interval: float = 0.1,
+        stream: Optional[TextIO] = None,
+    ):
+        """Initialize the console display.
+
+        Args:
+            use_emoji: Whether to decorate output with emoji.
+            update_interval: Minimum seconds between redraws.
+            stream: Where progress is written. Defaults to ``sys.stderr``.
+
+                Progress is diagnostic output, so stderr is the correct stream
+                for it, and stdout must stay clean for programs that carry a
+                machine-readable protocol on it — the stdio MCP servers put
+                newline-delimited JSON-RPC there, and a progress bar on stdout
+                corrupts that stream.
+
+                Left as ``None``, the stream is resolved on each write rather
+                than captured here, so a later rebinding of ``sys.stderr``
+                (pytest capture, for instance) is honoured.
+        """
         self.use_emoji = use_emoji
-        
-        # Check if stdout supports emojis (especially on Windows)
+        self._stream = stream
+
+        # Check if the target stream supports emojis (especially on Windows)
         if self.use_emoji:
             try:
-                # Try encoding a test emoji with stdout's encoding
-                encoding = getattr(sys.stdout, "encoding", None)
+                # Try encoding a test emoji with the stream's encoding
+                encoding = getattr(self.stream, "encoding", None)
                 if encoding:
                     "🧠".encode(encoding)
             except (UnicodeEncodeError, LookupError, AttributeError):
@@ -138,6 +184,11 @@ class ConsoleProgressDisplay(ProgressDisplay):
         self.last_update = 0.0
         self.current_lines: Dict[str, str] = {}
         self.lock = threading.Lock()
+
+    @property
+    def stream(self) -> TextIO:
+        """The stream progress is written to; ``sys.stderr`` unless overridden."""
+        return self._stream if self._stream is not None else sys.stderr
 
     def _should_update(self) -> bool:
         """Check if enough time has passed for update."""
@@ -236,15 +287,16 @@ class ConsoleProgressDisplay(ProgressDisplay):
         return f"{base_msg}: {message}"
 
     def _safe_write(self, text: str) -> None:
-        """Safely write text to stdout handling encoding errors."""
+        """Safely write text to the progress stream handling encoding errors."""
+        stream = self.stream
         try:
-            sys.stdout.write(text)
+            stream.write(text)
         except UnicodeEncodeError:
             # Fallback: encode with replacement and write decoded
             # Use ascii as safe fallback if encoding is unknown or caused error
-            encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+            encoding = getattr(stream, "encoding", None) or "ascii"
             safe_text = text.encode(encoding, errors="replace").decode(encoding)
-            sys.stdout.write(safe_text)
+            stream.write(safe_text)
 
     def update(self, item: ProgressItem) -> None:
         """Update console progress display."""
@@ -279,11 +331,11 @@ class ConsoleProgressDisplay(ProgressDisplay):
                     self._display_item_line(pipeline_item)
                     self._safe_write("\n")
                 
-                sys.stdout.flush()
+                self.stream.flush()
             else:
                 # Original single-item display
                 self._display_item_line(item)
-                sys.stdout.flush()
+                self.stream.flush()
     
     def _display_item_line(self, item: ProgressItem) -> None:
         """Display a single progress item line."""
@@ -445,13 +497,13 @@ class ConsoleProgressDisplay(ProgressDisplay):
                     f"Completed: {completed} | Failed: {failed} | Total Time: {total_time:.2f}s\n"
                 )
             self._safe_write("=" * 80 + "\n")
-            sys.stdout.flush()
+            self.stream.flush()
 
     def clear(self) -> None:
         """Clear console display."""
         with self.lock:
             self._safe_write("\r" + " " * 100 + "\r")
-            sys.stdout.flush()
+            self.stream.flush()
             self.current_lines.clear()
 
 
@@ -1040,18 +1092,24 @@ class ProgressTracker:
         # Create displays
         self.displays: List[ProgressDisplay] = []
 
+        # Console output only suits an interactive stdout. When output is piped or
+        # redirected (scripts, CI logs) the progress bars and their escape
+        # sequences would otherwise drown the program's own output.
+        console_ok = _stdout_is_tty() or self.is_jupyter or _progress_forced_from_env()
+
         # Always try Jupyter first if available, fallback to console
         if IPYTHON_AVAILABLE:
             # Try to detect Jupyter - if available, use it
             if self.is_jupyter and not self.disable_jupyter_progress:
                 self.displays.append(JupyterProgressDisplay(use_emoji=use_emoji))
             # Also add console as fallback for immediate feedback
-            self.displays.append(
-                ConsoleProgressDisplay(
-                    use_emoji=use_emoji, update_interval=update_interval
+            if console_ok:
+                self.displays.append(
+                    ConsoleProgressDisplay(
+                        use_emoji=use_emoji, update_interval=update_interval
+                    )
                 )
-            )
-        else:
+        elif console_ok:
             self.displays.append(
                 ConsoleProgressDisplay(
                     use_emoji=use_emoji, update_interval=update_interval

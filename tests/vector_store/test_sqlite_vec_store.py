@@ -415,6 +415,48 @@ class TestSQLiteVecStoreStats:
         assert stats["vector_count"] == 4
 
 
+class TestSQLiteVecStoreScan:
+    """Test scan_vectors pagination."""
+
+    def test_scan_returns_all_vectors_across_pages(self, store):
+        vectors = [np.random.rand(128).astype(np.float32) for _ in range(5)]
+        ids = store.add(vectors, [{"index": i} for i in range(5)])
+
+        seen_ids = []
+        offset = 0
+        while True:
+            page = store.scan_vectors(offset=offset, limit=2)
+            if not page:
+                break
+            seen_ids.extend(p["id"] for p in page)
+            offset += len(page)
+
+        assert set(seen_ids) == set(ids)
+        assert len(seen_ids) == 5
+
+    def test_scan_page_includes_vector_and_metadata(self, store):
+        vectors = [np.random.rand(128).astype(np.float32)]
+        ids = store.add(vectors, [{"tag": "only"}])
+
+        page = store.scan_vectors(offset=0, limit=10)
+
+        assert len(page) == 1
+        assert page[0]["id"] == ids[0]
+        assert page[0]["metadata"] == {"tag": "only"}
+        assert page[0]["vector"] is not None
+
+    def test_scan_empty_store_returns_empty_list(self, store):
+        assert store.scan_vectors(offset=0, limit=10) == []
+
+    def test_scan_zero_limit_returns_empty_list(self, store):
+        store.add([np.random.rand(128).astype(np.float32)])
+        assert store.scan_vectors(offset=0, limit=0) == []
+
+    def test_scan_offset_past_end_returns_empty_list(self, store):
+        store.add([np.random.rand(128).astype(np.float32)])
+        assert store.scan_vectors(offset=100, limit=10) == []
+
+
 class TestSQLiteVecStoreFilterByMetadata:
     """Test filter_by_metadata, including list-valued metadata handling."""
 

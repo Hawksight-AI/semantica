@@ -139,17 +139,19 @@ class NERExtractor:
         if not self.progress_tracker.enabled:
             self.progress_tracker.enabled = True
 
-        # Initialize spaCy model if ML method is used
-        self.nlp = None
+        # Validate the spaCy runtime up front if ML method is used. The model
+        # itself is loaded lazily by extract_entities_ml() through the
+        # process-level cache in methods.py; this instance only tracks whether
+        # ML dispatch should be attempted at all.
         self._ml_runtime_usable = True
         if "ml" in self.method and SPACY_AVAILABLE:
             try:
                 # Deferred import: keeps semantic_extract.methods out of the
-                # module-level import graph and routes loading through the
+                # module-level import graph and routes validation through the
                 # process-level cache so repeated NERExtractor constructions
                 # never pay the ~120 ms spacy.load() cost more than once.
                 from .methods import load_spacy_model
-                self.nlp = load_spacy_model(self.model_name)
+                load_spacy_model(self.model_name)
             except OSError:
                 self.logger.warning(
                     f"spaCy model {self.model_name} not found. ML method will fallback."
@@ -534,42 +536,6 @@ class NERExtractor:
             processed.append(entity)
 
         return processed
-
-    def _extract_with_spacy(
-        self, text: str, min_confidence: float, entity_types: Optional[List[str]]
-    ) -> List[Entity]:
-        """Extract entities using spaCy."""
-        entities = []
-
-        doc = self.nlp(text)
-
-        for ent in doc.ents:
-            # Filter by entity types if specified
-            if entity_types and ent.label_ not in entity_types:
-                continue
-
-            # Get confidence if available
-            confidence = 1.0
-            if hasattr(ent, "confidence"):
-                confidence = ent.confidence
-            elif hasattr(ent, "score"):
-                confidence = ent.score
-
-            if confidence >= min_confidence:
-                entities.append(
-                    Entity(
-                        text=ent.text,
-                        label=ent.label_,
-                        start_char=ent.start_char,
-                        end_char=ent.end_char,
-                        confidence=confidence,
-                        metadata={
-                            "lemma": ent.lemma_ if hasattr(ent, "lemma_") else ent.text
-                        },
-                    )
-                )
-
-        return entities
 
     def _extract_fallback(self, text: str) -> List[Entity]:
         """Fallback entity extraction using simple patterns."""

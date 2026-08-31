@@ -1,0 +1,74 @@
+name: Container Security Scan
+
+on:
+  push:
+    branches: [main]
+    # Mirrors .dockerignore's opt-in list exactly - anything not listed there
+    # can't reach the build context, so it can't change the built image.
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'pyproject.toml'
+      - 'README.md'
+      - 'LICENSE'
+      - 'MANIFEST.in'
+      - 'requirements-ci.txt'
+      - 'semantica/**'
+      - 'integrations/**'
+      - 'explorer/**'
+      - '.github/workflows/container-scan.yml'
+  schedule:
+    - cron: '30 2 * * 1'  # weekly, catches new CVEs published against the base image between pushes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # for github/codeql-action/upload-sarif below
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build image
+        run: docker build -t semantica:scan .
+
+      # Run Trivy as a digest-pinned image rather than the aquasecurity/trivy-action
+      # marketplace wrapper: the aquasecurity GitHub org has an IP allow list on its
+      # API that 403s verify-action-pins.sh's live tag->SHA check from Actions-runner
+      # IPs, and this repo already treats Trivy's action pin as a known past target
+      # for tag-repointing (see the LiteLLM/Trivy 2026 incident note above). Pulling
+      # by sha256 digest from Docker Hub is immutable and verifiable independently of
+      # GitHub's API, so it sidesteps both problems at once instead of carving a skip
+      # exception into the pin verifier for an org already flagged as higher-risk.
+      #
+      # Report-only for now: this is Trivy's first run against this image, so we
+      # don't yet know the CRITICAL/HIGH baseline. Findings still land in the
+      # Security tab either way. Once triaged, add `--exit-code 1` (like
+      # Safety/Bandit-HIGH in security-scan.yml) to make it a hard gate.
+      - name: Scan image for vulnerabilities (Trivy)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/output" \
+            aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 \
+            image --format sarif --output /output/trivy-results.sarif \
+            --severity CRITICAL,HIGH --ignore-unfixed semantica:scan
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container
+
+      - name: Generate SBOM (Syft)
+        if: always()
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: semantica:scan
+          format: spdx-json
+          output-file: semantica-sbom.spdx.json
