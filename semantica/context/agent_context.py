@@ -134,6 +134,8 @@ class AgentContext:
         advanced_analytics: bool = True,
         kg_algorithms: bool = True,
         vector_store_features: bool = True,
+        evaluators: Optional[List[str]] = None,
+        eval_config: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         """
@@ -152,6 +154,12 @@ class AgentContext:
             advanced_analytics: Enable advanced analytics (default: True)
             kg_algorithms: Enable KG algorithms integration (default: True)
             vector_store_features: Enable vector store features (default: True)
+            evaluators: Optional list of semantica.evals evaluator names run
+                automatically on every recorded decision (graph_store decision
+                backend only). Passed through to DecisionRecorder; see its
+                docstring. Omitting this leaves record_decision() unchanged.
+            eval_config: Optional semantica.evals config dict, keyed by
+                evaluator name, passed through to DecisionRecorder.
             **kwargs: Additional options passed to underlying components
 
         Raises:
@@ -170,7 +178,9 @@ class AgentContext:
         self.knowledge_graph = knowledge_graph
         self._checkpoints: Dict[str, Dict[str, Any]] = {}
         self._temporal_version_manager = kwargs.get("temporal_version_manager")
-        
+        self.evaluators = evaluators
+        self.eval_config = eval_config or {}
+
         # Store advanced feature flags
         self.config = {
             "decision_tracking": decision_tracking,
@@ -230,7 +240,11 @@ class AgentContext:
             if hasattr(knowledge_graph, "execute_query"):
                 self._decision_backend = "graph_store"
                 try:
-                    self._decision_recorder = DecisionRecorder(knowledge_graph)
+                    self._decision_recorder = DecisionRecorder(
+                        knowledge_graph,
+                        evaluators=self.evaluators,
+                        eval_config=self.eval_config,
+                    )
                     self._decision_query = DecisionQuery(
                         graph_store=knowledge_graph,
                         vector_store=vector_store if vector_store_features else None,
@@ -246,7 +260,11 @@ class AgentContext:
                     self.logger.warning(
                         f"Failed to initialize enhanced decision tracking ({type(e).__name__})"
                     )
-                    self._decision_recorder = DecisionRecorder(knowledge_graph)
+                    self._decision_recorder = DecisionRecorder(
+                        knowledge_graph,
+                        evaluators=self.evaluators,
+                        eval_config=self.eval_config,
+                    )
                     self._decision_query = DecisionQuery(knowledge_graph)
                     self._causal_analyzer = CausalChainAnalyzer(knowledge_graph)
                     self._policy_engine = PolicyEngine(knowledge_graph)

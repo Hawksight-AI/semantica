@@ -97,21 +97,89 @@ class DecisionRecorder:
         self,
         graph_store: GraphStore,
         embedding_generator: Optional[EmbeddingGenerator] = None,
-        provenance_manager: Optional[ProvenanceManager] = None
+        provenance_manager: Optional[ProvenanceManager] = None,
+        evaluators: Optional[List[str]] = None,
+        eval_config: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize DecisionRecorder.
-        
+
         Args:
             graph_store: Graph database instance for storing decisions
             embedding_generator: Optional embedding generator for semantic embeddings
             provenance_manager: Optional provenance manager for W3C PROV-O tracking
+            evaluators: Optional list of semantica.evals evaluator names to run
+                automatically on every recorded decision (e.g. ["decision_scores"]).
+                When omitted, record_decision() behaves exactly as before.
+            eval_config: Optional config dict passed to semantica.evals.evaluate(),
+                keyed by evaluator name
+                (e.g. {"decision_scores": {"policy_engine": pe}})
+
+        Example Usage:
+            >>> recorder = DecisionRecorder(
+            ...     graph_store=graph,
+            ...     evaluators=["decision_scores"],
+            ...     eval_config={"decision_scores": {"expected_outcome": "approved"}},
+            ... )
+            >>> recorder.record_decision(decision, entities=[], source_documents=[])
+            >>> decision.metadata["eval_score"], decision.metadata["eval_passed"]
         """
         self.graph_store = graph_store
         self.embedding_generator = embedding_generator
         self.provenance_manager = provenance_manager
+        self.evaluators = evaluators
+        self.eval_config = eval_config or {}
         self.logger = get_logger(__name__)
-    
+
+    def _evaluate_and_enrich_decision(self, decision: Decision) -> None:
+        """
+        Run configured semantica.evals evaluators over a decision and store the
+        result in its metadata. No-op when no evaluators are configured.
+
+        Args:
+            decision: Decision to evaluate; mutated in place (decision.metadata).
+        """
+        if not self.evaluators:
+            return
+
+        # Decision.metadata defaults to {} but callers may pass metadata=None
+        # explicitly; normalize before writing eval_* keys below so recording
+        # never crashes on that (mirrors record_decision()'s own tolerance
+        # for a missing metadata dict).
+        if decision.metadata is None:
+            decision.metadata = {}
+
+        case = {"id": decision.decision_id, "actual": decision}
+        try:
+            # Lazy import: semantica.evals is only exercised when evaluators=
+            # is configured, and resolving it here (rather than at module
+            # import time) lets callers/tests monkeypatch semantica.evals.evaluate.
+            from ..evals import evaluate
+
+            summary = evaluate(
+                [case], evaluators=self.evaluators, config=self.eval_config
+            )
+        except Exception as exc:
+            # Deliberate, narrow exception to this module's "log and re-raise"
+            # pattern: evaluation is an optional quality check, and a broken
+            # evaluator must never prevent the decision itself from being
+            # recorded. (Per-evaluator failures are already converted to
+            # CaseResult(status="error") inside evaluate(); reaching here
+            # means evaluate() itself failed outright.)
+            self.logger.warning(
+                f"Decision evaluation failed for {decision.decision_id}: {exc}"
+            )
+            return
+
+        case_result = summary.cases[0]
+        scores = [metric.score for metric in case_result.metrics.values()]
+        decision.metadata["eval_score"] = sum(scores) / len(scores) if scores else 0.0
+        decision.metadata["eval_passed"] = case_result.status == "pass"
+        decision.metadata["eval_details"] = {
+            name: {"score": metric.score, "passed": metric.passed, "meta": metric.meta}
+            for name, metric in case_result.metrics.items()
+        }
+
     def record_decision(
         self,
         decision: Decision,
@@ -120,12 +188,12 @@ class DecisionRecorder:
     ) -> str:
         """
         Record decision with full context.
-        
+
         Args:
             decision: Decision object to record
             entities: List of entity IDs linked to this decision
             source_documents: List of source document identifiers
-            
+
         Returns:
             Decision ID
         """
@@ -135,7 +203,12 @@ class DecisionRecorder:
                 decision.reasoning_embedding = self.embedding_generator.generate(
                     decision.reasoning
                 )
-            
+
+            # Run configured evaluators (opt-in) before persisting, so
+            # eval_score/eval_passed/eval_details are stored with the decision.
+            if self.evaluators:
+                self._evaluate_and_enrich_decision(decision)
+
             # Store decision in graph database
             self._store_decision_node(decision)
             
