@@ -438,6 +438,39 @@ class MilvusStore:
                 raise ProcessingError(f"Collection {collection_name} does not exist")
 
             collection = Collection(collection_name)
+            # Reject schemas that don't match create_collection()'s shape:
+            # id/VARCHAR pk + vector + metadata. Otherwise an incompatible
+            # collection attaches and fails far later in get_vector/get_metadata.
+            schema = getattr(collection, "schema", None)
+            fields = list(getattr(schema, "fields", None) or [])
+            pk = [f for f in fields if getattr(f, "is_primary", False)]
+            if (
+                not pk
+                or pk[0].name != "id"
+                or getattr(getattr(pk[0], "dtype", None), "name", None) != "VARCHAR"
+            ):
+                raise ProcessingError(
+                    f"Collection '{collection_name}' has an invalid primary key: "
+                    "expected VARCHAR field 'id'"
+                )
+            vector_field = next((f for f in fields if f.name == "vector"), None)
+            if vector_field is None:
+                raise ProcessingError(
+                    f"Collection '{collection_name}' is missing required field 'vector'"
+                )
+            if (
+                getattr(getattr(vector_field, "dtype", None), "name", None)
+                != "FLOAT_VECTOR"
+            ):
+                raise ProcessingError(
+                    f"Collection '{collection_name}' has an invalid vector field: "
+                    "expected FLOAT_VECTOR 'vector'"
+                )
+            if not any(f.name == "metadata" for f in fields):
+                raise ProcessingError(
+                    f"Collection '{collection_name}' is missing required field 'metadata'"
+                )
+
             self.collection = MilvusCollection(collection, collection_name)
             self.search_engine = MilvusSearch(self.collection)
             return self.collection
