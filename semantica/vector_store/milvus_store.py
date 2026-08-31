@@ -186,12 +186,19 @@ class MilvusCollection:
             raise ProcessingError("Milvus not available")
 
         try:
+            # Ensure "metadata" is always fetched; merge with any caller-supplied
+            # output_fields so that passing output_fields=["vector"] via **options
+            # does not raise a duplicate-keyword TypeError.
+            caller_fields = options.pop("output_fields", []) or []
+            merged_output_fields = list({"metadata", *caller_fields})
+
             search_results = self.collection.search(
                 data=[v.tolist() for v in vectors],
                 anns_field=anns_field,
                 param=param,
                 limit=limit,
                 expr=expr,
+                output_fields=merged_output_fields,
                 **options,
             )
 
@@ -204,11 +211,11 @@ class MilvusCollection:
                             "id": hit.id,
                             "distance": hit.distance,
                             "score": 1.0 / (1.0 + max(0.0, hit.distance)),
-                            # Milvus collection schema stores only id+vector; no
-                            # metadata field is defined in create_collection().
-                            # Return empty dict — a future schema migration that
-                            # adds a metadata JSON field is tracked separately.
-                            "metadata": {},
+                            # The collection schema defines a JSON metadata field
+                            # (see create_collection()). Return the stored value
+                            # so callers receive the same metadata as get_metadata()
+                            # and filter_by_metadata().
+                            "metadata": hit.entity.get("metadata") or {},
                             "vector": None,
                         }
                     )
