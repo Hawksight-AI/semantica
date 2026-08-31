@@ -290,7 +290,27 @@ print("Policy exception recorded:", exception_id)
 
 For multi-level approval workflows, use `DecisionRecorder.record_approval_chain()` with a graph database backend (for example Neo4j/FalkorDB). The in-memory `ContextGraph` examples used in this guide do not support approval-chain persistence via `execute_query()`.
 
+## Scoring Decisions Automatically on Record
 
+`DecisionRecorder` (and `AgentContext`, for its `graph_store` decision-tracking backend) can run `semantica.evals` evaluators automatically every time a decision is recorded, storing the result on `Decision.metadata`. This is opt-in — pass `evaluators`/`eval_config` at construction time, or leave them unset and `record_decision()` behaves exactly as before.
+
+```python
+from semantica.context import DecisionRecorder
+
+recorder = DecisionRecorder(
+    graph_store=graph,
+    evaluators=["decision_scores"],
+    eval_config={"decision_scores": {"policy_engine": engine, "policy_id": "cti_confidence_gate"}},
+)
+decision_id = recorder.record_decision(d, entities=[], source_documents=[])
+
+# d.metadata now also has:
+#   eval_score:   0.83   (mean score across configured evaluators)
+#   eval_passed:  False
+#   eval_details: {"decision_scores": {"score": ..., "passed": ..., "meta": {...}}}
+```
+
+If an evaluator raises, the failure is logged and the decision is still recorded without `eval_*` metadata — a broken evaluator never blocks decision persistence. `AgentContext(..., decision_tracking=True, evaluators=[...], eval_config={...})` threads the same configuration into the `DecisionRecorder` it constructs for the `graph_store` backend; the `context_graph` backend does not yet run evaluators.
 
 ## Generating a Decision Audit Report
 

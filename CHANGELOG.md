@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `DecisionRecorder` and `AgentContext` gain opt-in `evaluators`/`eval_config` constructor parameters that run `semantica.evals` evaluators (e.g. `decision_scores`) automatically during `record_decision()`, storing `eval_score`/`eval_passed`/`eval_details` in `Decision.metadata`. Fully backward-compatible: omitting `evaluators` leaves recording behavior unchanged. Evaluator failures are logged and never block decision persistence. Wired for the `graph_store` backend only; the `context_graph` `AgentContext` backend is a known follow-up.
+
 ## [0.6.6] - 2026-08-20
 
 ### Added
