@@ -65,7 +65,22 @@ jobs:
           # to avoid crashes from packages like cuda-toolkit that Safety cannot
           # parse. This also ensures we're auditing the declared dependency tree
           # rather than transitive dependencies of the security tooling itself.
-          safety check --file requirements-ci.txt --save-json safety-report.json || true
+          #
+          # --ignore SFTY-20260120-40557 (CVE-2025-33228): cuda-toolkit<13.1.0 on
+          # PyPI. torch 2.13.0 (the latest release; there is no newer torch to
+          # upgrade to) hard-pins `cuda-toolkit[cublas,cudart,cufft,cufile,cupti,
+          # curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3` on Linux, so
+          # this can't be resolved with a version bump on our end - it's not a
+          # loose transitive pin we control. The actual flaw is OS command
+          # injection in NVIDIA Nsight Systems' gfx_hotspot recipe
+          # (process_nsys_rep_cli.py), which requires a human to manually run
+          # that script with an attacker-supplied string; it isn't reachable from
+          # any Semantica code path, and isn't even installed here - none of the
+          # extras torch requests (cublas/cudart/cufft/cufile/cupti/curand/
+          # cusolver/cusparse/nvjitlink/nvrtc/nvtx, all listed above) include
+          # Nsight Systems. Re-evaluate once torch ships a release pinning a
+          # patched cuda-toolkit.
+          safety check --file requirements-ci.txt --ignore SFTY-20260120-40557 --save-json safety-report.json || true
 
           # Guard 1: fail loudly if Safety exited before writing a report at all
           # (network error, API auth failure, tool crash). Without this check a
