@@ -266,9 +266,15 @@ class ErasureCoordinator:
 
         Each entity is erased independently, so one entity's failure does not
         stop the rest. Receipts come back in the order the ids were given.
+
+        The timestamp is resolved once for the whole batch so that every
+        receipt and every graph tombstone record the same instant -- a batch
+        erasure under a single legal request must not produce tombstones with
+        diverging ``purged_at`` values.
         """
+        resolved_at = _normalize_timestamp(at)
         return [
-            self.erase_entity(entity_id, reason=reason, at=at)
+            self.erase_entity(entity_id, reason=reason, at=resolved_at)
             for entity_id in entity_ids
         ]
 

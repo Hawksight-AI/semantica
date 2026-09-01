@@ -168,6 +168,37 @@ class TestErasureAcrossStores(unittest.TestCase):
         self.assertEqual(receipts[1].stores["graph"]["status"], STATUS_ERASED)
         self.assertEqual(receipts[2].stores["graph"]["status"], STATUS_NOT_FOUND)
 
+    def test_batch_erasure_all_receipts_carry_the_same_timestamp(self):
+        """erase_entities() must resolve the timestamp once for the whole batch.
+
+        When ``at=None`` each call to ``erase_entity()`` independently calls
+        ``_normalize_timestamp()``, generating a fresh ``now()`` per entity.
+        A GDPR batch request would then produce tombstones with diverging
+        ``purged_at`` values, making it impossible to group them under a single
+        legal request by timestamp.  This regression test pins that every
+        receipt and every graph tombstone share the same instant.
+        """
+        graph = _graph()
+        receipts = ErasureCoordinator(graph=graph).erase_entities(
+            ["customer-4471", "supplier-1"], reason="GDPR Art. 17 request #882"
+        )
+
+        # Both entities were erased.
+        self.assertEqual(receipts[0].stores["graph"]["status"], STATUS_ERASED)
+        self.assertEqual(receipts[1].stores["graph"]["status"], STATUS_ERASED)
+
+        # All receipts carry the same erased_at.
+        self.assertEqual(receipts[0].erased_at, receipts[1].erased_at)
+
+        # Each tombstone's purged_at matches its own receipt.
+        tombstone_0 = graph.get_tombstone("customer-4471", "node")
+        tombstone_1 = graph.get_tombstone("supplier-1", "node")
+        self.assertEqual(tombstone_0["purged_at"], receipts[0].erased_at)
+        self.assertEqual(tombstone_1["purged_at"], receipts[1].erased_at)
+
+        # The tombstones themselves agree with each other.
+        self.assertEqual(tombstone_0["purged_at"], tombstone_1["purged_at"])
+
 
 class TestMemorySweepIsNotTruncated(unittest.TestCase):
     """The regression this feature exists to prevent.
