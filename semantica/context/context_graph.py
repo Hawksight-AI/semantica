@@ -4649,7 +4649,7 @@ class ContextGraph:
             "min_confidence": 0.7,
             "required_outcomes": ["approved", "rejected", "flagged"],
             "required_metadata": ["decision_maker"],
-            "max_reasoning_length": 1000
+            "max_reasoning_length": 10000
         }
         
         rules = policy_rules or default_rules
@@ -4669,8 +4669,8 @@ class ContextGraph:
         
         # Check reasoning length
         reasoning = decision_data.get("reasoning", "")
-        if len(reasoning) > rules.get("max_reasoning_length", 1000):
-            warnings.append(f"Reasoning too long: {len(reasoning)} characters")
+        if len(reasoning.strip()) > rules.get("max_reasoning_length", 10000):
+            warnings.append(f"Reasoning too long: {len(reasoning.strip())} characters")
         
         return {
             "compliant": len(violations) == 0,

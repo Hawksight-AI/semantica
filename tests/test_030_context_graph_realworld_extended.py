@@ -481,17 +481,81 @@ class TestContextGraphAdvancedDecisionMethods:
         assert result["compliant"] is True
         assert len(result["violations"]) == 0
 
-    def test_enforce_decision_policy_long_reasoning_warning(self):
+    def test_enforce_decision_policy_reasoning_within_storage_limit_no_warning(self):
         g = ContextGraph()
         decision_data = {
             "outcome": "approved",
             "confidence": 0.85,
-            "reasoning": "X" * 1500,  # Exceeds default 1000 char limit
+            "reasoning": "X" * 1500,  # Within record_decision's 10000-char limit
+            "decision_maker": "bot",
+        }
+        result = g.enforce_decision_policy(decision_data)
+        # record_decision accepts reasoning up to 10000 characters, so the
+        # default policy must not warn on input that storage considers valid.
+        assert len(result["warnings"]) == 0
+        assert result["compliant"] is True
+
+    def test_enforce_decision_policy_reasoning_above_storage_limit_warning(self):
+        g = ContextGraph()
+        decision_data = {
+            "outcome": "approved",
+            "confidence": 0.85,
+            "reasoning": "X" * 10001,  # Exceeds record_decision's 10000-char limit
             "decision_maker": "bot",
         }
         result = g.enforce_decision_policy(decision_data)
         # Should generate a warning (long reasoning) but may still be compliant
         assert len(result["warnings"]) > 0
+
+    def test_enforce_decision_policy_custom_max_reasoning_length(self):
+        g = ContextGraph()
+        decision_data = {
+            "outcome": "approved",
+            "confidence": 0.85,
+            "reasoning": "X" * 600,  # Exceeds the custom 500-char limit
+            "decision_maker": "bot",
+        }
+        custom_rules = {"max_reasoning_length": 500}
+        result = g.enforce_decision_policy(decision_data, policy_rules=custom_rules)
+        assert len(result["warnings"]) > 0
+
+    def test_enforce_decision_policy_reasoning_length_ignores_surrounding_whitespace(self):
+        g = ContextGraph()
+        reasoning = " " + "X" * 9999 + " "  # 10001 raw chars, 9999 after strip
+        decision_data = {
+            "outcome": "approved",
+            "confidence": 0.85,
+            "reasoning": reasoning,
+            "decision_maker": "bot",
+        }
+        result = g.enforce_decision_policy(decision_data)
+        # Matches record_decision, which measures reasoning after stripping
+        # surrounding whitespace.
+        assert len(result["warnings"]) == 0
+
+    def test_enforce_decision_policy_matches_record_decision_reasoning_limit(self):
+        g = ContextGraph()
+        g.record_decision(
+            category="loan_approval",
+            scenario="Application review",
+            reasoning="X" * 5000,  # Accepted by record_decision (<= 10000)
+            outcome="approved",
+            confidence=0.85,
+            decision_maker="underwriter_ai",
+        )
+        result = g.enforce_decision_policy(
+            {
+                "category": "loan_approval",
+                "outcome": "approved",
+                "confidence": 0.85,
+                "reasoning": "X" * 5000,
+                "decision_maker": "underwriter_ai",
+            }
+        )
+        # A decision that record_decision accepts must not trigger warnings
+        # under the default policy rules.
+        assert len(result["warnings"]) == 0
+        assert result["compliant"] is True
 
     def test_find_precedents_by_scenario_returns_list(self):
         g, _ = self._build_loan_graph()
