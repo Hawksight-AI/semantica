@@ -233,6 +233,31 @@ async def import_file(
     )
 
 
+#: Aliases kept consistent with `mcp/tools/export.py::_FORMAT_ALIASES` and
+#: `RDFExporter._format_aliases` to ensure the two surfaces agree on format names.
+#: Maps user-provided format strings to RDFExporter's canonical format names.
+_RDF_FORMATS: dict[str, str] = {
+    "ttl": "turtle",
+    "turtle": "turtle",
+    "nt": "ntriples",  # RDFExporter canonical is "ntriples", not "nt"
+    "ntriples": "ntriples",
+    "n-triples": "ntriples",
+    "xml": "rdfxml",  # RDFExporter canonical is "rdfxml", not "xml"
+    "rdfxml": "rdfxml",
+    "rdf-xml": "rdfxml",
+    "json-ld": "jsonld",  # RDFExporter canonical is "jsonld", not "json-ld"
+    "jsonld": "jsonld",
+}
+
+#: Media type and file extension per RDFExporter canonical format name.
+_RDF_MEDIA_TYPES: dict[str, tuple[str, str]] = {
+    "turtle": ("text/turtle", "ttl"),
+    "ntriples": ("application/n-triples", "nt"),
+    "rdfxml": ("application/rdf+xml", "rdf"),
+    "jsonld": ("application/ld+json", "jsonld"),
+}
+
+
 @router.post("/api/export")
 async def export_graph(
     body: ExportRequest,
@@ -267,8 +292,81 @@ async def export_graph(
         content = output.getvalue()
         media_type = "text/csv"
         extension = "csv"
+    elif fmt in _RDF_FORMATS:
+        # Reuses `semantica.export`, the same exporters the MCP `export_graph` tool calls.
+        # Before this, the Explorer answered 422 for every RDF format while the MCP surface
+        # offered them, so a graph could be loaded as JSON-LD and never exported back — the
+        # round trip had to leave the product. See #1131.
+        try:
+            from semantica.export import RDFExporter
+            from semantica.utils.exceptions import ValidationError
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise HTTPException(
+                status_code=503,
+                detail=f"RDF export unavailable: {exc}",
+            ) from exc
+        
+        try:
+            content = RDFExporter().export_to_rdf(graph_dict, format=_RDF_FORMATS[fmt])
+        except ValidationError as exc:
+            # Data validation or serialization failed
+            raise HTTPException(
+                status_code=422,
+                detail=f"RDF export failed: {exc}",
+            ) from exc
+        except Exception as exc:
+            # Unexpected error during export
+            logger.exception("RDF export failed unexpectedly")
+            raise HTTPException(
+                status_code=500,
+                detail=f"RDF export error: {exc}",
+            ) from exc
+        
+        media_type, extension = _RDF_MEDIA_TYPES[_RDF_FORMATS[fmt]]
+    elif fmt == "graphml":
+        # GraphML support using GraphExporter (not GraphMLExporter which doesn't exist)
+        try:
+            from semantica.export import GraphExporter
+            from semantica.utils.exceptions import ValidationError
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise HTTPException(
+                status_code=503,
+                detail=f"GraphML export unavailable: {exc}",
+            ) from exc
+        
+        try:
+            # GraphExporter.export() writes to file, but we need string content for HTTP response.
+            # Use a temporary file that is automatically cleaned up.
+            import tempfile
+            from pathlib import Path
+            
+            # Create temp file in a secure directory with automatic cleanup on exception
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_path = Path(tmpdir) / "export.graphml"
+                exporter = GraphExporter(format="graphml")
+                exporter.export(graph_dict, file_path=tmp_path)
+                content = tmp_path.read_text(encoding='utf-8')
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"GraphML export failed: {exc}",
+            ) from exc
+        except Exception as exc:
+            logger.exception("GraphML export failed unexpectedly")
+            raise HTTPException(
+                status_code=500,
+                detail=f"GraphML export error: {exc}",
+            ) from exc
+        
+        media_type, extension = "application/xml", "graphml"
     else:
-        raise HTTPException(status_code=422, detail=f"Unsupported export format '{fmt}'")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Unsupported export format '{fmt}'. "
+                f"Supported: {', '.join(sorted({'json', 'csv', 'graphml'} | set(_RDF_FORMATS)))}"
+            ),
+        )
 
     return Response(
         content=content,
