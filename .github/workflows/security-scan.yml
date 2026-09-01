@@ -71,14 +71,26 @@ jobs:
             exit 1
           fi
 
+          # Guard 2: fail closed when the report does not have the structure
+          # emitted by pip-audit. In particular, optional jq traversal would
+          # turn missing/null/empty dependency data into a numeric zero and
+          # make an incomplete report look like a clean scan.
+          if ! jq -e '
+            (.dependencies | type == "array" and length > 0)
+            and all(.dependencies[]; type == "object" and (.vulns | type == "array"))
+          ' pip-audit-report.json >/dev/null 2>&1; then
+            echo "::error::pip-audit report has an invalid dependency structure. Expected a non-empty dependencies array with a vulns array for every dependency. Treating as failure."
+            exit 1
+          fi
+
           echo "Checking for package vulnerabilities..."
 
-          # No || echo "0" fallback: if jq fails (malformed JSON, missing key,
-          # dependencies/vulns missing or null) VULNS will be empty or "null" so guard 2 below
+          # No || echo "0" fallback: if jq fails (malformed JSON) VULNS will be
+          # empty or "null" so guard 3 below
           # catches it rather than silently treating the broken report as zero.
-          VULNS=$(jq '[.dependencies[]?.vulns[]?] | length' pip-audit-report.json 2>/dev/null)
+          VULNS=$(jq '[.dependencies[].vulns[]] | length' pip-audit-report.json 2>/dev/null)
 
-          # Guard 2: ensure VULNS is a non-negative integer before the -gt
+          # Guard 3: ensure VULNS is a non-negative integer before the -gt
           # comparison. "null" (missing/null key) or "" (jq parse failure) would
           # cause bash's -gt to throw an arithmetic error and fall through to the
           # success branch — the same silent-pass bug as a missing file.
@@ -92,7 +104,7 @@ jobs:
             echo "CI will fail to prevent merging of vulnerable dependencies"
             echo ""
             echo "Vulnerability details:"
-            jq -r '.dependencies[]? as $dependency | $dependency.vulns[]? | "- \($dependency.name)==\($dependency.version): \(.id)"' pip-audit-report.json || true
+            jq -r '.dependencies[] as $dependency | $dependency.vulns[] | "- \($dependency.name)==\($dependency.version): \(.id)"' pip-audit-report.json || true
             exit 1
           else
             echo "✅ No security vulnerabilities found"
@@ -168,6 +180,12 @@ jobs:
               }
 
               const items = parse(data);
+              if (items === null) {
+                return [
+                  `### ${title}`,
+                  `⚠️ Invalid report structure in \`${reportPath}\` — check the job logs.`,
+                ].join('\n');
+              }
               if (items.length === 0) {
                 return [`### ${title}`, `✅ No findings.`].join('\n');
               }
@@ -187,12 +205,27 @@ jobs:
             const pipAuditSection = renderSection(
               'pip-audit — dependency vulnerabilities',
               'pip-audit-report.json',
-              (data) => (data.dependencies || []).flatMap(
-                (dependency) => (dependency.vulns || []).map(
-                  (vulnerability) => `- \`${dependency.name}==${dependency.version}\`: ${vulnerability.id}` +
-                    (vulnerability.fix_versions?.length ? ` (fixed by ${vulnerability.fix_versions.join(', ')})` : '')
-                )
-              )
+              (data) => {
+                if (
+                  !Array.isArray(data.dependencies) ||
+                  data.dependencies.length === 0 ||
+                  data.dependencies.some(
+                    (dependency) =>
+                      !dependency ||
+                      typeof dependency !== 'object' ||
+                      !Array.isArray(dependency.vulns)
+                  )
+                ) {
+                  return null;
+                }
+
+                return data.dependencies.flatMap((dependency) =>
+                  dependency.vulns.map(
+                    (vulnerability) => `- \`${dependency.name}==${dependency.version}\`: ${vulnerability.id}` +
+                      (vulnerability.fix_versions?.length ? ` (fixed by ${vulnerability.fix_versions.join(', ')})` : '')
+                  )
+                );
+              }
             );
 
             const banditSection = renderSection(
