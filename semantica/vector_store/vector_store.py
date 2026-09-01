@@ -824,6 +824,64 @@ class VectorStore:
         else:
             raise NotImplementedError(f"Backend store {type(self._backend_store).__name__} does not implement get_metadata")
 
+    def scan_vectors(self, offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Page through stored vectors, backend-agnostic.
+
+        Follows the get_vector()/get_metadata() precedent (#843): the inmemory
+        backend pages its local dict directly, a persistent backend delegates
+        to a scan_vectors() on the wrapped store when available, and one that
+        cannot enumerate its contents raises NotImplementedError rather than
+        silently returning an empty page.
+
+        Args:
+            offset: Number of vectors to skip
+            limit: Maximum number of vectors to return
+
+        Returns:
+            List of result dicts with 'id', 'metadata', and 'vector'
+        """
+        if limit <= 0:
+            return []
+
+        if self.backend == "inmemory":
+            ids_page = list(self.vectors.keys())[offset:offset + limit]
+            return [
+                {
+                    "id": vec_id,
+                    "metadata": self.metadata.get(vec_id, {}),
+                    "vector": self.vectors.get(vec_id),
+                }
+                for vec_id in ids_page
+            ]
+        elif self._backend_store and hasattr(self._backend_store, "scan_vectors"):
+            return self._backend_store.scan_vectors(offset=offset, limit=limit)
+        else:
+            raise NotImplementedError(
+                f"Backend store {type(self._backend_store).__name__} does not "
+                "implement scan_vectors(). Add a scan_vectors() method to the "
+                "backend store adapter to enable enumeration for this backend."
+            )
+
+    def iter_vectors(self, batch_size: int = 500):
+        """
+        Iterate over every stored vector, one page at a time.
+
+        Args:
+            batch_size: Number of vectors to fetch per underlying scan_vectors() call
+
+        Yields:
+            Result dicts with 'id', 'metadata', and 'vector', in scan order
+        """
+        offset = 0
+        while True:
+            page = self.scan_vectors(offset=offset, limit=batch_size)
+            if not page:
+                return
+            for item in page:
+                yield item
+            offset += len(page)
+
     def count(self) -> int:
         """Return the number of vectors in the store, backend-agnostic.
 

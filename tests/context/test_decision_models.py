@@ -5,14 +5,23 @@ This module tests the decision tracking data models including
 validation, serialization, and deserialization.
 """
 
-import pytest
 from datetime import datetime
-from typing import List, Dict, Any
+
+import pytest
 
 from semantica.context.decision_models import (
-    Decision, DecisionContext, Policy, PolicyException, Precedent, ApprovalChain,
-    validate_decision, validate_policy, serialize_decision, deserialize_decision,
-    serialize_policy, deserialize_policy
+    ApprovalChain,
+    Decision,
+    DecisionContext,
+    Policy,
+    PolicyException,
+    Precedent,
+    deserialize_decision,
+    deserialize_policy,
+    serialize_decision,
+    serialize_policy,
+    validate_decision,
+    validate_policy,
 )
 
 
@@ -450,6 +459,83 @@ class TestSerializationFunctions:
         assert deserialized.category == original_policy.category
         assert deserialized.version == original_policy.version
         assert deserialized.metadata == original_policy.metadata
+
+
+class TestAutoGenerateIdContract:
+    """Test the auto_generate_id InitVar contract across all decision models.
+
+    Regression coverage for the InitVar fix: previously ``auto_generate_id``
+    was a plain ``__post_init__`` parameter that dataclass-generated ``__init__``
+    never forwarded, so the ``auto_generate_id=False`` branch was dead code and
+    the "id is required" contract could never fire.
+    """
+
+    def _base_kwargs(self, cls):
+        now = datetime.now()
+        return {
+            Decision: dict(
+                decision_id="", category="c", scenario="s", reasoning="r",
+                outcome="o", confidence=0.5, timestamp=now, decision_maker="m",
+            ),
+            DecisionContext: dict(
+                context_id="", decision_id="d", entity_snapshots={}, risk_factors=[],
+            ),
+            Policy: dict(
+                policy_id="", name="n", description="d", rules={}, category="c",
+                version="1", created_at=now, updated_at=now,
+            ),
+            PolicyException: dict(
+                exception_id="", decision_id="d", policy_id="p", reason="r",
+                approver="a", approval_timestamp=now, justification="j",
+            ),
+            Precedent: dict(
+                precedent_id="", source_decision_id="d", similarity_score=0.5,
+                relationship_type="same_policy",
+            ),
+            ApprovalChain: dict(
+                approval_id="", decision_id="d", approver="a",
+                approval_method="email", approval_context="x", timestamp=now,
+            ),
+        }[cls]
+
+    @pytest.mark.parametrize(
+        "cls",
+        [Decision, DecisionContext, Policy, PolicyException, Precedent, ApprovalChain],
+    )
+    def test_auto_generate_id_is_not_a_field(self, cls):
+        """auto_generate_id must stay an InitVar, never a real dataclass field."""
+        import dataclasses
+
+        names = [f.name for f in dataclasses.fields(cls)]
+        assert "auto_generate_id" not in names
+
+    @pytest.mark.parametrize(
+        "cls",
+        [Decision, DecisionContext, Policy, PolicyException, Precedent, ApprovalChain],
+    )
+    def test_default_auto_generates_id(self, cls):
+        """With defaults, an empty id is auto-populated and stays a non-field."""
+        obj = cls(**self._base_kwargs(cls))
+        id_field = [f.name for f in __import__("dataclasses").fields(cls)][0]
+        assert getattr(obj, id_field)
+        assert "auto_generate_id" not in vars(obj)
+
+    @pytest.mark.parametrize(
+        "cls",
+        [Decision, DecisionContext, Policy, PolicyException, Precedent, ApprovalChain],
+    )
+    def test_required_id_when_auto_generate_disabled(self, cls):
+        """auto_generate_id=False with an empty id must raise ValueError."""
+        with pytest.raises(ValueError):
+            cls(auto_generate_id=False, **self._base_kwargs(cls))
+
+    def test_explicit_id_honored_with_auto_generate_disabled(self):
+        """A provided id is preserved when auto_generate_id=False."""
+        kwargs = self._base_kwargs(Decision)
+        kwargs["decision_id"] = "fixed-id"
+        decision = Decision(auto_generate_id=False, **kwargs)
+        assert decision.decision_id == "fixed-id"
+        assert "auto_generate_id" not in decision.to_dict()
 
 
 if __name__ == "__main__":

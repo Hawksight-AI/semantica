@@ -327,10 +327,11 @@ print(f"Relationships active in 2023: {result_2023['num_relationships']}")
 <Accordion title="Persistent graph store: Neo4j, FalkorDB, Apache AGE" icon="database">
 
 ```python
-from semantica.graph_store import Neo4jStore
+from semantica.graph_store import GraphStore
 from semantica.kg import GraphBuilder
 
-store = Neo4jStore(
+store = GraphStore(
+    backend="neo4j",
     uri="bolt://localhost:7687",
     user="neo4j",
     password="password",

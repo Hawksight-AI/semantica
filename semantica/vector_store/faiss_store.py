@@ -66,12 +66,32 @@ class FAISSIndex:
         self.metadata: Dict[str, Dict[str, Any]] = {}
 
     def add_vectors(self, vectors: np.ndarray, ids: Optional[List[str]] = None):
-        """Add vectors to index."""
+        """
+        Add vectors to index.
+
+        Skips any id already present in vector_ids rather than appending a
+        second physical vector under the same id. FAISS indices here don't
+        support removing or replacing a single vector in place, so an
+        "update" isn't possible; without this check, re-running an add for
+        ids that already exist (e.g. retrying an interrupted migration)
+        would silently duplicate vectors under the same id on every retry.
+        """
         if ids is None:
             ids = [f"vec_{i}" for i in range(len(vectors))]
 
-        self.index.add(vectors.astype(np.float32))
-        self.vector_ids.extend(ids)
+        new_rows = []
+        new_ids = []
+        existing = set(self.vector_ids)
+        for row, vec_id in zip(vectors, ids):
+            if vec_id in existing:
+                continue
+            new_rows.append(row)
+            new_ids.append(vec_id)
+            existing.add(vec_id)
+
+        if new_rows:
+            self.index.add(np.array(new_rows, dtype=np.float32))
+            self.vector_ids.extend(new_ids)
 
     def search(
         self, query_vectors: np.ndarray, k: int = 10
@@ -305,6 +325,12 @@ class FAISSStore:
         """
         Add vectors to index.
 
+        Any id that already exists in the index is skipped rather than
+        stored as a second physical vector under the same id (see
+        FAISSIndex.add_vectors), so calling this again with ids from a
+        previous call is safe and doesn't accumulate duplicates. Metadata
+        for those ids is still updated.
+
         Args:
             vectors: List of vectors or numpy array
             ids: Vector IDs
@@ -312,7 +338,8 @@ class FAISSStore:
             **options: Additional options
 
         Returns:
-            List of vector IDs
+            List of vector IDs (including ids that were already present
+            and therefore not re-added as new vectors)
         """
         num_vectors = len(vectors) if isinstance(vectors, (list, np.ndarray)) else 1
         tracking_id = self.progress_tracker.start_tracking(
@@ -525,6 +552,30 @@ class FAISSStore:
                     break
 
         return results
+
+    def scan_vectors(self, offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Page through stored vectors in insertion order.
+
+        Args:
+            offset: Number of vectors to skip
+            limit: Maximum number of vectors to return
+
+        Returns:
+            List of result dicts with 'id', 'metadata', and 'vector'
+        """
+        if self.index is None or limit <= 0:
+            return []
+
+        ids_page = self.index.vector_ids[offset:offset + limit]
+        return [
+            {
+                "id": vector_id,
+                "metadata": self.get_metadata(vector_id) or {},
+                "vector": self.get_vector(vector_id),
+            }
+            for vector_id in ids_page
+        ]
 
     def get_stats(self) -> Dict[str, Any]:
         """Get index statistics."""

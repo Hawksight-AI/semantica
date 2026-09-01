@@ -5,11 +5,11 @@ This module provides the worker process for the Semantica framework,
 enabling distributed and background task processing.
 """
 
-import time
 import signal
-import sys
-from .utils.logging import get_logger, setup_logging
+import time
+
 from .core.orchestrator import Semantica
+from .utils.logging import get_logger, setup_logging
 
 # Initialize logging
 setup_logging()

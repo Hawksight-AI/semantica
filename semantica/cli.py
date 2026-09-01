@@ -773,10 +773,22 @@ def changelog(cli_ctx: CLIContext, local_json: bool) -> None:
     _run_with_error_handling(_action)
 
 
+class _DeepEmbeddingFailure(Exception):
+    """A deep-probe failure from doctor's embedding checks.
+
+    Marks failures that happened AFTER the backend imported cleanly — model
+    load, probe, or runtime problems — so the check's hint can point at the
+    real remediation instead of `pip install`.
+    """
+
+
 @main.command()
 @click.option("--json", "local_json", is_flag=True, default=False)
+@click.option("--deep-embeddings", "deep_embeddings", is_flag=True, default=False,
+              help="Also instantiate the local embedding backends and embed a probe "
+                   "text (catches backends that import cleanly but cannot load).")
 @click.pass_obj
-def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
+def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None:
     """Run a health check on all Semantica components and backends."""
     import importlib.metadata
     cli_ctx = _require_ctx(cli_ctx)
@@ -787,6 +799,16 @@ def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
         try:
             note = fn()
             return label, "ok", note, None
+        except _DeepEmbeddingFailure as exc:
+            # A deep-probe failure means the package IMPORTED fine: the pip
+            # hint would be the wrong remediation for what is actually a
+            # runtime/model-load problem (broken torch, failed model
+            # download, missing shared libs).
+            return label, "fail", str(exc), (
+                "runtime/model-load failure — reinstalling the package usually "
+                "does not help; check the warnings above (torch install, model "
+                "download, disk space)"
+            )
         except Exception as exc:
             return label, "fail", str(exc), hint
 
@@ -826,6 +848,50 @@ def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
                 import faiss  # noqa: F401
             return f"{backend} importable"
         checks.append(_check("Vector store", _vector, hint="pip install semantica[vectorstore-…]"))
+
+        # Embedding backends (#994): `doctor` used to report all green while
+        # every local embedding backend was non-functional — import success
+        # says nothing about model loading. Default checks stay cheap
+        # (import + version); --deep-embeddings (or
+        # SEMANTICA_DOCTOR_DEEP_EMBEDDINGS=1) instantiates the backend through
+        # TextEmbedder and embeds a probe, which is the only level that
+        # catches a backend that imports cleanly but cannot actually load.
+        deep = deep_embeddings or os.environ.get("SEMANTICA_DOCTOR_DEEP_EMBEDDINGS", "").strip().lower() in ("1", "true", "yes", "on")
+
+        def _embedding_backend(method: str) -> str:
+            if method == "sentence_transformers":
+                import sentence_transformers  # noqa: F401
+                note = f"importable ({importlib.metadata.version('sentence-transformers')})"
+            else:
+                import fastembed  # noqa: F401
+                note = f"importable ({importlib.metadata.version('fastembed')})"
+            if not deep:
+                return note
+            try:
+                from .embeddings import TextEmbedder
+                embedder = TextEmbedder(method=method)
+                if embedder.model is None and embedder.fastembed_model is None:
+                    raise RuntimeError(
+                        "model failed to load — the hash fallback is active "
+                        "(see warnings above); embedding quality is degraded"
+                    )
+                probe = embedder.embed_text("semantica doctor embedding probe")
+            except _DeepEmbeddingFailure:
+                raise
+            except Exception as exc:
+                raise _DeepEmbeddingFailure(str(exc)) from exc
+            return f"{note}; deep probe ok ({len(probe)}-dim)"
+
+        checks.append(_check(
+            "Embeddings (sentence-transformers)",
+            lambda: _embedding_backend("sentence_transformers"),
+            hint="pip install sentence-transformers",
+        ))
+        checks.append(_check(
+            "Embeddings (fastembed)",
+            lambda: _embedding_backend("fastembed"),
+            hint="pip install fastembed",
+        ))
 
         # LLM provider keys
         for provider, var in [("OpenAI", "OPENAI_API_KEY"), ("Anthropic", "ANTHROPIC_API_KEY"),
@@ -1666,6 +1732,93 @@ def embed(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
+def _json_default(obj) -> object:
+    """JSON serialiser that converts NumPy scalars/arrays to native Python types.
+
+    Falls back to ``str()`` for everything else so the writer never crashes on
+    unexpected types (e.g. ``datetime``, custom domain objects).
+    """
+    try:
+        import numpy as np  # local import — only needed when result contains numpy
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.generic):
+            return obj.item()
+    except ImportError:
+        pass
+    return str(obj)
+
+
+def _write_result_output(out_path: Path, result) -> None:
+    """Serialize a structured CLI result (dict or list) for ``--output``.
+
+    Domain commands like ``deduplicate`` and ``ontology align`` produce dicts
+    and lists, not numeric matrices — routing them through the embeddings
+    writer rejected their shapes and extensions (.csv is documented for
+    deduplicate). JSON-family formats serialize anything; CSV serializes a
+    list of dicts (or a single dict as one row).
+
+    Accepted extensions: .json, .jsonl, .csv  (no-extension and .txt are
+    rejected so the path reported to the caller always matches the file
+    actually created, consistent with every other --output in the CLI).
+    """
+    import json as _json
+
+    suffix = out_path.suffix.lower()
+
+    # ── JSON ────────────────────────────────────────────────────────────────
+    if suffix == ".json":
+        with open(out_path, "w", encoding="utf-8") as fh:
+            _json.dump(result, fh, indent=2, default=_json_default)
+        return
+
+    # ── JSON Lines ──────────────────────────────────────────────────────────
+    # Every record must occupy exactly one line.  Wrap a bare dict in a list
+    # so callers never need to know whether their result is singular or plural.
+    if suffix == ".jsonl":
+        items = result if isinstance(result, list) else [result]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            for item in items:
+                fh.write(_json.dumps(item, default=_json_default) + "\n")
+        return
+
+    # ── CSV ─────────────────────────────────────────────────────────────────
+    if suffix == ".csv":
+        import pandas as pd
+
+        rows = result if isinstance(result, list) else [result]
+        if not rows:
+            raise click.ClickException(
+                "No results to write — output file not created."
+            )
+        # Normalise numpy scalars/arrays to Python natives so to_csv() does
+        # not fall back to repr() strings for array-valued cells.
+        def _normalise(row):
+            if not isinstance(row, dict):
+                return row
+            out = {}
+            for k, v in row.items():
+                try:
+                    import numpy as np
+                    if isinstance(v, np.ndarray):
+                        v = v.tolist()
+                    elif isinstance(v, np.generic):
+                        v = v.item()
+                except ImportError:
+                    pass
+                out[k] = v
+            return out
+
+        pd.DataFrame([_normalise(r) for r in rows]).to_csv(out_path, index=False)
+        return
+
+    # ── unsupported ─────────────────────────────────────────────────────────
+    display = suffix if suffix else "(no extension)"
+    raise click.ClickException(
+        f"Unsupported output format '{display}'. Use .json, .jsonl, or .csv"
+    )
+
+
 @embed.command("generate")
 @click.argument("input_path")
 @click.option("--model",
@@ -1708,7 +1861,43 @@ def embed_generate(cli_ctx: CLIContext, input_path: str, model: str,
         except ImportError as exc:
             raise click.ClickException(f"Embeddings module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            output_path = Path(output)
+            suffix = output_path.suffix.lower()
+            try:
+                import numpy as np
+                import pandas as pd
+                arr = np.asarray(result)
+                if arr.ndim == 1:
+                    arr = arr[np.newaxis, :]
+                if arr.ndim != 2:
+                    raise click.ClickException(
+                        f"embed generate --output expects a 1-D or 2-D array, "
+                        f"got {arr.ndim}-D (shape {arr.shape})"
+                    )
+                rows = [list(row) for row in arr]
+                if suffix == ".parquet":
+                    # Schema: single 'embedding' column (list[float] per row).
+                    # embed index detects vector columns via
+                    # isinstance(df[c].iloc[0], (list, np.ndarray)).
+                    df = pd.DataFrame({"embedding": rows})
+                    df.to_parquet(output_path, index=False)
+                elif suffix in (".json", ".jsonl"):
+                    df = pd.DataFrame({"embedding": rows})
+                    df.to_json(
+                        output_path,
+                        orient="records",
+                        lines=(suffix == ".jsonl"),
+                    )
+                else:
+                    raise click.ClickException(
+                        f"Unsupported output format '{suffix}'. "
+                        "Use .parquet, .json, or .jsonl"
+                    )
+            except ImportError as exc:
+                raise click.ClickException(
+                    f"Missing dependency for --output: {exc}. "
+                    "Install pyarrow with: pip install pyarrow"
+                ) from exc
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"status": "ok"})
@@ -1930,7 +2119,7 @@ def deduplicate(
         except ImportError as exc:
             raise click.ClickException(f"Deduplication module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            _write_result_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
@@ -3054,7 +3243,7 @@ def ontology_align(cli_ctx: CLIContext, source: str, target: str, strategy: str,
         except ImportError as exc:
             raise click.ClickException(f"Ontology module not available: {exc}") from exc
         if output:
-            Path(output).write_text(json.dumps(result, default=str), encoding="utf-8")
+            _write_result_output(Path(output), result)
             _ok(cli_ctx, f"Wrote {output}")
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"alignments": str(result)})
@@ -3525,19 +3714,61 @@ def store_stats(cli_ctx: CLIContext, backend: str, fmt: str, local_json: bool) -
     _run_with_error_handling(_action)
 
 
+_MIGRATE_SUPPORTED_BACKENDS = {"faiss", "sqlite", "pgvector"}
+_MIGRATE_BATCH_SIZE = 500
+
+
+def _migrate_backend_config(vs_cfg: Dict[str, Any], backend: str) -> Dict[str, Any]:
+    """Resolve per-backend config out of the vector_store config section.
+
+    Supports both a per-backend nested shape (``vector_store.faiss.dimension``)
+    and the common flat single-backend shape (``vector_store.backend`` +
+    sibling keys), since either can appear depending on how many backends a
+    user has configured.
+    """
+    nested = vs_cfg.get(backend)
+    if isinstance(nested, dict):
+        return dict(nested)
+    if vs_cfg.get("backend") == backend:
+        return {k: v for k, v in vs_cfg.items() if k != "backend"}
+    return {}
+
+
+def _require_faiss_index_path(cfg: Dict[str, Any], role: str) -> str:
+    """FAISS has no server to hold state between commands: a fresh FAISSStore
+    starts empty and nothing outside the process persists it, so migration
+    needs an explicit on-disk index to read from or write to."""
+    index_path = cfg.get("index_path")
+    if not index_path:
+        raise click.ClickException(
+            f"faiss as migration {role} requires 'index_path' in the vector_store "
+            f"config (vector_store.faiss.index_path or vector_store.index_path "
+            f"when faiss is the configured backend)."
+        )
+    return index_path
+
+
 @store.command("migrate")
 @click.option("--from", "from_backend", required=True)
 @click.option("--to", "to_backend", required=True)
 @click.option("--namespace", default=None)
 @click.option("--dry-run", "local_dry", is_flag=True, default=False)
+@click.option("--json", "local_json", is_flag=True, default=False)
 @click.pass_obj
 def store_migrate(cli_ctx: CLIContext, from_backend: str, to_backend: str,
-                  namespace: Optional[str], local_dry: bool) -> None:
+                  namespace: Optional[str], local_dry: bool, local_json: bool) -> None:
     """Migrate data between backends.
+
+    Direct migration is only wired up between faiss, sqlite, and pgvector -
+    these are the backends whose storage contract supports paging through
+    every stored vector. Migrating to or from qdrant, pinecone, milvus, or
+    weaviate still needs the export/reindex workaround below, since each of
+    those needs its own enumeration design (Qdrant scroll, Pinecone list,
+    etc.) that hasn't been built yet.
 
     \b
     Example:
-      semantica store migrate --from faiss --to qdrant --namespace production --dry-run
+      semantica store migrate --from faiss --to sqlite --namespace production --dry-run
     """
     cli_ctx = _require_ctx(cli_ctx)
 
@@ -3545,13 +3776,76 @@ def store_migrate(cli_ctx: CLIContext, from_backend: str, to_backend: str,
         if _is_dry(cli_ctx, local_dry):
             _dry(cli_ctx, "migrate", from_backend=from_backend, to_backend=to_backend)
             return
-        raise click.ClickException(
-            f"Direct backend migration ({from_backend} → {to_backend}) is not yet supported "
-            "by the vector store layer. To migrate, export your data first:\n"
-            "  semantica export --format parquet --output dump.parquet\n"
-            f"  semantica embed index dump.parquet --store {to_backend}"
-            + (f" --namespace {namespace}" if namespace else "")
-        )
+
+        if from_backend not in _MIGRATE_SUPPORTED_BACKENDS or to_backend not in _MIGRATE_SUPPORTED_BACKENDS:
+            raise click.ClickException(
+                f"Direct backend migration ({from_backend} → {to_backend}) is only supported "
+                f"between {', '.join(sorted(_MIGRATE_SUPPORTED_BACKENDS))}. To migrate involving "
+                "another backend, export your data first:\n"
+                "  semantica export --format parquet --output dump.parquet\n"
+                f"  semantica embed index dump.parquet --store {to_backend}"
+                + (f" --namespace {namespace}" if namespace else "")
+            )
+
+        from .vector_store import VectorStore
+
+        vs_cfg = cli_ctx.config.to_dict().get("vector_store", {}) or {}
+        source_cfg = _migrate_backend_config(vs_cfg, from_backend)
+        dest_cfg = _migrate_backend_config(vs_cfg, to_backend)
+
+        source_index_path = None
+        if from_backend == "faiss":
+            source_index_path = _require_faiss_index_path(source_cfg, "source")
+        dest_index_path = None
+        if to_backend == "faiss":
+            dest_index_path = _require_faiss_index_path(dest_cfg, "destination")
+
+        source = VectorStore(backend=from_backend, config=source_cfg)
+        if source_index_path:
+            source._backend_store.load_index(source_index_path)
+
+        source_dimension = getattr(source._backend_store, "dimension", None)
+        if source_dimension and "dimension" not in dest_cfg:
+            dest_cfg["dimension"] = source_dimension
+
+        dest = VectorStore(backend=to_backend, config=dest_cfg)
+        if dest_index_path and Path(dest_index_path).exists():
+            dest._backend_store.load_index(dest_index_path)
+
+        migrated = 0
+        vectors_batch: List[Any] = []
+        metadata_batch: List[Dict[str, Any]] = []
+        ids_batch: List[str] = []
+
+        def _flush() -> None:
+            nonlocal migrated
+            if not vectors_batch:
+                return
+            dest.store_vectors(list(vectors_batch), list(metadata_batch), ids=list(ids_batch))
+            migrated += len(vectors_batch)
+            vectors_batch.clear()
+            metadata_batch.clear()
+            ids_batch.clear()
+
+        for item in source.iter_vectors(batch_size=_MIGRATE_BATCH_SIZE):
+            meta = dict(item.get("metadata") or {})
+            if namespace and "namespace" not in meta:
+                meta["namespace"] = namespace
+            vectors_batch.append(item["vector"])
+            metadata_batch.append(meta)
+            ids_batch.append(item["id"])
+            if len(vectors_batch) >= _MIGRATE_BATCH_SIZE:
+                _flush()
+        _flush()
+
+        if dest_index_path and migrated:
+            dest._backend_store.save_index(dest_index_path)
+
+        result = {"from": from_backend, "to": to_backend, "migrated": migrated}
+        if _is_json(cli_ctx, local_json):
+            _jecho(result)
+        else:
+            _ok(cli_ctx, f"Migrated {migrated} vectors from {from_backend} to {to_backend}")
 
     _run_with_error_handling(_action)
 

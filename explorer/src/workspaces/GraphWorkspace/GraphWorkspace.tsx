@@ -21,7 +21,6 @@ import type Graph from "graphology";
 import { batchMergeEdges, batchMergeNodes, graph } from "../../store/graphStore";
 import { logEvent } from "../../store/registryStore";
 import type { EdgeAttributes, NodeAttributes } from "../../store/graphStore";
-import { curveGroupForPair } from "../../store/edgePairKeys.js";
 import { InspectorPanel, MetricChip, SurfaceCard } from "../../ui/primitives";
 import { lazy, Suspense } from "react";
 import { SigmaSceneAdapter } from "./SigmaSceneAdapter";
@@ -41,6 +40,9 @@ import {
 } from "./plugins";
 import { explorationEffectsShouldLoad, neighborhoodPanelShouldLoad, temporalOverlayShouldLoad } from "./pluginRegistryPredicates";
 import { shouldFetchTemporalBounds, shouldFetchTemporalSnapshot } from "./temporalLifecyclePredicates";
+import { createTemporalSnapshotGuards, type TemporalSnapshotResponse } from "./temporalSnapshotGuards";
+import { SMALL_GRAPH_MAX_NODES } from "./smallGraphLayout";
+import { buildRealtimeEdgeAttributes } from "./realtimeGraphAttributes";
 import type { LinkPrediction, PathResponse } from "./GraphInspectorPanel";
 import type { GraphSceneHandle, GraphSceneRuntime } from "./scene";
 import type {
@@ -1055,46 +1057,10 @@ function buildRealtimeNodeAttributes(payload: {
   };
 }
 
-function buildRealtimeEdgeAttributes(payload: {
-  id: string;
-  familyId?: string;
-  source_id: string;
-  target_id: string;
-  type?: string;
-  weight?: number;
-  properties?: Record<string, unknown>;
-}): EdgeAttributes {
-  const properties = payload.properties || {};
-  const isInferred = Boolean(properties.inferred);
-  const isBidirectional = graph.hasDirectedEdge(payload.target_id, payload.source_id);
-  const baseColor = isInferred ? GRAPH_THEME.palette.accent.path : GRAPH_THEME.palette.muted.edgeStructure;
-
-  return {
-    edgeId: payload.id,
-    familyId: payload.familyId || payload.id,
-    sourceId: payload.source_id,
-    targetId: payload.target_id,
-    weight: Number(payload.weight ?? 1),
-    edgeType: payload.type || "related_to",
-    properties,
-    size: 1,
-    baseSize: 1,
-    color: baseColor,
-    baseColor,
-    mutedColor: GRAPH_THEME.palette.muted.edgeOverview,
-    visualPriority: isInferred ? 0.95 : 0.5,
-    isBidirectional,
-    edgeFamily: isInferred ? "path" : isBidirectional ? "bidirectional" : "line",
-    curveGroup: isBidirectional ? curveGroupForPair(payload.source_id, payload.target_id) : null,
-    type: "line",
-    edgeVariant: isInferred ? "pathSignal" : isBidirectional ? "bidirectionalCurve" : "directional",
-    arrowVisibilityPolicy: isInferred ? "always" : "contextual",
-    relationshipStrength: isInferred ? 0.95 : 0.52,
-    isParallelPair: false,
-    parallelIndex: 0,
-    parallelCount: 1,
-    familySize: 1,
-  };
+function synchronizeRealtimeSmallGraphEdges(isSmallGraph: boolean): void {
+  graph.forEachEdge((edgeId) => {
+    graph.setEdgeAttribute(edgeId, "isSmallGraph", isSmallGraph);
+  });
 }
 
 function buildSelectedNodeState(
@@ -1354,6 +1320,7 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
   const lastExternalFocusTokenRef = useRef<number | undefined>(undefined);
   const pluginRuntimeRef = useRef<GraphSceneRuntime | null>(null);
   const appliedGraphSummarySignatureRef = useRef<string | null>(null);
+  const smallGraphModeRef = useRef(false);
   const pluginInteractionStateRef = useRef<GraphInteractionState>({
     hoveredNodeId: null,
     selectedNodeId: "",
@@ -1381,6 +1348,12 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     }
 
     appliedGraphSummarySignatureRef.current = signature;
+    smallGraphModeRef.current = Boolean(
+      graphSummary.layoutReady
+      && !graphSummary.hasCoordinates
+      && graphSummary.nodeCount > 0
+      && graphSummary.nodeCount <= SMALL_GRAPH_MAX_NODES,
+    );
     setGraphReady(true);
     setGraphVersion((current) => current + 1);
     setIsLayoutRunning(!graphSummary.layoutReady);
@@ -1479,6 +1452,23 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     summary?.edgeCount,
   ]);
 
+  // Guards the snapshot lifecycle: at most one in-flight request per scrubber
+  // position (identical-`at` polls are deduplicated, breaking the idle/play
+  // polling loop), applied snapshots are cached and re-applied on revisit, and
+  // a response applies only while the scrubber is still on its position
+  // (out-of-order responses cannot clobber the active-node count).
+  const temporalSnapshotGuardsRef = useRef<ReturnType<typeof createTemporalSnapshotGuards> | null>(null);
+  if (temporalSnapshotGuardsRef.current === null) {
+    temporalSnapshotGuardsRef.current = createTemporalSnapshotGuards();
+  }
+  const temporalSnapshotGuards = temporalSnapshotGuardsRef.current;
+
+  // A new graph summary means the graph data was replaced (reload/retry);
+  // snapshots cached against the previous graph are stale, so reset all state.
+  useEffect(() => {
+    temporalSnapshotGuards.reset();
+  }, [summary]);
+
   useEffect(() => {
     if (!canFetchTemporalSnapshot) {
       return;
@@ -1488,37 +1478,67 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
       return;
     }
 
+    const atMs = debouncedTime.getTime();
+    const { seq, cached } = temporalSnapshotGuards.begin(atMs);
+    if (seq === null) {
+      // An identical request is already in flight: one request per position.
+      return;
+    }
+
     let cancelled = false;
+
+    const applyData = (data: TemporalSnapshotResponse) => {
+      const nextActiveIds = new Set(data.active_node_ids);
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        if (!temporalSnapshotGuards.shouldApply(atMs, seq)) {
+          // The scrubber moved on (or this request was superseded): release the
+          // position so a return to it refetches instead of stalling.
+          temporalSnapshotGuards.finish(atMs, seq);
+          return;
+        }
+        const previous = prevActiveIdsRef.current;
+        previous.forEach((id) => {
+          if (!nextActiveIds.has(id) && graph.hasNode(id)) {
+            graph.setNodeAttribute(id, "hidden", true);
+          }
+        });
+        nextActiveIds.forEach((id) => {
+          if (graph.hasNode(id)) {
+            graph.setNodeAttribute(id, "hidden", false);
+          }
+        });
+        prevActiveIdsRef.current = nextActiveIds;
+        setActiveNodeCount(data.active_node_count);
+        setGraphVersion((current) => current + 1);
+        sceneRef.current?.getRuntime()?.requestRender();
+        temporalSnapshotGuards.apply(atMs, seq, data);
+      });
+    };
+
+    if (cached) {
+      // Returning to a position whose snapshot was already applied: re-apply
+      // the cached result without a network request.
+      applyData(cached);
+      return;
+    }
 
     const applySnapshot = async () => {
       try {
         const at = debouncedTime.toISOString();
         const response = await fetch(`/api/temporal/snapshot?at=${encodeURIComponent(at)}`);
-        if (!response.ok || cancelled) return;
-
-        const data: { active_node_ids: string[]; active_node_count: number } = await response.json();
+        if (!response.ok) {
+          // A failed request must be retryable if the scrubber returns.
+          if (!cancelled) temporalSnapshotGuards.finish(atMs, seq);
+          return;
+        }
         if (cancelled) return;
 
-        const nextActiveIds = new Set(data.active_node_ids);
-        requestAnimationFrame(() => {
-          if (cancelled) return;
-          const previous = prevActiveIdsRef.current;
-          previous.forEach((id) => {
-            if (!nextActiveIds.has(id) && graph.hasNode(id)) {
-              graph.setNodeAttribute(id, "hidden", true);
-            }
-          });
-          nextActiveIds.forEach((id) => {
-            if (graph.hasNode(id)) {
-              graph.setNodeAttribute(id, "hidden", false);
-            }
-          });
-          prevActiveIdsRef.current = nextActiveIds;
-          setActiveNodeCount(data.active_node_count);
-          setGraphVersion((current) => current + 1);
-          sceneRef.current?.getRuntime()?.requestRender();
-        });
+        const data: TemporalSnapshotResponse = await response.json();
+        if (cancelled) return;
+        applyData(data);
       } catch (fetchError) {
+        temporalSnapshotGuards.finish(atMs, seq);
         if (!cancelled) {
           console.error("[Temporal] Snapshot fetch failed", fetchError);
         }
@@ -1528,6 +1548,8 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     applySnapshot();
     return () => {
       cancelled = true;
+      // A cancelled request must be retryable when its position is revisited.
+      temporalSnapshotGuards.finish(atMs, seq);
     };
   }, [
     canFetchTemporalSnapshot,
@@ -1843,18 +1865,26 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
               attributes: buildRealtimeNodeAttributes(payload),
             },
           ]);
+          if (graph.order > SMALL_GRAPH_MAX_NODES) {
+            smallGraphModeRef.current = false;
+          }
+          synchronizeRealtimeSmallGraphEdges(smallGraphModeRef.current);
           logEvent("add-node", `Added node ${payload.label ?? payload.id}${payload.nodeType ? ` (${payload.nodeType})` : ""} via realtime ws`, { nodeId: payload.id, nodeType: payload.nodeType });
           setGraphVersion((current) => current + 1);
           sceneRef.current?.getRuntime()?.requestRender();
         }
         if (eventType === "ADD_EDGE") {
+          const isSmallGraph = smallGraphModeRef.current;
           batchMergeEdges([
             {
               id: String(payload.id),
               familyId: payload.familyId ? String(payload.familyId) : String(payload.id),
               source: payload.source_id,
               target: payload.target_id,
-              attributes: buildRealtimeEdgeAttributes(payload),
+              attributes: buildRealtimeEdgeAttributes(payload, {
+                isBidirectional: graph.hasDirectedEdge(payload.target_id, payload.source_id),
+                isSmallGraph,
+              }),
             },
           ]);
           logEvent("add-edge", `Added edge ${payload.edgeType ?? payload.id} (${payload.source_id} → ${payload.target_id}) via realtime ws`, { edgeId: payload.id, edgeType: payload.edgeType, source: payload.source_id, target: payload.target_id });

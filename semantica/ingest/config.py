@@ -110,7 +110,7 @@ class IngestConfig:
             if value:
                 try:
                     if type_func == bool:
-                        self._configs[config_key] = value.lower() in (
+                        self._configs[config_key] = value.strip().lower() in (
                             "true",
                             "1",
                             "yes",
@@ -127,8 +127,8 @@ class IngestConfig:
             if key.startswith(env_prefix) and key not in env_mappings:
                 config_key = key[len(env_prefix) :].lower()
                 # Try to convert to appropriate type
-                if value.lower() in ("true", "false"):
-                    self._configs[config_key] = value.lower() == "true"
+                if value.strip().lower() in ("true", "false"):
+                    self._configs[config_key] = value.strip().lower() == "true"
                 elif value.isdigit():
                     self._configs[config_key] = int(value)
                 else:
@@ -143,8 +143,8 @@ class IngestConfig:
             if key.startswith(mcp_prefix) and key not in env_mappings:
                 config_key = key[len(mcp_prefix) :].lower()
                 # Try to convert to appropriate type
-                if value.lower() in ("true", "false"):
-                    self._configs[f"mcp_{config_key}"] = value.lower() == "true"
+                if value.strip().lower() in ("true", "false"):
+                    self._configs[f"mcp_{config_key}"] = value.strip().lower() == "true"
                 elif value.isdigit():
                     self._configs[f"mcp_{config_key}"] = int(value)
                 else:
@@ -169,12 +169,12 @@ class IngestConfig:
         if value:
             try:
                 # Try to convert to appropriate type
-                if isinstance(default, int):
+                if isinstance(default, bool):
+                    return value.strip().lower() in ("true", "1", "yes", "on")
+                elif isinstance(default, int):
                     return int(value)
                 elif isinstance(default, float):
                     return float(value)
-                elif isinstance(default, bool):
-                    return value.lower() in ("true", "1", "yes", "on")
                 return value
             except (ValueError, TypeError):
                 pass
@@ -186,8 +186,13 @@ class IngestConfig:
         self._method_configs[method] = config
 
     def get_method_config(self, method: str) -> Dict:
-        """Get method-specific configuration."""
-        return self._method_configs.get(method, {})
+        """Get method-specific configuration.
+
+        Returns a **copy** of the stored method configuration so callers can
+        safely mutate it (e.g. to merge per-call options) without poisoning the
+        global configuration for subsequent calls.
+        """
+        return dict(self._method_configs.get(method, {}))
 
     def get_all(self) -> Dict[str, Any]:
         """Get all configuration."""

@@ -382,6 +382,45 @@ For authentication details (PAT vs. OAuth M2M for Databricks; password vs. key-p
 
 > **Security Note:** Never hardcode credentials (`token`, `password`, `private_key`) in production code; pass them via environment variables (e.g., `DATABRICKS_TOKEN`, `SNOWFLAKE_PASSWORD`) or a secrets manager.
 
+## Source 7 — SAP OData
+
+`SAPIngestor` ingests an Entity Set from a SAP OData service (S/4HANA Cloud, SuccessFactors, or an on-prem NetWeaver Gateway over its REST surface). It speaks OData v2 and v4, follows server-driven pagination automatically, and flattens each record into a document dict via `export_as_documents()` — the same structured "transform to text, then store" pattern as the other sources.
+
+```python
+from semantica.ingest import SAPIngestor
+
+ing = SAPIngestor(
+    base_url="https://my-sap.example.com/sap/opu/odata/sap/API_BUSINESS_PARTNER",
+    client_id="...", client_secret="...",
+    token_url="https://my-sap.example.com/oauth/token",  # OAuth2 client-credentials (BTP/S/4HANA Cloud)
+    # On-prem NetWeaver often uses Basic auth instead — swap the block above for:
+    # username="erp_user", password="...",
+)
+
+# 1. Discover an unfamiliar service: entity sets + field types from $metadata
+sets = ing.discover_service()          # [{"name": "A_BusinessPartnerSet", "fields": [...]}, ...]
+
+# 2. Pull a page-walked Entity Set (v2/v4 next links handled for you)
+partners = ing.ingest_entity_set(
+    entity_set="A_BusinessPartnerSet",
+    select="BusinessPartner,BusinessPartnerFullName",   # $select
+    top=1000,                                           # cap on total rows
+)
+
+# 3. Flatten to document dicts, then build text for the graph
+docs = ing.export_as_documents(partners)
+partner_texts = [
+    f"Business Partner {d['BusinessPartner']}: {d['BusinessPartnerFullName']}"
+    for d in docs
+]
+```
+
+- Use `expand="to_Item"` (e.g. on a sales-order header set) to pull nested line items in one request — handy for modeling order → line-item → material relationships.
+- Every outbound request, including the OAuth2 token exchange, is routed through the SSRF guard, so a user-supplied SAP URL can never reach private/loopback/link-local address space.
+- Install with `pip install 'semantica[ingest-sap]'`.
+
+> **Security Note:** Never hardcode credentials (`client_secret`, `password`) in code; pass them via environment variables (e.g., `SAP_CLIENT_SECRET`, `SAP_PASSWORD`) or a secrets manager.
+
 ## Combining All Five Sources
 
 Once you have text from each source, `AgentContext.store()` accepts a flat list of strings. Semantica embeds and indexes them together — the context graph has no concept of which string came from which source unless you add metadata explicitly.
