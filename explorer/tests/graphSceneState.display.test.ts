@@ -407,6 +407,31 @@ test("resolveEdgeElementStyle applies full-graph LOD to directional background e
   assert.equal(style.hidden, true);
 });
 
+test("resolveEdgeElementStyle keeps small-graph relationships visible in overview", () => {
+  const style = resolveEdgeElementStyle(
+    GRAPH_THEME,
+    "overview",
+    "inactive",
+    {
+      edgeType: "related_to",
+      weight: 1,
+      properties: {},
+      edgeVariant: "directional",
+      visualPriority: 0.1,
+      baseSize: 0.5,
+      isSmallGraph: true,
+    },
+    "source",
+    "target",
+    "full",
+    "small-graph-low-priority",
+    "hidden",
+  );
+
+  assert.equal(style.hidden, false);
+  assert.ok(Number(style.size ?? 0) >= 0.9);
+});
+
 test("classifyFullGraphEdge applies deterministic priority order", () => {
   const edgeClass = classifyFullGraphEdge(
     "edge-priority",
