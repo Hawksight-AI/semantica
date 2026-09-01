@@ -60,7 +60,12 @@ jobs:
           # (json/text/screen/...), not a file path. Writing JSON to a file
           # now requires --save-json; the previous `--output safety-report.json`
           # usage was silently invalid and never produced a report.
-          safety check --save-json safety-report.json || true
+          #
+          # Scan requirements-ci.txt directly instead of the installed environment
+          # to avoid crashes from packages like cuda-toolkit that Safety cannot
+          # parse. This also ensures we're auditing the declared dependency tree
+          # rather than transitive dependencies of the security tooling itself.
+          safety check --file requirements-ci.txt --save-json safety-report.json || true
 
           # Guard 1: fail loudly if Safety exited before writing a report at all
           # (network error, API auth failure, tool crash). Without this check a
