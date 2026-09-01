@@ -18,10 +18,14 @@ interface MemorySummary {
 interface MemoryListResponse {
   items: MemorySummary[];
   total: number;
+  skip: number;
+  limit: number;
 }
 interface MemoryWorkspaceProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
+
+const MEMORY_PAGE_SIZE = 100;
 
 
 function responseMessage(payload: unknown, fallback: string): string {
@@ -32,8 +36,8 @@ function responseMessage(payload: unknown, fallback: string): string {
 }
 
 
-async function fetchMemoryList(): Promise<MemoryListResponse> {
-  const response = await fetch("/api/memories?skip=0&limit=100");
+async function fetchMemoryList(skip = 0): Promise<MemoryListResponse> {
+  const response = await fetch(`/api/memories?skip=${skip}&limit=${MEMORY_PAGE_SIZE}`);
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     throw new Error(responseMessage(payload, `Memory list failed (${response.status}).`));
@@ -41,11 +45,35 @@ async function fetchMemoryList(): Promise<MemoryListResponse> {
   return response.json() as Promise<MemoryListResponse>;
 }
 
+async function fetchLoadedMemoryPages(endOffset: number): Promise<{
+  items: MemorySummary[];
+  total: number;
+  nextOffset: number;
+}> {
+  const items: MemorySummary[] = [];
+  let total = 0;
+  let nextOffset = 0;
+  const targetOffset = Math.max(endOffset, MEMORY_PAGE_SIZE);
+
+  while (nextOffset < targetOffset) {
+    const payload = await fetchMemoryList(nextOffset);
+    items.push(...payload.items);
+    total = payload.total;
+    nextOffset = payload.skip + payload.items.length;
+    if (payload.items.length === 0 || nextOffset >= total) break;
+  }
+
+  return { items, total, nextOffset };
+}
+
 export function MemoryWorkspace({ onDirtyChange }: MemoryWorkspaceProps = {}) {
   const [items, setItems] = useState<MemorySummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [nextOffset, setNextOffset] = useState(0);
   const [selectedId, setSelectedId] = useState("");
   const [selectedBody, setSelectedBody] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
@@ -68,11 +96,14 @@ export function MemoryWorkspace({ onDirtyChange }: MemoryWorkspaceProps = {}) {
     );
     const load = async () => {
       setLoading(true);
+      setLoadingMore(false);
       setError("");
       try {
         const payload = await fetchMemoryList();
         if (!isCurrent()) return;
         setItems(payload.items);
+        setTotal(payload.total);
+        setNextOffset(payload.skip + payload.items.length);
         const first = payload.items[0];
         if (!first) {
           setSelectedId("");
@@ -128,18 +159,52 @@ export function MemoryWorkspace({ onDirtyChange }: MemoryWorkspaceProps = {}) {
     }
   };
 
+  const loadMoreMemories = useCallback(async () => {
+    if (loadingMore || nextOffset >= total) return;
+    const listGeneration = ++listGenerationRef.current;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const payload = await fetchMemoryList(nextOffset);
+      if (listGeneration !== listGenerationRef.current) return;
+      setItems((current) => {
+        const knownIds = new Set(current.map((item) => item.id));
+        return [
+          ...current,
+          ...payload.items.filter((item) => !knownIds.has(item.id)),
+        ];
+      });
+      setTotal(payload.total);
+      setNextOffset(payload.skip + payload.items.length);
+    } catch (failure) {
+      if (listGeneration === listGenerationRef.current) {
+        setError(failure instanceof Error ? failure.message : "More memories could not be loaded.");
+      }
+    } finally {
+      if (listGeneration === listGenerationRef.current) {
+        setLoadingMore(false);
+      }
+    }
+  }, [loadingMore, nextOffset, total]);
+
   const refreshMemorySummaries = useCallback(async () => {
     const listGeneration = ++listGenerationRef.current;
     try {
-      const payload = await fetchMemoryList();
+      const payload = await fetchLoadedMemoryPages(nextOffset);
       if (listGeneration !== listGenerationRef.current) return;
       setItems(payload.items);
+      setTotal(payload.total);
+      setNextOffset(payload.nextOffset);
     } catch {
       if (listGeneration === listGenerationRef.current) {
         setError("Memory was applied, but its summary could not be refreshed.");
       }
+    } finally {
+      if (listGeneration === listGenerationRef.current) {
+        setLoadingMore(false);
+      }
     }
-  }, []);
+  }, [nextOffset]);
 
   const applyMemory = useCallback((result: MarkdownApplyResult) => {
     setSelectedBody(result.body);
@@ -158,15 +223,15 @@ export function MemoryWorkspace({ onDirtyChange }: MemoryWorkspaceProps = {}) {
         <div style={listHeaderStyle}>
           <div>
             <div style={listTitleStyle}>AgentMemory</div>
-            <div style={listCountStyle}>{items.length} loaded</div>
+            <div style={listCountStyle}>{items.length} of {total} loaded</div>
           </div>
           <button
             type="button"
             aria-label="Refresh memories"
             onClick={() => setReloadToken((value) => value + 1)}
-            disabled={loading || dirty}
+            disabled={loading || loadingMore || dirty}
             title={dirty ? "Apply or cancel the current draft before refreshing" : "Refresh memories"}
-            style={{ ...iconButtonStyle, opacity: loading || dirty ? 0.55 : 1 }}
+            style={{ ...iconButtonStyle, opacity: loading || loadingMore || dirty ? 0.55 : 1 }}
           >
             <RefreshCw size={14} aria-hidden="true" />
           </button>
@@ -188,6 +253,17 @@ export function MemoryWorkspace({ onDirtyChange }: MemoryWorkspaceProps = {}) {
               <span style={memoryExcerptStyle}>{item.excerpt || "Empty memory"}</span>
             </button>
           ))}
+          {nextOffset < total ? (
+            <button
+              type="button"
+              aria-label="Load more memories"
+              onClick={() => void loadMoreMemories()}
+              disabled={loading || loadingMore}
+              style={{ ...retryButtonStyle, opacity: loading || loadingMore ? 0.55 : 1 }}
+            >
+              {loadingMore ? "Loading…" : "Load more"}
+            </button>
+          ) : null}
           {!loading && items.length === 0 ? (
             <div style={emptyStyle}>
               <Brain size={22} aria-hidden="true" />

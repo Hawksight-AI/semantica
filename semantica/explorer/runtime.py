@@ -16,7 +16,7 @@ def explorer_capabilities(agent_memory: Optional[AgentMemory]) -> Dict[str, bool
 
 def install_mutation_bridge(app: FastAPI, session: GraphSession) -> None:
     """Keep Explorer indexes and WebSocket clients in sync with graph writes."""
-    if getattr(app.state, "_semantica_mutation_bridge", None) is not None:
+    if getattr(app.state, "_semantica_mutation_bridge_session", None) is session:
         return
     previous_callback = getattr(session.graph, "mutation_callback", None)
 
@@ -42,3 +42,4 @@ def install_mutation_bridge(app: FastAPI, session: GraphSession) -> None:
 
     session.graph.mutation_callback = on_mutation
     app.state._semantica_mutation_bridge = on_mutation
+    app.state._semantica_mutation_bridge_session = session

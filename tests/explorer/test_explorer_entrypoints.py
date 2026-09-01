@@ -62,6 +62,35 @@ def test_mutation_bridge_is_idempotent_for_one_app(monkeypatch):
     assert len(received) == 1
 
 
+def test_mutation_bridge_reinstalls_for_new_session_on_same_app(monkeypatch):
+    first_session = GraphSession(ContextGraph(advanced_analytics=False))
+    second_session = GraphSession(ContextGraph(advanced_analytics=False))
+    received = []
+    monkeypatch.setattr(
+        first_session,
+        "handle_graph_mutation",
+        lambda *event: received.append(("first", event)),
+    )
+    monkeypatch.setattr(
+        second_session,
+        "handle_graph_mutation",
+        lambda *event: received.append(("second", event)),
+    )
+    app = FastAPI()
+    app.state.event_loop = None
+    app.state.ws_manager = None
+
+    install_mutation_bridge(app, first_session)
+    install_mutation_bridge(app, second_session)
+    second_session.graph.mutation_callback(
+        "UPDATE_NODE",
+        "node-2",
+        {"content": "Updated"},
+    )
+
+    assert [receiver for receiver, _ in received] == ["second"]
+
+
 def test_legacy_server_mounts_editable_markdown_routes(monkeypatch):
     monkeypatch.setenv("SEMANTICA_ALLOW_ANONYMOUS", "true")
 

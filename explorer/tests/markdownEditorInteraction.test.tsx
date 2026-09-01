@@ -275,6 +275,57 @@ test("MemoryWorkspace protects a dirty memory draft when selection changes", asy
 });
 
 
+test("MemoryWorkspace loads memories beyond the first server page", async () => {
+  const requestedUrls: string[] = [];
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({
+    id: `mem-${index + 1}`,
+    type: "note",
+    excerpt: `Memory ${index + 1}`,
+    updated_at: null,
+  }));
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requestedUrls.push(url);
+    if (url === "/api/memories?skip=0&limit=100") {
+      return jsonResponse({
+        items: firstPage,
+        total: 101,
+        skip: 0,
+        limit: 100,
+      });
+    }
+    if (url === "/api/memories?skip=100&limit=100") {
+      return jsonResponse({
+        items: [{
+          id: "mem-101",
+          type: "note",
+          excerpt: "Memory 101",
+          updated_at: null,
+        }],
+        total: 101,
+        skip: 100,
+        limit: 100,
+      });
+    }
+    return jsonResponse({
+      resource: { kind: "agent-memory", id: "mem-1" },
+      source: "---\nid: mem-1\ntype: note\n---\n\nmem-1",
+      body: "mem-1",
+      revision: "sha256:mem-1",
+      editable: true,
+    });
+  };
+
+  const view = render(<MemoryWorkspace />);
+  await view.findByText("Selected memory");
+  fireEvent.click(view.getByRole("button", { name: "Load more memories" }));
+
+  await view.findByRole("button", { name: /mem-101/ });
+  assert.ok(requestedUrls.includes("/api/memories?skip=100&limit=100"));
+  assert.equal(view.getByText("101 of 101 loaded").textContent, "101 of 101 loaded");
+});
+
+
 test("MemoryWorkspace ignores stale selection responses", async () => {
   let resolveMem2: ((response: Response) => void) | undefined;
   let resolveMem3: ((response: Response) => void) | undefined;
