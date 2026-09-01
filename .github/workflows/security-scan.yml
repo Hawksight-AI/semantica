@@ -55,7 +55,12 @@ jobs:
           pip install -r .github/requirements/security-scan-tools.txt --require-hashes
 
       - name: Run Safety Check (Package Vulnerabilities)
+        continue-on-error: true
         run: |
+          # Keep publishing reports and the PR comment even when the Safety
+          # gate fails. The final gate below preserves the failure status.
+          echo 'SAFETY_SCAN_STATUS=failed' >> "$GITHUB_ENV"
+
           # NOTE: Safety 3.x repurposed --output to select a console format
           # (json/text/screen/...), not a file path. Writing JSON to a file
           # now requires --save-json; the previous `--output safety-report.json`
@@ -147,6 +152,7 @@ jobs:
             exit 1
           else
             echo "✅ No actionable security vulnerabilities found (ignored: $IGNORED_VULN_IDS)"
+            echo 'SAFETY_SCAN_STATUS=passed' >> "$GITHUB_ENV"
           fi
         
       - name: Run Bandit (Code Security Linter)
@@ -186,6 +192,7 @@ jobs:
           fi
         
       - name: Upload Security Reports
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: security-reports
@@ -196,7 +203,7 @@ jobs:
             semgrep-report.json
         
       - name: Comment PR with Security Results
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
@@ -312,3 +319,11 @@ jobs:
               console.log('⚠️ Could not post security comment:', error.message);
               console.log('📋 Security scan results saved to artifacts');
             }
+
+      - name: Enforce Safety Gate
+        if: always()
+        run: |
+          if [ "${SAFETY_SCAN_STATUS:-failed}" != "passed" ]; then
+            echo "::error::Safety scan failed. See the Safety output and uploaded reports above."
+            exit 1
+          fi
