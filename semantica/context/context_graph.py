@@ -2640,7 +2640,11 @@ class ContextGraph:
 
         Scope is this graph only. Copies held elsewhere (``AgentMemory``, a
         bound vector store, an exported file) are not reached, so this is one
-        step of an erasure workflow, not the whole of it.
+        step of an erasure workflow, not the whole of it. Callers who need the
+        whole workflow -- and a receipt recording which stores it actually
+        reached -- should drive this through
+        :class:`~semantica.context.erasure.ErasureCoordinator` rather than
+        treating a ``True`` here as proof the content is gone.
 
         Args:
             node_id: Node to purge.
