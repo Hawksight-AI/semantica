@@ -65,9 +65,11 @@ import os
 import re
 import stat
 import tempfile
+import threading
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -78,6 +80,12 @@ from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from ..utils.types import EntityDict, RelationshipDict
 from ._markdown_filesystem import find_filesystem_link
+from .markdown import (
+    MarkdownIdentityError,
+    MarkdownResourceNotFoundError,
+    MarkdownRevisionConflictError,
+    markdown_document_revision,
+)
 
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
@@ -158,6 +166,17 @@ class MemoryItem:
         )
 
 
+def _with_memory_lock(method):
+    """Serialize AgentMemory state mutations and Markdown revision checks."""
+
+    @wraps(method)
+    def locked(self, *args, **kwargs):
+        with self._memory_lock:
+            return method(self, *args, **kwargs)
+
+    return locked
+
+
 class AgentMemory:
     """
     Agent memory manager with RAG integration and Hierarchical Memory.
@@ -197,6 +216,7 @@ class AgentMemory:
         self.logger = get_logger("agent_memory")
         self.config = config or {}
         self.config.update(kwargs)
+        self._memory_lock = threading.RLock()
 
         self.vector_store = self.config.get("vector_store")
         self.knowledge_graph = self.config.get("knowledge_graph")
@@ -249,6 +269,7 @@ class AgentMemory:
 
         self.logger.info(f"Saved agent memory to {path}")
 
+    @_with_memory_lock
     def load(self, path: str) -> None:
         """
         Load memory state from disk.
@@ -298,6 +319,7 @@ class AgentMemory:
 
         self.logger.info(f"Loaded agent memory from {path}")
 
+    @_with_memory_lock
     def store(
         self,
         content: str,
@@ -574,6 +596,7 @@ class AgentMemory:
             "relationships": memory_item.relationships,
         }
 
+    @_with_memory_lock
     def delete_memory(self, memory_id: str, *, skip_vector: bool = False) -> bool:
         """
         Delete memory item.
@@ -626,6 +649,7 @@ class AgentMemory:
         self.logger.debug(f"Deleted memory item: {memory_id}")
         return True
 
+    @_with_memory_lock
     def clear_memory(self, **filters) -> int:
         """
         Clear memory items matching filters.
@@ -1116,6 +1140,7 @@ class AgentMemory:
         """
         return self.get_memory(memory_id)
 
+    @_with_memory_lock
     def update(
         self,
         memory_id: str,
@@ -1396,6 +1421,13 @@ class AgentMemory:
 
         return results
 
+    @_with_memory_lock
+    def list_snapshot(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Return one memory page and its total from the same locked state."""
+        return self.list(limit=limit, offset=offset), len(self.memory_items)
+
     def get_by_conversation(
         self, conversation_id: str, limit: int = 100
     ) -> List[Dict[str, Any]]:
@@ -1607,6 +1639,85 @@ class AgentMemory:
                 updated += 1
         return updated
 
+    @_with_memory_lock
+    def export_item_markdown(self, memory_id: str) -> str:
+        """Return one existing memory item as canonical Markdown.
+
+        Args:
+            memory_id: Stable identifier of the memory item to export.
+
+        Returns:
+            Canonical Markdown containing the memory frontmatter and body.
+
+        Raises:
+            MarkdownResourceNotFoundError: If ``memory_id`` does not exist.
+        """
+        memory = self.get(memory_id)
+        if memory is None:
+            raise MarkdownResourceNotFoundError(
+                f"AgentMemory item {memory_id!r} was not found."
+            )
+        return self._memory_to_markdown(memory)
+
+    @_with_memory_lock
+    def apply_item_markdown(
+        self,
+        memory_id: str,
+        document: str,
+        *,
+        expected_revision: Optional[str] = None,
+    ) -> bool:
+        """Validate and atomically replace one existing memory item.
+
+        Args:
+            memory_id: Stable identifier of the memory item to update.
+            document: Canonical Markdown containing the replacement item.
+            expected_revision: Optional revision returned by
+                :meth:`export_item_markdown`. A mismatch rejects stale edits.
+
+        Returns:
+            ``True`` when the item changed, otherwise ``False``.
+
+        Raises:
+            ValueError: If the Markdown or frontmatter is invalid.
+            MarkdownIdentityError: If the frontmatter changes the memory ID.
+            MarkdownResourceNotFoundError: If ``memory_id`` does not exist.
+            MarkdownRevisionConflictError: If ``expected_revision`` is stale.
+            RuntimeError: If the validated item cannot be persisted.
+        """
+        memory = self._markdown_to_memory_dict(document, source=f"memory {memory_id!r}")
+        document_id = memory["memory_id"]
+        if document_id != memory_id:
+            raise MarkdownIdentityError(
+                f"Frontmatter id {document_id!r} does not match resource id "
+                f"{memory_id!r}."
+            )
+        if not self.exists(memory_id):
+            raise MarkdownResourceNotFoundError(
+                f"AgentMemory item {memory_id!r} was not found."
+            )
+        if expected_revision is not None:
+            current_revision = markdown_document_revision(
+                self.export_item_markdown(memory_id)
+            )
+            if current_revision != expected_revision:
+                raise MarkdownRevisionConflictError(current_revision)
+        if self._markdown_record_matches(memory_id, memory):
+            return False
+
+        success = self._replace_memory_item(
+            memory_id,
+            memory["content"],
+            metadata=memory["metadata"],
+            entities=memory["entities"],
+            relationships=memory["relationships"],
+            timestamp=memory["timestamp"],
+            skip_graph=True,
+        )
+        if not success:
+            raise RuntimeError(f"AgentMemory item {memory_id!r} could not be replaced.")
+        return True
+
     # Export/Import
     def export(
         self,
@@ -1655,6 +1766,7 @@ class AgentMemory:
             return self._export_markdown(memories, destination=destination)
         return export_data
 
+    @_with_memory_lock
     def import_data(
         self, data: Union[str, Path, Dict[str, Any]], format: str = "json"
     ) -> int:

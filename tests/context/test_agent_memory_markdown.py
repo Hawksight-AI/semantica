@@ -12,6 +12,10 @@ import pytest
 import yaml
 
 from semantica.context.agent_memory import AgentMemory
+from semantica.context.markdown import (
+    MarkdownRevisionConflictError,
+    markdown_document_revision,
+)
 
 _ERROR_PRIVILEGE_NOT_HELD = 1314
 
@@ -1008,3 +1012,85 @@ def test_markdown_import_rejects_non_regular_file(tmp_path):
     with patch("semantica.context.agent_memory.os.fstat", return_value=fake_stat):
         with pytest.raises(ValueError, match="not a regular file"):
             memory._read_markdown_file_content(real_file)
+
+
+def _editable_memory(vector_store=None):
+    memory = AgentMemory(vector_store=vector_store)
+    memory.store(
+        "Original body",
+        memory_id="mem-edit",
+        timestamp=datetime.fromisoformat("2026-07-22T09:00:00+00:00"),
+        metadata={
+            "type": "note",
+            "updated_at": "2026-07-22T10:00:00+00:00",
+            "owner": "before",
+        },
+    )
+    return memory
+
+
+def test_single_item_markdown_export_and_apply_preserve_identity():
+    memory = _editable_memory()
+    source = memory.export_item_markdown("mem-edit")
+    edited = source.replace("owner: before", "owner: after").replace(
+        "Original body", "Updated body"
+    )
+
+    assert memory.apply_item_markdown("mem-edit", edited) is True
+    item = memory.get("mem-edit")
+    assert item["memory_id"] == "mem-edit"
+    assert item["content"] == "Updated body"
+    assert item["metadata"]["owner"] == "after"
+    assert memory.export_item_markdown("mem-edit") == edited
+
+
+def test_single_item_markdown_rejects_identity_change_without_mutation():
+    memory = _editable_memory()
+    before = deepcopy(memory.get("mem-edit"))
+    document = memory.export_item_markdown("mem-edit").replace(
+        "id: mem-edit", "id: mem-other"
+    )
+
+    with pytest.raises(ValueError, match="does not match resource id"):
+        memory.apply_item_markdown("mem-edit", document)
+
+    assert memory.get("mem-edit") == before
+    assert memory.get("mem-other") is None
+
+
+def test_single_item_markdown_invalid_document_and_missing_item_are_safe():
+    memory = _editable_memory()
+    before = deepcopy(memory.get("mem-edit"))
+
+    with pytest.raises(ValueError, match="Invalid Markdown frontmatter"):
+        memory.apply_item_markdown("mem-edit", "---\nid: [\n---\n\nBroken")
+    with pytest.raises(KeyError, match="missing"):
+        memory.export_item_markdown("missing")
+
+    assert memory.get("mem-edit") == before
+
+
+def test_single_item_markdown_noop_skips_vector_sync():
+    vector_store = TrackingVectorStore()
+    memory = _editable_memory(vector_store=vector_store)
+    vector_store.events.clear()
+    source = memory.export_item_markdown("mem-edit")
+
+    assert memory.apply_item_markdown("mem-edit", source) is False
+    assert vector_store.events == []
+
+
+def test_single_item_markdown_revision_check_is_atomic_with_apply():
+    memory = _editable_memory()
+    source = memory.export_item_markdown("mem-edit")
+    expected_revision = markdown_document_revision(source)
+    memory.update("mem-edit", content="Concurrent update")
+
+    with pytest.raises(MarkdownRevisionConflictError):
+        memory.apply_item_markdown(
+            "mem-edit",
+            source.replace("Original body", "Stale edit"),
+            expected_revision=expected_revision,
+        )
+
+    assert memory.get("mem-edit")["content"] == "Concurrent update"

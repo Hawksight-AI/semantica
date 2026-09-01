@@ -17,10 +17,13 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
+import { ExploreWorkspaceTabs, type ExploreView } from './ExploreWorkspaceTabs';
+import { fetchAgentMemoryAvailability } from './explorerCapabilities';
 
 const DecisionWorkspace = lazy(() => import('./workspaces/DecisionWorkspace/DecisionWorkspace').then((module) => ({ default: module.DecisionWorkspace })));
 const DiffMergeWorkspace = lazy(() => import('./workspaces/DiffMergeWorkspace/DiffMergeWorkspace').then((module) => ({ default: module.DiffMergeWorkspace })));
 const GraphWorkspace = lazy(() => import('./workspaces/GraphWorkspace/GraphWorkspace').then((module) => ({ default: module.GraphWorkspace })));
+const MemoryWorkspace = lazy(() => import('./workspaces/MemoryWorkspace').then((module) => ({ default: module.MemoryWorkspace })));
 const ImportExportWorkspace = lazy(() => import('./workspaces/ImportExportWorkspace/ImportExportWorkspace').then((module) => ({ default: module.ImportExportWorkspace })));
 const LineageDiagram = lazy(() => import('./workspaces/LineageWorkspace/LineageDiagram').then((module) => ({ default: module.LineageDiagram })));
 const ReasoningWorkspace = lazy(() => import('./workspaces/ReasoningWorkspace').then((module) => ({ default: module.ReasoningWorkspace })));
@@ -33,7 +36,6 @@ const OntologySummaryTab = lazy(() => import('./workspaces/ManageWorkspace/Ontol
 const OntologyWorkspace = lazy(() => import('./workspaces/OntologyWorkspace').then((module) => ({ default: module.OntologyWorkspace })));
 
 type WorkspaceId = 'welcome' | 'explore' | 'analyze' | 'decisions' | 'enrich' | 'manage' | 'ontology-hub';
-type ExploreView = 'graph' | 'vocabulary';
 type AnalyzeView = 'sparql' | 'reasoning';
 type EnrichView = 'import' | 'merge' | 'registry' | 'resolve';
 type ManageView = 'lineage' | 'kg-overview' | 'ontology';
@@ -1779,6 +1781,37 @@ export default function App() {
   const [enrichView, setEnrichView] = useState<EnrichView>('import');
   const [manageView, setManageView] = useState<ManageView>('lineage');
   const [graphFocusRequest, setGraphFocusRequest] = useState<{ nodeId: string; token: number } | null>(null);
+  const [exploreDraftDirty, setExploreDraftDirty] = useState(false);
+  const [agentMemoryAvailable, setAgentMemoryAvailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetchAgentMemoryAvailability().then((available) => {
+      if (active) setAgentMemoryAvailable(available);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const confirmDiscardExploreDraft = () => (
+    !exploreDraftDirty
+    || window.confirm("Discard the unapplied Markdown draft and leave this resource?")
+  );
+
+  const switchExploreView = (nextView: ExploreView) => {
+    if (nextView === exploreView) return;
+    if (!confirmDiscardExploreDraft()) return;
+    setExploreDraftDirty(false);
+    setExploreView(nextView);
+  };
+
+  const switchWorkspace = (nextWorkspace: WorkspaceId) => {
+    if (nextWorkspace === activeWorkspace) return;
+    if (activeWorkspace === "explore" && !confirmDiscardExploreDraft()) return;
+    setExploreDraftDirty(false);
+    setActiveWorkspace(nextWorkspace);
+  };
 
 
   const renderWorkspace = () => {
@@ -1811,18 +1844,15 @@ export default function App() {
       return (
         <WorkspaceShell
           title="Explore"
-          subtitle={exploreView === 'graph' ? undefined : "Browse the graph and switch views without leaving the workspace."}
-          kicker={exploreView === 'graph' ? 'Graph Studio' : 'Vocabulary Browser'}
+          subtitle={exploreView === 'graph' ? undefined : exploreView === 'memories' ? "Browse and edit canonical AgentMemory documents." : "Browse the graph and switch views without leaving the workspace."}
+          kicker={exploreView === 'graph' ? 'Graph Studio' : exploreView === 'memories' ? 'Memory Browser' : 'Vocabulary Browser'}
           compact
           tabs={
-            <>
-              <button className="workspace-tab" data-active={exploreView === 'graph'} onClick={() => setExploreView('graph')}>
-                Semantica Explorer
-              </button>
-              <button className="workspace-tab" data-active={exploreView === 'vocabulary'} onClick={() => setExploreView('vocabulary')}>
-                Vocabulary Browser
-              </button>
-            </>
+            <ExploreWorkspaceTabs
+              activeView={exploreView}
+              agentMemoryAvailable={agentMemoryAvailable}
+              onSelect={switchExploreView}
+            />
           }
         >
           <ErrorBoundary key={`explore-${exploreView}`}>
@@ -1831,8 +1861,9 @@ export default function App() {
                 <GraphWorkspace
                   externalFocusNodeId={graphFocusRequest?.nodeId}
                   externalFocusToken={graphFocusRequest?.token}
+                  onDirtyChange={setExploreDraftDirty}
                 />
-              ) : <VocabularyWorkspace />}
+              ) : exploreView === 'memories' ? <MemoryWorkspace onDirtyChange={setExploreDraftDirty} /> : <VocabularyWorkspace />}
             </Suspense>
           </ErrorBoundary>
         </WorkspaceShell>
@@ -1977,13 +2008,13 @@ export default function App() {
       <style>{shellStyles}</style>
       <div className="app-shell">
         <aside className="app-rail">
-          <button className="brand-pill" title="Semantica Knowledge Explorer" onClick={() => setActiveWorkspace('welcome')} style={{ cursor: 'pointer', border: '1px solid rgba(127,208,255,0.18)' }}>SKE</button>
+          <button className="brand-pill" title="Semantica Knowledge Explorer" onClick={() => switchWorkspace('welcome')} style={{ cursor: 'pointer', border: '1px solid rgba(127,208,255,0.18)' }}>SKE</button>
           {navItems.map(({ id, label, hint, icon: Icon }) => (
             <button
               key={id}
               className="nav-button"
               data-active={activeWorkspace === id}
-              onClick={() => setActiveWorkspace(id)}
+              onClick={() => switchWorkspace(id)}
               title={hint}
             >
               <Icon size={20} />
