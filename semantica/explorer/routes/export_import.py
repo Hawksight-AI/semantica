@@ -336,20 +336,16 @@ async def export_graph(
         
         try:
             # GraphExporter.export() writes to file, but we need string content for HTTP response.
-            # Use a temporary in-memory approach: build GraphML XML directly.
+            # Use a temporary file that is automatically cleaned up.
             import tempfile
             from pathlib import Path
             
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.graphml', delete=False, encoding='utf-8') as tmp:
-                tmp_path = Path(tmp.name)
-            
-            try:
+            # Create temp file in a secure directory with automatic cleanup on exception
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_path = Path(tmpdir) / "export.graphml"
                 exporter = GraphExporter(format="graphml")
                 exporter.export(graph_dict, file_path=tmp_path)
                 content = tmp_path.read_text(encoding='utf-8')
-            finally:
-                # Clean up temporary file
-                tmp_path.unlink(missing_ok=True)
         except ValidationError as exc:
             raise HTTPException(
                 status_code=422,
