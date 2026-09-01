@@ -78,10 +78,45 @@ jobs:
 
           echo "Checking for package vulnerabilities..."
 
-          # No || echo "0" fallback: if jq fails (malformed JSON, missing key,
-          # vulnerabilities:null) VULNS will be empty or "null" so guard 2 below
-          # catches it rather than silently treating the broken report as zero.
-          VULNS=$(jq '.vulnerabilities | length' safety-report.json 2>/dev/null)
+          # Vulnerability IDs reviewed and accepted as non-actionable for this
+          # project. Filtered out here with jq rather than passed to Safety's
+          # own --ignore flag: --ignore crashes ("Unhandled exception happened:
+          # 'cuda-toolkit'") when it has to apply itself against a live-matched
+          # vulnerability for cuda-toolkit, apparently the same class of
+          # unguarded dependency-graph lookup that broke the plain environment
+          # scan (see git history on this file). The un-ignored scan above is
+          # the one path confirmed - by an actual CI run - not to crash even
+          # with a live cuda-toolkit match, so all filtering happens after the
+          # fact in jq instead of inside Safety.
+          #
+          # - SFTY-20260120-40557 (CVE-2025-33228): cuda-toolkit<13.1.0. torch
+          #   2.13.0 (latest available; no newer release exists) hard-pins
+          #   cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,
+          #   cusparse,nvjitlink,nvrtc,nvtx]==13.0.3 on Linux - not a version we
+          #   control. The CVE is OS command injection in NVIDIA Nsight
+          #   Systems' gfx_hotspot recipe (process_nsys_rep_cli.py), requiring
+          #   manual invocation with an attacker-supplied string; unreachable
+          #   from Semantica, and Nsight Systems isn't among the extras torch
+          #   requests above. Re-evaluate once torch pins a patched
+          #   cuda-toolkit.
+          IGNORED_VULN_IDS="SFTY-20260120-40557"
+
+          # Exported so the "Comment PR with Security Results" step below can
+          # apply the same exclusion list to the raw report - it reads
+          # safety-report.json independently in JS, so without this the PR
+          # comment would show the accepted CVE as a live finding even though
+          # this gate correctly treats it as non-actionable.
+          echo "IGNORED_VULN_IDS=$IGNORED_VULN_IDS" >> "$GITHUB_ENV"
+
+          # No []? / || echo "0" fallback on a missing/null "vulnerabilities"
+          # key: iterating over null raises inside jq, leaving VULNS empty, so
+          # guard 2 below catches it rather than silently treating a broken
+          # report as zero.
+          VULNS=$(jq --arg ignored "$IGNORED_VULN_IDS" '
+            ($ignored | split(",")) as $ignore_list
+            | [.vulnerabilities[] | select(.vulnerability_id as $id | ($ignore_list | index($id)) | not)]
+            | length
+          ' safety-report.json 2>/dev/null)
 
           # Guard 2: ensure VULNS is a non-negative integer before the -gt
           # comparison. "null" (missing/null key) or "" (jq parse failure) would
@@ -97,10 +132,14 @@ jobs:
             echo "CI will fail to prevent merging of vulnerable dependencies"
             echo ""
             echo "Vulnerability details:"
-            jq -r '.vulnerabilities[] | "- \(.package_name)==\(.analyzed_version): \(.vulnerability_id) (\(.CVE // "no CVE assigned"))"' safety-report.json || true
+            jq --arg ignored "$IGNORED_VULN_IDS" -r '
+              ($ignored | split(",")) as $ignore_list
+              | .vulnerabilities[] | select(.vulnerability_id as $id | ($ignore_list | index($id)) | not)
+              | "- \(.package_name)==\(.analyzed_version): \(.vulnerability_id) (\(.CVE // "no CVE assigned"))"
+            ' safety-report.json || true
             exit 1
           else
-            echo "✅ No security vulnerabilities found"
+            echo "✅ No actionable security vulnerabilities found (ignored: $IGNORED_VULN_IDS)"
           fi
         
       - name: Run Bandit (Code Security Linter)
@@ -189,14 +228,27 @@ jobs:
               return lines.join('\n');
             }
 
+            // Mirrors the shell step's own IGNORED_VULN_IDS (passed through
+            // $GITHUB_ENV) so an accepted, non-actionable CVE that the CI
+            // gate already excluded doesn't reappear here as a live finding -
+            // this reads the same raw, unfiltered safety-report.json.
+            const ignoredVulnIds = (process.env.IGNORED_VULN_IDS || '')
+              .split(',')
+              .map((id) => id.trim())
+              .filter(Boolean);
+
             const safetySection = renderSection(
               'Safety — dependency vulnerabilities',
               'safety-report.json',
-              (data) => (data.vulnerabilities || []).map(
-                (v) => `- \`${v.package_name}==${v.analyzed_version}\`: ${v.vulnerability_id}` +
-                  (v.CVE ? ` (${v.CVE})` : '') + ` — ${v.advisory || 'no advisory text'}`
-              )
-            );
+              (data) => (data.vulnerabilities || [])
+                .filter((v) => !ignoredVulnIds.includes(v.vulnerability_id))
+                .map(
+                  (v) => `- \`${v.package_name}==${v.analyzed_version}\`: ${v.vulnerability_id}` +
+                    (v.CVE ? ` (${v.CVE})` : '') + ` — ${v.advisory || 'no advisory text'}`
+                )
+            ) + (ignoredVulnIds.length
+              ? `\n\n_Excluded as accepted, non-actionable findings: ${ignoredVulnIds.join(', ')} — see the workflow file's inline comments for why._`
+              : '');
 
             const banditSection = renderSection(
               'Bandit — HIGH-severity code issues',
