@@ -18,7 +18,7 @@
 
 > Ingest your enterprise data, extract what matters, build a Context Graph and knowledge graph (KG), and run graph analytics and causal reasoning over all of it, with full decision provenance baked in. Explainable, traceable, and trustworthy by design.
 
-**Decision Intelligence &nbsp;·&nbsp; Context Management &nbsp;·&nbsp; Deterministic Reasoning &nbsp;·&nbsp; Ontology Management &nbsp;·&nbsp; Knowledge Modeling &nbsp;·&nbsp; End-to-End Traceability**
+**Context Management &nbsp;·&nbsp; Knowledge Modeling &nbsp;·&nbsp; Deterministic Reasoning &nbsp;·&nbsp; Ontology Management &nbsp;·&nbsp; Decision Intelligence &nbsp;·&nbsp; End-to-End Traceability**
 
 **Open Source &nbsp;·&nbsp; Self-Hostable &nbsp;·&nbsp; Auditable &nbsp;·&nbsp; Governed &nbsp;·&nbsp; Zero Vendor Lock-In**
 
@@ -26,7 +26,7 @@
 
 #### Built for High-Stakes, Regulated Domains
 
-[![GitHub Stars](https://img.shields.io/github/stars/semantica-agi/semantica?style=flat-square&color=FFD700&logo=github&logoColor=white&label=Stars)](https://github.com/semantica-agi/semantica) [![GitHub Forks](https://img.shields.io/github/forks/semantica-agi/semantica?style=flat-square&color=6E40C9&logo=github&logoColor=white&label=Forks)](https://github.com/semantica-agi/semantica/network/members) [![Contributors](https://img.shields.io/github/contributors/semantica-agi/semantica?style=flat-square&color=2EA043&logo=github&logoColor=white)](https://github.com/semantica-agi/semantica/graphs/contributors) [![PyPI](https://img.shields.io/pypi/v/semantica.svg?style=flat-square&color=0066CC&logo=pypi&logoColor=white)](https://pypi.org/project/semantica/) [![Total Downloads](https://static.pepy.tech/badge/semantica?style=flat-square)](https://pepy.tech/project/semantica) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT) [![CI](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/ci.yml?style=flat-square&label=CI)](https://github.com/semantica-agi/semantica/actions) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/semantica-agi/semantica)
+[![GitHub Stars](https://img.shields.io/github/stars/semantica-agi/semantica?style=flat-square&color=FFD700&logo=github&logoColor=white&label=Stars)](https://github.com/semantica-agi/semantica) [![GitHub Forks](https://img.shields.io/github/forks/semantica-agi/semantica?style=flat-square&color=6E40C9&logo=github&logoColor=white&label=Forks)](https://github.com/semantica-agi/semantica/network/members) [![Contributors](https://img.shields.io/github/contributors/semantica-agi/semantica?style=flat-square&color=2EA043&logo=github&logoColor=white)](https://github.com/semantica-agi/semantica/graphs/contributors) [![PyPI](https://img.shields.io/pypi/v/semantica.svg?style=flat-square&color=0066CC&logo=pypi&logoColor=white)](https://pypi.org/project/semantica/) [![Total Downloads](https://static.pepy.tech/badge/semantica?style=flat-square)](https://pepy.tech/project/semantica) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT) [![CI](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/ci.yml?style=flat-square&label=CI)](https://github.com/semantica-agi/semantica/actions) [![Install Matrix](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/install-matrix.yml?style=flat-square&label=pip%20install)](https://github.com/semantica-agi/semantica/actions/workflows/install-matrix.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/semantica-agi/semantica/badge?style=flat-square)](https://scorecard.dev/viewer/?uri=github.com/semantica-agi/semantica) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/semantica-agi/semantica)
 
 [![Website](https://img.shields.io/badge/Website-getsemantica.ai-000000?style=flat-square&logo=googlechrome&logoColor=white)](https://getsemantica.ai/) [![Docs](https://img.shields.io/badge/Docs-docs.getsemantica.ai-0099FF?style=flat-square&logo=readthedocs&logoColor=white)](https://docs.getsemantica.ai/) [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/sV34vps5hH) [![Twitter/X](https://img.shields.io/badge/Follow-%40BuildSemantica-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/BuildSemantica) [![YouTube](https://img.shields.io/badge/YouTube-Watch%20Demos-FF0000?style=flat-square&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=QfnNZg4-dZA) [![Changelog](https://img.shields.io/badge/Changelog-View-6E40C9?style=flat-square&logo=keepachangelog&logoColor=white)](CHANGELOG.md)
 
@@ -56,9 +56,7 @@ pip install semantica
 
 ---
 
-Most AI agents act without a trail. They store embeddings, not meaning: context that can't be explained, decisions that can't be audited. In lending, that gap is a compliance exposure, not an inconvenience: an underwriting agent's approval has to survive a regulator's "why" months later.
-
-Semantica sits underneath your LLM, vector store, and agent framework as a deterministic infrastructure layer: no LLM required for graph construction, reasoning, or provenance.
+Most AI agents run on embeddings, not meaning: similarity scores with no structure, no relationships, and no way to explain why a result came back. Semantica is the semantic/context layer underneath your LLM, vector store, and agent framework: a deterministic infrastructure layer (no LLM required for graph construction, reasoning, or provenance) that turns fragmented enterprise data into a structured, queryable Context Graph and knowledge graph, governed by ontologies and controlled vocabularies (OWL, SHACL, SKOS) so the meaning of your data is explicit, not just its embedding. Decision provenance and audit trails fall out of that structure as a property, not the product itself; in domains a regulator can question, that same structure just happens to double as a straight answer to "why."
 
 > ⚠️ **System-level explainability, not foundation-model explainability.** Semantica does not expose or reconstruct what happens *inside* the LLM — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. Semantica explains what's *outside* the model: the context and data fed in, the decision produced, its provenance, relevant relationships, applied policies, and the full execution trail.
 
@@ -279,7 +277,7 @@ retrieved = ctx.retrieve("who approved the Acme contract?")
 
 ## Recipe: Audit Trail for a Regulated Decision
 
-The flagship pattern: record a causally-linked decision chain, attach provenance to every entity, and export a regulator-ready audit trail.
+One pattern built on the same Context Graph: record a causally-linked decision chain, attach provenance to every entity, and export a regulator-ready audit trail.
 
 ```python
 from semantica.context import ContextGraph
@@ -1030,7 +1028,7 @@ team = Team(agents=[researcher, analyst], mode="coordinate")
 
 ## More Recipes
 
-The flagship audit-trail recipe is [above](#recipe-audit-trail-for-a-regulated-decision). Here are three more common patterns.
+The audit-trail recipe is [above](#recipe-audit-trail-for-a-regulated-decision). Here are three more common patterns.
 
 <details>
 <summary><b>End-to-End GraphRAG Pipeline</b></summary>
@@ -1533,6 +1531,20 @@ For production deployments, use Docker or Kubernetes rather than a local `pip in
 git clone https://github.com/semantica-agi/semantica.git
 cd semantica && pip install -e ".[dev]" && pytest tests/
 ```
+
+### CI & Deployment
+
+Wiring `semantica` into your own CI is a two-minute job. On GitHub Actions, use the reusable composite action:
+
+```yaml
+- uses: semantica-agi/semantica/.github/actions/setup-semantica@main
+  with:
+    python-version: '3.11'
+```
+
+Copy-paste starting templates for GitHub Actions, GitLab CI, and CircleCI live in [examples/ci/](examples/ci/). The published package itself is verified installable across Ubuntu/macOS/Windows and Python 3.9-3.12 every week by the [Install Matrix workflow](.github/workflows/install-matrix.yml).
+
+Ready-made deployment configs for AWS, GCP, Azure, Fly.io, Railway, Render, Kubernetes, and Helm are in [deploy/](deploy/).
 
 ---
 

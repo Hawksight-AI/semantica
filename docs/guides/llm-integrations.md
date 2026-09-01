@@ -28,6 +28,7 @@ The `semantica.llms` module provides a unified interface for connecting to Large
 ## When To Use / When Not To Use
 
 **Use LLM integrations for:**
+
 - Text generation, summarization, and question-answering tasks
 - Complex reasoning that requires natural language understanding
 - Structured data extraction from unstructured text
@@ -35,6 +36,7 @@ The `semantica.llms` module provides a unified interface for connecting to Large
 - Tasks where context, ambiguity, or domain knowledge matter
 
 **Deterministic tools may be better for:**
+
 - Pattern matching that regular expressions can handle
 - Simple rule-based classification with clear criteria
 - Mathematical calculations or statistical analysis
@@ -42,6 +44,7 @@ The `semantica.llms` module provides a unified interface for connecting to Large
 - Data transformations with known logic
 
 **A full LLM may be unnecessary for:**
+
 - Simple keyword search or exact string matching
 - Deterministic workflows with predefined decision trees
 - High-frequency, low-latency operations where inference overhead matters
@@ -59,7 +62,7 @@ Four factors drive provider selection, each optimized for different use cases:
 
 **Accuracy** matters most in high-stakes decisions: clinical contraindication checks, credit committee reasoning, and legal document analysis. Frontier models like Claude or GPT-4 available through `LiteLLM` provide the strongest reasoning capabilities.
 
-**Data residency** constraints eliminate cloud providers for classified or HIPAA-regulated workloads. `HuggingFaceLLM` with local model paths enables fully air-gapped deployments without network calls.
+**Data residency** constraints eliminate cloud providers for classified or HIPAA-regulated workloads. `HuggingFaceLLM` with local model paths, or `Ollama` pointed at a local server, both enable fully air-gapped deployments without network calls.
 
 **Cost at scale** favors high-throughput providers like Novita AI for bulk extraction pipelines processing thousands of documents per hour where per-token costs accumulate quickly.
 
@@ -142,6 +145,131 @@ risk_data = oai.generate_structured(
 ```
 
 The default model `gpt-3.5-turbo` is fine for classification and light extraction. Switch to `gpt-4o` for complex multi-step regulatory reasoning or document understanding.
+
+## Anthropic — Complex Reasoning and Structured Extraction
+
+**Anthropic** provides the Claude model family, built with an emphasis on careful, instruction-following behavior and strong performance on multi-step reasoning, long-document analysis, and code-related tasks. Claude models tend to be more cautious about ambiguous instructions than other providers. That matters when the cost of a confidently wrong answer is high.
+
+The `Anthropic` provider wraps the Claude API. Reach for it when the task involves reasoning through several dependent steps (not just single-turn extraction), when you're processing long source documents that need to stay in context, or when you need schema-validated structured output rather than best-effort JSON.
+
+Install with `pip install "semantica[llm-anthropic]"` (or just `pip install anthropic`) before using this provider.
+
+```python
+from semantica.llms import Anthropic
+
+claude = Anthropic(model="claude-sonnet-4-6", api_key="YOUR_ANTHROPIC_KEY")
+# api_key falls back to the ANTHROPIC_API_KEY environment variable
+
+# is_available() only confirms a client was constructed from some key.
+# It does not validate the key or check network reachability - an
+# invalid or expired key still passes this check and fails at generate().
+if not claude.is_available():
+    raise RuntimeError("Anthropic provider not configured - set ANTHROPIC_API_KEY")
+
+# Plain generation - multi-step reasoning over a contract clause
+verdict = claude.generate(
+    "A vendor contract has a 30-day termination-for-convenience clause "
+    "but a 90-day data-return obligation that survives termination. "
+    "If the customer terminates on day 1, when must vendor-held data "
+    "be returned? Answer with the date basis only.",
+    temperature=0.1,
+)
+print(verdict)
+# "Day 120 from termination notice. The 90-day return period runs from
+#  the termination date (day 30), not from the notice date."
+
+# Structured, schema-validated output
+from pydantic import BaseModel
+
+class ContractRisk(BaseModel):
+    clause: str
+    risk_level: str
+    days_to_deadline: int
+
+risk = claude.generate_typed(
+    "Extract the termination clause risk from: vendor contract, "
+    "30-day termination for convenience, 90-day post-termination "
+    "data return obligation.",
+    schema=ContractRisk,
+)
+print(risk.risk_level, risk.days_to_deadline)
+# "medium" 90
+```
+
+Model selection follows the same tier structure as the other providers: a Haiku model for high-volume classification where cost matters more than depth, a Sonnet model as the default for most extraction and reasoning tasks, an Opus model when a task genuinely needs the deepest reasoning available and latency/cost are secondary. Check Anthropic's docs for the current model identifiers, since they're versioned and change over time.
+
+## Gemini — Long Context and Multimodal Input
+
+**Gemini** is Google's model family, with a context window large enough to hold entire codebases or long regulatory filings in a single call, and native support for image and document input alongside text. Reach for it when a task needs to reference a large amount of source material at once, or when the input isn't plain text.
+
+The `Gemini` provider tries the newer `google-genai` SDK first and falls back to the older `google-generativeai` package if that's what's installed. Install with `pip install "semantica[llm-gemini]"` (or `pip install google-genai`) before using this provider.
+
+```python
+from semantica.llms import Gemini
+
+gemini = Gemini(model="gemini-pro", api_key="YOUR_GEMINI_KEY")
+# api_key falls back to the GEMINI_API_KEY environment variable
+
+if not gemini.is_available():
+    raise RuntimeError("Gemini provider not configured - set GEMINI_API_KEY")
+
+response = gemini.generate(
+    "Summarize the key obligations in a standard NDA in three bullet points."
+)
+print(response)
+
+data = gemini.generate_structured(
+    "Extract the party names and effective date from: "
+    "This Agreement is entered into between Acme Corp and Globex LLC, "
+    "effective January 1, 2026."
+)
+print(data)
+```
+
+## Ollama — Local, Air-Gapped Inference
+
+**Ollama** runs models entirely on your own machine, with no API key and no outbound network call. It's the right choice for air-gapped environments, offline development, or any workload where the source data can't leave the local network.
+
+Unlike the other providers here, `Ollama` takes a `base_url` instead of an `api_key`. It talks to a local Ollama server over HTTP. Start the server with `ollama serve` and pull a model with `ollama pull llama2` before using this provider. Install the Python client with `pip install "semantica[llm-ollama]"` (or `pip install ollama`).
+
+```python
+from semantica.llms import Ollama
+
+llm = Ollama(model="llama2", base_url="http://localhost:11434")
+
+if not llm.is_available():
+    raise RuntimeError("Ollama provider not configured - is 'ollama serve' running?")
+
+response = llm.generate("Explain the difference between a hash map and a tree map.")
+print(response)
+```
+
+`is_available()` for Ollama does a real connectivity check (it calls the server's `list()` endpoint), unlike the API-key-based providers above, so a `False` here usually means the server isn't running rather than a missing credential.
+
+## DeepSeek — Budget Reasoning at Scale
+
+**DeepSeek** exposes an OpenAI-compatible API at a fraction of the cost of the larger US providers, with reasoning quality that holds up well for extraction and classification work. It's a reasonable default when you're processing a large volume of documents and don't need the deepest reasoning tier.
+
+Install with `pip install "semantica[llm-deepseek]"` (or `pip install openai`, since DeepSeek is accessed through the OpenAI client pointed at a different base URL).
+
+```python
+from semantica.llms import DeepSeek
+
+llm = DeepSeek(model="deepseek-chat", api_key="YOUR_DEEPSEEK_KEY")
+# api_key falls back to the DEEPSEEK_API_KEY environment variable
+
+if not llm.is_available():
+    raise RuntimeError("DeepSeek provider not configured - set DEEPSEEK_API_KEY")
+
+response = llm.generate("List three risks of using a floating IP in a Kubernetes ingress.")
+print(response)
+
+data = llm.generate_structured(
+    "Extract the CVE ID and affected product from: "
+    "CVE-2024-3400 affects PAN-OS GlobalProtect gateways."
+)
+print(data)
+```
 
 ## LiteLLM — One Interface, 100+ Providers
 
@@ -306,30 +434,32 @@ for t in triplets:
 
 ## Novita AI — Cost-Efficient Bulk Extraction
 
-Novita AI exposes an OpenAI-compatible API and is available as a built-in provider for the extraction layer. It is accessed differently from the `semantica.llms` classes — through `create_provider` from `semantica.semantic_extract.providers` — making it the right choice for high-volume NER pipelines where per-call cost matters.
+**Novita AI** exposes an OpenAI-compatible API at low per-call cost, making it a reasonable choice for high-volume NER pipelines where cost matters more than getting the single best answer.
+
+Install with `pip install "semantica[llm-novita]"` (or `pip install openai`, since Novita is accessed through the OpenAI client pointed at a different base URL).
 
 ```python
-from semantica.semantic_extract.providers import create_provider
+from semantica.llms import Novita
+
+llm = Novita(model="deepseek/deepseek-v3.2", api_key="YOUR_NOVITA_KEY")
+# api_key falls back to the NOVITA_API_KEY environment variable
+
+if not llm.is_available():
+    raise RuntimeError("Novita provider not configured - set NOVITA_API_KEY")
+
+response = llm.generate("Summarize the Basel III leverage ratio requirement.")
+
+data = llm.generate_structured(
+    "Extract drug names and dosages from: "
+    "Patient received warfarin 5mg daily, aspirin 75mg daily, metformin 500mg twice daily."
+)
+```
+
+Novita is also reachable as a provider name string for the NER interface, without going through the `Novita` class directly:
+
+```python
 from semantica.semantic_extract import NamedEntityRecognizer
 
-# create_provider pools instances — same key reuses the same object
-provider = create_provider(
-    "novita",
-    api_key="YOUR_NOVITA_KEY",       # or set NOVITA_API_KEY env var
-    model="deepseek/deepseek-v3.2",  # default model
-)
-
-if provider.is_available():
-    # Plain generation
-    response = provider.generate("Summarise the Basel III leverage ratio requirement.")
-
-    # Structured extraction — returns parsed dict
-    data = provider.generate_structured(
-        "Extract drug names and dosages from: "
-        "Patient received warfarin 5mg daily, aspirin 75mg daily, metformin 500mg twice daily."
-    )
-
-# Use Novita through the NER interface — provider name as string
 ner = NamedEntityRecognizer(
     methods=["llm"],
     provider="novita",
@@ -339,10 +469,8 @@ entities = ner.extract_entities(
     "CVE-2024-3400 is exploited by UNC3886 targeting PAN-OS GlobalProtect."
 )
 for e in entities:
-    print("{} ({}) — conf={:.2f}".format(e.text, e.label, e.confidence))
+    print("{} ({}) conf={:.2f}".format(e.text, e.label, e.confidence))
 ```
-
-Novita requires the `openai` Python client under the hood — install with `pip install "semantica[llm-openai]"` or `pip install openai`.
 
 ## Domain Examples
 

@@ -616,6 +616,49 @@ class SQLiteVecStore:
             self.logger.warning(f"Failed to get metadata for {vector_id}: {e}")
             return None
 
+    def scan_vectors(self, offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Page through stored vectors ordered by id.
+
+        Args:
+            offset: Number of rows to skip
+            limit: Maximum number of rows to return
+
+        Returns:
+            List of result dicts with 'id', 'metadata', and 'vector'
+        """
+        if limit <= 0:
+            return []
+
+        query_sql = f"""
+            SELECT id, embedding, metadata
+            FROM {self.table_name}
+            ORDER BY id
+            LIMIT ? OFFSET ?
+        """
+
+        with self._lock, self._get_connection() as conn:
+            try:
+                cur = conn.cursor()
+                cur.execute(query_sql, (limit, offset))
+                rows = cur.fetchall()
+                cur.close()
+
+                results = []
+                for row in rows:
+                    vec_id, embedding_blob, meta_json = row
+                    vec = None
+                    if embedding_blob:
+                        vec = np.frombuffer(embedding_blob, dtype=np.float32).copy()
+                    results.append({
+                        "id": vec_id,
+                        "metadata": json.loads(meta_json) if meta_json else {},
+                        "vector": vec,
+                    })
+                return results
+            except Exception as e:
+                raise ProcessingError(f"Failed to scan vectors: {str(e)}") from e
+
     def filter_by_metadata(
         self, filters: Dict[str, Any], limit: int = 10
     ) -> List[Dict[str, Any]]:

@@ -2,12 +2,19 @@
 
 from unittest.mock import MagicMock
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+import pytest
 
-from semantica.explorer.dependencies import get_session
-from semantica.explorer.routes.vocabulary import router
-from semantica.utils.skos import validate_skos_hierarchy
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this module
+# must skip rather than fail collection when it is absent. The guard has to sit
+# above the import below, which pulls fastapi in transitively.
+pytest.importorskip("fastapi")
+
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from semantica.explorer.dependencies import get_session  # noqa: E402
+from semantica.explorer.routes.vocabulary import router  # noqa: E402
+from semantica.utils.skos import validate_skos_hierarchy  # noqa: E402
 
 app = FastAPI()
 app.include_router(router)

@@ -33,21 +33,58 @@ jobs:
       - name: Install Explorer frontend dependencies
         working-directory: explorer
         run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: explorer
+        run: npx playwright install --with-deps chromium
       - name: Test Explorer frontend
         working-directory: explorer
         run: |
           npm run test:graph-store
           npm run test:graph-workspace
           npm run test:plugin-registry
+          npm run test:deterministic-e2e
       - name: Build Explorer frontend
         working-directory: explorer
         run: npm run build
+      - name: Install Explorer backend test dependencies
+        run: |
+          # Run the deterministic backend path before the all-extras CI
+          # environment is installed.  The Explorer extra supplies the
+          # production API dependencies without importing optional vector
+          # providers such as Pinecone during test collection.
+          #
+          # --no-deps + a separate hash-pinned install (rather than the old
+          # `pip install -e ".[explorer]" pytest==9.1.1`) so every fetched
+          # package is hash-verified (Scorecard Pinned-Dependencies); the
+          # local editable install itself has nothing to hash.
+          # .github/requirements/explorer-extra-py311.txt is
+          # `uv pip compile pyproject.toml --extra explorer --python-version 3.11 --constraint requirements-ci.txt --generate-hashes`
+          # - regenerate it the same way if pyproject.toml's base/explorer
+          # deps change. Resolved specifically for this job's python 3.11
+          # (see the Dockerfile's explorer-extra-py313.txt for why this
+          # can't be shared with python 3.13: audioread needs extra
+          # standard-aifc/standard-sunau hashes only on 3.13+).
+          #
+          # --no-deps only skips *runtime* dependency resolution - `-e .`
+          # still does a PEP 517 build, which by default creates an isolated
+          # build env and fetches [build-system] requires (setuptools,
+          # wheel) completely outside any hash checking. Install
+          # pep517-build.txt (pins that exact build-system.requires) first
+          # and pass --no-build-isolation so pip reuses those hash-verified
+          # copies instead of fetching its own.
+          pip install -r .github/requirements/pep517-build.txt --require-hashes
+          pip install --no-deps --no-build-isolation -e .
+          pip install -r .github/requirements/explorer-extra-py311.txt --require-hashes
+          pip install -r .github/requirements/pytest-tool.txt --require-hashes
+      - name: Test deterministic Explorer backend path
+        run: |
+          pytest -q tests/explorer/test_explorer_deterministic_rendering_e2e.py
       - name: Install pinned Python dependencies
         run: |
-          pip install -r requirements-ci.txt
+          pip install -r requirements-ci.txt --require-hashes
       - name: Verify requirements-ci.txt is up to date
         run: |
-          pip install uv==0.12.1
+          pip install -r .github/requirements/uv-tool.txt --require-hashes
           # Re-resolve with the committed file as a constraint: upstream package
           # releases must NOT fail CI (deps only change when pyproject.toml
           # changes intentionally). Compare only version lines (pkg==ver),
@@ -58,10 +95,10 @@ jobs:
           diff \
             <(grep -E '^[a-zA-Z0-9._-]+==' requirements-ci.txt | sed 's/ \\$//') \
             <(grep -E '^[a-zA-Z0-9._-]+==' /tmp/requirements-ci-check.txt)
-      - run: pip install build
-      # wheel is build-time only (not in requirements-ci.txt) — install the
-      # same pinned version [build-system] declares so --no-isolation works.
-      - run: pip install wheel==0.48.0
+      # build is a dev-time dependency; wheel is build-time only (neither is
+      # in requirements-ci.txt) — install the same pinned versions
+      # [build-system] declares so --no-isolation works below.
+      - run: pip install -r .github/requirements/build-tools.txt --require-hashes
       - name: Build package (no isolation — pinned deps)
         run: python -m build --no-isolation
       - name: Verify Explorer frontend is packaged

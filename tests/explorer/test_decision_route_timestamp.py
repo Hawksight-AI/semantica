@@ -24,14 +24,19 @@ import math
 from datetime import datetime
 
 import pytest
-from fastapi.testclient import TestClient
-from pydantic import ValidationError
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this module
+# must skip rather than fail collection when it is absent. The guard has to sit
+# above the imports below, which need that extra.
+pytest.importorskip("fastapi")
 
-from semantica.context.context_graph import ContextGraph
-from semantica.explorer.app import create_app
-from semantica.explorer.routes.decisions import _node_to_decision
-from semantica.explorer.schemas import DecisionResponse
-from semantica.explorer.session import GraphSession
+from fastapi.testclient import TestClient  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
+
+from semantica.context.context_graph import ContextGraph  # noqa: E402
+from semantica.explorer.app import create_app  # noqa: E402
+from semantica.explorer.routes.decisions import _node_to_decision  # noqa: E402
+from semantica.explorer.schemas import DecisionResponse  # noqa: E402
+from semantica.explorer.session import GraphSession  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

@@ -626,6 +626,27 @@ class AgentMemory:
         self.logger.debug(f"Deleted memory item: {memory_id}")
         return True
 
+    def vector_ids_for(self, memory_id: str) -> List[str]:
+        """Return the vector-store ids owned by a memory item.
+
+        Read-only view of the ids ``delete_memory()`` would remove for this
+        item, so a caller that needs to *report* on vector removal can delete
+        them itself rather than relying on ``delete_memory()``'s best-effort
+        cascade, which logs a vector-store failure and still returns ``True``.
+
+        Mirrors the fallback in ``delete_memory``: an item stored without
+        tracked vector ids is keyed in the vector store by its own memory id.
+
+        Args:
+            memory_id: Memory identifier.
+
+        Returns:
+            The item's vector ids, or ``[]`` if the item is unknown.
+        """
+        if memory_id not in self.memory_items:
+            return []
+        return list(self._vector_ids.get(memory_id, [])) or [memory_id]
+
     def clear_memory(self, **filters) -> int:
         """
         Clear memory items matching filters.
@@ -1286,13 +1307,19 @@ class AgentMemory:
         """
         return self.retrieve(content, max_results=limit, **kwargs)
 
-    def find_by_entity(self, entity_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def find_by_entity(
+        self, entity_id: str, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """
         Find by entity.
 
         Args:
             entity_id: Entity ID to search for
-            limit: Maximum results (default: 10)
+            limit: Maximum results. None (the default) returns ALL matches.
+                The previous default of 10 silently truncated results — an
+                erasure workflow computing "what references this entity"
+                from a truncated page would leave the remainder live
+                (#1018). Callers that want pagination pass an explicit limit.
 
         Returns:
             List of memory dicts containing the entity
@@ -1308,9 +1335,9 @@ class AgentMemory:
                     if mem_dict:
                         results.append(mem_dict)
                     break
-            if len(results) >= limit:
+            if limit is not None and len(results) >= limit:
                 break
-        return results[:limit]
+        return results if limit is None else results[:limit]
 
     def find_by_relationship(
         self, relationship_type: str, limit: int = 10
