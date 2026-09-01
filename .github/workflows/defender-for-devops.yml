@@ -68,7 +68,7 @@ jobs:
         python-version: "3.12"
 
     - name: Install Checkov
-      run: python -m pip install checkov==3.3.1
+      run: pip install -r .github/requirements/checkov.txt --require-hashes
 
     - name: Run Checkov
       shell: pwsh
@@ -76,12 +76,28 @@ jobs:
         PYTHONUTF8: "1"
       run: |
         New-Item -ItemType Directory -Force reports | Out-Null
-        checkov --directory . --framework kubernetes helm dockerfile github_actions secrets bicep arm --soft-fail --output sarif --output-file-path reports/checkov.sarif
-        if (-not (Test-Path reports/checkov.sarif)) {
+        checkov --directory . --framework kubernetes helm dockerfile github_actions secrets bicep arm --soft-fail --output sarif --output json --output-file-path reports
+        if (-not (Test-Path reports/results_sarif.sarif)) {
           $sarif = Get-ChildItem -Path reports -Recurse -Filter *.sarif | Select-Object -First 1
           if ($null -eq $sarif) { throw "Checkov did not produce a SARIF file" }
-          Copy-Item $sarif.FullName reports/checkov.sarif
+          Copy-Item $sarif.FullName reports/results_sarif.sarif
         }
+        if (-not (Test-Path reports/results_json.json)) {
+          $json = Get-ChildItem -Path reports -Recurse -Filter *.json | Select-Object -First 1
+          if ($null -eq $json) { throw "Checkov did not produce a JSON file" }
+          Copy-Item $json.FullName reports/results_json.json
+        }
+
+    # checkov's SARIF exporter includes checks it internally marked SKIPPED
+    # (via the inline `# checkov:skip=` comments / `checkov.io/skipN`
+    # annotations already on the Helm chart) as ordinary un-suppressed
+    # results - it never uses SARIF's own `suppressions` field, so GitHub
+    # opens a fresh alert for the same already-suppressed finding on every
+    # single run (see #6035/#6036, #6112-6115, #6128-6131). checkov's JSON
+    # output does correctly record the skip, so cross-reference it here
+    # instead of re-dismissing the same alerts by hand forever.
+    - name: Filter checkov's own suppressed checks out of the SARIF
+      run: python .github/scripts/filter_checkov_skipped.py reports/results_json.json reports/results_sarif.sarif reports/checkov.sarif
 
     - name: Upload Checkov results to Security tab
       uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4

@@ -12,6 +12,8 @@ on:
       - 'README.md'
       - 'LICENSE'
       - 'MANIFEST.in'
+      - '.github/requirements/explorer-extra-py313.txt'
+      - '.github/requirements/pep517-build.txt'
       - 'semantica/**'
       - 'integrations/**'
       - 'explorer/**'
