@@ -304,12 +304,12 @@ class ErasureCoordinator:
             # Pagination with deletion happens in _erase_memory(); here we must
             # collect all vector IDs up front before any deletion occurs.
             found = self.memory.find_by_entity(entity_id, limit=None)
-            
+
             for item in found:
                 memory_id = _memory_item_id(item)
                 if not memory_id:
                     continue
-                
+
                 for vector_id in self.memory.vector_ids_for(memory_id):
                     if vector_id not in seen_vector_ids:
                         seen_vector_ids.add(vector_id)

@@ -834,9 +834,9 @@ class TestMemoryOwnedVectorsAreReported(unittest.TestCase):
         # This keeps the test fast while still proving pagination across boundaries
         TEST_BATCH_SIZE = 50
         TEST_ITEM_COUNT = 51  # One more than batch size
-        
+
         store = _SelectiveDeleteStore(refuse={"vec-50"})  # 0-indexed: item 51
-        
+
         # Create a lightweight memory mock optimized for speed
         class FastMemoryFor51Test:
             """Fast memory implementation for pagination test."""
@@ -854,14 +854,14 @@ class TestMemoryOwnedVectorsAreReported(unittest.TestCase):
                         "timestamp": "2026-01-01T00:00:00",
                         "relationships": [],
                     }
-            
+
             def find_by_entity(self, entity_id, limit=None):
                 """Return all remaining items, with limit."""
                 results = list(self._items.values())
                 if limit is not None:
                     return results[:limit]
                 return results
-            
+
             def batch_delete(self, memory_ids):
                 """Fast deletion."""
                 deleted = 0
@@ -870,23 +870,23 @@ class TestMemoryOwnedVectorsAreReported(unittest.TestCase):
                         del self._items[memory_id]
                         deleted += 1
                 return deleted
-            
+
             def vector_ids_for(self, memory_id):
                 """Return vector ID for this memory."""
                 idx = int(memory_id.split("-")[1])
                 return [f"vec-{idx}"]
-        
+
         memory = FastMemoryFor51Test(store)
-        
+
         # Pre-populate the vector store
         for i in range(TEST_ITEM_COUNT):
             store.live.add(f"vec-{i}")
-        
+
         # Temporarily patch the batch size constant for this test
         from semantica.context import erasure
         original_batch_size = erasure._MEMORY_SWEEP_BATCH
         erasure._MEMORY_SWEEP_BATCH = TEST_BATCH_SIZE
-        
+
         try:
             # Verify setup
             self.assertEqual(len(memory.find_by_entity("customer-with-many-memories")), TEST_ITEM_COUNT)
