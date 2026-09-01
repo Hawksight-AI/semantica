@@ -10,13 +10,15 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 jobs:
   analyze:
     name: Analyze Python
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # for github/codeql-action/upload-sarif below
+      actions: read           # for github/codeql-action/init's CodeQL bundle cache lookup
 
     steps:
       - name: Checkout repository

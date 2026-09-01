@@ -28,11 +28,37 @@ jobs:
 
           BENCHMARK_REAL_LIBS: "1"
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-          pip install -r benchmarks/requirements.txt
-          python -m spacy download en_core_web_sm
-          pip install rdflib neo4j faiss-cpu torch pyarrow pdfplumber python-pptx openpyxl lxml python-docx beautifulsoup4 chardet langdetect
+          pip install -r .github/requirements/bootstrap.txt --require-hashes
+          # --no-deps + a hash-pinned install of the same base dependency set
+          # (rather than a bare `pip install -e .`) so every fetched package
+          # is hash-verified (Scorecard Pinned-Dependencies); the local
+          # editable install itself has nothing to hash.
+          #
+          # --no-deps only skips *runtime* dependency resolution - `-e .`
+          # still does a PEP 517 build, which by default creates an isolated
+          # build env and fetches [build-system] requires (setuptools,
+          # wheel) completely outside any hash checking. Install
+          # pep517-build.txt (pins that exact build-system.requires) first
+          # and pass --no-build-isolation so pip reuses those hash-verified
+          # copies instead of fetching its own.
+          pip install -r .github/requirements/pep517-build.txt --require-hashes
+          pip install --no-deps --no-build-isolation -e .
+          pip install -r .github/requirements/base-deps.txt --require-hashes
+          # NOTE: benchmarks/ does not currently exist in this repo (neither
+          # requirements.txt nor benchmarks_runner.py below), so this job
+          # already fails on any real invocation - pre-existing, unrelated to
+          # this pinning change. The `pip install -r benchmarks/requirements.txt`
+          # step that used to be here is dropped rather than fixed: there's
+          # nothing to hash-pin without knowing what that file should
+          # contain, and an unpinned install here would just re-trip
+          # Scorecard's Pinned-Dependencies check for no real benefit, since
+          # the job can't run to completion regardless.
+          #
+          # `python -m spacy download en_core_web_sm` fetches an unpinned,
+          # unhashed wheel from spacy-models' GitHub releases - replaced with
+          # a hash-pinned direct-URL install of the same 3.8.0 model (matches
+          # the spacy==3.8.15 pinned in base-deps.txt) via benchmark-extra.txt.
+          pip install -r .github/requirements/benchmark-extra.txt --require-hashes
 
       - name: Execute Benchmarks (Real Mode)
         env:

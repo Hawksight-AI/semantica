@@ -1,0 +1,4 @@
+safety==3.8.1
+bandit==1.9.4
+semgrep==1.175.0
+jq==1.12.0
