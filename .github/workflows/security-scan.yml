@@ -45,45 +45,45 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r .github/requirements/bootstrap.txt --require-hashes
-          # Install the pinned dependency set FIRST so Safety scans Semantica's
+          # Install the pinned dependency set FIRST so pip-audit scans Semantica's
           # exact CI/release dependency tree (requirements-ci.txt is generated
           # from pyproject.toml extras, so this covers the project's real deps).
           pip install -r requirements-ci.txt --require-hashes
-          # Tooling AFTER the pinned set: installing safety/bandit/semgrep/jq
+          # Tooling AFTER the pinned set: installing pip-audit/bandit/semgrep/jq
           # first lets the pinned requirements overwrite their transitive deps
-          # (e.g. rich), which breaks the safety CLI at runtime.
+          # (e.g. rich), which can break scanner CLIs at runtime.
           pip install -r .github/requirements/security-scan-tools.txt --require-hashes
 
-      - name: Run Safety Check (Package Vulnerabilities)
+      - name: Run pip-audit (Package Vulnerabilities)
         run: |
-          # NOTE: Safety 3.x repurposed --output to select a console format
-          # (json/text/screen/...), not a file path. Writing JSON to a file
-          # now requires --save-json; the previous `--output safety-report.json`
-          # usage was silently invalid and never produced a report.
-          safety check --save-json safety-report.json || true
+          # Audit the same pinned dependency set used by CI and release builds.
+          # pip-audit writes its machine-readable report directly to disk and
+          # returns 1 for findings, so preserve the report before applying the
+          # repository's blocking policy below.
+          pip-audit -r requirements-ci.txt --format=json --output=pip-audit-report.json || true
 
-          # Guard 1: fail loudly if Safety exited before writing a report at all
-          # (network error, API auth failure, tool crash). Without this check a
+          # Guard 1: fail loudly if pip-audit exited before writing a report at
+          # all (network error, API auth failure, tool crash). Without this check a
           # missing or empty file causes jq to fall back to "0", making a broken
           # scanner indistinguishable from a clean scan.
-          if [ ! -s safety-report.json ]; then
-            echo "::error::Safety scan produced no report (safety-report.json is missing or empty). Treating as failure — check for network errors, API auth failures, or Safety crashes in the logs above."
+          if [ ! -s pip-audit-report.json ]; then
+            echo "::error::pip-audit produced no report (pip-audit-report.json is missing or empty). Treating as failure — check for network errors, API auth failures, or scanner crashes in the logs above."
             exit 1
           fi
 
           echo "Checking for package vulnerabilities..."
 
           # No || echo "0" fallback: if jq fails (malformed JSON, missing key,
-          # vulnerabilities:null) VULNS will be empty or "null" so guard 2 below
+          # dependencies/vulns missing or null) VULNS will be empty or "null" so guard 2 below
           # catches it rather than silently treating the broken report as zero.
-          VULNS=$(jq '.vulnerabilities | length' safety-report.json 2>/dev/null)
+          VULNS=$(jq '[.dependencies[]?.vulns[]?] | length' pip-audit-report.json 2>/dev/null)
 
           # Guard 2: ensure VULNS is a non-negative integer before the -gt
           # comparison. "null" (missing/null key) or "" (jq parse failure) would
           # cause bash's -gt to throw an arithmetic error and fall through to the
           # success branch — the same silent-pass bug as a missing file.
           if ! [[ "$VULNS" =~ ^[0-9]+$ ]]; then
-            echo "::error::Safety report exists but 'vulnerabilities' is missing or non-numeric (got: '${VULNS}'). The report may be malformed or Safety may have written an error-only JSON. Treating as failure."
+            echo "::error::pip-audit report exists but dependency vulnerabilities are missing or non-numeric (got: '${VULNS}'). The report may be malformed or contain an error-only JSON response. Treating as failure."
             exit 1
           fi
 
@@ -92,7 +92,7 @@ jobs:
             echo "CI will fail to prevent merging of vulnerable dependencies"
             echo ""
             echo "Vulnerability details:"
-            jq -r '.vulnerabilities[] | "- \(.package_name)==\(.analyzed_version): \(.vulnerability_id) (\(.CVE // "no CVE assigned"))"' safety-report.json || true
+            jq -r '.dependencies[]? as $dependency | $dependency.vulns[]? | "- \($dependency.name)==\($dependency.version): \(.id)"' pip-audit-report.json || true
             exit 1
           else
             echo "✅ No security vulnerabilities found"
@@ -140,7 +140,7 @@ jobs:
           name: security-reports
           retention-days: 14
           path: |
-            safety-report.json
+            pip-audit-report.json
             bandit-report.json
             semgrep-report.json
         
@@ -184,12 +184,14 @@ jobs:
               return lines.join('\n');
             }
 
-            const safetySection = renderSection(
-              'Safety — dependency vulnerabilities',
-              'safety-report.json',
-              (data) => (data.vulnerabilities || []).map(
-                (v) => `- \`${v.package_name}==${v.analyzed_version}\`: ${v.vulnerability_id}` +
-                  (v.CVE ? ` (${v.CVE})` : '') + ` — ${v.advisory || 'no advisory text'}`
+            const pipAuditSection = renderSection(
+              'pip-audit — dependency vulnerabilities',
+              'pip-audit-report.json',
+              (data) => (data.dependencies || []).flatMap(
+                (dependency) => (dependency.vulns || []).map(
+                  (vulnerability) => `- \`${dependency.name}==${dependency.version}\`: ${vulnerability.id}` +
+                    (vulnerability.fix_versions?.length ? ` (fixed by ${vulnerability.fix_versions.join(', ')})` : '')
+                )
               )
             );
 
@@ -212,7 +214,7 @@ jobs:
             const comment = [
               '# 🔒 Security Scan Results',
               '',
-              safetySection,
+              pipAuditSection,
               '',
               banditSection,
               '',
@@ -222,7 +224,7 @@ jobs:
               '',
               '*This security scan runs automatically on source-code PRs and bi-weekly (skipped for doc/markdown-only changes).*',
               '',
-              '📊 **Security Policy**: CI fails on Safety vulnerabilities and Bandit HIGH-severity findings. Semgrep findings above are informational and do not block merge.',
+              '📊 **Security Policy**: CI fails on pip-audit vulnerabilities and Bandit HIGH-severity findings. Semgrep findings above are informational and do not block merge.',
             ].join('\n');
 
             try {
