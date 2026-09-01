@@ -1887,7 +1887,6 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
               }),
             },
           ]);
-          synchronizeRealtimeSmallGraphEdges(isSmallGraph);
           logEvent("add-edge", `Added edge ${payload.edgeType ?? payload.id} (${payload.source_id} → ${payload.target_id}) via realtime ws`, { edgeId: payload.id, edgeType: payload.edgeType, source: payload.source_id, target: payload.target_id });
           setGraphVersion((current) => current + 1);
           sceneRef.current?.getRuntime()?.requestRender();
