@@ -84,19 +84,7 @@ jobs:
           #
           # Generate a normalised copy of requirements-ci.txt for Safety only.
           # The original file is unchanged.
-          python - <<'PYEOF'
-          import re, pathlib
-          src = pathlib.Path("requirements-ci.txt").read_text(encoding="utf-8")
-          # Strip the 4th version component from pinned specifiers:
-          #   package==x.y.z.w  ->  package==x.y.z
-          # Only affects ==  (exact pins); leaves ~=, >=, != etc. untouched.
-          normalised = re.sub(
-              r'(==\d+\.\d+\.\d+)\.\d+',
-              r'\1',
-              src,
-          )
-          pathlib.Path("safety-input.txt").write_text(normalised, encoding="utf-8")
-          PYEOF
+          python -c "import re,pathlib;src=pathlib.Path('requirements-ci.txt').read_text(encoding='utf-8');pathlib.Path('safety-input.txt').write_text(re.sub(r'(==\d+\.\d+\.\d+)\.\d+',r'\1',src),encoding='utf-8')"
 
           safety check --file safety-input.txt --save-json safety-report.json || true
 
