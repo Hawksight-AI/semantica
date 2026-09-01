@@ -61,7 +61,15 @@ def handle_export_graph(args: dict) -> dict:
             # GraphMLExporter does not exist.  GraphExporter is the correct
             # class; it writes to a file and returns None, so we need a
             # temporary directory for safe cleanup regardless of success or
-            # failure.  graph_data must be the KG dict, not a ContextGraph.
+            # failure.
+            #
+            # export_knowledge_graph() is the required entry point because
+            # to_kg_dict() returns {"entities": [...], "relationships": [...]}
+            # while export() / _export_graphml() only consumes {"nodes": [...],
+            # "edges": [...]}.  Calling export() directly therefore produces a
+            # structurally-valid but empty GraphML document (zero nodes, zero
+            # edges).  export_knowledge_graph() runs _convert_kg_to_graph()
+            # first, which maps entities→nodes and relationships→edges.
             try:
                 import tempfile
                 from pathlib import Path
@@ -70,7 +78,7 @@ def handle_export_graph(args: dict) -> dict:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     tmp_path = Path(tmpdir) / "export.graphml"
                     exporter = GraphExporter(format="graphml")
-                    exporter.export(kg_dict, file_path=tmp_path)
+                    exporter.export_knowledge_graph(kg_dict, file_path=tmp_path)
                     data = tmp_path.read_text(encoding="utf-8")
                 return {"format": "graphml", "data": data}
             except ImportError as exc:

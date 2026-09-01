@@ -146,6 +146,306 @@ class TestMCPExportGraphML(unittest.TestCase):
             self.assertNotIn("ContextGraph", result["error"])
             self.assertNotIn("has no attribute", result["error"])
 
+    # ------------------------------------------------------------------
+    # Regression: undeclared / wrongly-scoped GraphML keys.
+    #
+    # Pre-fix, _export_graphml declared:
+    #   <key id="type"       for="node" …/>
+    #   <key id="confidence" for="node" …/>
+    #
+    # and then referenced:
+    #   <data key="label">     on BOTH nodes and edges (no declaration at all)
+    #   <data key="confidence"> on edges (declared for="node" only)
+    #
+    # Schema-validating consumers (Cytoscape, yEd, any XSD-aware reader)
+    # reject documents with undeclared or out-of-scope key references.
+    # ------------------------------------------------------------------
+
+    def _graphml_key_declarations(self, xml_text: str) -> dict:
+        """Parse the XML and return {key_id: for_value} for every <key>."""
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(xml_text)
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+        return {k.get("id"): k.get("for") for k in root.findall("g:key", ns)}
+
+    def test_graphml_label_key_is_declared(self):
+        """label key must be declared; pre-fix it was missing entirely."""
+        from mcp.tools.export import handle_export_graph
+        result = handle_export_graph({"format": "graphml"})
+        self.assertNotIn("error", result, result)
+        keys = self._graphml_key_declarations(result["data"])
+        self.assertIn(
+            "label", keys,
+            f"<key id='label'> is missing from GraphML header; declared keys: {list(keys)}",
+        )
+
+    def test_graphml_label_key_scope_covers_edges(self):
+        """label is written on both nodes (node label) and edges (edge type).
+        Its for= scope must be 'all' or 'edge'.  Pre-fix it was not declared."""
+        from mcp.tools.export import handle_export_graph
+        result = handle_export_graph({"format": "graphml"})
+        self.assertNotIn("error", result, result)
+        keys = self._graphml_key_declarations(result["data"])
+        scope = keys.get("label", "")
+        self.assertIn(
+            scope, ("all", "edge"),
+            f"<key id='label'> has for={scope!r}; must be 'all' or 'edge' "
+            f"because edges write <data key='label'>",
+        )
+
+    def test_graphml_confidence_key_scope_covers_edges(self):
+        """confidence is written on both nodes and edges when include_attributes
+        is True.  Pre-fix the key was declared for='node' only, making every
+        edge confidence reference schema-invalid."""
+        from mcp.tools.export import handle_export_graph
+        result = handle_export_graph({"format": "graphml"})
+        self.assertNotIn("error", result, result)
+        keys = self._graphml_key_declarations(result["data"])
+        scope = keys.get("confidence", "")
+        self.assertIn(
+            scope, ("all", "edge"),
+            f"<key id='confidence'> has for={scope!r}; must be 'all' or 'edge' "
+            f"because edges also write <data key='confidence'>",
+        )
+
+    def test_graphml_all_data_key_refs_are_declared(self):
+        """Every <data key=X> reference in the document must have a matching
+        <key id=X> declaration — with a graph that has both nodes AND edges,
+        so edge-only violations are not hidden by an edge-free export."""
+        import xml.etree.ElementTree as ET
+        import tempfile
+        from pathlib import Path
+        from semantica.export import GraphExporter
+
+        kg = {
+            "entities": [
+                {"id": "n1", "text": "Alice", "type": "Person"},
+                {"id": "n2", "text": "Bob",   "type": "Person"},
+            ],
+            "relationships": [
+                {"source_id": "n1", "target_id": "n2", "type": "knows"},
+            ],
+        }
+        exporter = GraphExporter(format="graphml")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir) / "out.graphml"
+            exporter.export_knowledge_graph(kg, file_path=tmp_path)
+            xml_text = tmp_path.read_text(encoding="utf-8")
+
+        root = ET.fromstring(xml_text)
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+
+        declared_ids = {k.get("id") for k in root.findall("g:key", ns)}
+        referenced_ids = {d.get("key") for d in root.findall(".//g:data", ns)}
+
+        undeclared = referenced_ids - declared_ids
+        self.assertEqual(
+            undeclared, set(),
+            f"GraphML references key id(s) with no <key> declaration: {undeclared}. "
+            f"Declared: {declared_ids}",
+        )
+
+    # ------------------------------------------------------------------
+    # Regression: export() consumed nodes/edges while to_kg_dict() returns
+    # entities/relationships — the GraphML was structurally valid XML but
+    # silently contained zero nodes and zero edges.
+    # ------------------------------------------------------------------
+
+    def test_graphml_contains_graph_nodes(self):
+        """Entities in the source graph must appear as <node> elements.
+        Pre-fix: exporter.export(kg_dict) read 'nodes' key (absent in
+        to_kg_dict()); export_knowledge_graph() converts entities -> nodes."""
+        import xml.etree.ElementTree as ET
+        from mcp.tools.export import handle_export_graph
+        result = handle_export_graph({"format": "graphml"})
+        self.assertNotIn("error", result, result)
+        root = ET.fromstring(result["data"])
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+        nodes = root.findall(".//g:node", ns)
+        self.assertGreater(
+            len(nodes), 0,
+            "GraphML contains zero <node> elements; to_kg_dict() entities were "
+            "not converted — export_knowledge_graph() must be used, not export().",
+        )
+
+    def test_graphml_contains_graph_edges(self):
+        """Relationships in the source graph must appear as <edge> elements."""
+        import xml.etree.ElementTree as ET
+        from mcp.tools.export import handle_export_graph
+        result = handle_export_graph({"format": "graphml"})
+        self.assertNotIn("error", result, result)
+        root = ET.fromstring(result["data"])
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+        edges = root.findall(".//g:edge", ns)
+        self.assertGreater(
+            len(edges), 0,
+            "GraphML contains zero <edge> elements; to_kg_dict() relationships were "
+            "not converted — export_knowledge_graph() must be used, not export().",
+        )
+
+    def test_graphml_node_ids_match_source_graph(self):
+        """The <node id=...> values must match the entity IDs from the source graph."""
+        import xml.etree.ElementTree as ET
+        from mcp.tools.export import handle_export_graph
+        result = handle_export_graph({"format": "graphml"})
+        self.assertNotIn("error", result, result)
+        root = ET.fromstring(result["data"])
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+        node_ids = {n.get("id") for n in root.findall(".//g:node", ns)}
+        # _make_graph() adds nodes with id "n1" and "n2"
+        self.assertIn("n1", node_ids, f"Expected 'n1' in GraphML node ids; got {node_ids}")
+        self.assertIn("n2", node_ids, f"Expected 'n2' in GraphML node ids; got {node_ids}")
+
+    # ------------------------------------------------------------------
+    # Regression: XML-special characters in graph values must be escaped.
+    # Pre-fix _export_graphml used bare f-string interpolation so a node
+    # id of 'a&b' produced  <node id="a&b">  which is malformed XML.
+    # ------------------------------------------------------------------
+
+    def test_graphml_xml_special_chars_in_node_id_produce_well_formed_xml(self):
+        """A node id containing & < > must be escaped in the id= attribute so
+        the output remains well-formed XML.  Pre-fix this produced
+        <node id="a&b"> which is a parse error."""
+        import xml.etree.ElementTree as ET
+        import mcp.session as _session
+        from mcp.tools.export import handle_export_graph
+        from semantica.context.context_graph import ContextGraph
+
+        g = ContextGraph()
+        g.add_node("a&b<c>d", node_type="entity")
+        _orig = _session._graph
+        _session._graph = g
+        try:
+            result = handle_export_graph({"format": "graphml"})
+        finally:
+            _session._graph = _orig
+
+        self.assertNotIn("error", result, result)
+        # Must parse without raising; pre-fix this raised ET.ParseError
+        try:
+            root = ET.fromstring(result["data"])
+        except ET.ParseError as exc:
+            self.fail(
+                f"GraphML with special-char node id is malformed XML: {exc}\n"
+                f"{result['data'][:600]}"
+            )
+        # The id attribute value must round-trip to the original string
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+        node_ids = {n.get("id") for n in root.findall(".//g:node", ns)}
+        self.assertIn(
+            "a&b<c>d", node_ids,
+            f"Node id did not round-trip correctly; got {node_ids}",
+        )
+
+    def test_graphml_xml_special_chars_in_label_produce_well_formed_xml(self):
+        """A label containing & < > must be escaped in the <data> text
+        node.  Pre-fix <data key="label">A & B</data> is malformed XML.
+
+        Drives GraphExporter directly with a hand-crafted KG dict to avoid
+        relying on ContextGraph internal field mapping."""
+        import xml.etree.ElementTree as ET
+        import tempfile
+        from pathlib import Path
+        from semantica.export import GraphExporter
+
+        special_label = "price < 100 & qty > 0"
+        kg = {
+            "entities": [
+                {"id": "e1", "text": special_label, "type": "metric"},
+            ],
+            "relationships": [],
+        }
+
+        exporter = GraphExporter(format="graphml")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir) / "out.graphml"
+            exporter.export_knowledge_graph(kg, file_path=tmp_path)
+            xml_text = tmp_path.read_text(encoding="utf-8")
+
+        # Must parse without error
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as exc:
+            self.fail(
+                f"GraphML with special-char label is malformed XML: {exc}\n"
+                f"{xml_text[:600]}"
+            )
+        # Label text must round-trip to the original string
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+        data_texts = [
+            d.text
+            for d in root.findall(".//g:data", ns)
+            if d.get("key") == "label"
+        ]
+        self.assertIn(
+            special_label, data_texts,
+            f"Label text did not round-trip; found label data: {data_texts}",
+        )
+
+    def test_graphml_double_quotes_in_node_id_produce_well_formed_xml(self):
+        """A node id containing double-quotes must not break the id=\" attribute
+        boundary.  Pre-fix: <node id="say "hi""> is malformed."""
+        import xml.etree.ElementTree as ET
+        import mcp.session as _session
+        from mcp.tools.export import handle_export_graph
+        from semantica.context.context_graph import ContextGraph
+
+        g = ContextGraph()
+        g.add_node('say "hi"', node_type="entity")
+        _orig = _session._graph
+        _session._graph = g
+        try:
+            result = handle_export_graph({"format": "graphml"})
+        finally:
+            _session._graph = _orig
+
+        self.assertNotIn("error", result, result)
+        try:
+            root = ET.fromstring(result["data"])
+        except ET.ParseError as exc:
+            self.fail(
+                f"GraphML with double-quote node id is malformed XML: {exc}\n"
+                f"{result['data'][:600]}"
+            )
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+        node_ids = {n.get("id") for n in root.findall(".//g:node", ns)}
+        self.assertIn(
+            'say "hi"', node_ids,
+            f"Node id with double-quotes did not round-trip; got {node_ids}",
+        )
+
+    def test_graphml_xml_special_chars_in_edge_source_target_produce_well_formed_xml(self):
+        """Edge source= and target= attributes must also be escaped."""
+        import xml.etree.ElementTree as ET
+        import mcp.session as _session
+        from mcp.tools.export import handle_export_graph
+        from semantica.context.context_graph import ContextGraph
+
+        g = ContextGraph()
+        g.add_node("src&node", node_type="entity")
+        g.add_node("tgt<node>", node_type="entity")
+        g.add_edge("src&node", "tgt<node>", "link")
+        _orig = _session._graph
+        _session._graph = g
+        try:
+            result = handle_export_graph({"format": "graphml"})
+        finally:
+            _session._graph = _orig
+
+        self.assertNotIn("error", result, result)
+        try:
+            root = ET.fromstring(result["data"])
+        except ET.ParseError as exc:
+            self.fail(
+                f"GraphML with special-char edge endpoints is malformed XML: {exc}\n"
+                f"{result['data'][:600]}"
+            )
+        ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+        edge_els = root.findall(".//g:edge", ns)
+        self.assertEqual(len(edge_els), 1, "Expected exactly one edge element")
+        self.assertEqual(edge_els[0].get("source"), "src&node")
+        self.assertEqual(edge_els[0].get("target"), "tgt<node>")
+
 
 class TestMCPExportParquet(unittest.TestCase):
     """Parquet export must use export_knowledge_graph(), return base64-encoded
