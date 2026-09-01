@@ -76,6 +76,13 @@ jobs:
             exit 1
           fi
 
+          # Guard 2: fail closed when Safety produces a report without the
+          # vulnerability array expected by the downstream checks.
+          if ! jq -e '(.vulnerabilities | type == "array")' safety-report.json >/dev/null 2>&1; then
+            echo "::error::Safety report has an invalid vulnerability structure. Expected an array-valued 'vulnerabilities' field. Treating as failure."
+            exit 1
+          fi
+
           echo "Checking for package vulnerabilities..."
 
           # Vulnerability IDs reviewed and accepted as non-actionable for this
@@ -110,7 +117,7 @@ jobs:
 
           # No []? / || echo "0" fallback on a missing/null "vulnerabilities"
           # key: iterating over null raises inside jq, leaving VULNS empty, so
-          # guard 2 below catches it rather than silently treating a broken
+          # Guard 3 below catches it rather than silently treating a broken
           # report as zero.
           VULNS=$(jq --arg ignored "$IGNORED_VULN_IDS" '
             ($ignored | split(",")) as $ignore_list
@@ -118,7 +125,7 @@ jobs:
             | length
           ' safety-report.json 2>/dev/null)
 
-          # Guard 2: ensure VULNS is a non-negative integer before the -gt
+          # Guard 3: ensure VULNS is a non-negative integer before the -gt
           # comparison. "null" (missing/null key) or "" (jq parse failure) would
           # cause bash's -gt to throw an arithmetic error and fall through to the
           # success branch — the same silent-pass bug as a missing file.
@@ -212,6 +219,12 @@ jobs:
               }
 
               const items = parse(data);
+              if (items === null) {
+                return [
+                  '### ' + title,
+                  '⚠️ Invalid report structure in ' + reportPath + ' — check the job logs.',
+                ].join('\n');
+              }
               if (items.length === 0) {
                 return [`### ${title}`, `✅ No findings.`].join('\n');
               }
@@ -240,12 +253,17 @@ jobs:
             const safetySection = renderSection(
               'Safety — dependency vulnerabilities',
               'safety-report.json',
-              (data) => (data.vulnerabilities || [])
-                .filter((v) => !ignoredVulnIds.includes(v.vulnerability_id))
-                .map(
+              (data) => {
+                if (!Array.isArray(data.vulnerabilities)) {
+                  return null;
+                }
+                return data.vulnerabilities
+                  .filter((v) => !ignoredVulnIds.includes(v.vulnerability_id))
+                  .map(
                   (v) => `- \`${v.package_name}==${v.analyzed_version}\`: ${v.vulnerability_id}` +
                     (v.CVE ? ` (${v.CVE})` : '') + ` — ${v.advisory || 'no advisory text'}`
-                )
+                  );
+              }
             ) + (ignoredVulnIds.length
               ? `\n\n_Excluded as accepted, non-actionable findings: ${ignoredVulnIds.join(', ')} — see the workflow file's inline comments for why._`
               : '');
