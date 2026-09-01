@@ -495,6 +495,19 @@ class TestContextGraphAdvancedDecisionMethods:
         assert len(result["warnings"]) == 0
         assert result["compliant"] is True
 
+    def test_enforce_decision_policy_reasoning_exactly_at_storage_limit_no_warning(self):
+        g = ContextGraph()
+        decision_data = {
+            "outcome": "approved",
+            "confidence": 0.85,
+            "reasoning": "X" * 10000,  # Exactly at record_decision's 10000-char limit
+            "decision_maker": "bot",
+        }
+        result = g.enforce_decision_policy(decision_data)
+        # The limit is inclusive: exactly 10000 characters must not warn.
+        assert len(result["warnings"]) == 0
+        assert result["compliant"] is True
+
     def test_enforce_decision_policy_reasoning_above_storage_limit_warning(self):
         g = ContextGraph()
         decision_data = {
