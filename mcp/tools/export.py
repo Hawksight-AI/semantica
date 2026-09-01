@@ -102,13 +102,13 @@ def handle_export_graph(args: dict) -> dict:
                 from pathlib import Path
                 try:
                     from semantica.export import ParquetExporter
-                    _check = ParquetExporter()  # raises ImportError if pyarrow missing
+                    exporter = ParquetExporter()
                 except ImportError as exc:
+                    log.warning("Parquet export unavailable: %s", exc)
                     return {"error": f"Parquet export unavailable (pyarrow not installed): {exc}"}
                 kg_dict = graph.to_kg_dict()
                 with tempfile.TemporaryDirectory() as tmpdir:
                     base_path = Path(tmpdir) / "kg"
-                    exporter = ParquetExporter()
                     exporter.export_knowledge_graph(kg_dict, base_path)
                     # Collect the produced files and return them as base64
                     files = {}
