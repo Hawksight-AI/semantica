@@ -45,9 +45,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r .github/requirements/bootstrap.txt --require-hashes
-          # Install the pinned dependency set FIRST so Safety scans Semantica's
-          # exact CI/release dependency tree (requirements-ci.txt is generated
-          # from pyproject.toml extras, so this covers the project's real deps).
+          # requirements-ci.txt (generated from pyproject.toml extras) is what
+          # Safety scans below. Bandit/Semgrep's static analysis of semantica/
+          # doesn't need it installed, but it goes FIRST regardless so it can
+          # overwrite the tooling's own transitive deps installed after it,
+          # not the other way around (see the next comment).
           pip install -r requirements-ci.txt --require-hashes
           # Tooling AFTER the pinned set: installing safety/bandit/semgrep/jq
           # first lets the pinned requirements overwrite their transitive deps
@@ -60,7 +62,21 @@ jobs:
           # (json/text/screen/...), not a file path. Writing JSON to a file
           # now requires --save-json; the previous `--output safety-report.json`
           # usage was silently invalid and never produced a report.
-          safety check --save-json safety-report.json || true
+          #
+          # NOTE: Scan requirements-ci.txt directly (-r) rather than the live
+          # environment. A bare `safety check` walks installed package metadata
+          # via importlib.metadata, and cuda-toolkit's wheel (a metapackage
+          # with ~20 conditional Requires-Dist entries for its NVIDIA
+          # sub-packages) crashes that path with "Unhandled exception
+          # happened: 'cuda-toolkit'" (an unguarded lookup somewhere in
+          # Safety's dependency-graph handling — reproduced locally against
+          # Safety 3.8.1). Scanning the requirements file instead avoids that
+          # code path entirely: verified against the actual requirements-ci.txt
+          # (400 packages, cuda-toolkit included) completing cleanly with a
+          # valid report. It's also more precise than the environment scan,
+          # which incidentally also picked up CI-only tooling (safety's,
+          # bandit's, semgrep's own dependencies) installed alongside it.
+          safety check -r requirements-ci.txt --save-json safety-report.json || true
 
           # Guard 1: fail loudly if Safety exited before writing a report at all
           # (network error, API auth failure, tool crash). Without this check a
