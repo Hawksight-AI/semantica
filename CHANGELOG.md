@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Salesforce ingestor** (#1240) by @Sameer6305
+  - New `SalesforceConnector` / `SalesforceData` / `SalesforceIngestor` (`semantica.ingest`, lazy export), following the same Connector + Data + Ingestor pattern already used for Snowflake/Databricks/SAP
+  - Auth covers both landscapes Salesforce actually uses: username + password + security token (SOAP login), session_id + instance_url (reusing an existing session), and username + consumer_key + private key (JWT Bearer); production and sandbox are selected via `domain`, and credentials can come from environment variables. Credential material is never intentionally written to logs, exceptions, or `repr()`
+  - `ingest_sobject()`, `ingest_query()`, `list_sobjects()`, `get_sobject_schema()`, `export_as_documents()` against standard sObjects, custom objects (`__c`), custom metadata (`__mdt`), platform events (`__e`), namespaced objects, and relationship-field traversal (e.g. `Owner.Name`); pagination follows `nextRecordsUrl`/`query_more()` and stops once a caller's `limit` is satisfied
+  - New `pip install semantica[db-salesforce]` extra (`simple-salesforce>=1.12.0`)
+  - New `tests/test_salesforce_ingestor.py`
+  - Docs: `docs/integrations/salesforce.md`
+
 - **`ErasureCoordinator` completes the erasure workflow `purge_node()` only starts — the graph node was removed while the same content survived verbatim in `AgentMemory` and as an embedding** (closes #1018) by @pravit-amp
   - New `semantica/context/erasure.py`, exporting `ErasureCoordinator` and `ErasureReceipt` from `semantica.context`. `purge_node()`/`purge_edge()` (#957) are graph-scope by design and their changelog entry documents this gap explicitly; the changelog also names GDPR Article 17 as the motivation, and an Article 17 erasure that removes the node while the content stays retrievable by similarity search is not an erasure — it is worse than not offering one, because `purge_node()` returns `True` and writes a tombstone attesting the content is gone
   - The coordinator **composes** the existing public APIs — nothing in `context_graph.py` or `agent_memory.py` changes behaviorally, and `ContextGraph` keeps its documented graph-scope contract rather than acquiring references to `AgentMemory`/`vector_store` that would invert the dependency
