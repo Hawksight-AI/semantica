@@ -49,7 +49,14 @@ dependencies = [
   "scipy>=1.13.1",
   "scikit-learn>=1.7.2",
   "umap-learn>=0.5.12",
-  "spacy>=3.4.0",
+  # thinc (spacy's core dep) dropped Python 3.9 wheels at 8.3.10, and later
+  # spacy patch releases (3.8.8+) require thinc>=8.3.9-only-on-3.10+ ranges,
+  # which forces a source build that fails outright on 3.9 (see Install
+  # Matrix run history). Capping both keeps 3.9 on the last wheel-compatible
+  # pair; 3.10+ is left unconstrained to always get the latest spacy/thinc.
+  "spacy>=3.4.0,<3.8.8; python_version < '3.10'",
+  "spacy>=3.4.0; python_version >= '3.10'",
+  "thinc<8.3.5; python_version < '3.10'",
   "transformers>=4.20.0",
   "torch>=1.13.1",
   "sentence-transformers>=2.2.0",

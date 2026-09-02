@@ -16,6 +16,11 @@ import {
 } from "./graphTheme";
 import { classifyEntityShape } from "./graphEntityShape";
 import { createGraphLoadProgress } from "./graphLoading";
+import {
+  buildSmallGraphSeedPositions,
+  resolveGraphLayoutDecision,
+  resolveNodeLayoutPosition,
+} from "./smallGraphLayout";
 import type { GraphLoadProgress, GraphLoadSummary } from "./types";
 
 const SEMANTIC_COLOR_FIELDS = [
@@ -553,10 +558,19 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
           : count;
       }, 0);
       const coordinateCoverage = fetchedNodes.length > 0 ? providedCoordinateCount / fetchedNodes.length : 0;
-      const useProvidedCoordinates = coordinateCoverage >= 0.92;
+      const {
+        useProvidedCoordinates,
+        useSmallGraphLayout,
+        layoutReady,
+      } = resolveGraphLayoutDecision(fetchedNodes.length, coordinateCoverage);
       const seededPositions = useProvidedCoordinates
         ? null
-        : buildClusterSeedPositions(
+        : useSmallGraphLayout
+          ? buildSmallGraphSeedPositions(
+              fetchedNodes.map((node) => node.id),
+              fetchedEdges,
+            )
+          : buildClusterSeedPositions(
             draftAttributes.map(({ id, attributes }) => ({
               id,
               semanticGroup: semanticKeyByNodeId.get(id) ?? structuralColorKey(id, attributes),
@@ -569,7 +583,9 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
         const colorIndex = hashString(semanticGroup) % GRAPH_THEME.palette.semantic.length;
         const baseColor = GRAPH_THEME.palette.semantic[colorIndex];
         const sizeRatio = nodePriorityById.get(id) ?? 0;
-        const dynamicSize = clamp(1.8, 1.8 + 8.8 * sizeRatio, 11.8);
+        const dynamicSize = useSmallGraphLayout
+          ? clamp(5.2, 5.2 + 6.6 * sizeRatio, 11.8)
+          : clamp(1.8, 1.8 + 8.8 * sizeRatio, 11.8);
         const hasTemporalBounds = Boolean(attributes.valid_from || attributes.valid_until);
         const provenanceCount = getProvenanceCount(attributes.properties ?? {});
         const properties = attributes.properties as Record<string, unknown>;
@@ -577,12 +593,11 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
         const providedX = readFiniteCoordinate(properties?.x);
         const providedY = readFiniteCoordinate(properties?.y);
         const seededPosition = seededPositions?.get(id);
-        const x = useProvidedCoordinates
-          ? providedX ?? 0
-          : providedX ?? seededPosition?.x ?? 0;
-        const y = useProvidedCoordinates
-          ? providedY ?? 0
-          : providedY ?? seededPosition?.y ?? 0;
+        const { x, y } = resolveNodeLayoutPosition(
+          { useProvidedCoordinates, useSmallGraphLayout, layoutReady },
+          { x: providedX, y: providedY },
+          seededPosition,
+        );
         return {
           id,
           attributes: {
@@ -603,6 +618,7 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
             borderSize: 0.72,
             entityShape,
             ...resolveNodeVariantMetadata(baseColor, sizeRatio, hasTemporalBounds, provenanceCount),
+            ...(useSmallGraphLayout ? { labelVisibilityPolicy: "always" as const } : {}),
           } as NodeAttributes,
         };
       });
@@ -659,6 +675,7 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
             parallelIndex,
             parallelCount,
             familySize: familyCounts.get(edge.familyId) ?? 1,
+            isSmallGraph: useSmallGraphLayout,
             ...resolveEdgeVariantMetadata(edge, sourcePriority, targetPriority, isBidirectional),
           } as EdgeAttributes,
         };
@@ -701,7 +718,7 @@ export function useLoadGraph(options: UseLoadGraphOptions = {}) {
         loadTimeMs: Math.round(performance.now() - startedAt),
         hasCoordinates: useProvidedCoordinates,
         layoutSource: useProvidedCoordinates ? "provided" : "runtime",
-        layoutReady: useProvidedCoordinates,
+        layoutReady,
       } satisfies GraphLoadSummary;
 
       onProgress?.(createGraphLoadProgress({
