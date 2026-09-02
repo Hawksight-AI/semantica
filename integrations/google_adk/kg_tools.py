@@ -11,11 +11,8 @@ except ImportError:
     FunctionTool = None  # type: ignore
     ADK_AVAILABLE = False
 
-
 _graph_locks_guard = threading.Lock()
 _graph_locks: Dict[int, threading.RLock] = {}
-
-# FIX: Renamed from _graph_lock to _default_graph_lock to avoid colliding with the function name below
 _default_graph = None
 _default_graph_lock = threading.Lock()
 
@@ -37,7 +34,6 @@ def _graph_lock(graph: Any) -> threading.RLock:
 def _get_default_graph():
     """Create or return the cached default Semantica ContextGraph."""
     global _default_graph
-    # FIX: Use the renamed lock variable
     with _default_graph_lock:
         if _default_graph is None:
             from semantica.context import ContextGraph
@@ -99,14 +95,14 @@ def _entity_name(entity: Any) -> str:
 def _entity_type(entity: Any) -> str:
     """Return a best-effort type for an extracted entity."""
     return (
-        _first_string(
-            entity,
-            (
-                "type",
-                "label",
-            ),
-        )
-        or "Entity"
+            _first_string(
+                entity,
+                (
+                    "type",
+                    "label",
+                ),
+            )
+            or "Entity"
     )
 
 
@@ -169,15 +165,15 @@ def _relation_target(relation: Any) -> str:
 def _relation_type(relation: Any) -> str:
     """Return the relation predicate/type."""
     return (
-        _first_string(
-            relation,
-            (
-                "type",
-                "relation",
-                "predicate",
-            ),
-        )
-        or "related_to"
+            _first_string(
+                relation,
+                (
+                    "type",
+                    "relation",
+                    "predicate",
+                ),
+            )
+            or "related_to"
     )
 
 
@@ -267,9 +263,11 @@ def extract_relations(text: str) -> dict:
         }
 
     try:
-        extractor = _get_relation_extractor()
-        entities = extractor.extract_entities(text)
-        raw_relations = extractor.extract_relations(text, entities=entities) or []
+        ner_extractor = _get_ner_extractor()
+        entities = ner_extractor.extract_entities(text)
+
+        relation_extractor = _get_relation_extractor()
+        raw_relations = relation_extractor.extract_relations(text, entities=entities) or []
 
         relations: List[Dict[str, Any]] = []
 
@@ -514,9 +512,9 @@ def _query_graph(query: str, graph: Any) -> dict:
                         node = _json_safe(node)
 
                     node_id = (
-                        node.get("id")
-                        or node.get("node_id")
-                        or match.get("id")
+                            node.get("id")
+                            or node.get("node_id")
+                            or match.get("id")
                     )
 
                     if not node_id:
@@ -533,15 +531,15 @@ def _query_graph(query: str, graph: Any) -> dict:
                         {
                             "id": node_id,
                             "type": (
-                                node.get("type")
-                                or node.get("node_type")
-                                or ""
+                                    node.get("type")
+                                    or node.get("node_type")
+                                    or ""
                             ),
                             "content": str(
                                 match.get("content")
                                 or node.get("content")
                                 or (
-                                    node.get("properties") or {}
+                                        node.get("properties") or {}
                                 ).get("content", "")
                             )[:500],
                             "score": round(
@@ -561,22 +559,22 @@ def _query_graph(query: str, graph: Any) -> dict:
         for node in graph.find_nodes() or []:
             if isinstance(node, dict):
                 node_id = (
-                    node.get("id")
-                    or node.get("node_id")
-                    or ""
+                        node.get("id")
+                        or node.get("node_id")
+                        or ""
                 )
                 node_type = (
-                    node.get("type")
-                    or node.get("node_type")
-                    or ""
+                        node.get("type")
+                        or node.get("node_type")
+                        or ""
                 )
 
                 properties = node.get("properties") or {}
 
                 content = (
-                    node.get("content")
-                    or properties.get("content")
-                    or ""
+                        node.get("content")
+                        or properties.get("content")
+                        or ""
                 )
 
             else:
@@ -635,7 +633,7 @@ def _query_graph(query: str, graph: Any) -> dict:
 
 
 def semantica_kg_tools(
-    graph: Optional[Any] = None,
+        graph: Optional[Any] = None,
 ) -> List[Any]:
     """
     Return Google ADK FunctionTools bound to a shared ContextGraph instance.

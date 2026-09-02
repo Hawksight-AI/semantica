@@ -33,14 +33,15 @@ def test_extract_entities_returns_dict():
 
 
 def test_extract_relations_returns_dict():
-    result = extract_relations(
-        "Google was founded by Larry Page and Sergey Brin."
-    )
+    result=extract_relations('Alice works at Acme Corp. Bob founded Acme Corp. ')
 
     assert isinstance(result, dict)
     assert "relations" in result
     assert "count" in result
     assert isinstance(result["relations"], list)
+    assert "error" not in result,f"Extraction failed with the error: {result.get('error')}"
+    assert result["count"]>0, " We Expected  at least one relation to be extracted"
+    assert len(result["relations"]) > 0, "Relation list should not ne empty"
 
 
 def test_semantica_kg_tools_returns_function_tools():
