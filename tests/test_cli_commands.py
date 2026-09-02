@@ -1436,6 +1436,83 @@ class TestStore:
         _ok(result)
         assert dest_configs["pgvector"].get("dimension") == 3
 
+    def test_migrate_retry_reloads_persisted_faiss_state(
+        self, runner, monkeypatch, tmp_path
+    ):
+        pytest.importorskip("faiss")
+        import numpy as np
+
+        from semantica.vector_store.faiss_store import FAISSStore
+
+        index_path = tmp_path / "migrated.faiss"
+        source_items = [
+            {"id": "a", "vector": [0.1, 0.2, 0.3], "metadata": {"tag": "x"}},
+            {"id": "b", "vector": [0.4, 0.5, 0.6], "metadata": {"tag": "y"}},
+        ]
+
+        class _SourceBackend:
+            dimension = 3
+
+        class _MigrationStore:
+            def __init__(self, backend, config=None, **kw):
+                self.backend = backend
+                if backend == "sqlite":
+                    self._backend_store = _SourceBackend()
+                else:
+                    self._backend_store = FAISSStore(dimension=3)
+                    self._backend_store.create_index(index_type="flat")
+
+            def iter_vectors(self, batch_size=500):
+                if self.backend == "sqlite":
+                    yield from source_items
+
+            def store_vectors(self, vectors, metadata, ids=None):
+                self._backend_store.add_vectors(
+                    np.asarray(vectors, dtype=np.float32),
+                    ids=ids,
+                    metadata=metadata,
+                )
+
+        fake_vs = _fake_module(VectorStore=_MigrationStore)
+        monkeypatch.setitem(
+            __import__("sys").modules, "semantica.vector_store", fake_vs
+        )
+        monkeypatch.setattr(
+            cli_module.Config,
+            "to_dict",
+            lambda self: {
+                "vector_store": {
+                    "sqlite": {"dimension": 3},
+                    "faiss": {"dimension": 3, "index_path": str(index_path)},
+                }
+            },
+        )
+
+        command = [
+            "store",
+            "migrate",
+            "--from",
+            "sqlite",
+            "--to",
+            "faiss",
+            "--json",
+        ]
+        first_result = runner.invoke(cli_module.main, command)
+        _ok(first_result)
+
+        first_load = FAISSStore(dimension=3)
+        first_load.load_index(index_path, index_type="flat")
+        assert first_load.index.vector_ids == ["a", "b"]
+        assert first_load.index.index.ntotal == 2
+
+        retry_result = runner.invoke(cli_module.main, command)
+        _ok(retry_result)
+
+        retry_load = FAISSStore(dimension=3)
+        retry_load.load_index(index_path, index_type="flat")
+        assert retry_load.index.vector_ids == ["a", "b"]
+        assert retry_load.index.index.ntotal == 2
+
     def test_migrate_faiss_source_requires_index_path(self, runner, monkeypatch):
         fake_vs = _fake_module(VectorStore=lambda **kw: MagicMock())
         monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
