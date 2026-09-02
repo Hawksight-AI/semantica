@@ -1588,12 +1588,18 @@ class AgentMemory:
                     memory_ids.append(memory_id)
         return memory_ids
 
-    def batch_delete(self, memory_ids: List[str]) -> int:
+    def batch_delete(self, memory_ids: List[str], *, skip_vector: bool = False) -> int:
         """
         Batch delete.
 
         Args:
             memory_ids: List of memory IDs to delete
+            skip_vector: If True, skip the per-item vector-store cascade
+                (for callers that have already deleted the vectors themselves,
+                e.g. ``ErasureCoordinator``). The local vector-id bookkeeping
+                is still dropped: unlike ``delete_memory``'s staging use of
+                the flag, a batch delete is permanent, and a surviving mapping
+                would persist through ``save()``/``load()``.
 
         Returns:
             Number of memories deleted
@@ -1603,7 +1609,9 @@ class AgentMemory:
         """
         deleted = 0
         for memory_id in memory_ids:
-            if self.delete_memory(memory_id):
+            if self.delete_memory(memory_id, skip_vector=skip_vector):
+                if skip_vector:
+                    self._vector_ids.pop(memory_id, None)
                 deleted += 1
         return deleted
 

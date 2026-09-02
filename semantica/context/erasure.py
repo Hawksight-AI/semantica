@@ -34,6 +34,7 @@ Example:
     'unsupported'
 """
 
+import inspect
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
@@ -137,7 +138,11 @@ class ErasureCoordinator:
         graph: A :class:`~semantica.context.ContextGraph` (or anything exposing
             ``purge_node``).
         memory: An :class:`~semantica.context.AgentMemory` (or anything
-            exposing ``find_by_entity`` and ``batch_delete``).
+            exposing ``find_by_entity`` and ``batch_delete``; when
+            ``batch_delete`` accepts a ``skip_vector`` keyword the coordinator
+            sets it after its vector leg has fully covered the memory-bound
+            store, and otherwise calls ``batch_delete(memory_ids)`` and leaves
+            the implementation's own cascade running).
         vector_store: Vector store holding entity-keyed embeddings. Defaults to
             ``memory.vector_store`` when a memory is supplied, and stays
             overridable for deployments that bind a store the memory does not
@@ -228,10 +233,18 @@ class ErasureCoordinator:
         # embedding behind. Deleting those ids here instead puts them behind
         # the one leg that reports honestly. Collected before anything is
         # deleted, while the items still exist to be enumerated.
-        stores["vectors"] = self._erase_vectors(
-            entity_id, self._all_vector_ids(entity_id, vector_ids)
+        all_ids, enumerated = self._all_vector_ids(entity_id, vector_ids)
+        stores["vectors"] = self._erase_vectors(entity_id, all_ids)
+        # The memory leg may only suppress delete_memory()'s own vector
+        # cascade when the vector leg demonstrably covered it: every
+        # memory-owned id was enumerated AND the store accepted the delete.
+        # Store identity alone proves neither.
+        vector_leg_covered = (
+            enumerated and stores["vectors"].get("status") == STATUS_ERASED
         )
-        stores["memory"] = self._erase_memory(entity_id)
+        stores["memory"] = self._erase_memory(
+            entity_id, vector_leg_covered=vector_leg_covered
+        )
         stores["graph"] = self._erase_graph(entity_id, reason, erased_at)
 
         receipt = ErasureReceipt(
@@ -282,7 +295,7 @@ class ErasureCoordinator:
 
     def _all_vector_ids(
         self, entity_id: str, vector_ids: Optional[Sequence[str]]
-    ) -> List[str]:
+    ) -> Tuple[List[str], bool]:
         """Caller-supplied vector ids plus the ids owned by memory items.
 
         Best-effort by design: if memory cannot be enumerated here, the memory
@@ -293,10 +306,15 @@ class ErasureCoordinator:
         Collects vector IDs from ALL memory items before deletion. Must call
         find_by_entity with limit=None to get all items, since find_by_entity
         doesn't support offset/cursor and we cannot delete while collecting.
+
+        Returns:
+            ``(ids, complete)``, where ``complete`` is False when enumeration
+            raised part-way through -- the list may then be missing ids, so
+            the caller must not treat the vector leg as covering everything.
         """
         ids: List[str] = list(vector_ids) if vector_ids is not None else [entity_id]
         if self.memory is None:
-            return ids
+            return ids, True
 
         seen_vector_ids = set(ids)
         try:
@@ -321,7 +339,8 @@ class ErasureCoordinator:
                 entity_id,
                 exc,
             )
-        return ids
+            return ids, False
+        return ids, True
 
     def _erase_vectors(
         self, entity_id: str, vector_ids: Optional[Sequence[str]]
@@ -418,10 +437,29 @@ class ErasureCoordinator:
             result["detail"] = "store reported the ids were not deleted"
         return result
 
-    def _erase_memory(self, entity_id: str) -> Dict[str, Any]:
+    def _erase_memory(
+        self, entity_id: str, *, vector_leg_covered: bool = False
+    ) -> Dict[str, Any]:
         """Delete every memory item referencing the entity."""
         if self.memory is None:
             return {"status": STATUS_NOT_CONFIGURED}
+
+        # When the vector leg succeeded against the store memory itself holds
+        # -- the default binding -- it has already deleted (and reported on)
+        # every memory-owned embedding, so delete_memory()'s own best-effort
+        # cascade would only re-attempt ids that are already gone: a redundant
+        # round-trip per item, and spurious warnings on backends that flag
+        # missing ids. In every other case -- a separate coordinator store,
+        # the vector leg disabled, its deletion rejected, or its enumeration
+        # incomplete -- that cascade is still the only cleanup memory's own
+        # store gets, so it must keep running. A memory-like whose
+        # batch_delete predates the keyword keeps its old call and cascade.
+        skip_vector = (
+            vector_leg_covered
+            and self.vector_store is not None
+            and self.vector_store is getattr(self.memory, "vector_store", None)
+            and _accepts_skip_vector(self.memory.batch_delete)
+        )
 
         deleted = 0
         try:
@@ -454,7 +492,10 @@ class ErasureCoordinator:
                         "detail": "memory items carry no 'memory_id'",
                     }
 
-                removed = self.memory.batch_delete(memory_ids)
+                if skip_vector:
+                    removed = self.memory.batch_delete(memory_ids, skip_vector=True)
+                else:
+                    removed = self.memory.batch_delete(memory_ids)
                 deleted += removed
                 if removed == 0:
                     # No progress: another page would return the same items.
@@ -535,6 +576,22 @@ class ErasureCoordinator:
 
 
 # Helpers
+
+
+def _accepts_skip_vector(batch_delete: Any) -> bool:
+    """True when ``batch_delete`` can be called with ``skip_vector=``.
+
+    Probed by signature rather than try/except around the real call: a
+    ``TypeError`` raised from *inside* an implementation that does accept the
+    keyword must surface as that leg's failure, not trigger a second delete
+    attempt. Unintrospectable callables get the plain call and keep their own
+    cascade -- the conservative side.
+    """
+    try:
+        inspect.signature(batch_delete).bind(["memory-id"], skip_vector=True)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def _normalize_timestamp(at: Optional[Union[str, int, float, datetime]]) -> str:
