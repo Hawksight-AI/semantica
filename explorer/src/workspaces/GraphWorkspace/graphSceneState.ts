@@ -1783,6 +1783,7 @@ export function resolveEdgeElementStyle(
   const isCommunityBundle = attrs.bundleKind === "community";
   const baseSize = Number(attrs.baseSize || attrs.size || 0.9);
   const visualPriority = Number(attrs.visualPriority ?? 0);
+  const isSmallGraphEdge = viewMode === "full" && attrs.isSmallGraph === true;
   const isFullBridgeEdge = viewMode === "full" && fullEdgeClass === "bridge";
   const isFullBackboneEdge = viewMode === "full" && fullEdgeClass === "backbone";
   const shouldCurveBridge = isFullBridgeEdge
@@ -1790,11 +1791,13 @@ export function resolveEdgeElementStyle(
   const visibilityPolicy = resolveEdgeVisibilityPolicy(theme, viewMode, zoomTier, isCommunityBundle);
   const isContextEdge = isContextEdgeState(state);
   const isNonCriticalEdge = isNonCriticalEdgeVariant(edgeVariant);
-  const belowPriorityThreshold = state === "default"
+  const belowPriorityThreshold = !isSmallGraphEdge && state === "default"
     && visualPriority < Math.max(tierConfig.edgePriorityThreshold, visibilityPolicy.defaultPriorityThreshold)
     && isNonCriticalEdge;
-  const hiddenByMutedState = (state === "muted" || state === "inactive") && visibilityPolicy.hideMuted;
-  const sampledOut = isNonCriticalEdge
+  const hiddenByMutedState = !isSmallGraphEdge
+    && (state === "muted" || state === "inactive")
+    && visibilityPolicy.hideMuted;
+  const sampledOut = !isSmallGraphEdge && isNonCriticalEdge
     && (
       (state === "default" && !isContextEdge && shouldSampleOutBackgroundEdge(visibilityPolicy.backgroundSampleRate, visualPriority, edgeId, sourceId, targetId))
       || (
@@ -1837,11 +1840,14 @@ export function resolveEdgeElementStyle(
       ? resolveEdgeCurvature(theme, state, edgeVariant, attrs, sourceId, targetId)
       : 0;
   const baseColor = resolveEdgeColor(theme, zoomTier, state, attrs, attrs.color, fullEdgeClass);
-  const lodAlpha = resolveEdgeLodAlpha(theme, viewMode, zoomTier, state, attrs, isCommunityBundle, fullEdgeClass);
+  const resolvedLodAlpha = resolveEdgeLodAlpha(theme, viewMode, zoomTier, state, attrs, isCommunityBundle, fullEdgeClass);
+  const lodAlpha = isSmallGraphEdge
+    ? Math.max(resolvedLodAlpha ?? 1, isContextEdge ? 0.62 : 0.46)
+    : resolvedLodAlpha;
   const color = lodAlpha === null ? baseColor : withAlpha(baseColor, lodAlpha);
   const rawSize = Math.max(
     baseSize * sizeMultiplier * (isCommunityBundle ? theme.grouped.style.edgeSizeScale : 1),
-    stateConfig.minSize,
+    isSmallGraphEdge ? Math.max(stateConfig.minSize, 0.9) : stateConfig.minSize,
   );
   
   const interactionMaxSize = (fullEdgeClass === "path" || state === "path")

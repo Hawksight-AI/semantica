@@ -25,5 +25,9 @@
     "mcp"
   ],
   "skills": "./skills",
-  "agents": "./agents"
+  "agents": [
+    "./agents/decision-advisor.md",
+    "./agents/explainability.md",
+    "./agents/kg-assistant.md"
+  ]
 }

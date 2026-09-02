@@ -39,11 +39,11 @@ jobs:
       # Install the pinned dependency set (with hashes) so the sdist/wheel
       # build runs against the same versions CI tests against.
       - name: Install pinned build dependencies
-        run: pip install -r requirements-ci.txt
-      - run: pip install build==1.6.0
-      # wheel is build-time only (not in requirements-ci.txt) — install the
-      # same pinned version [build-system] declares so --no-isolation works.
-      - run: pip install wheel==0.48.0
+        run: pip install -r requirements-ci.txt --require-hashes
+      # build is a dev-time dependency; wheel is build-time only (neither is
+      # in requirements-ci.txt) — install the same pinned versions
+      # [build-system] declares so --no-isolation works below.
+      - run: pip install -r .github/requirements/build-tools.txt --require-hashes
       - name: Build package (no isolation — pinned deps)
         run: python -m build --no-isolation
       - name: Verify Explorer frontend is packaged
@@ -65,7 +65,7 @@ jobs:
           PY
       - name: Verify PyPI long-description will render
         run: |
-          pip install twine==7.0.0
+          pip install -r .github/requirements/twine.txt --require-hashes
           twine check dist/*
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4

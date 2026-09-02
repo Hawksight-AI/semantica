@@ -33,27 +33,35 @@ WORKDIR /app
 RUN groupadd --system semantica \
     && useradd --system --gid semantica --home-dir /app --shell /usr/sbin/nologin semantica
 
-COPY pyproject.toml README.md LICENSE MANIFEST.in requirements-ci.txt ./
+COPY pyproject.toml README.md LICENSE MANIFEST.in \
+     .github/requirements/explorer-extra-py313.txt .github/requirements/pep517-build.txt ./
 COPY semantica/ ./semantica/
 COPY integrations/ ./integrations/
 COPY --from=frontend-builder /app/semantica/static ./semantica/static
 
-# The base image ships an outdated setuptools (CVE-2025-47273); upgrade it
-# explicitly since nothing in our own dependency tree otherwise pulls a
-# newer copy. Pinned to the exact version requirements-ci.txt/pyproject.toml
-# already build against, rather than a floor, per terrascan AC_DOCKER_0010.
-# requirements-ci.txt itself carries the audited, CVE-checked pins for every
-# transitive dependency (see security-scan.yml / security.yml) - feed them
-# in as an unhashed constraints file (pip's hash-checking mode rejects the
-# unhashable local source directory this installs) so the image lands on
-# the same patched versions CI verified, e.g. msgpack>=1.2.1, rather than
-# letting pip freely re-resolve and pick up an unpatched transitive version.
-# (Extracted with Python's re module rather than sed/grep so there's no
-# line-continuation-backslash stripping to get subtly wrong.)
-RUN pip install --no-cache-dir "setuptools==84.0.0" \
-    && python -c "import re, pathlib; pins = re.findall(r'^([A-Za-z0-9._-]+==\S+)', pathlib.Path('requirements-ci.txt').read_text(), re.M); pathlib.Path('/tmp/constraints.txt').write_text('\n'.join(pins))" \
-    && pip install --no-cache-dir -c /tmp/constraints.txt ".[explorer]" \
-    && rm -f /tmp/constraints.txt requirements-ci.txt \
+# explorer-extra-py313.txt is `uv pip compile pyproject.toml --extra explorer
+# --python-version 3.13 --constraint requirements-ci.txt --generate-hashes`
+# (see ci.yml's explorer-extra-py311.txt for the CI counterpart, resolved
+# for CI's python 3.11 instead - the two aren't interchangeable: audioread
+# (via librosa) needs standard-aifc/standard-sunau only on python>=3.13,
+# since aifc/sunau left stdlib there, so a 3.11-resolved lockfile is
+# missing hashes pip needs on this image's actual 3.13 interpreter and
+# --require-hashes fails outright rather than silently under-pinning).
+# Every fetched package is hash-verified (Scorecard Pinned-Dependencies)
+# and pinned to the same versions CI audited, e.g. msgpack==1.2.1 and
+# setuptools==84.0.0 (which also replaces the base image's vulnerable
+# 70.3.0, CVE-2025-47273 - nothing else in the tree pulls a newer copy).
+# --no-deps on the local package itself: it's our own source tree, not a
+# fetch, so there's nothing to hash-pin there - but `pip install .` still
+# does a PEP 517 build, which by default creates an *isolated* build env
+# and fetches [build-system] requires (setuptools, wheel) completely
+# outside any hash checking. pep517-build.txt pins that exact
+# build-system.requires; installing it first and passing
+# --no-build-isolation makes pip reuse those hash-verified copies instead
+# of fetching its own.
+RUN pip install --no-cache-dir -r explorer-extra-py313.txt -r pep517-build.txt --require-hashes \
+    && pip install --no-cache-dir --no-deps --no-build-isolation . \
+    && rm -f explorer-extra-py313.txt pep517-build.txt \
     && chown -R semantica:semantica /app
 
 USER semantica

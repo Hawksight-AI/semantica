@@ -148,6 +148,26 @@ class ClassInferrer:
                 entity_type = entity.get("type") or entity.get("entity_type", "Entity")
                 entity_types[entity_type].append(entity)
 
+            normalized_types = defaultdict(list)
+            for entity_type, type_entities in entity_types.items():
+                if len(type_entities) >= self.min_occurrences:
+                    normalized_name = self.naming_conventions.normalize_class_name(
+                        str(entity_type)
+                    )
+                    normalized_types[normalized_name].append(str(entity_type))
+
+            collisions = {
+                normalized_name: source_types
+                for normalized_name, source_types in normalized_types.items()
+                if len(source_types) > 1
+            }
+            if collisions:
+                raise ValidationError(
+                    "Entity types normalize to duplicate class names; "
+                    "rename the source types or provide an explicit mapping.",
+                    validation_context={"normalized_type_collisions": collisions},
+                )
+
             # Infer classes from entity types
             self.progress_tracker.update_tracking(
                 tracking_id,
