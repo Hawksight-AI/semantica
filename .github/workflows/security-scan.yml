@@ -55,12 +55,22 @@ jobs:
           pip install -r .github/requirements/security-scan-tools.txt --require-hashes
 
       - name: Run Safety Check (Package Vulnerabilities)
+        continue-on-error: true
         run: |
+          # Keep publishing reports and the PR comment even when the Safety
+          # gate fails. The final gate below preserves the failure status.
+          echo 'SAFETY_SCAN_STATUS=failed' >> "$GITHUB_ENV"
+
           # NOTE: Safety 3.x repurposed --output to select a console format
           # (json/text/screen/...), not a file path. Writing JSON to a file
           # now requires --save-json; the previous `--output safety-report.json`
           # usage was silently invalid and never produced a report.
-          safety check --save-json safety-report.json || true
+          #
+          # Scan requirements-ci.txt directly instead of the installed environment
+          # to avoid crashes from packages like cuda-toolkit that Safety cannot
+          # parse. This also ensures we're auditing the declared dependency tree
+          # rather than transitive dependencies of the security tooling itself.
+          safety check --file requirements-ci.txt --save-json safety-report.json || true
 
           # Guard 1: fail loudly if Safety exited before writing a report at all
           # (network error, API auth failure, tool crash). Without this check a
@@ -71,14 +81,65 @@ jobs:
             exit 1
           fi
 
+          # Guard 2: fail closed when Safety produces a report without the
+          # vulnerability array expected by the downstream checks.
+          if ! jq -e '(.vulnerabilities | type == "array")' safety-report.json >/dev/null 2>&1; then
+            echo "::error::Safety report has an invalid vulnerability structure. Expected an array-valued 'vulnerabilities' field. Treating as failure."
+            exit 1
+          fi
+
           echo "Checking for package vulnerabilities..."
 
-          # No || echo "0" fallback: if jq fails (malformed JSON, missing key,
-          # vulnerabilities:null) VULNS will be empty or "null" so guard 2 below
-          # catches it rather than silently treating the broken report as zero.
-          VULNS=$(jq '.vulnerabilities | length' safety-report.json 2>/dev/null)
+          # Vulnerability IDs reviewed and accepted as non-actionable for this
+          # project. Filtered out here with jq rather than passed to Safety's
+          # own --ignore flag: --ignore crashes ("Unhandled exception happened:
+          # 'cuda-toolkit'") when it has to apply itself against a live-matched
+          # vulnerability for cuda-toolkit, apparently the same class of
+          # unguarded dependency-graph lookup that broke the plain environment
+          # scan (see git history on this file). The un-ignored scan above is
+          # the one path confirmed - by an actual CI run - not to crash even
+          # with a live cuda-toolkit match, so all filtering happens after the
+          # fact in jq instead of inside Safety.
+          #
+          # - SFTY-20260120-40557 (CVE-2025-33228): cuda-toolkit<13.1.0. torch
+          #   2.13.0 (latest available; no newer release exists) hard-pins
+          #   cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,
+          #   cusparse,nvjitlink,nvrtc,nvtx]==13.0.3 on Linux - not a version we
+          #   control. The CVE is OS command injection in NVIDIA Nsight
+          #   Systems' gfx_hotspot recipe (process_nsys_rep_cli.py), requiring
+          #   manual invocation with an attacker-supplied string; unreachable
+          #   from Semantica, and Nsight Systems isn't among the extras torch
+          #   requests above. Re-evaluate once torch pins a patched
+          #   cuda-toolkit.
+          #
+          # - SFTY-20260723-60537 (CVE-2026-65918): torchvision<=0.28.0, an
+          #   out-of-bounds heap read in the GIF decoder's read_from_tensor
+          #   callback (unclamped length passed to memcpy while parsing GIF
+          #   metadata). torchvision isn't a direct Semantica dependency; it
+          #   comes in transitively via safetensors/sentence-transformers, and
+          #   nothing in this codebase decodes GIFs through torchvision or
+          #   calls into torchvision at all. Fixed upstream in commit 4e05dc2;
+          #   no released version has it yet. Re-evaluate once one does.
+          IGNORED_VULN_IDS="SFTY-20260120-40557,SFTY-20260723-60537"
 
-          # Guard 2: ensure VULNS is a non-negative integer before the -gt
+          # Exported so the "Comment PR with Security Results" step below can
+          # apply the same exclusion list to the raw report - it reads
+          # safety-report.json independently in JS, so without this the PR
+          # comment would show the accepted CVE as a live finding even though
+          # this gate correctly treats it as non-actionable.
+          echo "IGNORED_VULN_IDS=$IGNORED_VULN_IDS" >> "$GITHUB_ENV"
+
+          # No []? / || echo "0" fallback on a missing/null "vulnerabilities"
+          # key: iterating over null raises inside jq, leaving VULNS empty, so
+          # Guard 3 below catches it rather than silently treating a broken
+          # report as zero.
+          VULNS=$(jq --arg ignored "$IGNORED_VULN_IDS" '
+            ($ignored | split(",")) as $ignore_list
+            | [.vulnerabilities[] | select(.vulnerability_id as $id | ($ignore_list | index($id)) | not)]
+            | length
+          ' safety-report.json 2>/dev/null)
+
+          # Guard 3: ensure VULNS is a non-negative integer before the -gt
           # comparison. "null" (missing/null key) or "" (jq parse failure) would
           # cause bash's -gt to throw an arithmetic error and fall through to the
           # success branch — the same silent-pass bug as a missing file.
@@ -92,10 +153,15 @@ jobs:
             echo "CI will fail to prevent merging of vulnerable dependencies"
             echo ""
             echo "Vulnerability details:"
-            jq -r '.vulnerabilities[] | "- \(.package_name)==\(.analyzed_version): \(.vulnerability_id) (\(.CVE // "no CVE assigned"))"' safety-report.json || true
+            jq --arg ignored "$IGNORED_VULN_IDS" -r '
+              ($ignored | split(",")) as $ignore_list
+              | .vulnerabilities[] | select(.vulnerability_id as $id | ($ignore_list | index($id)) | not)
+              | "- \(.package_name)==\(.analyzed_version): \(.vulnerability_id) (\(.CVE // "no CVE assigned"))"
+            ' safety-report.json || true
             exit 1
           else
-            echo "✅ No security vulnerabilities found"
+            echo "✅ No actionable security vulnerabilities found (ignored: $IGNORED_VULN_IDS)"
+            echo 'SAFETY_SCAN_STATUS=passed' >> "$GITHUB_ENV"
           fi
         
       - name: Run Bandit (Code Security Linter)
@@ -135,6 +201,7 @@ jobs:
           fi
         
       - name: Upload Security Reports
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: security-reports
@@ -145,7 +212,7 @@ jobs:
             semgrep-report.json
         
       - name: Comment PR with Security Results
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
@@ -168,6 +235,12 @@ jobs:
               }
 
               const items = parse(data);
+              if (items === null) {
+                return [
+                  '### ' + title,
+                  '⚠️ Invalid report structure in ' + reportPath + ' — check the job logs.',
+                ].join('\n');
+              }
               if (items.length === 0) {
                 return [`### ${title}`, `✅ No findings.`].join('\n');
               }
@@ -184,14 +257,32 @@ jobs:
               return lines.join('\n');
             }
 
+            // Mirrors the shell step's own IGNORED_VULN_IDS (passed through
+            // $GITHUB_ENV) so an accepted, non-actionable CVE that the CI
+            // gate already excluded doesn't reappear here as a live finding -
+            // this reads the same raw, unfiltered safety-report.json.
+            const ignoredVulnIds = (process.env.IGNORED_VULN_IDS || '')
+              .split(',')
+              .map((id) => id.trim())
+              .filter(Boolean);
+
             const safetySection = renderSection(
               'Safety — dependency vulnerabilities',
               'safety-report.json',
-              (data) => (data.vulnerabilities || []).map(
-                (v) => `- \`${v.package_name}==${v.analyzed_version}\`: ${v.vulnerability_id}` +
-                  (v.CVE ? ` (${v.CVE})` : '') + ` — ${v.advisory || 'no advisory text'}`
-              )
-            );
+              (data) => {
+                if (!Array.isArray(data.vulnerabilities)) {
+                  return null;
+                }
+                return data.vulnerabilities
+                  .filter((v) => !ignoredVulnIds.includes(v.vulnerability_id))
+                  .map(
+                  (v) => `- \`${v.package_name}==${v.analyzed_version}\`: ${v.vulnerability_id}` +
+                    (v.CVE ? ` (${v.CVE})` : '') + ` — ${v.advisory || 'no advisory text'}`
+                  );
+              }
+            ) + (ignoredVulnIds.length
+              ? `\n\n_Excluded as accepted, non-actionable findings: ${ignoredVulnIds.join(', ')} — see the workflow file's inline comments for why._`
+              : '');
 
             const banditSection = renderSection(
               'Bandit — HIGH-severity code issues',
@@ -237,3 +328,11 @@ jobs:
               console.log('⚠️ Could not post security comment:', error.message);
               console.log('📋 Security scan results saved to artifacts');
             }
+
+      - name: Enforce Safety Gate
+        if: always()
+        run: |
+          if [ "${SAFETY_SCAN_STATUS:-failed}" != "passed" ]; then
+            echo "::error::Safety scan failed. See the Safety output and uploaded reports above."
+            exit 1
+          fi
