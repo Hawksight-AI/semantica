@@ -111,7 +111,16 @@ jobs:
           #   from Semantica, and Nsight Systems isn't among the extras torch
           #   requests above. Re-evaluate once torch pins a patched
           #   cuda-toolkit.
-          IGNORED_VULN_IDS="SFTY-20260120-40557"
+          #
+          # - SFTY-20260723-60537 (CVE-2026-65918): torchvision<=0.28.0, an
+          #   out-of-bounds heap read in the GIF decoder's read_from_tensor
+          #   callback (unclamped length passed to memcpy while parsing GIF
+          #   metadata). torchvision isn't a direct Semantica dependency; it
+          #   comes in transitively via safetensors/sentence-transformers, and
+          #   nothing in this codebase decodes GIFs through torchvision or
+          #   calls into torchvision at all. Fixed upstream in commit 4e05dc2;
+          #   no released version has it yet. Re-evaluate once one does.
+          IGNORED_VULN_IDS="SFTY-20260120-40557,SFTY-20260723-60537"
 
           # Exported so the "Comment PR with Security Results" step below can
           # apply the same exclusion list to the raw report - it reads
