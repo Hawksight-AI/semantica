@@ -1,11 +1,35 @@
 """Evaluation runner: orchestrates evaluators over a list of cases."""
 
+import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from .registry import get_evaluator
 from .types import CaseResult, EvalMetric, EvalSummary
 
 Case = Union[Dict[str, Any], Tuple[Any, Any]]
+
+
+def _coerce_threshold(name, threshold):
+    """Convert ``threshold`` to a finite float, raising ``ValueError`` otherwise.
+
+    Accepts any value that ``float()`` accepts (int, float, bool, numeric
+    strings) as long as the result is finite.  Raises ``ValueError`` — never
+    ``TypeError`` — for non-convertible types, NaN, and infinity so that
+    all invalid objective config produces the same exception type.
+    """
+    try:
+        value = float(threshold)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"objective for '{name}': 'threshold' must be a finite number "
+            f"(got {threshold!r})"
+        ) from exc
+    if not math.isfinite(value):
+        raise ValueError(
+            f"objective for '{name}': 'threshold' must be a finite number "
+            f"(got {threshold!r})"
+        )
+    return value
 
 
 def _parse_objective(name, eval_config):
@@ -37,14 +61,15 @@ def _parse_objective(name, eval_config):
         return {"expect": expect}
     if direction == "minimize":
         if threshold is None:
-            # no bar to re-decide against; treat as absent (evaluator default stands)
-            return None
-        return {"direction": "minimize", "threshold": float(threshold)}
+            raise ValueError(
+                f"objective for '{name}': 'minimize' requires a 'threshold'"
+            )
+        return {"direction": "minimize", "threshold": _coerce_threshold(name, threshold)}
     if direction == "maximize":
         if threshold is None:
             # no bar to re-decide against; treat as absent (evaluator default stands)
             return None
-        return {"direction": "maximize", "threshold": float(threshold)}
+        return {"direction": "maximize", "threshold": _coerce_threshold(name, threshold)}
     raise ValueError(
         f"objective for '{name}': 'direction' must be 'maximize' or 'minimize' "
         f"(got {direction!r})"
@@ -74,17 +99,35 @@ def _extract(case: Case, target_fn: Optional[Callable]):
 
 
 def _merge_config(default_config: Dict[str, Any], case_config: Dict[str, Any]) -> Dict[str, Any]:
-    """Deep-merge per-case config over the global config.
+    """Deep-merge per-case config over the global config (two levels deep).
 
-    Top-level keys are merged key-by-key, so a per-case override of one
-    evaluator's settings keeps the global objective for that evaluator
-    (rather than replacing the whole top-level entry).
+    Level 1 (top-level keys, e.g. evaluator names): merged key-by-key so a
+    per-case override of one evaluator's settings does not erase the whole
+    global evaluator entry.
+
+    Level 2 (evaluator config keys, e.g. ``"objective"``): also merged
+    key-by-key so a per-case override that specifies only some objective fields
+    (e.g. just ``"threshold"``) inherits the rest from the global objective
+    (e.g. ``"direction"``).  Per-case values always take precedence.
+
+    Depth-3+ values are replaced wholesale, consistent with the previous
+    single-level behaviour (no evaluator config currently nests beyond two
+    levels).  Neither the caller's global config nor the case config is
+    mutated.
     """
     merged = dict(default_config)
     for key, value in (case_config or {}).items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            # Merge level-1 dict (evaluator config) key-by-key.
             current = dict(merged[key])
-            current.update(value)
+            for k, v in value.items():
+                if isinstance(v, dict) and isinstance(current.get(k), dict):
+                    # Merge level-2 dict (e.g. objective sub-dict) key-by-key.
+                    inner = dict(current[k])
+                    inner.update(v)
+                    current[k] = inner
+                else:
+                    current[k] = v
             merged[key] = current
         else:
             merged[key] = value

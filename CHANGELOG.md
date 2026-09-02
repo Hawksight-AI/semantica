@@ -153,7 +153,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 236 export and ontology tests pass
 - **`semantica.evals` runner gains per-metric objectives** (#1091)
   - `evaluate()` now accepts `config={"<evaluator>": {"objective": {"direction": "maximize"|"minimize", "threshold": X}}}` to override the evaluator's default pass verdict with a threshold; `{"objective": {"expect": bool}}` expresses a Boolean expectation
-  - `minimize`/`maximize` without a threshold is a no-op (the evaluator's own verdict stands); `expect` cannot be combined with `direction`/`threshold`; invalid config raises `ValueError` before any evaluator runs
+  - `minimize` requires a `threshold` — omitting it or setting it to `None` raises `ValueError`; `maximize` without a threshold is a no-op (the evaluator's own verdict stands); `expect` cannot be combined with `direction`/`threshold`; invalid config raises `ValueError` before any evaluator runs
   - Error metrics are never affected by objectives (error wins over fail)
   - Backward compatible: no `objective` key → existing behavior unchanged
   - New tests in `tests/evals/test_runner.py::TestObjective`
@@ -163,7 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `decision_scores` validates field-level (expected outcome, confidence bounds, non-empty maker/reasoning/scenario) and governance-level (provenance record presence; opt-in `PolicyEngine.check_compliance`) checks, coercing dict inputs via `Decision(**actual)` and never crashing on malformed input; an interface slot for causal-chain/embedding checks is reserved and raises `NotImplementedError` (V2)
   - `__version__` is `0.1.0`, and the module ships a usage guide at `semantica/evals/usage.md` with worked import/run/interpret examples
   - `semantica.evals` is reachable through the root package lazy module proxy (`semantica.evals`)
-  - 76 unit tests in `tests/evals/` covering every evaluator, registry errors, runner aggregation, decision coercion, and per-metric objectives; `python -m pytest tests/evals -q` → 76 passed
+  - 99 unit tests in `tests/evals/` covering every evaluator, registry errors, runner aggregation, decision coercion, and per-metric objectives; `python -m pytest tests/evals -q` → 99 passed
 
 - **First-class CrewAI integration** (#988, closes #962) by @Shindevrp
   - New `pip install semantica[crewai]` extra (`crewai>=0.80.0`) — crewai core provides `BaseTool`/`BaseKnowledgeSource`, so `crewai-tools` is intentionally not included, and the extra is intentionally **not** part of the `all` bundle: crewai hard-requires `chromadb~=1.1.0`, which is affected by the unpatched pre-auth code-injection CVE-2026-45829 (see `integrations/crewai/README.md`)

@@ -35,24 +35,3 @@ class EvalSummary:
     errors: int
     pass_rate: float
     cases: List[CaseResult] = field(default_factory=list)
-
-
-class CaseResult(NamedTuple):
-    """Evaluation output for a single case."""
-
-    case_id: str
-    status: str
-    metrics: Dict[str, EvalMetric]
-    details: Dict[str, Any]
-
-
-@dataclass
-class EvalSummary:
-    """Aggregate evaluation output across cases."""
-
-    total: int
-    passed: int
-    failed: int
-    errors: int
-    pass_rate: float
-    cases: List[CaseResult] = field(default_factory=list)
