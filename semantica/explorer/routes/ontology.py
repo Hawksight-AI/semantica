@@ -782,10 +782,17 @@ def _node_belongs_to_ontology(
                 (candidate.rstrip("#/") + "#", candidate.rstrip("#/") + "/")
             )
         ]
-        if namespace_owners:
-            return max(namespace_owners, key=len) == ontology_uri
+        if namespace_owners and max(namespace_owners, key=len) != ontology_uri:
+            return False
     stem = ontology_uri.rstrip("#/")
-    return nid.startswith((stem + "#", stem + "/"))
+    if not nid.startswith((stem + "#", stem + "/")):
+        return False
+    if "#" in nid:
+        # A fragment namespace nested below the ontology (<stem>/child#Term)
+        # is its own vocabulary. Without a registration or an explicit owner
+        # it must not be absorbed into the parent prefix.
+        return nid.split("#", 1)[0] == stem
+    return True
 
 
 def _is_ontology_entity(node: Dict[str, Any]) -> bool:
@@ -1251,7 +1258,8 @@ def _parse_rdf_sync(content: bytes, fmt: str) -> tuple:
                     metadata.setdefault("description", str(obj))
             break
 
-    if "uri" not in metadata:
+    synthetic_uri = "uri" not in metadata
+    if synthetic_uri:
         metadata["uri"] = f"urn:semantica:onto:{uuid.uuid4().hex[:8]}"
     metadata.setdefault("name", metadata["uri"].rsplit("/", 1)[-1].rsplit("#", 1)[-1] or "Unnamed")
     metadata["triple_count"] = len(g)
@@ -1296,6 +1304,20 @@ def _parse_rdf_sync(content: bytes, fmt: str) -> tuple:
             "target": str(obj),
             "type": _uri_to_prefix(str(pred)),
             "weight": 1.0,
+        })
+
+    if synthetic_uri:
+        # No owl:Ontology / skos:ConceptScheme declaration exists, so the
+        # synthetic registry URI shares no namespace with any node. Ownership
+        # must be recorded explicitly, and the editor needs a matching graph
+        # node, or the registered ontology resolves to an empty core and 404s.
+        for node in nodes:
+            node["properties"].setdefault("scheme_uri", metadata["uri"])
+        nodes.append({
+            "id": metadata["uri"],
+            "type": "owl:Ontology",
+            "content": metadata["name"],
+            "properties": {"rdfs:label": metadata["name"], "uri": metadata["uri"]},
         })
 
     return nodes, edges, metadata
@@ -1857,10 +1879,13 @@ async def get_ontology_graph(
             skip=0,
             limit=2**63 - 1,
         )
+        # Keep only edges whose source is a core node: the requested ontology
+        # may reference outward (e.g. rdfs:range to an external vocabulary),
+        # but an unrelated ontology's property pointing at a core class must
+        # not leak inward.
         selected_edges.extend(
             edge for edge in edges
             if str(edge.get("source", "")) in core_node_ids
-            or str(edge.get("target", "")) in core_node_ids
         )
     if (
         len(core_node_ids) > _MAX_ANALYSIS_NODES

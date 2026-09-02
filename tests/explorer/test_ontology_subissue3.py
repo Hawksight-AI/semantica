@@ -15,6 +15,7 @@ from semantica.explorer.app import create_app  # noqa: E402
 from semantica.explorer.routes.ontology import (  # noqa: E402
     OntologyEntry,
     _convert_ontology_to_graph,
+    _node_belongs_to_ontology,
 )
 from semantica.explorer.session import GraphSession  # noqa: E402
 
@@ -198,6 +199,91 @@ def test_ontology_graph_prefers_explicit_ownership_over_uri_namespace(client):
 
     assert response.status_code == 200
     assert explicit_member in {node["id"] for node in response.json()["nodes"]}
+
+
+def test_ontology_graph_excludes_inward_edges_from_other_ontologies(client):
+    graph = client.app.state.session.graph
+    foreign_prop = "http://example.org/onto-b#recordOf"
+    graph.add_node(
+        foreign_prop,
+        node_type="owl:ObjectProperty",
+        content="record of",
+        scheme_uri="http://example.org/onto-b",
+    )
+    # onto-b's property points its domain at onto-a's class: an inward
+    # reference that must not pull the foreign property into onto-a's graph.
+    graph.add_edge(foreign_prop, "http://example.org/onto-a#Person", edge_type="rdfs:domain")
+
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert foreign_prop not in {node["id"] for node in payload["nodes"]}
+    assert all(edge["source"] != foreign_prop for edge in payload["edges"])
+
+
+def test_ontology_graph_excludes_unregistered_nested_namespace(client):
+    graph = client.app.state.session.graph
+    nested_class = "http://example.org/onto-a/vocab#Term"
+    graph.add_node(nested_class, node_type="owl:Class", content="Nested Term")
+
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 200
+    assert nested_class not in {node["id"] for node in response.json()["nodes"]}
+
+
+def test_node_belongs_to_ontology_nested_namespace_matrix():
+    parent = "http://example.org/onto-a"
+    child = "http://example.org/onto-a/nested"
+
+    def node(node_id):
+        return {"id": node_id, "properties": {}}
+
+    assert _node_belongs_to_ontology(node(f"{parent}#Person"), parent, {parent})
+    assert _node_belongs_to_ontology(node(f"{parent}/Person"), parent, {parent})
+    # Unregistered nested fragment namespace is not absorbed into the parent
+    assert not _node_belongs_to_ontology(node(f"{child}#Term"), parent, {parent})
+    # Once registered, the nested namespace owns its nodes
+    assert not _node_belongs_to_ontology(node(f"{child}#Term"), parent, {parent, child})
+    assert _node_belongs_to_ontology(node(f"{child}#Term"), child, {parent, child})
+
+
+def test_load_fallback_import_without_declaration_is_editable(client):
+    turtle = """
+@prefix ex: <http://data.example.org/people#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:Employee a rdfs:Class ;
+    rdfs:label "Employee" .
+ex:manager a rdf:Property ;
+    rdfs:label "manager" .
+"""
+    with patch(
+        "semantica.ingest.ontology_ingestor.OntologyIngestor.ingest_ontology",
+        side_effect=RuntimeError("force fallback parser"),
+    ):
+        loaded = client.post(
+            "/api/ontology/load",
+            json={"content": turtle, "format": "turtle"},
+        )
+    assert loaded.status_code == 200
+    uri = loaded.json()["uri"]
+    assert uri.startswith("urn:semantica:onto:")
+
+    response = client.get("/api/ontology/graph", params={"uri": uri})
+    assert response.status_code == 200
+    payload = response.json()
+    node_ids = {node["id"] for node in payload["nodes"]}
+    assert uri in node_ids
+    assert "http://data.example.org/people#Employee" in node_ids
 
 
 def test_ontology_graph_ignores_unrelated_data_when_enforcing_size_limit(client):

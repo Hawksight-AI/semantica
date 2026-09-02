@@ -27,6 +27,7 @@ import {
 import { loadOntologyEntityOwner, loadOntologyGraph } from "./api";
 import type { OntologyGraphEdge, OntologyGraphNode } from "./api";
 import {
+  classifyNodeType,
   inferOntologyUri,
   isEditableEntityType,
   ONTOLOGY_MINIMAP_THEME,
@@ -153,10 +154,7 @@ function nodeLabel(node: OntologyGraphNode): string {
 }
 
 function classifyEditorNode(node: OntologyGraphNode): OntologyNodeData["entityType"] {
-  if (node.type === "owl:Ontology") return "ontology";
-  if (node.type === "owl:Class" || node.type === "rdfs:Class") return "class";
-  if (node.type.includes("Property")) return "property";
-  return "external";
+  return classifyNodeType(node.type);
 }
 
 function layoutEditorNodes(inputNodes: OntologyNode[]): OntologyNode[] {
@@ -556,6 +554,15 @@ export function OntologyEditor() {
           onChange={(event) => {
             setOntologyUri(event.target.value);
             setSelectedElement(null);
+            try {
+              // Drop the previous ontology's entity from the URL, or a reload
+              // would resolve the stale ID and jump back to that ontology.
+              const params = new URLSearchParams(window.location.search);
+              params.delete("ontologyEntity");
+              window.history.replaceState(null, "", `?${params.toString()}`);
+            } catch {
+              // URL state is optional; switching ontologies still works.
+            }
           }}
           style={selectStyle}
         >
