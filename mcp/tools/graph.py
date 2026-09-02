@@ -5,6 +5,7 @@ Graph tools — add entities/relationships, search, analytics, summary.
 from __future__ import annotations
 
 import logging
+import os
 
 from mcp.schemas import ADD_ENTITY, ADD_RELATIONSHIP, EMPTY, GET_ANALYTICS, SEARCH_GRAPH
 from mcp.session import get_graph
@@ -25,6 +26,10 @@ def handle_add_entity(args: dict) -> dict:
             node_type=args.get("type", "Entity"),
             metadata=args.get("metadata", {}),
         )
+        # Persist back to disk so the entity survives server restarts.
+        kg_path = os.environ.get("SEMANTICA_KG_PATH", "").strip()
+        if kg_path:
+            graph.save_to_file(kg_path)
         return {"status": "added", "id": node_id, "type": args.get("type", "Entity")}
     except Exception as exc:
         log.exception("add_entity failed")
@@ -46,6 +51,10 @@ def handle_add_relationship(args: dict) -> dict:
             edge_type=rel_type,
             metadata=args.get("metadata", {}),
         )
+        # Persist back to disk so the relationship survives server restarts.
+        kg_path = os.environ.get("SEMANTICA_KG_PATH", "").strip()
+        if kg_path:
+            graph.save_to_file(kg_path)
         return {"status": "added", "source": source, "target": target, "type": rel_type}
     except Exception as exc:
         log.exception("add_relationship failed")

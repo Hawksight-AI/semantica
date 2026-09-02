@@ -179,6 +179,10 @@ def _tool_record_decision(args: dict) -> dict:
         valid_from=args.get("valid_from"),
         valid_until=args.get("valid_until"),
     )
+    # Persist back to disk so the decision survives server restarts.
+    kg_path = os.environ.get("SEMANTICA_KG_PATH")
+    if kg_path:
+        graph.save_to_file(kg_path)
     return {"decision_id": decision_id, "status": "recorded"}
 
 
@@ -246,6 +250,10 @@ def _tool_add_entity(args: dict) -> dict:
     graph = _get_graph()
     graph.add_node(node_id=node_id, label=label, node_type=node_type,
                    metadata=args.get("metadata", {}))
+    # Persist back to disk so the entity survives server restarts.
+    kg_path = os.environ.get("SEMANTICA_KG_PATH")
+    if kg_path:
+        graph.save_to_file(kg_path)
     return {"status": "added", "id": node_id}
 
 
@@ -259,6 +267,10 @@ def _tool_add_relationship(args: dict) -> dict:
     graph = _get_graph()
     graph.add_edge(source_id=source, target_id=target, edge_type=rel_type,
                    metadata=args.get("metadata", {}))
+    # Persist back to disk so the relationship survives server restarts.
+    kg_path = os.environ.get("SEMANTICA_KG_PATH")
+    if kg_path:
+        graph.save_to_file(kg_path)
     return {"status": "added", "source": source, "target": target, "type": rel_type}
 
 

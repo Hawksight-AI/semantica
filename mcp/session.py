@@ -33,7 +33,7 @@ def get_graph() -> Any:
         kg_path = os.environ.get("SEMANTICA_KG_PATH", "").strip()
         if kg_path and os.path.exists(kg_path):
             try:
-                _graph.load(kg_path)
+                _graph.load_from_file(kg_path)
                 log.info("Graph loaded from %s", kg_path)
             except Exception as exc:
                 log.warning("Could not load graph from %s: %s", kg_path, exc)

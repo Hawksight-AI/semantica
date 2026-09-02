@@ -5,6 +5,7 @@ Decision intelligence tools — record, query, precedents, causal chain, impact.
 from __future__ import annotations
 
 import logging
+import os
 
 from mcp.schemas import (
     ANALYZE_DECISION_IMPACT,
@@ -37,6 +38,10 @@ def handle_record_decision(args: dict) -> dict:
             valid_from=args.get("valid_from"),
             valid_until=args.get("valid_until"),
         )
+        # Persist back to disk so the decision survives server restarts.
+        kg_path = os.environ.get("SEMANTICA_KG_PATH", "").strip()
+        if kg_path:
+            graph.save_to_file(kg_path)
         return {
             "decision_id": decision_id,
             "status": "recorded",
