@@ -43,6 +43,11 @@ from .class_inferrer import ClassInferrer
 from .namespace_manager import NamespaceManager
 from .naming_conventions import NamingConventions
 from .property_generator import PropertyGenerator
+from .relationship_utils import (
+    build_entity_aliases,
+    get_relationship_endpoint,
+    resolve_relationship_endpoint_type,
+)
 from .ontology_validator import OntologyValidator
 
 
@@ -383,56 +388,18 @@ class OntologyGenerator:
     @staticmethod
     def _build_entity_aliases(entities: List[Dict[str, Any]]) -> Dict[str, set]:
         """Build an unambiguous alias-to-type index for relationship endpoints."""
-        aliases: Dict[str, set] = {}
-        for entity in entities:
-            entity_type = entity.get("type") or entity.get("entity_type")
-            if not entity_type:
-                continue
-
-            for key in ("id", "entity_id", "name", "text", "label"):
-                if key not in entity or entity[key] is None or entity[key] == "":
-                    continue
-                aliases.setdefault(str(entity[key]), set()).add(entity_type)
-
-        return aliases
+        return build_entity_aliases(entities)
 
     @staticmethod
     def _get_relationship_endpoint(rel: Dict[str, Any], endpoint: str) -> Any:
         """Return an endpoint value from either ID or legacy relationship fields."""
-        for key in (f"{endpoint}_id", endpoint):
-            if key not in rel:
-                continue
-
-            value = rel[key]
-            if value is None or value == "":
-                continue
-            if isinstance(value, dict):
-                for alias_key in ("id", "entity_id", "name", "text", "label"):
-                    if alias_key not in value:
-                        continue
-                    alias_value = value[alias_key]
-                    if alias_value is not None and alias_value != "":
-                        return alias_value
-                continue
-            return value
-
-        return None
+        return get_relationship_endpoint(rel, endpoint)
 
     def _resolve_relationship_endpoint_type(
         self, rel: Dict[str, Any], endpoint: str, aliases: Dict[str, set]
     ) -> Optional[str]:
         """Resolve an endpoint type without treating missing fields as aliases."""
-        explicit_type = rel.get(f"{endpoint}_type")
-        if explicit_type and explicit_type != "Entity":
-            return explicit_type
-
-        endpoint_value = self._get_relationship_endpoint(rel, endpoint)
-        if endpoint_value is not None:
-            candidates = aliases.get(str(endpoint_value), set())
-            if len(candidates) == 1:
-                return next(iter(candidates))
-
-        return explicit_type
+        return resolve_relationship_endpoint_type(rel, endpoint, aliases)
 
     def _stage2_yaml_to_definition(
         self, semantic_network: Dict[str, Any], **options
