@@ -34,6 +34,7 @@ Example:
     'unsupported'
 """
 
+import copy
 import inspect
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -117,13 +118,21 @@ class ErasureReceipt:
         ]
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize the receipt, deep-copying the per-store results."""
+        """Serialize the receipt, deep-copying the per-store results.
+
+        Each store result is copied recursively so the returned payload shares
+        no mutable objects with the live receipt: mutating
+        ``payload["stores"][name][...]`` (including nested dicts such as a
+        vector backend's ``backend_result``) cannot corrupt the audit record.
+        """
         return {
             "entity_id": self.entity_id,
             "reason": self.reason,
             "erased_at": self.erased_at,
             "complete": self.complete,
-            "stores": {name: dict(result) for name, result in self.stores.items()},
+            "stores": {
+                name: copy.deepcopy(result) for name, result in self.stores.items()
+            },
         }
 
 

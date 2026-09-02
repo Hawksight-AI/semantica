@@ -399,6 +399,32 @@ class TestReceipt(unittest.TestCase):
 
         self.assertEqual(receipt.stores["graph"]["status"], STATUS_ERASED)
 
+    def test_to_dict_deep_copies_nested_store_results(self):
+        """A nested dict in a store result is not shared with the live receipt.
+
+        ``backend_result`` from a vector backend is a dict of its own, so a
+        shallow per-store copy leaves it referenced by both the payload and the
+        receipt -- sanitizing the payload for a user-facing response would
+        silently corrupt the audit record.
+        """
+        receipt = ErasureReceipt(
+            entity_id="customer-4471",
+            stores={
+                "vectors": {
+                    "status": STATUS_ERASED,
+                    "backend": "qdrant",
+                    "backend_result": {"status": "completed"},
+                },
+            },
+        )
+
+        payload = receipt.to_dict()
+        payload["stores"]["vectors"]["backend_result"]["status"] = "redacted"
+
+        self.assertEqual(
+            receipt.stores["vectors"]["backend_result"]["status"], "completed"
+        )
+
     def test_receipt_and_tombstone_agree_on_when_the_erasure_happened(self):
         graph = _graph()
         receipt = ErasureCoordinator(graph=graph).erase_entity(
