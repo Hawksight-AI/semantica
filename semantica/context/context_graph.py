@@ -1203,8 +1203,30 @@ class ContextGraph:
                 "links": links_data,
             }
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        # Write atomically: serialize to a sibling temp file then replace the
+        # destination in one OS-level rename.  This guarantees the destination
+        # is either the old contents or the new contents — never a partial write
+        # — so a crash or disk-full error during json.dump cannot corrupt the
+        # sole persisted copy of the graph.
+        dest = Path(path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=dest.parent, prefix=".kg_tmp_", suffix=".json"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, dest)
+        except Exception:
+            # Clean up the temp file on any failure so we don't litter the
+            # directory with partial writes.
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
         self.logger.info(f"Saved context graph to {path}")
 

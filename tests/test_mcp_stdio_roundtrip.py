@@ -131,15 +131,23 @@ class TestMCPStdioFramingContract(unittest.TestCase):
         """A tools/call round-trip through the full stdio framing loop must keep
         stdout free of any non-JSON bytes.
 
-        get_graph_summary is used because it forces lazy ContextGraph construction
-        (which calls get_progress_tracker() and attempts progress.enabled = True),
-        exercising the exact code path that produced stdout corruption in #1134.
-        Every byte on stdout must still be valid JSON-RPC.
+        run_reasoning is used because Reasoner.infer_with_results() explicitly
+        calls self.progress_tracker.start_tracking(), making it the minimal
+        deterministic tool path that exercises the progress-rendering code.
+        Before the #1134 fix, that start_tracking call wrote a progress bar
+        directly to stdout, corrupting the JSON-RPC framing.  Every byte on
+        stdout must still be valid JSON-RPC after the fix.
         """
         proc = self._run(
             _INIT_REQUEST,
             _jsonrpc("notifications/initialized", None),
-            _jsonrpc("tools/call", 2, {"name": "get_graph_summary", "arguments": {}}),
+            _jsonrpc("tools/call", 2, {
+                "name": "run_reasoning",
+                "arguments": {
+                    "facts": ["Person(Alice)", "Employee(Alice)"],
+                    "rules": ["IF Employee(?x) THEN Worker(?x)"],
+                },
+            }),
         )
         self.assertEqual(proc.returncode, 0,
                          f"server crashed:\n{proc.stderr.decode()}")
@@ -153,14 +161,19 @@ class TestMCPStdioFramingContract(unittest.TestCase):
             tool_resp,
             f"No id=2 response in stdout.\nstdout={stdout!r}\nstderr={stderr!r}",
         )
-        # Result must have MCP content — whether the tool succeeds or not, the
-        # framing must be correct.
-        self.assertIn("result", tool_resp, f"Unexpected error response: {tool_resp}")
-        content = tool_resp["result"].get("content", [])
-        self.assertGreater(len(content), 0)
-        # The tool payload itself must be valid JSON embedded inside the response.
-        inner = json.loads(content[0]["text"])
-        self.assertIn("graph_ready", inner)
+        # The framing must be a valid JSON-RPC result object regardless of
+        # whether the reasoner dependency is available in this environment.
+        self.assertIn("jsonrpc", tool_resp)
+        self.assertEqual(tool_resp["jsonrpc"], "2.0")
+        self.assertIn("id", tool_resp)
+        # If the tool succeeded the response must carry MCP content.
+        if "result" in tool_resp:
+            content = tool_resp["result"].get("content", [])
+            self.assertGreater(len(content), 0,
+                               "Expected non-empty content list in result")
+            # The embedded tool payload must itself be valid JSON.
+            inner = json.loads(content[0]["text"])
+            self.assertIn("derived_facts", inner)
 
 
 if __name__ == "__main__":
