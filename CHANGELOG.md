@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Salesforce ingestor** (#1240) by @Sameer6305
+  - New `SalesforceConnector` / `SalesforceData` / `SalesforceIngestor` (`semantica.ingest`, lazy export), following the same Connector + Data + Ingestor pattern already used for Snowflake/Databricks/SAP
+  - Auth covers both landscapes Salesforce actually uses: username + password + security token (SOAP login), session_id + instance_url (reusing an existing session), and username + consumer_key + private key (JWT Bearer); production and sandbox are selected via `domain`, and credentials can come from environment variables. Credential material is never intentionally written to logs, exceptions, or `repr()`
+  - `ingest_sobject()`, `ingest_query()`, `list_sobjects()`, `get_sobject_schema()`, `export_as_documents()` against standard sObjects, custom objects (`__c`), custom metadata (`__mdt`), platform events (`__e`), namespaced objects, and relationship-field traversal (e.g. `Owner.Name`); pagination follows `nextRecordsUrl`/`query_more()` and stops once a caller's `limit` is satisfied
+  - New `pip install semantica[db-salesforce]` extra (`simple-salesforce>=1.12.0`)
+  - New `tests/test_salesforce_ingestor.py`
+  - Docs: `docs/integrations/salesforce.md`
+
 - **`ErasureCoordinator` completes the erasure workflow `purge_node()` only starts — the graph node was removed while the same content survived verbatim in `AgentMemory` and as an embedding** (closes #1018) by @pravit-amp
   - New `semantica/context/erasure.py`, exporting `ErasureCoordinator` and `ErasureReceipt` from `semantica.context`. `purge_node()`/`purge_edge()` (#957) are graph-scope by design and their changelog entry documents this gap explicitly; the changelog also names GDPR Article 17 as the motivation, and an Article 17 erasure that removes the node while the content stays retrievable by similarity search is not an erasure — it is worse than not offering one, because `purge_node()` returns `True` and writes a tombstone attesting the content is gone
   - The coordinator **composes** the existing public APIs — nothing in `context_graph.py` or `agent_memory.py` changes behaviorally, and `ContextGraph` keeps its documented graph-scope contract rather than acquiring references to `AgentMemory`/`vector_store` that would invert the dependency
@@ -151,6 +159,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Also fixed, on the JSON-LD paths**: the first fix covered the Turtle, N-Triples and RDF/XML serializers, and left both JSON-LD writers interpolating the entity's own text into `f"semantica:entity/{text}"` and the endpoints into `f"semantica:rel/{source}_{target}"`. Three consequences, all live in 0.6.5: an entity whose text contained a space produced an invalid IRI, and a JSON-LD parser dropped that node in full rather than reporting it, so the entity disappeared from the export; every relationship carrying `source`/`target` rather than `source_id`/`target_id` minted the identical `semantica:rel/_`, collapsing all of them onto one node whose types and endpoints merged; and the JSON-LD `@id` disagreed with the Turtle IRI for the same entity, so the two serializations of one knowledge graph were two different graphs. Both JSON-LD writers now use `mint_entity_iri`/`mint_relationship_iri`, and `JSONExporter.export_entities`/`export_relationships` declare the `semantica` prefix their `@context` was already writing `semantica:entities` against — without it a processor reads that as an IRI in the scheme `semantica`, which is the original #1101 defect on a third path
   - `tests/export/test_jsonld_iri_minting.py` parses each export with a real JSON-LD processor and asserts the entity survives, the relationships stay distinct, no term expands into the `semantica` scheme, and the JSON-LD `@id` equals the Turtle IRI
   - 236 export and ontology tests pass
+- **`semantica.evals` runner gains per-metric objectives** (#1091)
+  - `evaluate()` now accepts `config={"<evaluator>": {"objective": {"direction": "maximize"|"minimize", "threshold": X}}}` to override the evaluator's default pass verdict with a threshold; `{"objective": {"expect": bool}}` expresses a Boolean expectation
+  - `minimize` requires a `threshold` — omitting it or setting it to `None` raises `ValueError`; `maximize` without a threshold is a no-op (the evaluator's own verdict stands); `expect` cannot be combined with `direction`/`threshold`; invalid config raises `ValueError` before any evaluator runs
+  - Error metrics are never affected by objectives (error wins over fail)
+  - Backward compatible: no `objective` key → existing behavior unchanged
+  - New tests in `tests/evals/test_runner.py::TestObjective`
+- **`semantica.evals` is now a fully implemented evaluation module** (was a "Coming Soon" stub in the package layout)
+  - `evaluate(cases, evaluators, config=None, target_fn=None)` runner with per-case `pass`/`fail`/`error` status and an aggregate `pass_rate`, using a registry of named evaluators (`list_evaluators()`)
+  - 10 built-in evaluators: `exact_match`, `regex_match`, `numeric_range`, `temporal_range`, `length_range`, `keyword_check`, `levenshtein` (edit-distance similarity), `rouge` (in-house token F1, no new dependencies), `llm_as_judge` (lazy: caller-supplied `judge_fn`), and `decision_scores` (composite over `semantica.context.Decision`)
+  - `decision_scores` validates field-level (expected outcome, confidence bounds, non-empty maker/reasoning/scenario) and governance-level (provenance record presence; opt-in `PolicyEngine.check_compliance`) checks, coercing dict inputs via `Decision(**actual)` and never crashing on malformed input; an interface slot for causal-chain/embedding checks is reserved and raises `NotImplementedError` (V2)
+  - `__version__` is `0.1.0`, and the module ships a usage guide at `semantica/evals/usage.md` with worked import/run/interpret examples
+  - `semantica.evals` is reachable through the root package lazy module proxy (`semantica.evals`)
+  - 99 unit tests in `tests/evals/` covering every evaluator, registry errors, runner aggregation, decision coercion, and per-metric objectives; `python -m pytest tests/evals -q` → 99 passed
 
 - **First-class CrewAI integration** (#988, closes #962) by @Shindevrp
   - New `pip install semantica[crewai]` extra (`crewai>=0.80.0`) — crewai core provides `BaseTool`/`BaseKnowledgeSource`, so `crewai-tools` is intentionally not included, and the extra is intentionally **not** part of the `all` bundle: crewai hard-requires `chromadb~=1.1.0`, which is affected by the unpatched pre-auth code-injection CVE-2026-45829 (see `integrations/crewai/README.md`)
