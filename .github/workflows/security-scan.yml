@@ -62,10 +62,31 @@ jobs:
           # usage was silently invalid and never produced a report.
           #
           # Scan requirements-ci.txt directly instead of the installed environment
-          # to avoid crashes from packages like cuda-toolkit that Safety cannot
-          # parse. This also ensures we're auditing the declared dependency tree
-          # rather than transitive dependencies of the security tooling itself.
-          safety check --file requirements-ci.txt --save-json safety-report.json || true
+          # so that only the project's declared dependency tree is audited, not
+          # transitive deps of the security tooling itself.
+          #
+          # Pre-processing: Safety 3.x looks up each package in its vulnerability
+          # database using the version string from the requirements file.  NVIDIA
+          # and a small number of other packages publish wheels with 4-component
+          # versions (e.g. cuda-toolkit==13.0.3.0, opencv-python==5.0.0.93).
+          # Safety's database and PyPI's release keys use 3-component versions
+          # (13.0.3 / 5.0.0).  When Safety tries to look up '13.0.3.0' it gets a
+          # KeyError, which surfaces as:
+          #   Unhandled exception happened: 'cuda-toolkit'
+          # and exits without writing safety-report.json, causing Guard 1 below
+          # to fail CI.
+          #
+          # The fix is NOT to exclude these packages — a CVE in cuda-toolkit
+          # 13.0.3 would be recorded in Safety's DB as '13.0.3', so normalising
+          # '13.0.3.0 → 13.0.3' preserves full vulnerability coverage.  The 4th
+          # component is a build/packaging suffix (zero in the initial release),
+          # not a distinct security release.
+          #
+          # Generate a normalised copy of requirements-ci.txt for Safety only.
+          # The original file is unchanged.
+          python -c "import re,pathlib;src=pathlib.Path('requirements-ci.txt').read_text(encoding='utf-8');pathlib.Path('safety-input.txt').write_text(re.sub(r'(==\d+\.\d+\.\d+)\.\d+',r'\1',src),encoding='utf-8')"
+
+          safety check --file safety-input.txt --save-json safety-report.json || true
 
           # Guard 1: fail loudly if Safety exited before writing a report at all
           # (network error, API auth failure, tool crash). Without this check a

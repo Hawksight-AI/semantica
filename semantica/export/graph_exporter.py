@@ -329,12 +329,27 @@ class GraphExporter:
         lines.append('         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">')
         lines.append("")
 
-        # Define attribute keys
+        # Define attribute keys.
+        # GraphML requires every key id referenced by a <data> element to be
+        # declared here with a matching <key> element.
+        #
+        # for="all"  — key is valid on both nodes and edges
+        # for="node" — key is valid on nodes only
+        # for="edge" — key is valid on edges only
+        #
+        # label    : used on <node> (human-readable label) and <edge> (type).
+        #            Declared for="all" so both uses are schema-valid.
+        # type     : node entity type; only written on nodes.
+        # confidence: written on both nodes and edges when include_attributes
+        #             is True; declared for="all" so edge confidence is valid.
+        lines.append(
+            '  <key id="label" for="all" attr.name="label" attr.type="string"/>'
+        )
         lines.append(
             '  <key id="type" for="node" attr.name="type" attr.type="string"/>'
         )
         lines.append(
-            '  <key id="confidence" for="node" attr.name="confidence" attr.type="double"/>'
+            '  <key id="confidence" for="all" attr.name="confidence" attr.type="double"/>'
         )
         lines.append("")
 
@@ -342,23 +357,31 @@ class GraphExporter:
         lines.append('  <graph id="G" edgedefault="directed">')
         lines.append("")
 
+        # xml.sax.saxutils helpers:
+        #   escape(v)     – escapes & < > in text node content
+        #   quoteattr(v)  – escapes & < > " ' and wraps in the
+        #                   appropriate quote character for use as an
+        #                   XML attribute value (including the quotes)
+        from xml.sax.saxutils import escape, quoteattr
+
         # Export nodes
         nodes = graph_data.get("nodes", [])
         for node in nodes:
-            node_id = node.get("id", "")
-            label = node.get("label", "")
-            node_type = node.get("type", "")
+            node_id = str(node.get("id") or "")
+            label = str(node.get("label") or "")
+            node_type = str(node.get("type") or "")
 
-            lines.append(f'    <node id="{node_id}">')
-            lines.append(f'      <data key="label">{label}</data>')
-            lines.append(f'      <data key="type">{node_type}</data>')
+            # quoteattr produces the surrounding quotes; do NOT add extra "…"
+            lines.append(f"    <node id={quoteattr(node_id)}>")
+            lines.append(f"      <data key=\"label\">{escape(label)}</data>")
+            lines.append(f"      <data key=\"type\">{escape(node_type)}</data>")
 
             # Add attributes if requested
             if self.include_attributes and "attributes" in node:
                 attrs = node["attributes"]
                 if "confidence" in attrs:
                     lines.append(
-                        f'      <data key="confidence">{attrs["confidence"]}</data>'
+                        f"      <data key=\"confidence\">{escape(str(attrs['confidence']))}</data>"
                     )
 
             lines.append("    </node>")
@@ -368,19 +391,19 @@ class GraphExporter:
         # Export edges
         edges = graph_data.get("edges", [])
         for edge in edges:
-            source = edge.get("source", "")
-            target = edge.get("target", "")
-            edge_type = edge.get("type", "")
+            source = str(edge.get("source") or "")
+            target = str(edge.get("target") or "")
+            edge_type = str(edge.get("type") or "")
 
-            lines.append(f'    <edge source="{source}" target="{target}">')
-            lines.append(f'      <data key="label">{edge_type}</data>')
+            lines.append(f"    <edge source={quoteattr(source)} target={quoteattr(target)}>")
+            lines.append(f"      <data key=\"label\">{escape(edge_type)}</data>")
 
             # Add attributes if requested
             if self.include_attributes and "attributes" in edge:
                 attrs = edge["attributes"]
                 if "confidence" in attrs:
                     lines.append(
-                        f'      <data key="confidence">{attrs["confidence"]}</data>'
+                        f"      <data key=\"confidence\">{escape(str(attrs['confidence']))}</data>"
                     )
 
             lines.append("    </edge>")

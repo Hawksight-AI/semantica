@@ -58,21 +58,69 @@ def handle_export_graph(args: dict) -> dict:
             return {"format": "csv", "data": header + "\n" + "\n".join(rows)}
 
         if fmt in ("graphml",):
+            # GraphMLExporter does not exist.  GraphExporter is the correct
+            # class; it writes to a file and returns None, so we need a
+            # temporary directory for safe cleanup regardless of success or
+            # failure.
+            #
+            # export_knowledge_graph() is the required entry point because
+            # to_kg_dict() returns {"entities": [...], "relationships": [...]}
+            # while export() / _export_graphml() only consumes {"nodes": [...],
+            # "edges": [...]}.  Calling export() directly therefore produces a
+            # structurally-valid but empty GraphML document (zero nodes, zero
+            # edges).  export_knowledge_graph() runs _convert_kg_to_graph()
+            # first, which maps entities→nodes and relationships→edges.
             try:
-                from semantica.export import GraphMLExporter
-                exporter = GraphMLExporter()
-                data = exporter.export(graph)
+                import tempfile
+                from pathlib import Path
+                from semantica.export import GraphExporter
+                kg_dict = graph.to_kg_dict()
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmp_path = Path(tmpdir) / "export.graphml"
+                    exporter = GraphExporter(format="graphml")
+                    exporter.export_knowledge_graph(kg_dict, file_path=tmp_path)
+                    data = tmp_path.read_text(encoding="utf-8")
                 return {"format": "graphml", "data": data}
+            except ImportError as exc:
+                log.warning("GraphML export unavailable: %s", exc)
+                return {"error": f"GraphML export unavailable: {exc}"}
             except Exception as exc:
+                log.exception("GraphML export failed")
                 return {"error": f"GraphML export failed: {exc}"}
 
         if fmt in ("parquet",):
+            # ParquetExporter.export() writes to file(s) and returns None;
+            # passing the ContextGraph object or using the return value as
+            # data were both wrong.  export_knowledge_graph() is the correct
+            # entry point for a full KG: it splits into _entities.parquet and
+            # _relationships.parquet under a provided base path.  We read both
+            # files and return them base64-encoded so the MCP client can
+            # reconstruct them without a shared filesystem.
             try:
-                from semantica.export import ParquetExporter
-                exporter = ParquetExporter()
-                data = exporter.export(graph, include_metadata)
-                return {"format": "parquet", "data": str(data)}
+                import base64
+                import tempfile
+                from pathlib import Path
+                try:
+                    from semantica.export import ParquetExporter
+                    exporter = ParquetExporter()
+                except ImportError as exc:
+                    log.warning("Parquet export unavailable: %s", exc)
+                    return {"error": f"Parquet export unavailable (pyarrow not installed): {exc}"}
+                kg_dict = graph.to_kg_dict()
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    base_path = Path(tmpdir) / "kg"
+                    exporter.export_knowledge_graph(kg_dict, base_path)
+                    # Collect the produced files and return them as base64
+                    files = {}
+                    for p in sorted(Path(tmpdir).glob("*.parquet")):
+                        files[p.name] = base64.b64encode(p.read_bytes()).decode("ascii")
+                if not files:
+                    return {"error": "Parquet export produced no files"}
+                return {"format": "parquet", "data": files,
+                        "encoding": "base64",
+                        "note": "Each value is a base64-encoded Parquet file."}
             except Exception as exc:
+                log.exception("Parquet export failed")
                 return {"error": f"Parquet export failed: {exc}"}
 
         # RDF formats
