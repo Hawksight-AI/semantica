@@ -96,3 +96,29 @@ def test_nested_endpoint_alias_skips_empty_id_and_uses_name():
     works_for = _object_property(ontology, "worksFor")
     assert works_for["domain"] == ["Person"]
     assert works_for["range"] == ["Organization"]
+
+
+def test_public_infer_properties_resolves_id_endpoints():
+    data = {
+        "entities": [
+            {"id": "p1", "type": "Person", "name": "Alice"},
+            {"id": "p2", "type": "Person", "name": "Bob"},
+            {"id": "o1", "type": "Organization", "name": "Acme"},
+            {"id": "o2", "type": "Organization", "name": "Beta"},
+        ],
+        "relationships": [
+            {"source_id": "p1", "target_id": "o1", "type": "works_for"},
+            {"source_id": "p2", "target_id": "o2", "type": "works_for"},
+        ],
+    }
+    generator = OntologyGenerator()
+    classes = generator.infer_classes(data)
+
+    works_for = next(
+        prop
+        for prop in generator.infer_properties(data, classes)
+        if prop["name"] == "worksFor"
+    )
+
+    assert works_for["domain"] == ["Person"]
+    assert works_for["range"] == ["Organization"]
