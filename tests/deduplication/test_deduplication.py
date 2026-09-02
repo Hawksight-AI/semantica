@@ -12,6 +12,7 @@ from semantica.deduplication.cluster_builder import ClusterBuilder
 from semantica.deduplication.registry import MethodRegistry
 from semantica.deduplication.config import DeduplicationConfig
 from semantica.deduplication.methods import get_deduplication_method
+from semantica.utils.types import Entity
 from semantica.utils.progress_tracker import ConsoleProgressDisplay
 
 class TestDeduplication(unittest.TestCase):
@@ -87,6 +88,85 @@ class TestDeduplication(unittest.TestCase):
         # One group should have at least 2 entities (the Apple ones)
         apple_group = next((g for g in groups if len(g.entities) >= 2), None)
         self.assertIsNotNone(apple_group)
+
+    def test_different_types_are_never_duplicates(self):
+        """Entities with different non-empty types must not merge (issue #1137)."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.4
+        )
+        entities = [
+            {"id": "e1", "type": "Person", "name": "Alice", "text": "Alice"},
+            {"id": "e2", "type": "Organization", "name": "Acme", "text": "Acme"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertEqual(
+            duplicates, [],
+            "Person 'Alice' and Organization 'Acme' must not be duplicate candidates",
+        )
+        # GraphBuilder with merge_entities=True must keep both entities
+        from semantica.kg import GraphBuilder
+        graph = GraphBuilder(merge_entities=True).build(
+            {"entities": entities, "relationships": []}
+        )
+        self.assertEqual(len(graph["entities"]), 2)
+
+    def test_same_type_same_name_still_merges(self):
+        """Type guard must not break legitimate dedup of same-type entities."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.4
+        )
+        entities = [
+            {"id": "e1", "type": "Person", "name": "Alice", "text": "Alice"},
+            {"id": "e2", "type": "Person", "name": "Alice", "text": "Alice"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertTrue(
+            duplicates, "Same-type same-name entities must still be detected as duplicates"
+        )
+
+    def test_untyped_same_name_still_merges(self):
+        """Entities with no type must retain previous behavior (merge on similarity)."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.4
+        )
+        entities = [
+            {"id": "x1", "name": "Apple"},
+            {"id": "x2", "name": "Apple"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertTrue(
+            duplicates, "Untyped same-name entities must still be detected as duplicates"
+        )
+
+    def test_entity_objects_different_types_not_duplicates(self):
+        """Entity objects expose their type via .type, not .label (issue #1137)."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.0
+        )
+        entities = [
+            Entity(id="e1", text="Alice", type="Person"),
+            Entity(id="e2", text="Acme", type="Organization"),
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertEqual(
+            duplicates, [],
+            "Entity objects with different types must never be detected as duplicates",
+        )
+
+    def test_zero_threshold_still_excludes_type_mismatch(self):
+        """Type mismatch must be excluded structurally, not just by confidence 0."""
+        detector = DuplicateDetector(
+            similarity_threshold=0.4, confidence_threshold=0.0
+        )
+        entities = [
+            {"id": "e1", "type": "Person", "name": "Alice", "text": "Alice"},
+            {"id": "e2", "type": "Organization", "name": "Acme", "text": "Acme"},
+        ]
+        duplicates = detector.detect_duplicates(entities)
+        self.assertEqual(
+            duplicates, [],
+            "Different-type candidates must be excluded even with confidence_threshold=0.0",
+        )
         
     def test_entity_merger(self):
         """Test entity merging."""
@@ -211,8 +291,8 @@ class TestDeduplication(unittest.TestCase):
 class TestProgressTrackerEncoding(unittest.TestCase):
     """Regression tests for issue #531 — Unicode crash on cp1252 Windows consoles."""
 
-    def _make_cp1252_stdout(self):
-        """Return a stdout-like object that raises UnicodeEncodeError for non-cp1252 chars."""
+    def _make_cp1252_stream(self):
+        """Return a stream that raises UnicodeEncodeError for non-cp1252 chars."""
         class CP1252Writer:
             encoding = "cp1252"
             def write(self, text):
@@ -224,39 +304,39 @@ class TestProgressTrackerEncoding(unittest.TestCase):
     def test_safe_write_does_not_crash_on_cp1252(self):
         """_safe_write must not raise UnicodeEncodeError on a cp1252 console."""
         display = ConsoleProgressDisplay()
-        orig = sys.stdout
-        sys.stdout = self._make_cp1252_stdout()
+        orig = sys.stderr
+        sys.stderr = self._make_cp1252_stream()
         try:
             display._safe_write("🧠 Semantica - 📊 Current Progress\n")
         except UnicodeEncodeError:
-            self.fail("_safe_write raised UnicodeEncodeError on cp1252 stdout")
+            self.fail("_safe_write raised UnicodeEncodeError on a cp1252 stream")
         finally:
-            sys.stdout = orig
+            sys.stderr = orig
 
     def test_update_pipeline_header_does_not_crash_on_cp1252(self):
         """update() pipeline header write must not crash on a cp1252 console (issue #531)."""
         from semantica.utils.progress_tracker import ProgressItem
         display = ConsoleProgressDisplay()
         display.use_emoji = True  # force emoji path to exercise the fixed branch
-        orig = sys.stdout
-        sys.stdout = self._make_cp1252_stdout()
+        orig = sys.stderr
+        sys.stderr = self._make_cp1252_stream()
         try:
             display._safe_write("🧠 Semantica - 📊 Current Progress\n")
             display._safe_write("=" * 150 + "\n")
         except UnicodeEncodeError:
             self.fail("Pipeline header write raised UnicodeEncodeError on cp1252 stdout")
         finally:
-            sys.stdout = orig
+            sys.stderr = orig
 
     def test_emoji_detection_disables_on_cp1252(self):
-        """ConsoleProgressDisplay should auto-disable emoji when stdout is cp1252."""
-        orig = sys.stdout
-        sys.stdout = self._make_cp1252_stdout()
+        """ConsoleProgressDisplay should auto-disable emoji when the progress stream is cp1252."""
+        orig = sys.stderr
+        sys.stderr = self._make_cp1252_stream()
         try:
             display = ConsoleProgressDisplay()
-            self.assertFalse(display.use_emoji, "use_emoji should be False on cp1252 stdout")
+            self.assertFalse(display.use_emoji, "use_emoji should be False on a cp1252 progress stream")
         finally:
-            sys.stdout = orig
+            sys.stderr = orig
 
 
 class TestResultLimiting(unittest.TestCase):

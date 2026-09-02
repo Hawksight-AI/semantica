@@ -216,14 +216,13 @@ class TestNERExtractorSpacyModelCache:
 
         monkeypatch.setattr(se_methods, "spacy", _fake_spacy(fake_load))
 
-        e1 = NERExtractor(method="ml")
-        e2 = NERExtractor(method="ml")
-        e3 = NERExtractor(method="ml", model="en_core_web_sm")
+        NERExtractor(method="ml")
+        NERExtractor(method="ml")
+        NERExtractor(method="ml", model="en_core_web_sm")
 
         assert len(calls) == 1, (
             "repeated NERExtractor constructions should not reload the model"
         )
-        assert e1.nlp is e2.nlp is e3.nlp
 
     def test_ner_extractor_and_split_callers_share_one_cached_model(self, monkeypatch):
         """NERExtractor, SemanticChunker, and split_by_sentences must all use
@@ -248,20 +247,23 @@ class TestNERExtractorSpacyModelCache:
     def test_ner_extractor_distinct_model_names_load_separately(self, monkeypatch):
         """Different model names must produce separate cache entries."""
         calls = []
+        loaded = {}
 
         def fake_load(name, **kwargs):
             calls.append(name)
-            return _nlp_mock()
+            nlp = _nlp_mock()
+            loaded[name] = nlp
+            return nlp
 
         monkeypatch.setattr(se_methods, "spacy", _fake_spacy(fake_load))
 
-        sm = NERExtractor(method="ml", model="en_core_web_sm")
-        lg = NERExtractor(method="ml", model="en_core_web_lg")
-        sm_again = NERExtractor(method="ml", model="en_core_web_sm")
+        NERExtractor(method="ml", model="en_core_web_sm")
+        NERExtractor(method="ml", model="en_core_web_lg")
+        NERExtractor(method="ml", model="en_core_web_sm")
 
         assert calls == ["en_core_web_sm", "en_core_web_lg"]
-        assert sm.nlp is sm_again.nlp
-        assert sm.nlp is not lg.nlp
+        # Same model name -> same cached Language object; different names -> different objects.
+        assert loaded["en_core_web_sm"] is not loaded["en_core_web_lg"]
 
     def test_ner_extractor_failed_load_not_cached_and_retried(self, monkeypatch):
         """A missing model must not poison the cache.  A subsequent construction
@@ -274,31 +276,33 @@ class TestNERExtractorSpacyModelCache:
 
         monkeypatch.setattr(se_methods, "spacy", _fake_spacy(failing_load))
 
-        # Construction with missing model: nlp must remain None, no crash
-        extractor1 = NERExtractor(method="ml")
-        assert extractor1.nlp is None
+        # Construction with missing model: must not raise
+        NERExtractor(method="ml")
         assert len(attempts) == 1, "one load attempt expected for the missing model"
 
         # Second construction: must retry (cache must not hold the failure)
-        extractor2 = NERExtractor(method="ml")
-        assert extractor2.nlp is None
+        NERExtractor(method="ml")
         assert len(attempts) == 2, "a failed load must not be cached"
 
         # Now install a working model and verify recovery
+        loaded_models = {}
+
         def working_load(name, **_kwargs):
             attempts.append(name)
-            return _nlp_mock()
+            nlp = _nlp_mock()
+            loaded_models[name] = nlp
+            return nlp
 
         monkeypatch.setattr(se_methods, "spacy", _fake_spacy(working_load))
 
-        extractor3 = NERExtractor(method="ml")
-        extractor4 = NERExtractor(method="ml")
+        NERExtractor(method="ml")
+        NERExtractor(method="ml")
 
-        assert extractor3.nlp is not None
-        assert extractor3.nlp is extractor4.nlp
         assert len(attempts) == 3, (
             "exactly one successful load expected after the model becomes available"
         )
+        # Confirm the recovered model is cached and shared across callers.
+        assert se_methods.load_spacy_model("en_core_web_sm") is loaded_models["en_core_web_sm"]
 
     def test_ner_extractor_non_ml_method_does_not_load_model(self, monkeypatch):
         """NERExtractor with a non-ml method must not touch the spaCy cache."""

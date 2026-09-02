@@ -1,0 +1,20 @@
+# Drop this in as .gitlab-ci.yml in your own project.
+semantica-test:
+  image: python:3.11-slim
+  cache:
+    paths:
+      - .cache/pip
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  script:
+    - pip install --upgrade pip
+    - pip install semantica
+    # Install your own project's dependencies however your project declares
+    # them - adjust this to match, e.g. `pip install -e .` for pyproject.toml
+    # / setup.cfg, or `poetry install`.
+    - if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - python -c "import semantica; print('semantica', semantica.__version__)"
+    - pytest
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'

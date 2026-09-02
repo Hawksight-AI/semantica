@@ -5,8 +5,8 @@
   "author": {
     "name": "Semantica Contributors"
   },
-  "homepage": "https://github.com/Hawksight-AI/semantica",
-  "repository": "https://github.com/Hawksight-AI/semantica",
+  "homepage": "https://github.com/semantica-agi/semantica",
+  "repository": "https://github.com/semantica-agi/semantica",
   "license": "MIT",
   "keywords": [
     "semantica",
@@ -25,5 +25,9 @@
     "mcp"
   ],
   "skills": "./skills",
-  "agents": "./agents"
+  "agents": [
+    "./agents/decision-advisor.md",
+    "./agents/explainability.md",
+    "./agents/kg-assistant.md"
+  ]
 }

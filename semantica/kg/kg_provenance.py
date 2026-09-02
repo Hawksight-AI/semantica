@@ -54,9 +54,10 @@ Version: 1.0.0
 """
 
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 import uuid
 import time
+
+from ..utils.helpers import utc_now_iso
 
 
 class GraphBuilderWithProvenance:
@@ -103,7 +104,7 @@ class GraphBuilderWithProvenance:
     
     def build(self, sources, **kwargs):
         """Build graph with provenance tracking."""
-        activity_started_at_time = datetime.utcnow().isoformat()
+        activity_started_at_time = utc_now_iso()
         # Track the build operation (recorded before the build runs, so it
         # has no end time yet — this is the "in progress" marker).
         if self.provenance and self._prov_manager:
@@ -124,7 +125,7 @@ class GraphBuilderWithProvenance:
             )
 
         result = self._builder.build(sources, **kwargs)
-        activity_ended_at_time = datetime.utcnow().isoformat()
+        activity_ended_at_time = utc_now_iso()
 
         # Track individual entities and relationships if available
         if self.provenance and self._prov_manager and hasattr(result, 'get'):
@@ -180,7 +181,7 @@ class GraphBuilderWithProvenance:
 
     def build_single_source(self, kg_data, **kwargs):
         """Build graph from single source with provenance tracking."""
-        activity_started_at_time = datetime.utcnow().isoformat()
+        activity_started_at_time = utc_now_iso()
         # Track the build operation (recorded before the build runs, so it
         # has no end time yet — this is the "in progress" marker).
         if self.provenance and self._prov_manager:
@@ -200,7 +201,7 @@ class GraphBuilderWithProvenance:
             )
 
         result = self._builder.build_single_source(kg_data, **kwargs)
-        activity_ended_at_time = datetime.utcnow().isoformat()
+        activity_ended_at_time = utc_now_iso()
 
         # Track entities and relationships if available
         if self.provenance and self._prov_manager and isinstance(result, dict):

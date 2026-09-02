@@ -35,6 +35,8 @@ Essential guides to master the Semantica framework.
 - **[Vector Store](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/13_Vector_Store.ipynb)** — Setting up vector stores for similarity search and retrieval. *Intermediate*
 - **[Graph Store](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Graph_Store.ipynb)** — Persisting knowledge graphs in Neo4j or FalkorDB. Topics: Neo4j, Cypher, Persistence · *Intermediate*
 - **[Ontology](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb)** — Defining domain schemas and ontologies to structure your data. Topics: OWL, RDF, Schema Design · *Intermediate*
+- **[Seed Data](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/25_Seed_Data.ipynb)** — Bootstrapping a knowledge graph from trusted CSV, JSON, database, and API sources before extraction runs. Topics: SeedDataManager, Foundation Graphs · *Intermediate*
+- **[Semantic Layer Basics](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/26_Semantic_Layer_Basics.ipynb)** — Capstone tutorial that combines a knowledge graph, generated ontology, explicit mappings, ontology-aligned RDF, and a SPARQL query. Topics: Semantic Layer, Ontology Mapping, Oxigraph, SPARQL · *Intermediate*
 
 
 ## Advanced Concepts
@@ -50,6 +52,9 @@ Deep dive into advanced features, customization, and complex workflows.
 - **[Multi-Source Integration](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb)** — Merging data from disparate sources into a unified graph. Topics: Entity Resolution, Merging, Fusion · *Advanced*
 - **[Reasoning and Inference](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/08_Reasoning_and_Inference.ipynb)** — Using logical reasoning to infer new knowledge from existing facts. Topics: Logic Rules, Inference Engines · *Advanced*
 - **[Temporal Knowledge Graphs](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/10_Temporal_Knowledge_Graphs.ipynb)** — Modeling and querying data that changes over time. Topics: Time Series, Temporal Logic, Allen Algebra · *Advanced*
+- **[Provenance Tracking](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/22_Provenance_Tracking.ipynb)** — Audit-grade, W3C PROV-O-aligned tracking of where every entity, relationship, and chunk came from. Topics: PROV-O, Lineage, Checksums, Invalidation · *Advanced*
+- **[Reasoning Module](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/23_Reasoning.ipynb)** — Deriving new knowledge from existing facts with forward chaining, backward chaining, and Datalog strategies. Topics: Reasoner, Datalog, Explanations · *Advanced*
+- **[Change Management](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/24_Change_Management.ipynb)** — Versioning, audit trails, and data-integrity checks for knowledge graphs and ontologies. Topics: ChangeLogEntry, Version Storage, Data Integrity · *Advanced*
 
 
 ## How to Run
@@ -80,6 +85,6 @@ Deep dive into advanced features, customization, and complex workflows.
   You can also run the cookbook using Docker:
 
   ```bash
-  docker run -p 8888:8888 hawksight/semantica-cookbook
+  docker run -p 8888:8888 semantica/semantica-cookbook
   ```
 </Tip>

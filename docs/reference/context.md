@@ -25,6 +25,7 @@ icon: "brain"
 | `DecisionRecorder` | Record decisions with embeddings, causal chains, and metadata |
 | `PolicyEngine` | Policy management: `add_policy()`, `check_compliance()`, `get_applicable_policies()` |
 | `CausalChainAnalyzer` | Trace how decisions influenced each other: `get_causal_chain(decision_id)` |
+| `ErasureCoordinator` | Erase an entity across graph, memory, and vector store, returning an auditable `ErasureReceipt` |
 
 
 ## What You Get
@@ -435,8 +436,8 @@ print("Nodes: {}, Edges: {}".format(stats["node_count"], stats["edge_count"]))
 | `query(query, skip, limit)` | `List[Dict]` | Full-text search over node content |
 | `stats()` | `Dict` | Node/edge counts, type breakdowns, graph density |
 | `density()` | `float` | Graph density score |
-| `save_to_file(path)` | `None` | Persist graph to JSON |
-| `load_from_file(path)` | `None` | Load graph from JSON |
+| `save_to_file(path, format="json")` | `None` | Persist graph as JSON or a Markdown directory |
+| `load_from_file(path, format="json")` | `None` | Replace graph state from JSON or a Markdown directory |
 | `build_from_conversations(conversations, link_entities)` | `Dict` | Build graph from conversation data |
 | `link_graph(other_graph, source_node_id, target_node_id, link_type)` | `str` | Create cross-graph navigation link; returns `link_id` |
 | `navigate_to(link_id)` | `Tuple` | Follow a cross-graph link to `(target_graph, target_node_id)` |
@@ -625,11 +626,107 @@ malformed or duplicate fields before changing memory, and re-importing unchanged
 files is idempotent. Memory-local `entities` and `relationships` are preserved as
 provenance but are not applied to `ContextGraph` by Markdown import. Use a dedicated
 export directory: matching files are overwritten, but unrelated or stale Markdown
-files are not deleted automatically. Export refuses to overwrite symbolic links and
-uses atomic file replacement. Timestamp offsets are preserved in Markdown and
+files are not deleted automatically. Export refuses to overwrite filesystem links and
+uses atomic file replacement; import also refuses symlinks, Windows directory
+junctions, and other Windows reparse points.
+Timestamp offsets are preserved in Markdown and
 normalized to UTC only for comparisons, so aware and local-naive records can be
 queried together safely. Vector-store writes are deferred until the in-memory import
 commits; adapter synchronization remains best-effort and logs failures.
+
+
+## ErasureCoordinator
+
+`ContextGraph.purge_node()` is scoped to one graph: the node is removed and a
+tombstone is written, but the same content can still be live as an `AgentMemory`
+item and as an embedding in the vector store. `ErasureCoordinator` drives the
+cascade across every bound store and returns an `ErasureReceipt` recording what
+each one reported.
+
+```python
+from semantica.context import AgentMemory, ContextGraph, ErasureCoordinator
+
+coordinator = ErasureCoordinator(graph=graph, memory=memory)
+
+receipt = coordinator.erase_entity(
+    "customer-4471",
+    reason="GDPR Art. 17 request #882",
+)
+
+if not receipt.complete:
+    # These stores may still hold the entity; handle them out of band.
+    print(receipt.incomplete_stores)
+```
+
+<Warning>
+Check the receipt — the call returning is not proof the data is gone. FAISS,
+Milvus, and Weaviate expose no delete method, so erasure cannot be completed on
+those backends today; the receipt reports `unsupported` rather than a success it
+did not achieve.
+</Warning>
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `graph` | `ContextGraph` | `None` | Anything exposing `purge_node()` |
+| `memory` | `AgentMemory` | `None` | Anything exposing `find_by_entity()` and `batch_delete()` |
+| `vector_store` | `VectorStore` | `memory.vector_store` | Store holding entity-keyed embeddings; pass `False` to disable the leg |
+
+At least one store is required; a store that is not supplied reports
+`not_configured` rather than being silently skipped.
+
+### Methods
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `erase_entity(entity_id, reason, at, vector_ids)` | `ErasureReceipt` | Erase one entity from every bound store |
+| `erase_entities(entity_ids, reason, at)` | `List[ErasureReceipt]` | One receipt per entity, in order; one failure does not stop the rest |
+
+### Store Statuses
+
+| Status | Meaning |
+| :--- | :--- |
+| `erased` | Reached, data removed. On the vectors leg this means the store accepted the delete for the ids given — backends offer no portable existence check, so it is not a count of embeddings that were really there |
+| `not_found` | Reached, held nothing for this entity |
+| `not_configured` | No such store was bound — normal, not a failure |
+| `unsupported` | The store cannot delete at all; retrying will not help |
+| `failed` | The store was reached and the deletion did not succeed |
+
+### ErasureReceipt
+
+| Member | Type | Description |
+| :--- | :--- | :--- |
+| `entity_id` | `str` | Entity the erasure was requested for |
+| `reason` | `Optional[str]` | Recorded in the receipt and the graph tombstone |
+| `erased_at` | `str` | ISO-8601; matches the tombstone's `purged_at` |
+| `stores` | `Dict[str, Dict]` | Per-store outcome keyed `vectors`, `memory`, `graph` |
+| `complete` | `bool` | `False` when any store reports `unsupported` or `failed` |
+| `incomplete_stores` | `List[str]` | Stores that may still hold the entity's data |
+| `to_dict()` | `Dict` | Serialized receipt, safe to persist as an audit record |
+
+```python
+receipt.to_dict()
+# {
+#   "entity_id": "customer-4471",
+#   "reason": "GDPR Art. 17 request #882",
+#   "erased_at": "2026-08-16T09:03:36.813220",
+#   "complete": False,
+#   "stores": {
+#     "vectors": {"status": "unsupported", "backend": "faiss",
+#                 "detail": "backend exposes no delete()/delete_vectors(); ..."},
+#     "memory":  {"status": "erased", "items": 14},
+#     "graph":   {"status": "erased", "nodes": 1, "edges": 3},
+#   },
+# }
+```
+
+Erasure runs outward-in — vectors, then memory, then the graph. The tombstone is
+the durable attestation that an erasure happened, so it is written last: a crash
+mid-cascade leaves the node present and the receipt incomplete, rather than a
+tombstone claiming more than actually happened. A store that raises is recorded
+as `failed` and the remaining stores are still erased. Erasing the same entity
+twice returns a receipt saying there was nothing left to do rather than raising.
 
 
 ## PolicyEngine

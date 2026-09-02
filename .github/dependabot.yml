@@ -101,6 +101,29 @@ updates:
     allow:
       - dependency-type: "production"
 
+  # Explorer frontend (npm)
+  - package-ecosystem: "npm"
+    directory: "/explorer"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:30"  # 3:30 AM UTC (9:00 AM IST)
+    open-pull-requests-limit: 10
+    reviewers:
+      - "KaifAhmad1"
+    assignees:
+      - "KaifAhmad1"
+    commit-message:
+      prefix: "security"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "security"
+    allow:
+      - dependency-type: "production"
+      - dependency-type: "development"
+
   # Docker dependencies (if you use Docker)
   - package-ecosystem: "docker"
     directory: "/"
