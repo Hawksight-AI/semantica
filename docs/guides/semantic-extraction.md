@@ -266,13 +266,15 @@ tri = TripletExtractor(
     llm_model="claude-sonnet-5",
     include_temporal=True,       # attach time context to triplets when available
     include_provenance=True,     # embed source document reference in each triplet
+    validate=False,              # return raw triplets; validate explicitly below
 )
 
 # Feed in the entities and relations you already extracted — the extractor
-# uses them to constrain and validate what it produces
+# uses them to constrain what it produces
 triplets = tri.extract_triplets(report, entities, relations)
 
 # Filter malformed triplets before serialisation
+# (extract_triplets validates automatically unless validate=False, as above)
 valid = tri.validate_triplets(triplets)
 print("Valid: {}/{}".format(len(valid), len(triplets)))
 
@@ -351,6 +353,7 @@ def ingest_intel_report(
         llm_model="claude-sonnet-5",
         include_temporal=True,
         include_provenance=True,
+        validate=False,          # keep raw triplets so the summary can report rejections
     )
     triplets = tri.extract_triplets(text, entities, relations)
     valid    = tri.validate_triplets(triplets)
