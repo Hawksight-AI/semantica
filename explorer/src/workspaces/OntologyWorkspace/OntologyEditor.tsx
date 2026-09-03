@@ -27,7 +27,6 @@ import {
 import { loadOntologyEntityOwner, loadOntologyGraph } from "./api";
 import type { OntologyGraphEdge, OntologyGraphNode } from "./api";
 import {
-  classifyNodeType,
   inferOntologyUri,
   isEditableEntityType,
   ONTOLOGY_MINIMAP_THEME,
@@ -153,8 +152,17 @@ function nodeLabel(node: OntologyGraphNode): string {
   return trimmed.split("#").pop() || trimmed.split("/").pop() || node.id;
 }
 
+// The backend's remaining kinds (concept, scheme, individual) have no editor
+// affordances, so they collapse into the read-only "external" kind.
 function classifyEditorNode(node: OntologyGraphNode): OntologyNodeData["entityType"] {
-  return classifyNodeType(node.type);
+  switch (node.entity_type) {
+    case "ontology":
+    case "class":
+    case "property":
+      return node.entity_type;
+    default:
+      return "external";
+  }
 }
 
 function layoutEditorNodes(inputNodes: OntologyNode[]): OntologyNode[] {

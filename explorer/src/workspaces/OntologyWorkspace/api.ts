@@ -12,6 +12,7 @@ import type {
 export type OntologyGraphNode = {
   id: string;
   type: string;
+  entity_type?: string;
   content?: string;
   properties?: Record<string, unknown>;
 };

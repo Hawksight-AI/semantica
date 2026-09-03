@@ -156,6 +156,29 @@ def test_ontology_graph_returns_editable_schema_nodes_and_edges(client):
     )
 
 
+def test_ontology_graph_nodes_carry_entity_type_for_compact_and_full_iri_types(client):
+    graph = client.app.state.session.graph
+    full_iri_class = "http://example.org/onto-a#Organization"
+    graph.add_node(
+        full_iri_class,
+        node_type="http://www.w3.org/2002/07/owl#Class",
+        content="Organization",
+        scheme_uri="http://example.org/onto-a",
+    )
+
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 200
+    entity_types = {node["id"]: node["entity_type"] for node in response.json()["nodes"]}
+    assert entity_types["http://example.org/onto-a"] == "ontology"
+    assert entity_types["http://example.org/onto-a#Person"] == "class"
+    assert entity_types[full_iri_class] == "class"
+    assert entity_types["http://example.org/onto-a#name"] == "property"
+
+
 def test_ontology_graph_rejects_unregistered_namespace(client):
     response = client.get(
         "/api/ontology/graph",
