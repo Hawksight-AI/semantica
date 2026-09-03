@@ -54,11 +54,11 @@ Semantica works alongside these frameworks, not against them.
 
 <Accordion title="Does Semantica explain an LLM's internal reasoning or chain-of-thought?" icon="triangle-exclamation">
 
-No. This is **system-level explainability, not foundation-model explainability**. Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system.
+No. This is **system-level explainability, not foundation-model explainability**. Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model. Its internal reasoning or chain-of-thought stays opaque, as it does for any external system.
 
 What Semantica explains is *outside* the model: what context and data were used, what decision was produced, the provenance behind it, the relevant relationships, the policies applied, and the resulting decision trail.
 
-In short: Semantica explains and audits *what the AI system did* — not the foundation model's private internal reasoning.
+In short, Semantica explains and audits *what the AI system did*, not the foundation model's private internal reasoning.
 
 </Accordion>
 
@@ -348,6 +348,6 @@ set PYTHONIOENCODING=utf-8
 
 ## Support
 
-- [Discord](https://discord.gg/sV34vps5hH) — Community chat and live support.
-- [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — Bug reports and feature requests.
-- [Contributing](/contributing-guide) — Help improve Semantica.
+- [Discord](https://discord.gg/sV34vps5hH): community chat and live support.
+- [GitHub Issues](https://github.com/semantica-agi/semantica/issues): bug reports and feature requests.
+- [Contributing](/contributing-guide): help improve Semantica.
