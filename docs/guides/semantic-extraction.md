@@ -71,7 +71,7 @@ This pipeline transforms documents like "APT29 deployed HAMMERTOSS malware targe
 `semantica.semantic_extract` turns unstructured text into structured graph-ready output: it identifies named entities, extracts relationships between them, detects time-anchored events, resolves coreferences, and serialises everything as RDF triplets. Use it to populate a `ContextGraph` from raw documents — intelligence reports, clinical notes, regulatory filings, or any free-text corpus.
 
 <Info>
-  Extracted entities and relationships feed into `ContextGraph` via `AgentContext.store()`. For how they are attributed back to source documents, see the [Provenance Guide](provenance). For how the populated graph is queried and traversed, see [Context Graphs](context-graphs).
+  Extracted entities and relationships feed into `ContextGraph` via `AgentContext.store()`. For how they are attributed back to source documents, see the [Provenance Guide](provenance). For how the populated graph is queried and traversed, see [Context Graphs](/guides/context-graphs).
 </Info>
 
 ## Step 1 — Named Entity Recognition: who and what is in the text
@@ -664,8 +664,8 @@ The fallback behaviour is automatic: if the primary method returns an empty list
 ## Related Guides
 
 - [Provenance Guide](provenance) — track every extracted entity and chunk back to its source document
-- [Agent Memory Guide](agent-memory) — store extracted knowledge as searchable agent memories with graph enrichment
-- [Context Graphs Guide](context-graphs) — how extracted entities populate `ContextGraph` nodes and edges
-- [GraphRAG Guide](graphrag) — retrieve facts from the populated graph to ground LLM responses
+- [Agent Memory Guide](/guides/agent-memory) — store extracted knowledge as searchable agent memories with graph enrichment
+- [Context Graphs Guide](/guides/context-graphs) — how extracted entities populate `ContextGraph` nodes and edges
+- [GraphRAG Guide](/guides/graphrag) — retrieve facts from the populated graph to ground LLM responses
 - [Reasoning Guide](reasoning) — derive new facts, run SPARQL queries, and apply inference rules over the extracted graph
 - [Semantic Extract Reference](../reference/semantic_extract) — full API for all extractor classes, providers, and validators

@@ -242,6 +242,107 @@ class TestGraphAnalyzer(unittest.TestCase):
             self.mock_connectivity.analyze_connectivity.assert_called_once()
             mock_metrics.assert_called_once()
 
+class TestAnalyzeTemporalEvolutionMutableDefault(unittest.TestCase):
+    """Regression tests for fix: replace mutable default argument in
+    GraphAnalyzer.analyze_temporal_evolution (metrics=[...] -> None).
+
+    TemporalGraphQuery is imported lazily inside the method body
+    (``from .temporal_query import TemporalGraphQuery``), so it is patched
+    at its definition site: ``semantica.kg.temporal_query.TemporalGraphQuery``.
+    """
+
+    def setUp(self):
+        self.mock_tracker_patcher = patch("semantica.kg.graph_analyzer.get_progress_tracker")
+        self.mock_get_tracker = self.mock_tracker_patcher.start()
+        self.mock_get_tracker.return_value = MagicMock()
+
+        self.mock_centrality_patcher = patch("semantica.kg.graph_analyzer.CentralityCalculator")
+        self.mock_centrality_patcher.start()
+
+        self.mock_community_patcher = patch("semantica.kg.graph_analyzer.CommunityDetector")
+        self.mock_community_patcher.start()
+
+        self.mock_connectivity_patcher = patch("semantica.kg.graph_analyzer.ConnectivityAnalyzer")
+        self.mock_connectivity_patcher.start()
+
+        # TemporalGraphQuery is imported *inside* the method body, so patch it
+        # at the definition module rather than at the caller module.
+        self.mock_tq_patcher = patch(
+            "semantica.kg.temporal_query.TemporalGraphQuery", autospec=False
+        )
+        mock_tq_cls = self.mock_tq_patcher.start()
+        self.mock_tq = MagicMock()
+        self.mock_tq.analyze_evolution.return_value = {"snapshots": []}
+        mock_tq_cls.return_value = self.mock_tq
+
+    def tearDown(self):
+        patch.stopall()
+
+    def _make_analyzer(self):
+        return GraphAnalyzer()
+
+    def test_default_metrics_value_is_canonical(self):
+        """When metrics=None, the four canonical metric names must be used."""
+        analyzer = self._make_analyzer()
+        graph = {"entities": [], "relationships": []}
+        result = analyzer.analyze_temporal_evolution(graph)
+
+        self.assertEqual(
+            sorted(result["metrics_tracked"]),
+            sorted(["node_count", "edge_count", "density", "communities"]),
+        )
+
+    def test_default_metrics_independent_across_calls(self):
+        """Mutating the returned metrics_tracked list must not affect the next call."""
+        analyzer = self._make_analyzer()
+        graph = {"entities": [], "relationships": []}
+
+        result1 = analyzer.analyze_temporal_evolution(graph)
+        # Mutate the returned list in-place.
+        result1["metrics_tracked"].append("MUTATED")
+
+        result2 = analyzer.analyze_temporal_evolution(graph)
+        self.assertNotIn(
+            "MUTATED",
+            result2["metrics_tracked"],
+            "Mutable default leaked: 'MUTATED' appeared in the second call's metrics list",
+        )
+
+    def test_result_contains_metrics_tracked_key(self):
+        """Return value must include 'metrics_tracked' with the default list."""
+        analyzer = self._make_analyzer()
+        graph = {"entities": [], "relationships": []}
+        result = analyzer.analyze_temporal_evolution(graph)
+
+        self.assertIn("metrics_tracked", result)
+        self.assertEqual(
+            sorted(result["metrics_tracked"]),
+            sorted(["node_count", "edge_count", "density", "communities"]),
+        )
+
+    def test_explicit_metrics_override_is_respected(self):
+        """Explicitly passed metrics must be forwarded and reflected in the return value."""
+        analyzer = self._make_analyzer()
+        graph = {"entities": [], "relationships": []}
+        custom = ["node_count"]
+        result = analyzer.analyze_temporal_evolution(graph, metrics=custom)
+
+        self.assertEqual(result["metrics_tracked"], custom)
+
+    def test_explicit_metrics_mutation_does_not_affect_default(self):
+        """Mutating the list passed as an explicit argument must not corrupt
+        a subsequent default call."""
+        analyzer = self._make_analyzer()
+        graph = {"entities": [], "relationships": []}
+
+        explicit = ["node_count"]
+        analyzer.analyze_temporal_evolution(graph, metrics=explicit)
+        explicit.append("MUTATED")
+
+        result = analyzer.analyze_temporal_evolution(graph)
+        self.assertNotIn("MUTATED", result["metrics_tracked"])
+
+
 class TestTemporalGraphQuery(unittest.TestCase):
     def setUp(self):
         self.mock_tracker_patcher = patch("semantica.utils.progress_tracker.get_progress_tracker")

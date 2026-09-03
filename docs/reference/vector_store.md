@@ -588,7 +588,7 @@ store.create_index(index_type="pq", metric="L2", m=8)
   </Tab>
 </Tabs>
 
-- [Embeddings](embeddings) — Generate the vectors stored here.
-- [Context](context) — AgentContext uses VectorStore for memory retrieval.
-- [Split](split) — Chunk documents before embedding and storing.
+- [Embeddings](/reference/embeddings) — Generate the vectors stored here.
+- [Context](/reference/context) — AgentContext uses VectorStore for memory retrieval.
+- [Split](/reference/split) — Chunk documents before embedding and storing.
 - [Ingest](ingest) — Ingest documents before embedding and storing.

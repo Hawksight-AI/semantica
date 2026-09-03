@@ -439,7 +439,7 @@ extractor = NERExtractor(
 )
 ```
 
-- [Semantic Extract](semantic_extract) — Use LLMs for NER and relation extraction.
+- [Semantic Extract](/reference/semantic_extract) — Use LLMs for NER and relation extraction.
 - [Agno Integration](../integrations/agno) — LLM providers in Agno multi-agent teams.
 - [Reasoning](reasoning) — LLM-backed deductive and abductive reasoning.
-- [Context](context) — GraphRAG uses LLMs for reasoning over knowledge graphs.
+- [Context](/reference/context) — GraphRAG uses LLMs for reasoning over knowledge graphs.

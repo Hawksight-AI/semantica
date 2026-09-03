@@ -95,6 +95,18 @@ const navItems: NavItem[] = [
   { id: 'ontology-hub', label: 'Ontology Hub', hint: 'Schema governance, registry, and vocabulary management', icon: GitMerge },
 ];
 
+function readInitialWorkspace(): WorkspaceId {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("ontologyTab") || params.has("ontologyEntity")) {
+      return "ontology-hub";
+    }
+  } catch {
+    // Default to the welcome screen when URL state is unavailable.
+  }
+  return "welcome";
+}
+
 const shellStyles = `
   :root {
     --app-bg: #07111f;
@@ -1775,7 +1787,7 @@ function WelcomeScreen({
 }
 
 export default function App() {
-  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('welcome');
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(readInitialWorkspace);
   const [exploreView, setExploreView] = useState<ExploreView>('graph');
   const [analyzeView, setAnalyzeView] = useState<AnalyzeView>('reasoning');
   const [enrichView, setEnrichView] = useState<EnrichView>('import');

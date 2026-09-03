@@ -109,12 +109,12 @@ def my_ingestor(source):
 method_registry.register("file", "my_format", my_ingestor)
 ```
 
-See [Architecture](architecture#extension-points) for the full extension guide.
+See [Architecture](/architecture#extension-points) for the full extension guide.
 
 
 ## How to Contribute
 
-- [Contributing Guide](contributing-guide) — Submit code, documentation, tests, or cookbook notebooks.
+- [Contributing Guide](/contributing-guide) — Submit code, documentation, tests, or cookbook notebooks.
 - [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — Report bugs, request features, or propose integrations.
 - [Discord](https://discord.gg/sV34vps5hH) — Share what you're building with the community.
 - [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions) — Long-form questions, design discussions, and ideas.

@@ -453,4 +453,4 @@ class InvestigationStep:
 - [Deduplication](deduplication) — Resolve duplicate entities before conflict detection.
 - [Ontology](ontology) — Logical conflicts use SHACL shapes and ontology axioms.
 - [Provenance](provenance) — Track which source each conflicting fact came from.
-- [Knowledge Graph](kg) — The graph being checked for conflicts.
+- [Knowledge Graph](/reference/kg) — The graph being checked for conflicts.

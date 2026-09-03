@@ -50,7 +50,7 @@ A context graph is a property graph that stores entities as **nodes** and relati
 - Cases where setup complexity exceeds the relationship complexity
 
 <Info>
-  ContextGraph is an **in-memory data structure**. All nodes, edges, and metadata are stored in Python dictionaries and lists. For standalone graphs, persist state with `save_to_file()`. When using `AgentContext`, call `AgentContext.save()` instead — it saves the graph, the FAISS vector index, and memory in one step. For analytical operations on top of a populated graph — centrality rankings, community detection, node embeddings, link prediction — see the [Graph Analytics guide](graph-analytics). For recording and querying decisions stored as nodes, see the [Decision Intelligence guide](decision-intelligence).
+  ContextGraph is an **in-memory data structure**. All nodes, edges, and metadata are stored in Python dictionaries and lists. For standalone graphs, persist state with `save_to_file()`. When using `AgentContext`, call `AgentContext.save()` instead — it saves the graph, the FAISS vector index, and memory in one step. For analytical operations on top of a populated graph — centrality rankings, community detection, node embeddings, link prediction — see the [Graph Analytics guide](/guides/graph-analytics). For recording and querying decisions stored as nodes, see the [Decision Intelligence guide](/guides/decision-intelligence).
 </Info>
 
 ## Constructing the Graph
@@ -704,8 +704,8 @@ for n in stress_reach:
 
 ## Related Guides
 
-- [Graph Analytics](graph-analytics) — centrality rankings, community detection, node embeddings, and link prediction on a populated `ContextGraph`
-- [Decision Intelligence](decision-intelligence) — recording decisions as typed nodes, causal chain analysis, precedent search, and policy enforcement
+- [Graph Analytics](/guides/graph-analytics) — centrality rankings, community detection, node embeddings, and link prediction on a populated `ContextGraph`
+- [Decision Intelligence](/guides/decision-intelligence) — recording decisions as typed nodes, causal chain analysis, precedent search, and policy enforcement
 - [Ingest](ingest) — loading data from PDFs, APIs, databases, STIX bundles, and RSS feeds into the graph
 - [Deduplication](deduplication) — detecting and merging near-duplicate nodes before insertion to prevent graph fragmentation
 - [Reasoning](reasoning) — temporal interval algebra (Allen relations), forward/backward chaining, and SPARQL over the knowledge graph

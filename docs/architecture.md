@@ -185,7 +185,7 @@ Centralized `ConfigManager` with environment variable overrides. No magic defaul
 | **Deduplication v2** | `blocking_v2`, `hybrid_v2`, `semantic_v2`: up to 7x faster than v1 |
 | **Indexed search** | Explorer search at 0.004ms on 118k nodes (v0.5.0) |
 
-- [Modules](modules) — Full module documentation with code examples.
-- [Learning More](learning-more) — Configuration reference, performance guide, and troubleshooting.
-- [Pipeline Reference](reference/pipeline) — Pipeline orchestration, workers, and retry policies.
-- [Core Reference](reference/core) — Framework lifecycle, plugin registry, and configuration.
+- [Modules](/modules) — Full module documentation with code examples.
+- [Learning More](/learning-more) — Configuration reference, performance guide, and troubleshooting.
+- [Pipeline Reference](/reference/pipeline) — Pipeline orchestration, workers, and retry policies.
+- [Core Reference](/reference/core) — Framework lifecycle, plugin registry, and configuration.

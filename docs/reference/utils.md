@@ -222,5 +222,5 @@ from semantica.utils import read_json_file
 config = read_json_file("config.json")
 ```
 
-- [Core](core) — Framework orchestration that uses Utils internally.
+- [Core](/reference/core) — Framework orchestration that uses Utils internally.
 - [Pipeline](pipeline) — Uses ProgressTracker for per-step tracking.

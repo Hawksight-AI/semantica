@@ -85,5 +85,5 @@ All contributors are expected to follow the [Contributor Covenant Code of Conduc
 - [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions)
 - [Discord](https://discord.gg/sV34vps5hH)
 
-- [Community](community) — Community guidelines and values.
-- [Governance](governance) — How decisions are made and the project is run.
+- [Community](/community) — Community guidelines and values.
+- [Governance](/governance) — How decisions are made and the project is run.

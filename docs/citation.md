@@ -48,5 +48,5 @@ Published research using Semantica? [Let us know](https://github.com/semantica-a
 
 ## See Also
 
-- [License](project-license) — MIT License details.
-- [Community](community) — Connect with the Semantica community.
+- [License](/project-license) — MIT License details.
+- [Community](/community) — Connect with the Semantica community.

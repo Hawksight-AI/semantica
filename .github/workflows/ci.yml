@@ -12,13 +12,63 @@ on:
       - '**/*.md'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'docs_check.py'
-      - '**/*.md'
 
 jobs:
+  # Detect whether this PR touches any source files (non-docs/non-markdown).
+  # The result drives the `build` job's `if:` condition so that:
+  #   - docs-only PRs: `build` is skipped (satisfies the required check).
+  #   - code PRs:      `build` runs exactly as before.
+  # Push events (to main) keep their own paths-ignore above and never reach
+  # this job, so the push optimization is unaffected.
+  changes:
+    runs-on: ubuntu-latest
+    # Only needed for pull_request events; push events are pre-filtered above.
+    if: github.event_name == 'pull_request'
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Fetch enough history to compute the merge base against the PR base.
+          fetch-depth: 0
+      - name: Check for source changes
+        id: filter
+        run: |
+          # List files changed in this PR relative to the true merge base.
+          # Using three-dot merge-base diff so changes on the base branch that
+          # are not part of this PR do not appear in the file list.
+          # If every changed file matches docs/** or *.md (any depth) or
+          # docs_check.py, this is a docs-only PR and src=false; otherwise
+          # src=true.
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          MERGE_BASE=$(git merge-base "$BASE" "$HEAD")
+          CHANGED=$(git diff --name-only "$MERGE_BASE" "$HEAD")
+          echo "Changed files:"
+          echo "$CHANGED"
+          NON_DOCS=$(echo "$CHANGED" | grep -Ev '^(docs/|docs_check\.py|.*\.md$)' || true)
+          if [ -n "$NON_DOCS" ]; then
+            echo "src=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "src=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: [changes]
+    # For pull_request events:
+    #   - skip only when changes ran successfully and explicitly set src=false
+    #     (i.e. a confirmed docs-only PR).
+    #   - run when changes succeeded with src=true (source changes present).
+    #   - run when changes failed or was cancelled (fail-closed: missing output
+    #     must not silently skip the build).
+    # For push/non-PR events: changes is skipped; always() prevents the build
+    # from being skipped due to a skipped needs dependency.
+    if: >-
+      always() && (
+        github.event_name != 'pull_request' ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.src == 'true'
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
