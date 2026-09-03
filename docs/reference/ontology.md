@@ -112,12 +112,7 @@ failures. The first version reports findings only; it does not auto-fix data.
 
 ### Thresholds
 
-| Threshold | Default | Fails the gate when |
-| :-------- | :------ | :------------------- |
-| `min_coverage` | `0.0` | The `coverage` metric (average of class and property coverage, `0.0`-`1.0`) is below this value |
-| `max_errors` | `0.0` | The count of `error`/`critical` issues exceeds this value |
-| `max_warnings` | `None` | The count of `warning` issues exceeds this value. `None` means warnings never fail the gate on their own |
-| `fail_on_warnings` | `False` | Passed to `OntologyQualityGate(...)` or `.check(...)`, not inside `thresholds`. When `True`, any warning fails the gate regardless of `max_warnings` |
+`min_coverage` (default `0.0`) sets the minimum required `coverage` score, the average of class and property coverage from `0.0` to `1.0`; the gate fails below it. `max_errors` (default `0.0`) caps how many `error`/`critical` issues are allowed before the gate fails. `max_warnings` (default `None`) caps `warning` issues the same way, and `None` means warnings alone never fail the gate. `fail_on_warnings` is a separate parameter, not a `thresholds` key, passed to `OntologyQualityGate(...)` or `.check(...)` directly; when `True`, a single warning fails the gate regardless of `max_warnings`.
 
 ## OntologyGenerator (5-Stage Pipeline)
 
