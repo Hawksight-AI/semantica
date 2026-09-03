@@ -100,14 +100,15 @@ ner = NamedEntityRecognizer(
     methods=["llm", "ml", "pattern"],
     confidence_threshold=0.75,
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
 )
 entities = ner.extract_entities(report)
 
 for e in entities:
     print("[{:>5.2f}]  {:15s}  {}".format(e.confidence, e.label, e.text))
 
-# Expected output (abbreviated):
+# Illustrative output — exact labels and scores depend on the method and model.
+# Abbreviated:
 # [ 0.94]  THREAT_ACTOR    GAMMA-7
 # [ 0.91]  THREAT_ACTOR    DELTA-3
 # [ 0.97]  MALWARE         HAMMERTOSS
@@ -262,7 +263,7 @@ from semantica.semantic_extract import TripletExtractor
 tri = TripletExtractor(
     method="llm",
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
     include_temporal=True,       # attach time context to triplets when available
     include_provenance=True,     # embed source document reference in each triplet
 )
@@ -320,7 +321,7 @@ def ingest_intel_report(
         methods=[method, "pattern"],
         confidence_threshold=0.70,
         provider="anthropic",
-        llm_model="claude-sonnet-4-6",
+        llm_model="claude-sonnet-4-20250514",
     )
     entities = ner.extract_entities(text)
     classified = ner.classify_entities(entities)
@@ -335,7 +336,7 @@ def ingest_intel_report(
         relation_types=["deployed", "targets", "exploits", "operates_from", "provided_to"],
         confidence_threshold=0.65,
         provider="anthropic",
-        llm_model="claude-sonnet-4-6",
+        llm_model="claude-sonnet-4-20250514",
     )
     relations = rel.extract_relations(text, entities)
 
@@ -347,7 +348,7 @@ def ingest_intel_report(
     tri = TripletExtractor(
         method=method,
         provider="anthropic",
-        llm_model="claude-sonnet-4-6",
+        llm_model="claude-sonnet-4-20250514",
         include_temporal=True,
         include_provenance=True,
     )
@@ -377,6 +378,7 @@ def ingest_intel_report(
         "coref_chains":   len(chains),
         "relations":      len(relations),
         "events":         len(events),
+        "triplets_total": len(triplets),
         "triplets_valid": len(valid),
         "graph_nodes":    graph_stats.get("graph_nodes", 0),
         "graph_edges":    graph_stats.get("graph_edges", 0),
@@ -402,7 +404,7 @@ for text, doc_id in reports:
         summary["relations"],
         summary["events"],
         summary["triplets_valid"],
-        len(summary["rdf_turtle"]),
+        summary["triplets_total"],
     ))
 ```
 
@@ -421,7 +423,7 @@ ner = NamedEntityRecognizer(
     methods=["llm", "pattern"],
     confidence_threshold=0.75,
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
 )
 entities = ner.extract_entities(fintel_text)
 grouped  = ner.classify_entities(entities)
@@ -438,14 +440,14 @@ rel = RelationExtractor(
     relation_types=["operates_from", "deployed", "targets", "exploits"],
     confidence_threshold=0.70,
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
 )
 relations = rel.extract_relations(fintel_text, entities)
 
 tri = TripletExtractor(
     method="llm",
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
     include_temporal=True,
     include_provenance=True,
 )
@@ -544,14 +546,14 @@ rel = RelationExtractor(
     relation_types=["treats", "causes_adverse_event", "has_efficacy", "evaluated_in"],
     confidence_threshold=0.65,
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
 )
 relations = rel.extract_relations(paper, entities)
 
 tri = TripletExtractor(
     method="llm",
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
     triplet_types=["treats", "has_efficacy", "causes_adverse_event"],
     include_temporal=True,
     include_provenance=True,
@@ -595,7 +597,7 @@ ner = NamedEntityRecognizer(
     methods=["llm", "ml", "pattern"],
     confidence_threshold=0.70,
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
 )
 entities = ner.extract_entities(credit_memo)
 grouped  = ner.classify_entities(entities)
@@ -612,14 +614,14 @@ rel = RelationExtractor(
     relation_types=["guaranteed_by", "secured_by", "classified_as", "exposed_to"],
     confidence_threshold=0.65,
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
 )
 relations = rel.extract_relations(credit_memo, entities)
 
 tri = TripletExtractor(
     method="llm",
     provider="anthropic",
-    llm_model="claude-sonnet-4-6",
+    llm_model="claude-sonnet-4-20250514",
     include_temporal=True,
     include_provenance=True,
 )
