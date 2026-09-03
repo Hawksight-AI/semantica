@@ -1735,9 +1735,9 @@ google-genai==2.19.0 \
     --hash=sha256:36e0326dd886b52ef765be4c46042732b46b21f637abbe060e3db7c3de23974c \
     --hash=sha256:d8f4126643793a7de230c396bcd142d21c948c8bb57507580e152549a7a41d9d
     # via semantica (pyproject.toml)
-google-resumable-media==2.10.1 \
-    --hash=sha256:224975032ddb73f7ed9e2f0f4cc08ed1b06874c52d48cc8533e3eb72980b21a0 \
-    --hash=sha256:4e2cbc704207ddc09f23b1f18e8ef4a4ccbfe0f1768b370e5c969704adbd0a1c
+google-resumable-media==2.10.2 \
+    --hash=sha256:1de441703cd298d75a419bfdc0066e9fc7b0a1de630df96eea8ce8f5c759358c \
+    --hash=sha256:e3cedc827a4ea41e216582d74346f1fb9fceb625a8c3c53912f2ca1d663334d7
     # via google-cloud-storage
 googleapis-common-protos==1.75.1 \
     --hash=sha256:28a1934bcd33b9c9da66ac301a0a4227e3367f095a17d0375cb98f0a09d93b79 \
