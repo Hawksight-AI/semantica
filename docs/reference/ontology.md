@@ -287,6 +287,6 @@ ontology_data = ingest_ontology("schema.jsonld")  # JSON-LD
 </Note>
 
 - [Reasoning](reasoning) — Apply inference rules over ontology axioms.
-- [Knowledge Graph](kg) — The graph being modeled by the ontology.
+- [Knowledge Graph](/reference/kg) — The graph being modeled by the ontology.
 - [Export](export) — Export ontologies as RDF, OWL, or JSON-LD.
-- [Conflicts](conflicts) — Detect ontology constraint violations.
+- [Conflicts](/reference/conflicts) — Detect ontology constraint violations.

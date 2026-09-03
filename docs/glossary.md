@@ -214,7 +214,7 @@ A vulnerability in XML parsers that allows attackers to read arbitrary files or 
 
 ## See Also
 
-- [Core Concepts](concepts) — Deeper explanation of key ideas with code examples.
-- [Getting Started](getting-started) — First working examples: no prior graph experience required.
-- [Modules Guide](modules) — All 27 modules explained with code and pipeline chains.
-- [API Reference](reference/context) — Complete technical reference for every class and method.
+- [Core Concepts](/concepts) — Deeper explanation of key ideas with code examples.
+- [Getting Started](/getting-started) — First working examples: no prior graph experience required.
+- [Modules Guide](/modules) — All 27 modules explained with code and pipeline chains.
+- [API Reference](/reference/context) — Complete technical reference for every class and method.

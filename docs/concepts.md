@@ -5,7 +5,7 @@ icon: "book-open"
 ---
 
 <Info>
-  New here? Start with [Getting Started](getting-started) for hands-on examples, then return here for deeper understanding.
+  New here? Start with [Getting Started](/getting-started) for hands-on examples, then return here for deeper understanding.
 </Info>
 
 Semantica transforms unstructured data: documents, web pages, reports, databases: into **knowledge graphs**: structured representations that AI systems can query, reason about, and trace back to sources.
@@ -203,7 +203,7 @@ ontology = {
 }
 ```
 
-Semantica can auto-generate ontologies from your knowledge graph or import existing OWL/RDF/Turtle ontologies. The **Ontology Hub** (v0.5.0) adds a visual editor, SHACL Studio, alignment authoring, and a live health dashboard. See the [Ontology reference](reference/ontology) for the full 6-stage generation pipeline.
+Semantica can auto-generate ontologies from your knowledge graph or import existing OWL/RDF/Turtle ontologies. The **Ontology Hub** (v0.5.0) adds a visual editor, SHACL Studio, alignment authoring, and a live health dashboard. See the [Ontology reference](/reference/ontology) for the full 6-stage generation pipeline.
 
 
 ## Reasoning & Inference
@@ -319,7 +319,7 @@ scores = calc.calculate_similarity(entity_a, entity_b)
 
 **Features:** N×N semantic distance matrices, ego-mode visualization, distance band classification (`near` / `mid` / `far`), embedding cache optimization for large graphs.
 
-The [Visualization module](reference/visualization) renders distance matrices as interactive heatmaps and ego-mode neighborhood graphs. The [Explorer](reference/explorer) embeds distance intelligence directly in the browser dashboard.
+The [Visualization module](/reference/visualization) renders distance matrices as interactive heatmaps and ego-mode neighborhood graphs. The [Explorer](/reference/explorer) embeds distance intelligence directly in the browser dashboard.
 
 
 ## Deduplication & Entity Resolution
@@ -413,7 +413,7 @@ When multiple sources disagree on the same fact, Semantica flags and resolves th
 - **Majority vote**: aggregate across all sources with ≥ 2 agreeing
 - **Manual review**: flag for human arbitration; continue pipeline without blocking
 
-See the [Conflicts reference](reference/conflicts) for `ConflictResolver`, `SourceTracker`, and `InvestigationGuideGenerator`.
+See the [Conflicts reference](/reference/conflicts) for `ConflictResolver`, `SourceTracker`, and `InvestigationGuideGenerator`.
 
 
 ## Custom Plugin Development
@@ -482,6 +482,6 @@ Semantica is designed for extension. Any component: ingestor, extractor, graph b
   </Accordion>
 </AccordionGroup>
 
-- [Quickstart Tutorial](quickstart) — Build a full pipeline with code.
-- [Modules Guide](modules) — Every module explained with examples.
-- [API Reference](reference/context) — Complete technical reference.
+- [Quickstart Tutorial](/quickstart) — Build a full pipeline with code.
+- [Modules Guide](/modules) — Every module explained with examples.
+- [API Reference](/reference/context) — Complete technical reference.

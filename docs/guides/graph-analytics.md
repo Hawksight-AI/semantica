@@ -310,7 +310,7 @@ for node1, node2, score in predictions:
 A score above 0.8 is worth analyst review — these aren't random; they're edges the topology of the existing graph strongly implies. Scores below 0.5 are noise. The sweet spot for human review is 0.6–0.8: plausible but not yet confirmed.
 
 <Info>
-  Link prediction is also available on `Decision` nodes through `DecisionQuery.predict_decision_relationships(decision_id, top_k)`. See the [Decision Intelligence guide](decision-intelligence) for how to surface causal relationships between past decisions.
+  Link prediction is also available on `Decision` nodes through `DecisionQuery.predict_decision_relationships(decision_id, top_k)`. See the [Decision Intelligence guide](/guides/decision-intelligence) for how to surface causal relationships between past decisions.
 </Info>
 
 ## Understanding Your Decision History
@@ -538,7 +538,7 @@ print(f"\n{len(result['communities'])} exposure clusters  "
 
 ## Related Guides
 
-- [Context Graphs](context-graphs) — building and querying the underlying `ContextGraph`
+- [Context Graphs](/guides/context-graphs) — building and querying the underlying `ContextGraph`
 - [Visualization](visualization) — render centrality rankings and community clusters as interactive dashboards
-- [Decision Intelligence](decision-intelligence) — link prediction and structural similarity applied to decision nodes
-- [GraphRAG](graphrag) — using analytics results to ground LLM generation in the most contextually relevant subgraph
+- [Decision Intelligence](/guides/decision-intelligence) — link prediction and structural similarity applied to decision nodes
+- [GraphRAG](/guides/graphrag) — using analytics results to ground LLM generation in the most contextually relevant subgraph

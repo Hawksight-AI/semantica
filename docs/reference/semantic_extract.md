@@ -410,7 +410,7 @@ triplets      = trip.extract(text)
 | `ml` | Fast | Free | High | Limited |
 | `llm` | Medium | API cost | Highest | Yes (schema) |
 
-- [LLM Providers](llms) — Configure which LLM is used for extraction.
-- [Knowledge Graph](kg) — Build graphs from extracted entities and relationships.
-- [Parse Module](parse) — Parse documents before extraction.
+- [LLM Providers](/reference/llms) — Configure which LLM is used for extraction.
+- [Knowledge Graph](/reference/kg) — Build graphs from extracted entities and relationships.
+- [Parse Module](/reference/parse) — Parse documents before extraction.
 - [Deduplication](deduplication) — Resolve duplicate entities after extraction.

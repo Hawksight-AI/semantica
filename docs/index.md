@@ -185,8 +185,8 @@ decision_id = context.record_decision(
 
 </CodeGroup>
 
-- [Full Quickstart](quickstart) — Step-by-step pipeline walkthrough
-- [Cookbook](cookbook) — 40+ real-world Jupyter notebooks
+- [Full Quickstart](/quickstart) — Step-by-step pipeline walkthrough
+- [Cookbook](/cookbook) — 40+ real-world Jupyter notebooks
 - [Join Discord](https://discord.gg/sV34vps5hH) — Community chat and support
 
 
@@ -195,7 +195,7 @@ decision_id = context.record_decision(
 Semantica was designed for domains where every decision must be explainable and every fact must be traceable.
 
 <Warning>
-  **This is system-level explainability, not foundation-model explainability.** Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. What Semantica explains is *outside* the model: the context and data fed in, the decision produced, its provenance, the relevant relationships, the policies applied, and the full execution trail. See [Core Concepts](concepts) for the full scope note.
+  **This is system-level explainability, not foundation-model explainability.** Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. What Semantica explains is *outside* the model: the context and data fed in, the decision produced, its provenance, the relevant relationships, the policies applied, and the full execution trail. See [Core Concepts](/concepts) for the full scope note.
 </Warning>
 
 **Healthcare & Life Sciences**
@@ -242,35 +242,35 @@ Semantica was designed for domains where every decision must be explainable and 
     ```bash
     pip install semantica
     ```
-    See [Installation](installation) for optional extras (`[all]`, `[neo4j]`, `[pinecone]`) and environment setup.
+    See [Installation](/installation) for optional extras (`[all]`, `[neo4j]`, `[pinecone]`) and environment setup.
   </Step>
   <Step title="Run the Quickstart">
-    Build a complete knowledge graph pipeline in [5 minutes](quickstart):
+    Build a complete knowledge graph pipeline in [5 minutes](/quickstart):
     - Ingest documents from any source
     - Extract entities and relationships
     - Build and query the graph
     - Record and trace a decision
   </Step>
   <Step title="Learn the mental model">
-    [Core Concepts](concepts) covers:
+    [Core Concepts](/concepts) covers:
     - Knowledge graphs vs. vector stores: when to use each
     - What GraphRAG is and how Semantica implements it
     - How provenance and decision tracking work together
     - The accountability layer architecture
   </Step>
   <Step title="Go deep on any module">
-    Every module has a dedicated [reference page](reference/context) with:
+    Every module has a dedicated [reference page](/reference/context) with:
     - Full class and method documentation
     - Parameter tables with types and defaults
     - Runnable code examples for each feature
   </Step>
 </Steps>
 
-- [Installation](installation) — Get Semantica installed in under a minute
-- [Quickstart](quickstart) — Build a complete knowledge graph pipeline in 5 minutes
-- [Core Concepts](concepts) — The mental model behind the API
-- [API Reference](reference/context) — Exact module, class, and method details
-- [Cookbook](cookbook) — Domain notebooks for real-world use cases
+- [Installation](/installation) — Get Semantica installed in under a minute
+- [Quickstart](/quickstart) — Build a complete knowledge graph pipeline in 5 minutes
+- [Core Concepts](/concepts) — The mental model behind the API
+- [API Reference](/reference/context) — Exact module, class, and method details
+- [Cookbook](/cookbook) — Domain notebooks for real-world use cases
 - [Changelog](https://github.com/semantica-agi/semantica/releases) — Release history
 
 
@@ -369,7 +369,7 @@ Semantica was designed for domains where every decision must be explainable and 
 | `semantica.reasoning` | Forward chaining, Rete, deductive, abductive, SPARQL, Datalog |
 | `semantica.ontology` | SHACL, SKOS, alignments, diff/migration, auto-generation, OWL/RDF |
 | `semantica.explorer` | FastAPI Knowledge Explorer, Ontology Hub, Distance Intelligence, SHACL Studio |
-| `semantica.mcp_server` | MCP stdio server: 12 tools for Claude Desktop, VS Code, Cursor, Windsurf, Cline |
+| `semantica.mcp_server` | MCP stdio server: 15 tools for Claude Desktop, VS Code, Cursor, Windsurf, Cline |
 | `semantica.vector_store` | FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector |
 | `semantica.graph_store` | Neo4j, FalkorDB, Apache AGE, Amazon Neptune |
 | `semantica.triplet_store` | In-memory and persistent RDF triple store with SPARQL |
@@ -404,7 +404,7 @@ Semantica was designed for domains where every decision must be explainable and 
 - 1,000+ passing tests with full regression coverage
 - `PipelineValidator` catches configuration errors at startup
 - `FailureHandler` with exponential backoff and dead-letter queues
-- 12 security vulnerabilities fixed in v0.5.0
+- Ongoing security hardening: fixes shipped in every release ([CHANGELOG](https://github.com/semantica-agi/semantica/blob/main/CHANGELOG.md))
 
 **Modular by Design** — Import only what you need.
 - Use `NERExtractor` without a graph store

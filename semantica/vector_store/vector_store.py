@@ -867,12 +867,22 @@ class VectorStore:
         """
         Iterate over every stored vector, one page at a time.
 
+        Cursor-based backends expose iter_all() because they cannot support a
+        positional offset; it takes precedence when present. Everything else
+        falls through to the scan_vectors() offset loop.
+
         Args:
-            batch_size: Number of vectors to fetch per underlying scan_vectors() call
+            batch_size: Number of vectors to fetch per underlying call
 
         Yields:
             Result dicts with 'id', 'metadata', and 'vector', in scan order
         """
+        if self.backend != "inmemory" and self._backend_store is not None:
+            iter_all = getattr(self._backend_store, "iter_all", None)
+            if callable(iter_all):
+                yield from iter_all(batch_size=batch_size)
+                return
+
         offset = 0
         while True:
             page = self.scan_vectors(offset=offset, limit=batch_size)

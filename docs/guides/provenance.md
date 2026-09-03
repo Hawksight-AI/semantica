@@ -659,7 +659,7 @@ Note: the banking example above passes `agent_id="credit_data_service_v2"` to `t
 
 ## Related Guides
 
-- [Semantic Extraction](semantic-extraction) — the NER and relation extraction pipeline that auto-generates provenance entries for every extracted entity
-- [Conflict Resolution](conflict-resolution) — provenance property sources feed directly into conflict detection; every resolved value is traceable to its source
+- [Semantic Extraction](/guides/semantic-extraction) — the NER and relation extraction pipeline that auto-generates provenance entries for every extracted entity
+- [Conflict Resolution](/guides/conflict-resolution) — provenance property sources feed directly into conflict detection; every resolved value is traceable to its source
 - [Deduplication](deduplication) — merge operations are recorded in merge history; pair with provenance for a complete lineage from source to canonical entity
 - [Provenance Reference](../reference/provenance) — full storage backend API, `InMemoryStorage`, `SQLiteStorage`, and `ProvenanceEntry` schema

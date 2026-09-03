@@ -701,6 +701,15 @@ class MilvusStore:
         except Exception:
             return None
 
+    @staticmethod
+    def _record_to_result(item: Dict[str, Any]) -> Dict[str, Any]:
+        vec = item.get("vector")
+        return {
+            "id": str(item.get("id")),
+            "metadata": item.get("metadata") or {},
+            "vector": np.array(vec) if vec is not None else None,
+        }
+
     def filter_by_metadata(
         self, filters: Dict[str, Any], limit: int = 10
     ) -> List[Dict[str, Any]]:
@@ -745,20 +754,82 @@ class MilvusStore:
                 limit=limit,
                 output_fields=["id", "vector", "metadata"],
             )
-            results = []
-            for item in query_results:
-                vec = item.get("vector")
-                results.append(
-                    {
-                        "id": str(item.get("id")),
-                        "metadata": item.get("metadata") or {},
-                        "vector": np.array(vec) if vec is not None else None,
-                    }
-                )
-            return results
+            return [self._record_to_result(item) for item in query_results]
         except Exception as e:
             self.logger.warning(f"Failed to query Milvus vectors by metadata expression: {e}")
             return []
+
+    def iter_all(self, batch_size: int = 500):
+        """
+        Iterate over every stored entity using Milvus's query iterator.
+
+        Paginates by primary-key cursor rather than row offset, which is why
+        this exists instead of scan_vectors(offset, limit). query(offset=...)
+        is capped by the 16384 result window and would truncate anything
+        larger.
+
+        Assumes the schema create_collection() builds: a VARCHAR `id` primary
+        key plus vector and metadata fields, as get_vector() and
+        filter_by_metadata() already do. get_collection() does not validate
+        schema, so a collection with an integer key or no metadata field fails
+        here.
+
+        Args:
+            batch_size: Entities to request per iterator batch
+
+        Yields:
+            Result dicts with 'id', 'metadata', and 'vector', in cursor order
+
+        Raises:
+            ProcessingError: If the collection is not initialized, or the
+                installed pymilvus does not expose query_iterator().
+        """
+        if self.collection is None:
+            raise ProcessingError(
+                "Collection not initialized. Call create_collection() or get_collection() first."
+            )
+
+        if not MILVUS_AVAILABLE:
+            raise ProcessingError("Milvus not available")
+
+        query_iterator = getattr(self.collection.collection, "query_iterator", None)
+        if not callable(query_iterator):
+            raise ProcessingError(
+                "This pymilvus version does not expose Collection.query_iterator(), "
+                "which full enumeration requires. Falling back to query(offset=...) "
+                "is not safe here: it is capped by the 16384 result window and would "
+                "silently truncate a larger collection."
+            )
+
+        # Query operations need a loaded collection. Idempotent, and once per
+        # scan rather than per batch.
+        self.collection.load()
+
+        # Milvus rejects an empty expression; this match-all form is what
+        # filter_by_metadata() already uses.
+        iterator = query_iterator(
+            batch_size=batch_size,
+            expr="id != ''",
+            output_fields=["id", "vector", "metadata"],
+        )
+
+        try:
+            while True:
+                batch = iterator.next()
+                if not batch:
+                    return
+                for item in batch:
+                    yield self._record_to_result(item)
+        finally:
+            # Release the server-side iterator even if the consumer stops early.
+            # Swallowed so a broken connection at cleanup time doesn't replace
+            # whatever real exception was already propagating out of the try.
+            close = getattr(iterator, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as e:
+                    self.logger.warning(f"Failed to close Milvus query iterator: {e}")
 
     def get_stats(self, collection_name: Optional[str] = None) -> Dict[str, Any]:
         """Get collection statistics."""
