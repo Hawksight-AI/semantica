@@ -8,16 +8,16 @@ icon: "book-open"
   New here? Start with [Getting Started](/getting-started) for hands-on examples, then return here for deeper understanding.
 </Info>
 
-Semantica transforms unstructured data: documents, web pages, reports, databases: into **knowledge graphs**: structured representations that AI systems can query, reason about, and trace back to sources.
+Semantica transforms unstructured data (documents, web pages, reports, databases) into **knowledge graphs**: structured representations that AI systems can query, reason about, and trace back to sources.
 
-At its core, Semantica adds a **context and accountability layer** on top of your existing AI stack. It doesn't replace LangChain, LlamaIndex, or your LLM provider: it makes their outputs **grounded**, **traceable**, and **auditable**.
+At its core, Semantica adds a context and semantic layer on top of your existing AI stack. It doesn't replace LangChain, LlamaIndex, or your LLM provider. It makes their outputs grounded, traceable, and auditable.
 
-- **Context Layer** — Knowledge graphs, GraphRAG retrieval, semantic embeddings, and temporal intelligence ground every LLM response in structured, queryable facts.
-- **Accountability Layer** — Provenance tracking, decision intelligence, conflict detection, and W3C PROV-O compliance make every claim in your AI stack auditable and explainable.
-- **Extension Layer** — `PluginRegistry` and `MethodRegistry` let you replace or augment any component: ingestors, extractors, reasoning engines, backends: without changing framework code.
+- **Context Layer.** Knowledge graphs, GraphRAG retrieval, semantic embeddings, and temporal intelligence ground every LLM response in structured, queryable facts.
+- **Accountability Layer.** Provenance tracking, decision intelligence, conflict detection, and W3C PROV-O compliance make every claim in your AI stack auditable and explainable.
+- **Extension Layer.** `PluginRegistry` and `MethodRegistry` let you replace or augment any component (ingestors, extractors, reasoning engines, backends) without changing framework code.
 
 <Warning>
-  **This is system-level explainability, not foundation-model explainability.** Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. What Semantica explains is *outside* the model: the context and data fed in, the decision produced, its provenance, the relevant relationships, the policies applied, and the full execution trail. In short, Semantica explains and audits *what the AI system did*, not the foundation model's private internal reasoning.
+  **This is system-level explainability, not foundation-model explainability.** Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model. Its internal reasoning or chain-of-thought stays opaque, as it does for any external system. What Semantica explains is *outside* the model: the context and data fed in, the decision produced, its provenance, the relevant relationships, the policies applied, and the full execution trail. In short, Semantica explains and audits *what the AI system did*, not the foundation model's private internal reasoning.
 </Warning>
 
 ## Knowledge Graphs
@@ -30,7 +30,7 @@ The foundation of everything in Semantica. A knowledge graph stores information 
 - **Edges (relationships)**: `works_for`, `located_in`, `founded_by`
 - **Properties**: name, date, confidence score, source URL
 
-This structure makes knowledge **searchable**, **connectable**, **queryable**, and: critically: **explainable**: every answer can be traced back to the facts and relationships that produced it.
+This structure makes knowledge searchable, connectable, and queryable. Critically, it's explainable: every answer can be traced back to the facts and relationships that produced it.
 
 
 ## Entity Extraction (NER)
@@ -38,18 +38,19 @@ This structure makes knowledge **searchable**, **connectable**, **queryable**, a
 Scanning text to find and classify real-world entities:
 
 ```python
-# Input: "Apple Inc. was founded by Steve Jobs in 1976 in Cupertino."
-{
-    "entities": [
-        {"text": "Apple Inc.",  "type": "ORGANIZATION", "confidence": 0.98},
-        {"text": "Steve Jobs",  "type": "PERSON",       "confidence": 0.99},
-        {"text": "1976",        "type": "DATE",         "confidence": 0.95},
-        {"text": "Cupertino",   "type": "LOCATION",     "confidence": 0.97}
-    ]
-}
+# "Apple Inc. was founded by Steve Jobs in 1976 in Cupertino."
+[
+    Entity(text="Apple Inc.", label="ORG",    start_char=0,  end_char=10, confidence=0.98),
+    Entity(text="Steve Jobs", label="PERSON", start_char=25, end_char=35, confidence=0.99),
+    Entity(text="1976",       label="DATE",   start_char=39, end_char=43, confidence=0.95),
+    Entity(text="Cupertino",  label="GPE",    start_char=47, end_char=56, confidence=0.97),
+]
 ```
 
-Each entity gets a type, confidence score, and a link to its source document. Three extraction methods are available:
+`NERExtractor(method=...).extract(text)` returns a list of `Entity` objects, each
+with a `label`, character offsets (`start_char` / `end_char`), a `confidence`
+score, and a `metadata` dict recording the extraction method. Three methods are
+available:
 
 | Method | Speed | Accuracy | Requirements |
 | :------ | :----- | :-------- | :------------ |
@@ -62,15 +63,19 @@ Each entity gets a type, confidence score, and a link to its source document. Th
 Finding how entities connect to each other:
 
 ```python
-{
-    "relationships": [
-        {"subject": "Steve Jobs", "predicate": "founded",    "object": "Apple Inc.", "confidence": 0.92},
-        {"subject": "Apple Inc.", "predicate": "located_in", "object": "Cupertino",  "confidence": 0.89}
-    ]
-}
+jobs  = Entity(text="Steve Jobs", label="PERSON", start_char=25, end_char=35)
+apple = Entity(text="Apple Inc.", label="ORG",    start_char=0,  end_char=10)
+
+[
+    Relation(subject=jobs,  predicate="founded",     object=apple, confidence=0.92),
+    Relation(subject=apple, predicate="located_in",  object=Entity(text="Cupertino", label="GPE", start_char=47, end_char=56), confidence=0.89),
+]
 ```
 
-Relationships can be extracted via rule-based methods, ML models, or LLMs: each producing typed triplets with confidence scores and source attribution.
+`RelationExtractor(method=...).extract(text, entities=entities)` returns a list of
+`Relation` objects: typed subject-predicate-object triples (the endpoints are
+`Entity` objects) with confidence scores and source attribution. Extraction runs
+via pattern rules, ML models, or LLMs.
 
 
 ## Knowledge Graph vs. Vector Store
@@ -94,9 +99,10 @@ Both store information for AI retrieval: but they're built for different jobs.
     ```python
     from semantica.kg import GraphBuilder, PathFinder
 
-    graph   = GraphBuilder(merge_entities=True).build(entities=entities, relationships=rels)
-    finder  = PathFinder()
-    path    = finder.dijkstra_shortest_path(graph, "Steve Jobs", "Tim Cook")
+    graph = GraphBuilder(merge_entities=True).build(
+        {"entities": entities, "relationships": rels}
+    )
+    path  = PathFinder().dijkstra_shortest_path(graph, "Steve Jobs", "Tim Cook")
     ```
   </Tab>
 
@@ -140,8 +146,16 @@ Both store information for AI retrieval: but they're built for different jobs.
     context = AgentContext(
         vector_store=VectorStore(backend="faiss", dimension=768),
         knowledge_graph=ContextGraph(advanced_analytics=True),
+        graph_expansion=True,
     )
-    result = context.query("Who founded Apple?", mode="graphrag")
+
+    # store() extracts entities and populates the graph + vector index
+    context.store([{"content": "Steve Jobs co-founded Apple Inc. in 1976."}])
+
+    # retrieve() blends vector similarity with graph traversal
+    results = context.retrieve("Who founded Apple?", use_graph=True, expand_graph=True)
+    for r in results:
+        print(r["score"], r["content"], r["source"])
     ```
   </Tab>
 </Tabs>
@@ -221,70 +235,80 @@ Inferred: Steve Jobs has a connection to Cupertino
     Applies IF/THEN rules repeatedly until no new facts can be derived. Best for alert systems, compliance checks, and trigger-based workflows.
 
     ```python
-    from semantica.reasoning import Reasoner, Rule, Fact, RuleType
+    from semantica.reasoning import Reasoner
 
     engine = Reasoner()
-    engine.add_fact(Fact(subject="Alice", predicate="is_a", obj="Manager"))
-    engine.add_rule(Rule(
-        rule_type=RuleType.FORWARD_CHAIN,
-        conditions=[{"subject": "?x", "predicate": "is_a", "object": "Manager"}],
-        conclusion={"subject": "?x", "predicate": "has_authority", "object": "true"}
-    ))
-    result = engine.infer()
+    engine.add_fact("Manager(Alice)")
+    engine.add_rule("IF Manager(?x) THEN HasAuthority(?x)")
+
+    results = engine.forward_chain()   # list of InferenceResult
+    for r in results:
+        print(r.conclusion)           # "HasAuthority(Alice)"
     ```
   </Tab>
   <Tab title="Rete Network">
     Efficient pattern matching for large rule sets: the Rete algorithm avoids re-evaluating rules whose preconditions haven't changed. Best for thousands of rules over millions of facts.
 
     ```python
-    from semantica.reasoning import ReteEngine
+    from semantica.reasoning import ReteEngine, Rule, Fact
 
     engine = ReteEngine()
-    engine.load_rules("rules/domain_rules.json")
-    results = engine.run(kg)
+    engine.build_network([
+        Rule(rule_id="r1", name="manager_authority",
+             conditions=["Manager(?x)"], conclusion="HasAuthority(?x)"),
+    ])
+    engine.add_fact(Fact(fact_id="f1", predicate="Manager", arguments=["Alice"]))
+
+    matches = engine.match_patterns()
+    results = engine.execute_matches(matches)   # ["HasAuthority(?x)"]
     ```
   </Tab>
-  <Tab title="Deductive & Abductive">
-    **Deductive**: classical syllogistic reasoning from premises to guaranteed conclusions.
-
-    **Abductive**: infers the most likely explanation for observed evidence. Best for diagnostic and investigative use cases.
+  <Tab title="LLM Reasoning">
+    `GraphReasoner` answers open-ended questions over a knowledge graph with an
+    LLM, returning a natural-language answer grounded in the graph's facts. Best
+    for exploratory and investigative questions that fixed rules can't anticipate.
 
     ```python
     from semantica.reasoning import GraphReasoner
 
-    graph_reasoner = GraphReasoner(kg)
-    graph_reasoner.add_rule({"if": [{"subject": "?a", "predicate": "parent_of", "object": "?b"}], "then": {"subject": "?a", "predicate": "ancestor_of", "object": "?b"}})
-    inferences = graph_reasoner.infer(kg)
+    reasoner = GraphReasoner(provider="openai", model="gpt-4o-mini")
+    answer = reasoner.reason(kg, "Which suppliers are indirectly exposed to the Acme outage?")
     ```
   </Tab>
   <Tab title="Datalog (v0.4.0)">
     Recursive Horn clause rules with fixpoint semantics: handles transitive closure and recursive relationships that forward chaining cannot express.
 
     ```python
-    from semantica.reasoning import DatalogReasoner, DatalogFact, DatalogRule
+    from semantica.reasoning import DatalogReasoner
 
     reasoner = DatalogReasoner()
-    reasoner.add_fact(DatalogFact("parent", ("alice", "bob")))
-    reasoner.add_rule(DatalogRule("ancestor(?X, ?Y) :- parent(?X, ?Y)."))
-    reasoner.evaluate()
-    results = reasoner.query("ancestor(alice, ?Z)")
+    reasoner.add_fact("parent(alice, bob)")
+    reasoner.add_fact("parent(bob, charlie)")
+    reasoner.add_rule("ancestor(X, Y) :- parent(X, Y).")
+    reasoner.add_rule("ancestor(X, Z) :- parent(X, Y), ancestor(Y, Z).")
+
+    reasoner.derive_all()
+    results = reasoner.query("ancestor(alice, ?Z)")   # {"Z": "bob"} and {"Z": "charlie"}, order not guaranteed
     ```
   </Tab>
   <Tab title="Engine Comparison">
 
-    | Engine | Description | Best For |
-    | :------ | :----------- | :-------- |
-    | Forward chaining | Applies rules until fixpoint | Alert systems, compliance checks |
-    | Rete network | Efficient pattern matching | Large rule sets, high fact throughput |
-    | Deductive | Classical syllogistic reasoning | Mathematical and logical inference |
-    | Abductive | Most likely explanation | Diagnostics, investigation |
-    | SPARQL | Query-based inference over RDF | Semantic web, ontology reasoning |
-    | Datalog (v0.4.0) | Recursive Horn clause rules | Transitive closure, graph reachability |
+    | Engine | Class | Best For |
+    | :------ | :----- | :-------- |
+    | Forward chaining | `Reasoner` | Alert systems, compliance checks |
+    | Rete network | `ReteEngine` | Large rule sets, high fact throughput |
+    | SPARQL expansion | `SPARQLReasoner` | Semantic web, ontology reasoning over RDF |
+    | Datalog (v0.4.0) | `DatalogReasoner` | Transitive closure, graph reachability |
+    | Temporal | `TemporalReasoningEngine` | Allen interval algebra, time-aware inference |
+    | LLM over the graph | `GraphReasoner` | Open-ended, investigative questions |
 
   </Tab>
 </Tabs>
 
-All engines produce **explainable inference paths**: not black-box conclusions. Every derived fact includes the rules and premises that produced it.
+`Reasoner.forward_chain()` returns `InferenceResult` objects that carry the rule
+applied (`rule_used`) and the premises it fired on, and `ExplanationGenerator`
+turns one into a step-by-step natural-language justification: reasoning here is
+**not** a black box.
 
 
 ## Temporal Intelligence
@@ -313,11 +337,16 @@ Explore the semantic neighborhood of any entity in your graph: useful for unders
 ```python
 from semantica.kg import SimilarityCalculator
 
-calc   = SimilarityCalculator()
-scores = calc.calculate_similarity(entity_a, entity_b)
+calc = SimilarityCalculator(method="cosine")   # "cosine" | "euclidean" | "manhattan" | "correlation"
+
+# Similarity for every unique pair of node embeddings: {(node_a, node_b): score}
+pairs = calc.pairwise_similarity({"apple": vec_apple, "google": vec_google, "nest": vec_nest})
+
+# Or rank a set of embeddings by closeness to one query vector
+nearest = calc.find_most_similar(embeddings, query_embedding, top_k=10)
 ```
 
-**Features:** N×N semantic distance matrices, ego-mode visualization, distance band classification (`near` / `mid` / `far`), embedding cache optimization for large graphs.
+**Features:** N×N semantic distance matrices, ego-mode visualization, distance band classification (`direct` / `near` / `mid-range` / `distant`), embedding cache optimization for large graphs.
 
 The [Visualization module](/reference/visualization) renders distance matrices as interactive heatmaps and ego-mode neighborhood graphs. The [Explorer](/reference/explorer) embeds distance intelligence directly in the browser dashboard.
 
@@ -341,11 +370,11 @@ Real-world data contains the same entity under many names: "Apple", "Apple Inc."
     ```python
     from semantica.deduplication import DuplicateDetector, EntityMerger
 
-    detector = DuplicateDetector(similarity_threshold=0.85)
-    duplicates = detector.detect_duplicates(entities)
+    detector   = DuplicateDetector(similarity_threshold=0.85)
+    candidates = detector.detect_duplicates(entities)
 
-    merger = EntityMerger()
-    deduplicated_entities = merger.merge_duplicates(entities)
+    merger     = EntityMerger()
+    operations = merger.merge_duplicates(entities, strategy="keep_most_complete")
     ```
   </Tab>
 </Tabs>
@@ -361,19 +390,21 @@ Every fact in Semantica links back to:
 - The **reasoning steps** that produced any inferred fact
 
 <Note>
-  This is W3C PROV-O compliant lineage: suitable for regulated industries that require audit trails (HIPAA, SOX, GDPR, FDA 21 CFR Part 11). Use `RDFExporter(include_provenance=True)` to embed provenance inline in any RDF export.
+  This is W3C PROV-O compliant lineage: suitable for regulated industries that require audit trails (HIPAA, SOX, GDPR, FDA 21 CFR Part 11). `ProvenanceManager.export_prov(format="turtle")` serialises the recorded lineage as PROV-O RDF.
 </Note>
 
 ```python
 from semantica.provenance import ProvenanceManager
 
-prov    = ProvenanceManager()
-lineage = prov.get_entity_lineage("apple_inc")
+prov = ProvenanceManager()
+prov.track_entity("apple_inc", source="report.pdf",
+                  metadata={"extractor": "NamedEntityRecognizer", "confidence": 0.98})
 
-print(f"Source:    {lineage.source_document}")
-print(f"Method:    {lineage.extraction_method}")
-print(f"Extracted: {lineage.timestamp}")
-print(f"Checksum:  {lineage.checksum}")
+record = prov.get_provenance("apple_inc")   # dict; use get_lineage() for the full chain
+print(record["source_document"])
+print(record["timestamp"])
+print(record["checksum"])
+print(record["metadata"])          # extractor, confidence, and any custom keys
 ```
 
 
@@ -456,32 +487,32 @@ Semantica is designed for extension. Any component: ingestor, extractor, graph b
     **Extension points available:** ingestors, parsers, normalizers, extractors, reasoning engines, export formats, vector store backends, graph store backends, visualization renderers.
 
   </Accordion>
-  <Accordion title="MethodRegistry: add domain-specific graph operations">
+  <Accordion title="MethodRegistry: swap a built-in graph operation for your own">
 
-    `MethodRegistry` lets you register custom methods on knowledge graph objects by name: useful for adding domain-specific graph operations without subclassing.
+    `method_registry` lets you register an alternative implementation for a
+    knowledge-graph task (`build`, `analyze`, `centrality`, `resolve`, …) under a
+    name, then select it wherever that task runs.
 
     ```python
-    from semantica.kg import MethodRegistry
+    from semantica.kg import method_registry
+    from semantica.kg.methods import calculate_centrality
 
-    registry = MethodRegistry()
-
-    def find_supply_chain_hops(graph, source_node, max_hops=3):
-        """Custom BFS traversal for supply chain graphs."""
+    def fast_centrality(graph, **kwargs):
+        """Custom centrality implementation."""
         ...
 
-    # Register under a string key
-    registry.register("supply_chain_hops", find_supply_chain_hops)
+    # register(task, name, func)
+    method_registry.register("centrality", "fast_centrality", fast_centrality)
 
-    # Call by name on any graph object
-    result = registry.call("supply_chain_hops", kg, source_node="Supplier_A", max_hops=5)
+    # The task wrappers consult method_registry, so the name is now selectable:
+    scores = calculate_centrality(kg, method="fast_centrality")
 
-    # List all registered methods
-    print(registry.list_methods())   # ["supply_chain_hops", ...]
+    print(method_registry.list_all("centrality"))   # {"centrality": ["fast_centrality", ...]}
     ```
 
   </Accordion>
 </AccordionGroup>
 
-- [Quickstart Tutorial](/quickstart) — Build a full pipeline with code.
-- [Modules Guide](/modules) — Every module explained with examples.
-- [API Reference](/reference/context) — Complete technical reference.
+- [Quickstart Tutorial](/quickstart): build a full pipeline with code.
+- [Modules Guide](/modules): every module explained with examples.
+- [API Reference](/reference/context): complete technical reference.

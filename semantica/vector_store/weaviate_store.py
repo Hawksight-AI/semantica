@@ -416,6 +416,38 @@ class WeaviateStore:
             )
             raise ProcessingError(f"Failed to add objects: {str(e)}")
 
+    def delete_vectors(self, vector_ids: List[str], **options) -> Dict[str, Any]:
+        """Delete vectors (objects) from the collection by their ids.
+
+        Args:
+            vector_ids: Object uuids to delete
+            **options: Additional options (ignored, kept for API parity)
+
+        Returns:
+            A dict with the number of successfully deleted objects
+            (``delete_count``).
+        """
+        if self.collection is None or not WEAVIATE_AVAILABLE:
+            raise ProcessingError("Collection not initialized or Weaviate unavailable")
+
+        if not vector_ids:
+            return {"delete_count": 0}
+
+        deleted = 0
+        try:
+            data = self.collection.data
+            for vector_id in vector_ids:
+                if not vector_id:
+                    continue
+                # delete_by_id returns False (not an error) for a uuid that is
+                # not present, and True when an object was deleted. Count only
+                # actual deletes so delete_count never over-reports.
+                if data.delete_by_id(vector_id):
+                    deleted += 1
+            return {"delete_count": deleted}
+        except Exception as e:
+            raise ProcessingError(f"Failed to delete vectors: {str(e)}")
+
     def get_vector(self, vector_id: str) -> Optional[np.ndarray]:
         """Get vector by ID."""
         if self.collection is None or not WEAVIATE_AVAILABLE:

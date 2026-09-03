@@ -84,13 +84,13 @@ icon: "rocket"
     # 1. Ingest
     sources = FileIngestor().ingest("data/report.pdf")
 
-    # 2. Parse
-    parsed = DocumentParser().parse(sources[0])
+    # 2. Parse (extract_text returns a plain string for any supported format)
+    text = DocumentParser().extract_text(sources[0].path)
 
-    # 3. Extract
+    # 3. Extract (extractors take text, return Entity / Relation objects)
     ner           = NERExtractor(method="pattern")  # no API key needed
-    entities      = ner.extract(parsed)
-    relationships = RelationExtractor().extract(parsed, entities=entities)
+    entities      = ner.extract(text)
+    relationships = RelationExtractor(method="pattern").extract(text, entities=entities)
 
     # 4. Build
     graph = GraphBuilder(merge_entities=True).build(
@@ -144,22 +144,30 @@ icon: "rocket"
     context = AgentContext(
         vector_store=VectorStore(backend="faiss", dimension=768),
         knowledge_graph=ContextGraph(advanced_analytics=True),
+        graph_expansion=True,       # blend graph traversal into retrieval
+        max_expansion_hops=3,       # how far to walk from the seed nodes
     )
 
-    # Load your knowledge graph
-    context.load_graph("company_kg.json")
+    # store() runs extraction and populates both the vector index and the graph
+    context.store([
+        {"content": "Steve Wozniak co-founded Apple with Steve Jobs in 1976."},
+        {"content": "Tony Fadell led the iPod team at Apple, then founded Nest."},
+    ])
 
-    # Multi-hop GraphRAG query
-    result = context.query(
+    # GraphRAG retrieval: seed from vector matches, expand along graph edges
+    results = context.retrieve(
         "What companies were founded by people who worked at Apple?",
-        mode="graphrag",
-        reasoning=True,
+        use_graph=True,
+        expand_graph=True,
     )
-
-    # Every claim links back to a source node
-    for claim in result.claims:
-        print(f"{claim.text}  →  source: {claim.source_node}")
+    for r in results:
+        print(f"[{r['score']:.3f}]  {r['content'][:70]}  (source: {r['source']})")
     ```
+
+    Each result carries `content`, `score`, `source`, and `metadata`. For a
+    grounded natural-language answer plus an auditable traversal, use
+    `context.query_with_reasoning(query, llm_provider=...)` — it returns
+    `response`, `reasoning_path`, `sources`, and `confidence`.
 
     **Next:** [GraphRAG concepts →](/concepts#graphrag)
   </Tab>
