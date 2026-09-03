@@ -64,3 +64,31 @@ def test_source_field_still_inferred_as_business_attribute():
 
     names = {p["name"] for p in properties}
     assert "source" in names
+
+
+def test_unmerged_graphbuilder_entities_infer_business_attributes():
+    """Flat entities from GraphBuilder (merge_entities=False) must not lose business
+    attributes through _CONTROL_FIELDS: name and domain-specific fields must be
+    inferred, and none of the framework keys should appear in the output."""
+    from semantica.kg.graph_builder import GraphBuilder
+
+    builder = GraphBuilder(merge_entities=False, resolve_conflicts=False)
+    graph = builder.build(
+        {
+            "entities": [
+                {"id": "c1", "name": "Chengdu Plant", "type": "ORG", "headcount": 300},
+                {"id": "c2", "name": "Wuhan Plant", "type": "ORG", "headcount": 450},
+            ],
+            "relationships": [],
+        }
+    )
+    entities = graph["entities"]
+    classes = [{"name": "Organization", "metadata": {"inferred_from": "ORG"}}]
+
+    properties = PropertyGenerator().infer_properties(entities, [], classes)
+
+    names = {p["name"] for p in properties}
+    assert "name" in names, "name must be inferred from flat GraphBuilder entities"
+    assert "headcount" in names, "domain business attribute must be inferred"
+    for framed in ("properties", "relationships", "metadata", "merged_from", "merge_strategy"):
+        assert framed not in names, f"framework field {framed!r} must not appear"
