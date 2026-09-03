@@ -298,6 +298,6 @@ for source in sources:
 </Note>
 
 - [Ingest](ingest) — Load files before parsing.
-- [Split](split) — Chunk parsed text for embedding and extraction.
+- [Split](/reference/split) — Chunk parsed text for embedding and extraction.
 - [Docling Integration](../integrations/docling) — Full Docling integration setup guide.
-- [Semantic Extract](semantic_extract) — Extract entities and relations from parsed text.
+- [Semantic Extract](/reference/semantic_extract) — Extract entities and relations from parsed text.

@@ -58,7 +58,7 @@ print("Relation coverage: ", report["relation_completeness"]["relation_coverage"
 | `suggestions` | `List[str]` | Improvement suggestions |
 | `metrics` | `dict` | Detailed sub-metrics |
 
-- [Semantic Extract](semantic_extract) — Extraction module.
-- [Knowledge Graph](kg) — Graph quality assessment.
+- [Semantic Extract](/reference/semantic_extract) — Extraction module.
+- [Knowledge Graph](/reference/kg) — Graph quality assessment.
 - [Pipeline](pipeline) — Pipeline performance metrics.
 - [Ontology Evaluator](ontology) — Available now for ontology quality metrics.

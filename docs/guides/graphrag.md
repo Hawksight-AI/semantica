@@ -576,9 +576,9 @@ The vector search and graph traversal run independently, then their scores are f
 
 ## Related Guides
 
-- [Semantic Extraction](semantic-extraction) — build the graph from raw unstructured text
-- [Agent Memory](agent-memory) — store, retrieve, and persist agent memories
-- [Context Graphs](context-graphs) — build and traverse the knowledge graph directly
+- [Semantic Extraction](/guides/semantic-extraction) — build the graph from raw unstructured text
+- [Agent Memory](/guides/agent-memory) — store, retrieve, and persist agent memories
+- [Context Graphs](/guides/context-graphs) — build and traverse the knowledge graph directly
 - [Reasoning](reasoning) — derive new facts and run inference rules over the graph
-- [Decision Intelligence](decision-intelligence) — causal chains, policy enforcement, decision tracking
-- [LLM Integrations](llm-integrations) — connect Groq, OpenAI, Anthropic, HuggingFace, and 100+ more
+- [Decision Intelligence](/guides/decision-intelligence) — causal chains, policy enforcement, decision tracking
+- [LLM Integrations](/guides/llm-integrations) — connect Groq, OpenAI, Anthropic, HuggingFace, and 100+ more

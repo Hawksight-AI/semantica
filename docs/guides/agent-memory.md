@@ -46,7 +46,7 @@ Agent Memory provides persistent storage and intelligent retrieval of informatio
 - Simple retrieval tasks where relationships between entities don't matter
 
 <Info>
-  This guide covers the memory layer. For graph-enriched traversal and entity linking, see [Context Graphs](context-graphs). For decision accountability — recording, auditing, and causally tracing what the agent chose — see [Decision Intelligence](decision-intelligence).
+  This guide covers the memory layer. For graph-enriched traversal and entity linking, see [Context Graphs](/guides/context-graphs). For decision accountability — recording, auditing, and causally tracing what the agent chose — see [Decision Intelligence](/guides/decision-intelligence).
 </Info>
 
 ## Setting Up a Persistent Memory Context
@@ -657,10 +657,10 @@ print("Total memories: {}".format(s.get("total_items", 0)))
 
 ## Related Guides
 
-- [Context Graphs](context-graphs) — How the underlying `ContextGraph` stores entity nodes and decision nodes; temporal interval reasoning; deduplication before node insertion; ontology from graph.
-- [Decision Intelligence](decision-intelligence) — Recording decisions as graph nodes with causal chains and policy gating.
-- [Multi-Agent Systems](multi-agent) — Coordinating multiple agents through a shared `AgentContext` and save/load handoffs.
-- [LLM Integrations](llm-integrations) — Configuring the LLM provider passed to `query_with_reasoning()`.
+- [Context Graphs](/guides/context-graphs) — How the underlying `ContextGraph` stores entity nodes and decision nodes; temporal interval reasoning; deduplication before node insertion; ontology from graph.
+- [Decision Intelligence](/guides/decision-intelligence) — Recording decisions as graph nodes with causal chains and policy gating.
+- [Multi-Agent Systems](/guides/multi-agent) — Coordinating multiple agents through a shared `AgentContext` and save/load handoffs.
+- [LLM Integrations](/guides/llm-integrations) — Configuring the LLM provider passed to `query_with_reasoning()`.
 - [Deduplication Guide](deduplication) — Full reference for `DuplicateDetector`, `EntityMerger`, similarity methods, and cluster strategies.
 - [Ontology Management](ontology) — Generate and validate OWL ontologies from the knowledge graph; export to Turtle, OWL/XML, JSON-LD.
 - [Context Module Reference](../reference/context) — Full API: `AgentContext`, `AgentMemory`, `MemoryItem`, `ContextRetriever`.

@@ -449,7 +449,7 @@ print("Nodes: {}, Edges: {}".format(stats["node_count"], stats["edge_count"]))
 `ContextGraph` exposes a full Distance Intelligence API for exploring semantic neighborhoods and blending proximity into retrieval.
 
 <Info>
-  Full Distance Intelligence reference — distance matrices, API endpoints, embedding cache, Explorer UI — is covered in the dedicated [Distance Intelligence](distance) page. This section documents the context-layer API.
+  Full Distance Intelligence reference — distance matrices, API endpoints, embedding cache, Explorer UI — is covered in the dedicated [Distance Intelligence](/reference/distance) page. This section documents the context-layer API.
 </Info>
 
 ### Neighbors with Distance Metadata
@@ -1087,8 +1087,8 @@ class EntityLink:
   </Tab>
 </Tabs>
 
-- [Vector Store](vector_store) — Embedding storage backend for memory retrieval.
-- [Knowledge Graph](kg) — Graph algorithms and analytics used inside ContextGraph.
+- [Vector Store](/reference/vector_store) — Embedding storage backend for memory retrieval.
+- [Knowledge Graph](/reference/kg) — Graph algorithms and analytics used inside ContextGraph.
 - [Reasoning](reasoning) — Logical inference layered on top of context.
 - [Provenance](provenance) — W3C PROV-O lineage for every stored fact.
 

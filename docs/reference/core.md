@@ -227,6 +227,6 @@ result = build_knowledge_base(sources=["doc.pdf"], method="fast")
 </Tip>
 
 - [Pipeline](pipeline) — Pipeline execution and step orchestration.
-- [Utils](utils) — Shared utilities used by Core internally.
+- [Utils](/reference/utils) — Shared utilities used by Core internally.
 - [Getting Started](../getting-started) — Learn the basics before using Core.
-- [LLMs](llms) — Configure LLM providers via ConfigManager.
+- [LLMs](/reference/llms) — Configure LLM providers via ConfigManager.

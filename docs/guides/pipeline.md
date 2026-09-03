@@ -717,6 +717,6 @@ print(f"Compliance delta update: {result.output}")
 ## Related Guides
 
 - [Ingest](ingest) — all source types for the ingest step: PDFs, APIs, databases, RSS feeds, STIX directories, and streams
-- [Semantic Extraction](semantic-extraction) — NER, relation extraction, triplet extraction, and event detection for the extract step
-- [Context Graphs](context-graphs) — building and querying the `ContextGraph` that the store step populates
+- [Semantic Extraction](/guides/semantic-extraction) — NER, relation extraction, triplet extraction, and event detection for the extract step
+- [Context Graphs](/guides/context-graphs) — building and querying the `ContextGraph` that the store step populates
 - [Provenance](provenance) — tracking the origin document, confidence score, and pipeline run ID for every extracted entity
