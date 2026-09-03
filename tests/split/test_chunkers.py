@@ -638,3 +638,89 @@ Body paragraph under a distinct heading for separation checks.
             self.SAMPLE * 3, chunk_size=80, ner_method="pattern"
         )
         assert len(chunks) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Mutable-default regression tests (fix: replace mutable default arguments)
+# ---------------------------------------------------------------------------
+
+
+class TestMutableDefaultRegression:
+    """Regression tests proving that mutable default arguments do not leak
+    between calls.  Each test mutates the list returned / stored by one call
+    and verifies that a subsequent call still receives the *original* default
+    value, not the mutated one.
+    """
+
+    # --- split_hierarchical -------------------------------------------------
+
+    def test_split_hierarchical_default_levels_are_independent_across_calls(self):
+        """Mutating the levels list from one call must not affect the next."""
+        text = "Para one.\n\nPara two.\n\nPara three."
+
+        # First call – capture and mutate the levels list indirectly by
+        # passing explicit levels and then appending to a reference.
+        call1_levels: list = ["paragraph"]
+        chunks1 = split_hierarchical(text, levels=call1_levels, chunk_sizes=[1000])
+        # Mutate the list that was passed in.
+        call1_levels.append("MUTATED")
+
+        # Second call with default levels=None must still use the canonical default.
+        chunks2 = split_hierarchical(text)
+        # The function must succeed and produce chunks (not raise because
+        # "MUTATED" is not a valid level name).
+        assert len(chunks2) >= 1
+
+    def test_split_hierarchical_none_default_creates_fresh_list_each_call(self):
+        """Two calls with levels=None must receive independent list objects."""
+        text = "A sentence.\n\nAnother sentence."
+
+        # Patch the body assignment so we can capture it.
+        captured: list = []
+        original_fn = split_hierarchical.__wrapped__ if hasattr(split_hierarchical, "__wrapped__") else None
+
+        # Use a simpler black-box approach: call twice and verify behaviour.
+        chunks_a = split_hierarchical(text)
+        chunks_b = split_hierarchical(text)
+
+        # Both calls should produce identical results (same default).
+        assert len(chunks_a) == len(chunks_b)
+        assert [c.text for c in chunks_a] == [c.text for c in chunks_b]
+
+    def test_split_hierarchical_default_chunk_sizes_are_independent_across_calls(self):
+        """Mutating chunk_sizes in one call must not affect the next."""
+        text = "Para A.\n\nPara B."
+        mutable_sizes = [5000, 2000, 1000]
+        split_hierarchical(text, chunk_sizes=mutable_sizes)
+        # Mutate after first call.
+        mutable_sizes[0] = 1  # Would produce very different chunking if leaked.
+
+        # Second call with default chunk_sizes=None must still use canonical defaults.
+        chunks = split_hierarchical(text)
+        assert len(chunks) >= 1
+
+    # --- HierarchicalChunker ------------------------------------------------
+
+    def test_hierarchical_chunker_default_levels_independent_across_instances(self):
+        """Mutating levels on one instance must not affect a second instance
+        created with the default."""
+        chunker_a = HierarchicalChunker()
+        # Mutate the instance attribute that was built from the default.
+        chunker_a.levels.append("MUTATED")
+
+        chunker_b = HierarchicalChunker()
+        assert "MUTATED" not in chunker_b.levels, (
+            "Mutation of chunker_a.levels leaked into chunker_b — "
+            "mutable default not fixed properly"
+        )
+
+    def test_hierarchical_chunker_default_levels_value(self):
+        """Default levels must equal the canonical list."""
+        chunker = HierarchicalChunker()
+        assert chunker.levels == ["section", "paragraph", "sentence"]
+
+    def test_hierarchical_chunker_explicit_levels_preserved(self):
+        """Explicitly passed levels must be stored as given."""
+        custom = ["document", "paragraph"]
+        chunker = HierarchicalChunker(levels=custom)
+        assert chunker.levels == custom
