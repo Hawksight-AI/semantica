@@ -152,8 +152,10 @@ function nodeLabel(node: OntologyGraphNode): string {
   return trimmed.split("#").pop() || trimmed.split("/").pop() || node.id;
 }
 
-// The backend's remaining kinds (concept, scheme, individual) have no editor
-// affordances, so they collapse into the read-only "external" kind.
+// The backend's remaining kinds (concept, scheme, individual, unknown) have no
+// editor affordances, so they collapse into the read-only "external" kind. That
+// reading belongs here rather than on the wire: "external reference material"
+// is what the editor does about an unnameable type, not what the type is.
 function classifyEditorNode(node: OntologyGraphNode): OntologyNodeData["entityType"] {
   switch (node.entity_type) {
     case "ontology":

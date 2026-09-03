@@ -159,12 +159,32 @@ def test_ontology_graph_returns_editable_schema_nodes_and_edges(client):
 def test_ontology_graph_nodes_carry_entity_type_for_compact_and_full_iri_types(client):
     graph = client.app.state.session.graph
     full_iri_class = "http://example.org/onto-a#Organization"
+    full_iri_property = "http://example.org/onto-a#employs"
+    full_iri_ontology = "http://example.org/full-iri-onto"
+    unrecognized_external = "http://vocab.example/Widget"
     graph.add_node(
         full_iri_class,
         node_type="http://www.w3.org/2002/07/owl#Class",
         content="Organization",
         scheme_uri="http://example.org/onto-a",
     )
+    graph.add_node(
+        full_iri_property,
+        node_type="http://www.w3.org/2002/07/owl#ObjectProperty",
+        content="employs",
+        scheme_uri="http://example.org/onto-a",
+    )
+    graph.add_node(
+        full_iri_ontology,
+        node_type="http://www.w3.org/2002/07/owl#Ontology",
+        content="Full IRI Ontology",
+        scheme_uri="http://example.org/onto-a",
+    )
+    # An outward reference to a node whose type is outside the schema
+    # vocabulary. /graph reports the classifier's verdict verbatim; reading it
+    # as "external reference material" is the editor's job, not the wire's.
+    graph.add_node(unrecognized_external, node_type="ex:Widget", content="Widget")
+    graph.add_edge(full_iri_property, unrecognized_external, edge_type="rdfs:range")
 
     response = client.get(
         "/api/ontology/graph",
@@ -177,6 +197,31 @@ def test_ontology_graph_nodes_carry_entity_type_for_compact_and_full_iri_types(c
     assert entity_types["http://example.org/onto-a#Person"] == "class"
     assert entity_types[full_iri_class] == "class"
     assert entity_types["http://example.org/onto-a#name"] == "property"
+    assert entity_types[full_iri_property] == "property"
+    assert entity_types[full_iri_ontology] == "ontology"
+    assert entity_types[unrecognized_external] == "unknown"
+
+
+def test_graph_and_entity_endpoints_agree_on_entity_type(client):
+    graph = client.app.state.session.graph
+    unrecognized_external = "http://vocab.example/Widget"
+    graph.add_node(unrecognized_external, node_type="ex:Widget", content="Widget")
+    graph.add_edge(
+        "http://example.org/onto-a#name", unrecognized_external, edge_type="rdfs:range"
+    )
+
+    graph_response = client.get(
+        "/api/ontology/graph", params={"uri": "http://example.org/onto-a"}
+    )
+    assert graph_response.status_code == 200
+    from_graph = {
+        node["id"]: node["entity_type"] for node in graph_response.json()["nodes"]
+    }
+
+    for uri in ("http://example.org/onto-a#Person", unrecognized_external):
+        detail = client.get(f"/api/ontology/entity/{uri}")
+        assert detail.status_code == 200
+        assert from_graph[uri] == detail.json()["entity_type"]
 
 
 def test_ontology_graph_rejects_unregistered_namespace(client):
