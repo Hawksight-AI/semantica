@@ -28,9 +28,9 @@ import { loadOntologyEntityOwner, loadOntologyGraph } from "./api";
 import type { OntologyGraphEdge, OntologyGraphNode } from "./api";
 import {
   classifyNodeType,
-  inferOntologyUri,
   isEditableEntityType,
   ONTOLOGY_MINIMAP_THEME,
+  resolveEditorOntology,
 } from "./ontologyEditorModel";
 import type { EditorEntityType, RegistryEntry } from "./ontologyEditorModel";
 
@@ -250,11 +250,11 @@ export function OntologyEditor() {
         ? loadOntologyEntityOwner(requested).catch(() => undefined)
         : Promise.resolve(undefined),
     ])
-      .then(([entries, explicitOwner]: [RegistryEntry[], string | undefined]) => {
+      .then(([entries, ownerVerdict]: [RegistryEntry[], string | null | undefined]) => {
         if (cancelled) return;
         setRegistry(entries);
-        const inferredOntology = inferOntologyUri(entries, requested, explicitOwner);
-        setOntologyUri((current) => current || inferredOntology || entries[0]?.uri || "");
+        const resolvedOntology = resolveEditorOntology(entries, requested, ownerVerdict);
+        setOntologyUri((current) => current || resolvedOntology || entries[0]?.uri || "");
       })
       .catch((error) => {
         console.error("Failed to load ontology registry:", error);
