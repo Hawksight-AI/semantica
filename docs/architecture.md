@@ -149,25 +149,25 @@ registry.register_plugin("my_plugin", MyPlugin, version="1.0.0")
 
 <Accordion title="Modularity: use only what you need" icon="puzzle-piece">
 
-Every component works standalone. `NERExtractor` runs without a graph store. `VectorStore` runs without decision tracking. The framework never forces a full stack instantiation: you pay only for what you import.
+Every component works standalone. `NERExtractor` runs without a graph store. `VectorStore` runs without decision tracking. The framework never forces a full stack instantiation; you pay only for what you import.
 
 </Accordion>
 
 <Accordion title="Pluggability: extend without modifying core" icon="plug">
 
-Custom ingestors, extractors, validators, and exporters follow the same base class pattern. Register them via `PluginRegistry` and they participate in the full pipeline: provenance tracking, retry policies, and parallel execution included: with no changes to core code.
+Custom ingestors, extractors, validators, and exporters follow the same base class pattern. Register them via `PluginRegistry` and they participate in the full pipeline (provenance tracking, retry policies, and parallel execution included) with no changes to core code.
 
 </Accordion>
 
 <Accordion title="Provenance by default" icon="link">
 
-Lineage tracking is built into graph construction at the lowest level. Every node and edge carries a `source_id` pointing back to the originating document, extraction method, and timestamp. There's no opt-in required: provenance is always on.
+Lineage tracking is built into graph construction at the lowest level. Every node and edge carries a `source_id` pointing back to the originating document, extraction method, and timestamp. There is no opt-in required; provenance is always on.
 
 </Accordion>
 
 <Accordion title="Configuration over convention" icon="sliders">
 
-Centralized `ConfigManager` with environment variable overrides. No magic defaults: all behavior is explicit and overridable. Suitable for multi-environment deployments where dev, staging, and production need different backends.
+Centralized `ConfigManager` with environment variable overrides. No magic defaults; all behavior is explicit and overridable. Suitable for multi-environment deployments where dev, staging, and production need different backends.
 
 </Accordion>
 
@@ -179,13 +179,13 @@ Centralized `ConfigManager` with environment variable overrides. No magic defaul
 | Characteristic | Mechanism |
 | :-------------- | :--------- |
 | **Parallel execution** | `Pipeline(workers=N)` with configurable workers per stage |
-| **Delta processing** | Incremental graph updates: no full recompute on new data |
+| **Delta processing** | Incremental graph updates (no full recompute on new data) |
 | **Streaming ingestion** | Process large corpora without loading everything into memory |
 | **Backend flexibility** | Swap in-memory NetworkX for Neo4j / FalkorDB with no API changes |
 | **Deduplication v2** | `blocking_v2`, `hybrid_v2`, `semantic_v2`: up to 7x faster than v1 |
 | **Indexed search** | Explorer search at 0.004ms on 118k nodes (v0.5.0) |
 
-- [Modules](/modules) — Full module documentation with code examples.
-- [Learning More](/learning-more) — Configuration reference, performance guide, and troubleshooting.
-- [Pipeline Reference](/reference/pipeline) — Pipeline orchestration, workers, and retry policies.
-- [Core Reference](/reference/core) — Framework lifecycle, plugin registry, and configuration.
+- [Modules](/modules): full module documentation with code examples.
+- [Learning More](/learning-more): configuration reference, performance guide, and troubleshooting.
+- [Pipeline Reference](/reference/pipeline): pipeline orchestration, workers, and retry policies.
+- [Core Reference](/reference/core): framework lifecycle, plugin registry, and configuration.
