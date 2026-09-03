@@ -78,11 +78,13 @@ from semantica.parse import DocumentParser
 parser = DocumentParser()
 parsed = parser.parse(sources[0].path)   # parse() takes a path string
 
-print(parsed["text"][:200])   # extracted text
-print(parsed["metadata"])     # file_path, encoding, size, and format-specific keys
+print(parsed["full_text"][:200])   # extracted text
+print(parsed["metadata"])          # document properties (fields vary by format)
 ```
 
-`parse()` returns a `dict` with `text`, `full_text`, and `metadata` keys.
+`parse()` returns a `dict`. `full_text` and `metadata` are present for every
+format; other keys depend on the parser (`pages` for PDF, `tables` and
+`paragraphs` for DOCX, `tables` for `DoclingParser`).
 
 <Tip>
   For PDFs with tables, charts, or multi-column layouts, use `DoclingParser` (`pip install semantica[parse-docling]`): it applies advanced layout analysis and returns structured table data alongside text.
@@ -107,7 +109,7 @@ Identify named entities and extract typed relationships between them.
 ```python Pattern-based (fast, no API key)
 from semantica.semantic_extract import NERExtractor, RelationExtractor
 
-text = parsed["text"]
+text = parsed["full_text"]
 
 ner      = NERExtractor(method="pattern")
 entities = ner.extract(text)
@@ -122,7 +124,7 @@ relationships = rel.extract(text, entities=entities)
 from semantica.semantic_extract import NERExtractor, RelationExtractor
 
 # Reads GROQ_API_KEY from the environment; provider/llm_model select the backend
-text = parsed["text"]
+text = parsed["full_text"]
 
 ner           = NERExtractor(method="llm", provider="groq", llm_model="llama-3.3-70b-versatile")
 entities      = ner.extract(text)
@@ -277,7 +279,7 @@ builder = GraphBuilder(merge_entities=True)
 
 all_entities, all_rels = [], []
 for source in FileIngestor().ingest("data/reports/"):
-    text     = parser.parse(source.path)["text"]
+    text     = parser.parse(source.path)["full_text"]
     entities = ner.extract(text)
     rels     = rel.extract(text, entities=entities)
     all_entities.extend(entities)
@@ -413,7 +415,7 @@ store    = GraphStore(backend="neo4j", uri="bolt://localhost:7687",
 builder  = GraphBuilder(merge_entities=True, graph_store=store)
 
 for info in ingestor.scan_directory("data/reports/", recursive=True):
-    text     = parser.parse(info["path"])["text"]   # one document loaded at a time
+    text     = parser.parse(info["path"])["full_text"]   # one document loaded at a time
     entities = ner.extract(text)
     rels     = rel.extract(text, entities=entities)
     builder.build({"entities": entities, "relationships": rels})
