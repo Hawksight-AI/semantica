@@ -370,7 +370,7 @@ Common causes of authentication failures:
 ## See Also
 
 - [Ingest Module](../reference/ingest) — Full `SalesforceIngestor` API and all other ingestors.
-- [Snowflake Integration](snowflake) — Relational warehouse connector with a similar design.
-- [Databricks Integration](databricks) — Lakehouse connector.
+- [Snowflake Integration](/integrations/snowflake) — Relational warehouse connector with a similar design.
+- [Databricks Integration](/integrations/databricks) — Lakehouse connector.
 - [Installation](../installation) — All optional dependency extras.
 - [Knowledge Graph](../reference/kg) — Build a KG from ingested Salesforce data.

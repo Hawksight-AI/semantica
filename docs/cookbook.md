@@ -8,7 +8,7 @@ icon: "flask"
   **Where to start:**
   - **New to Semantica**: begin with [Core Tutorials](#core-tutorials)
   - **Building an application**: see [Advanced Concepts](#advanced-concepts)
-  - **Need installation help**: see the [Installation Guide](installation)
+  - **Need installation help**: see the [Installation Guide](/installation)
 </Tip>
 
 <Note>

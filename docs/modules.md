@@ -9,7 +9,7 @@ icon: "puzzle-piece"
 </Info>
 
 <Tip>
-  Not sure which module to use? The [Choose the Right Module](choose-your-module) guide maps 35+ developer goals to modules with code examples — start there if you're orienting for the first time.
+  Not sure which module to use? The [Choose the Right Module](/choose-your-module) guide maps 35+ developer goals to modules with code examples — start there if you're orienting for the first time.
 </Tip>
 
 Semantica is organized into **27 modules** across six logical layers. Each module is independently importable: you never pay for what you don't use.
@@ -438,7 +438,7 @@ Exposes Semantica as an MCP stdio server for IDE and agent integrations.
 python -m semantica.mcp_server
 ```
 
-**Integrations:** Claude Desktop, VS Code, Cursor, Windsurf, Cline: 12 MCP tools exposed
+**Integrations:** Claude Desktop, VS Code, Cursor, Windsurf, Cline: 15 MCP tools exposed
 
 ### Seed
 
@@ -680,34 +680,34 @@ versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description=
 
 | Module | Purpose | Key Classes |
 | :------ | :------- | :----------- |
-| [ingest](reference/ingest) | Data ingestion | `FileIngestor`, `WebIngestor`, `ParquetIngestor`, `XMLIngestor` |
-| [parse](reference/parse) | Document parsing | `DocumentParser`, `DoclingParser` |
-| [split](reference/split) | Text chunking | `TextSplitter` |
-| [normalize](reference/normalize) | Data cleaning | `TextNormalizer`, `EntityNormalizer`, `LanguageDetector` |
-| [semantic_extract](reference/semantic_extract) | NER & relation extraction | `NERExtractor`, `RelationExtractor`, `TripletExtractor`, `SemanticAnalyzer`, `SemanticNetworkExtractor`, `ExtractionValidator` |
-| [kg](reference/kg) | Graph construction | `GraphBuilder`, `TemporalGraphQuery`, `SimilarityCalculator` |
-| [ontology](reference/ontology) | Schema management | `OntologyGenerator`, `SHACLGenerator` |
-| [reasoning](reference/reasoning) | Logical inference | `Reasoner`, `DatalogReasoner` |
-| [embeddings](reference/embeddings) | Vector embeddings | `EmbeddingGenerator` |
-| [vector_store](reference/vector_store) | Vector database | `VectorStore` |
-| [graph_store](reference/graph_store) | Graph database | `GraphStore` |
-| [triplet_store](reference/triplet_store) | RDF triple store | `TripletStore` |
-| [deduplication](reference/deduplication) | Entity resolution | `EntityResolver`, `DuplicateDetector`, `ClusterBuilder`, `MergeStrategyManager` |
-| [conflicts](reference/conflicts) | Conflict resolution | `ConflictDetector` |
-| [context](reference/context) | Agent context & decisions | `AgentContext`, `ContextGraph` |
-| [provenance](reference/provenance) | W3C PROV-O lineage | `ProvenanceManager` |
-| [change_management](reference/change_management) | Version control | `TemporalVersionManager` |
-| [export](reference/export) | Data export | `RDFExporter`, `ParquetExporter` |
-| [visualization](reference/visualization) | Graph visualization | `KGVisualizer` |
-| [pipeline](reference/pipeline) | Workflow orchestration | `Pipeline`, `PipelineBuilder` |
-| [explorer](reference/explorer) | Knowledge Explorer UI | `semantica-explorer --graph <file>` |
-| [llms](reference/llms) | LLM providers | `Groq`, `OpenAI`, `create_provider` |
-| [mcp_server](reference/mcp_server) | MCP stdio server | `python -m semantica.mcp_server` |
-| [seed](reference/seed) | KG bootstrapping from structured sources | `SeedManager` |
-| [evals](reference/evals) | Quality evaluation | `KGEvaluator`, `ExtractionEvaluator`, `PipelineEvaluator`, `RegressionTracker` |
-| [core](reference/core) | Base classes & registry | `Semantica`, `ConfigManager`, `PluginRegistry`, `LifecycleManager` |
-| [utils](reference/utils) | Shared utilities | `helpers`, `validators` |
+| [ingest](/reference/ingest) | Data ingestion | `FileIngestor`, `WebIngestor`, `ParquetIngestor`, `XMLIngestor` |
+| [parse](/reference/parse) | Document parsing | `DocumentParser`, `DoclingParser` |
+| [split](/reference/split) | Text chunking | `TextSplitter` |
+| [normalize](/reference/normalize) | Data cleaning | `TextNormalizer`, `EntityNormalizer`, `LanguageDetector` |
+| [semantic_extract](/reference/semantic_extract) | NER & relation extraction | `NERExtractor`, `RelationExtractor`, `TripletExtractor`, `SemanticAnalyzer`, `SemanticNetworkExtractor`, `ExtractionValidator` |
+| [kg](/reference/kg) | Graph construction | `GraphBuilder`, `TemporalGraphQuery`, `SimilarityCalculator` |
+| [ontology](/reference/ontology) | Schema management | `OntologyGenerator`, `SHACLGenerator` |
+| [reasoning](/reference/reasoning) | Logical inference | `Reasoner`, `DatalogReasoner` |
+| [embeddings](/reference/embeddings) | Vector embeddings | `EmbeddingGenerator` |
+| [vector_store](/reference/vector_store) | Vector database | `VectorStore` |
+| [graph_store](/reference/graph_store) | Graph database | `GraphStore` |
+| [triplet_store](/reference/triplet_store) | RDF triple store | `TripletStore` |
+| [deduplication](/reference/deduplication) | Entity resolution | `EntityResolver`, `DuplicateDetector`, `ClusterBuilder`, `MergeStrategyManager` |
+| [conflicts](/reference/conflicts) | Conflict resolution | `ConflictDetector` |
+| [context](/reference/context) | Agent context & decisions | `AgentContext`, `ContextGraph` |
+| [provenance](/reference/provenance) | W3C PROV-O lineage | `ProvenanceManager` |
+| [change_management](/reference/change_management) | Version control | `TemporalVersionManager` |
+| [export](/reference/export) | Data export | `RDFExporter`, `ParquetExporter` |
+| [visualization](/reference/visualization) | Graph visualization | `KGVisualizer` |
+| [pipeline](/reference/pipeline) | Workflow orchestration | `Pipeline`, `PipelineBuilder` |
+| [explorer](/reference/explorer) | Knowledge Explorer UI | `semantica-explorer --graph <file>` |
+| [llms](/reference/llms) | LLM providers | `Groq`, `OpenAI`, `create_provider` |
+| [mcp_server](/reference/mcp_server) | MCP stdio server | `python -m semantica.mcp_server` |
+| [seed](/reference/seed) | KG bootstrapping from structured sources | `SeedManager` |
+| [evals](/reference/evals) | Quality evaluation | `KGEvaluator`, `ExtractionEvaluator`, `PipelineEvaluator`, `RegressionTracker` |
+| [core](/reference/core) | Base classes & registry | `Semantica`, `ConfigManager`, `PluginRegistry`, `LifecycleManager` |
+| [utils](/reference/utils) | Shared utilities | `helpers`, `validators` |
 
-- [Getting Started](getting-started) — Your first knowledge graph in 5 minutes.
-- [Cookbook](cookbook) — 40+ domain notebooks with real-world examples.
-- [API Reference](reference/context) — Full technical documentation.
+- [Getting Started](/getting-started) — Your first knowledge graph in 5 minutes.
+- [Cookbook](/cookbook) — 40+ domain notebooks with real-world examples.
+- [API Reference](/reference/context) — Full technical documentation.

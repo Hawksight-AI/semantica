@@ -55,7 +55,7 @@ Semantica coordinates agents through shared context (memory and knowledge graphs
 Semantica coordinates multiple agents through a shared `ContextGraph` — agents read and write to the same graph, or hand off serialized state via `save()` and `load()`, with no message broker required. Use this pattern when splitting work across ingestion, enrichment, reasoning, and reporting roles that must share a single evidence base.
 
 <Info>
-  This guide covers multi-agent coordination. For the memory layer each agent uses internally, see [Agent Memory](agent-memory). For graph traversal and entity linking, see [Context Graphs](context-graphs). For decision recording and precedent matching, see [Decision Intelligence](decision-intelligence).
+  This guide covers multi-agent coordination. For the memory layer each agent uses internally, see [Agent Memory](/guides/agent-memory). For graph traversal and entity linking, see [Context Graphs](/guides/context-graphs). For decision recording and precedent matching, see [Decision Intelligence](/guides/decision-intelligence).
 </Info>
 
 ## The Three Coordination Patterns
@@ -679,7 +679,7 @@ context.retrieve("...", user_id="analyst-jsmith")
 
 ## Related Guides
 
-- [Agent Memory](agent-memory) — memory storage, retrieval, persistence, and the working memory window each agent uses internally
-- [Context Graphs](context-graphs) — build and traverse the shared `ContextGraph` directly; temporal interval reasoning; entity deduplication before node insertion
-- [Decision Intelligence](decision-intelligence) — record and trace decisions across agent handoffs with causal chain analysis
-- [LLM Integrations](llm-integrations) — configure the LLM provider passed to `query_with_reasoning()` in each agent
+- [Agent Memory](/guides/agent-memory) — memory storage, retrieval, persistence, and the working memory window each agent uses internally
+- [Context Graphs](/guides/context-graphs) — build and traverse the shared `ContextGraph` directly; temporal interval reasoning; entity deduplication before node insertion
+- [Decision Intelligence](/guides/decision-intelligence) — record and trace decisions across agent handoffs with causal chain analysis
+- [LLM Integrations](/guides/llm-integrations) — configure the LLM provider passed to `query_with_reasoning()` in each agent

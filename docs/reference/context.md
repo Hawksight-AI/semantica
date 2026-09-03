@@ -30,28 +30,28 @@ icon: "brain"
 
 ## What You Get
 
-- **AgentContext** — Memory, decision tracking, and graph-backed retrieval behind one API
+- **AgentContext**: memory, decision tracking, and graph-backed retrieval behind one API
   - Conversation history and checkpoint diffing
   - Persist and restore full context state to disk
-- **ContextGraph** — Thread-safe in-memory knowledge graph
+- **ContextGraph**: thread-safe in-memory knowledge graph
   - PageRank, centrality, community detection, temporal validity
   - Cross-graph navigation and link traversal
-- **AgentMemory** — Embedding-backed memory with retention policy
+- **AgentMemory**: embedding-backed memory with retention policy
   - LRU eviction at configurable `max_memory_size`
   - Per-conversation history isolation
-- **DecisionRecorder** — Records decisions with causal chains and confidence scores
+- **DecisionRecorder**: records decisions with causal chains and confidence scores
   - Temporal validity windows (`valid_from` / `valid_until`)
   - Cross-system context capture on every decision
-- **PolicyEngine** — Versioned policy storage in the knowledge graph
+- **PolicyEngine**: versioned policy storage in the knowledge graph
   - Compliance checking against recorded decisions
   - Policy exception tracking with approver audit trail
-- **EntityLinker** — Maps entity text to stable URIs
+- **EntityLinker**: maps entity text to stable URIs
   - Creates typed links between entity IDs
   - Prevents "Apple", "Apple Inc.", "AAPL" becoming separate nodes
-- **ContextRetriever** — Fuses vector similarity, graph traversal, and agent memory
+- **ContextRetriever**: fuses vector similarity, graph traversal, and agent memory
   - Richer context than pure vector search
   - Configurable `hybrid_alpha` and expansion hops
-- **CausalChainAnalyzer** — Traces upstream causes and downstream effects of any decision
+- **CausalChainAnalyzer**: traces upstream causes and downstream effects of any decision
   - Explainability paths with relationship types
   - Configurable depth and direction
 
@@ -273,7 +273,7 @@ icon: "brain"
 </Tip>
 
 <Tip>
-  **Persist your context between runs.** `VectorStore` does not auto-persist — passing `index_path=` to its constructor is a no-op. Call `context.save("agent_state/")` to write memory, the vector index, and the graph to disk, and `context.load("agent_state/")` on the next process to restore them. See the "Persist & Restore" tab under [Real-World Patterns](#real-world-patterns) below.
+  **Persist your context between runs.** `VectorStore` does not auto-persist; passing `index_path=` to its constructor is a no-op. Call `context.save("agent_state/")` to write memory, the vector index, and the graph to disk, and `context.load("agent_state/")` on the next process to restore them. See the "Persist & Restore" tab under [Real-World Patterns](#real-world-patterns) below.
 </Tip>
 
 ### Memory Methods
@@ -449,7 +449,7 @@ print("Nodes: {}, Edges: {}".format(stats["node_count"], stats["edge_count"]))
 `ContextGraph` exposes a full Distance Intelligence API for exploring semantic neighborhoods and blending proximity into retrieval.
 
 <Info>
-  Full Distance Intelligence reference — distance matrices, API endpoints, embedding cache, Explorer UI — is covered in the dedicated [Distance Intelligence](distance) page. This section documents the context-layer API.
+  Full Distance Intelligence reference (distance matrices, API endpoints, embedding cache, Explorer UI) is covered in the dedicated [Distance Intelligence](/reference/distance) page. This section documents the context-layer API.
 </Info>
 
 ### Neighbors with Distance Metadata
@@ -480,7 +480,7 @@ for n in neighbors:
 | Added field | Type | Description |
 | :---------- | :---- | :----------- |
 | `distance_band` | `str` | `"direct"` (1 hop) / `"near"` (2) / `"mid-range"` (3–4) / `"distant"` (5+) |
-| `confidence_decay` | `float` | `edge_weight ^ hop_count` — decays with each hop |
+| `confidence_decay` | `float` | `edge_weight ^ hop_count`; decays with each hop |
 | `path_to_anchor` | `List[str]` | Shortest path from anchor node to this neighbor |
 | `hop_count` | `int` | BFS depth from anchor |
 
@@ -659,7 +659,7 @@ if not receipt.complete:
 ```
 
 <Warning>
-Check the receipt — the call returning is not proof the data is gone. FAISS,
+Check the receipt. The call returning is not proof the data is gone. FAISS,
 Milvus, and Weaviate expose no delete method, so erasure cannot be completed on
 those backends today; the receipt reports `unsupported` rather than a success it
 did not achieve.
@@ -687,9 +687,9 @@ At least one store is required; a store that is not supplied reports
 
 | Status | Meaning |
 | :--- | :--- |
-| `erased` | Reached, data removed. On the vectors leg this means the store accepted the delete for the ids given — backends offer no portable existence check, so it is not a count of embeddings that were really there |
+| `erased` | Reached, data removed. On the vectors leg this means the store accepted the delete for the ids given; backends offer no portable existence check, so it is not a count of embeddings that were really there |
 | `not_found` | Reached, held nothing for this entity |
-| `not_configured` | No such store was bound — normal, not a failure |
+| `not_configured` | No such store was bound: normal, not a failure |
 | `unsupported` | The store cannot delete at all; retrying will not help |
 | `failed` | The store was reached and the deletion did not succeed |
 
@@ -721,7 +721,7 @@ receipt.to_dict()
 # }
 ```
 
-Erasure runs outward-in — vectors, then memory, then the graph. The tombstone is
+Erasure runs outward-in: vectors, then memory, then the graph. The tombstone is
 the durable attestation that an erasure happened, so it is written last: a crash
 mid-cascade leaves the node present and the receipt incomplete, rather than a
 tombstone claiming more than actually happened. A store that raises is recorded
@@ -1087,10 +1087,10 @@ class EntityLink:
   </Tab>
 </Tabs>
 
-- [Vector Store](vector_store) — Embedding storage backend for memory retrieval.
-- [Knowledge Graph](kg) — Graph algorithms and analytics used inside ContextGraph.
-- [Reasoning](reasoning) — Logical inference layered on top of context.
-- [Provenance](provenance) — W3C PROV-O lineage for every stored fact.
+- [Vector Store](/reference/vector_store): embedding storage backend for memory retrieval.
+- [Knowledge Graph](/reference/kg): graph algorithms and analytics used inside ContextGraph.
+- [Reasoning](/guides/reasoning): logical inference layered on top of context.
+- [Provenance](/guides/provenance): W3C PROV-O lineage for every stored fact.
 
-- [Context Module](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb) — Memory and decision tracking · Intermediate
-- [Advanced Context Engineering](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb) — Production FAISS + Neo4j setup · Advanced
+- [Context Module](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb): memory and decision tracking · Intermediate
+- [Advanced Context Engineering](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb): production FAISS + Neo4j setup · Advanced
