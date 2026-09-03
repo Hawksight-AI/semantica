@@ -74,10 +74,10 @@ Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 ## License
 
-MIT License: see [LICENSE](https://github.com/semantica-agi/semantica/blob/main/LICENSE) and the [License page](project-license).
+MIT License: see [LICENSE](https://github.com/semantica-agi/semantica/blob/main/LICENSE) and the [License page](/project-license).
 
 
 ## See Also
 
-- [Contributing](contributing-guide) — How to submit changes.
-- [Community](community) — Community guidelines and channels.
+- [Contributing](/contributing-guide) — How to submit changes.
+- [Community](/community) — Community guidelines and channels.

@@ -5,7 +5,7 @@ icon: "compass"
 ---
 
 <Info>
-  Every module works independently — import only what you need. This page maps developer goals to starting points. The [Module Reference](modules) covers every module in depth.
+  Every module works independently — import only what you need. This page maps developer goals to starting points. The [Module Reference](/modules) covers every module in depth.
 </Info>
 
 ## Quick Reference
@@ -89,7 +89,7 @@ Pick your goal to see the minimum imports and a working skeleton.
       Pass `method="pattern"` to `NERExtractor` for zero-cost, zero-API-key extraction. Switch to `method="llm"` with any of the supported providers for higher recall.
     </Tip>
 
-    **Next:** [Quickstart →](quickstart) — full pipeline with visualization and export.
+    **Next:** [Quickstart →](/quickstart) — full pipeline with visualization and export.
   </Tab>
 
   <Tab title="Build GraphRAG">
@@ -122,7 +122,7 @@ Pick your goal to see the minimum imports and a working skeleton.
     print(result["reasoning_path"])  # multi-hop trace
     ```
 
-    **Next:** [Context module reference →](reference/context)
+    **Next:** [Context module reference →](/reference/context)
   </Tab>
 
   <Tab title="Add Agent Memory">
@@ -163,7 +163,7 @@ Pick your goal to see the minimum imports and a working skeleton.
       `decision_tracking=True` is required. Without it, `record_decision()` raises `RuntimeError`.
     </Note>
 
-    **Next:** [Context module reference →](reference/context)
+    **Next:** [Context module reference →](/reference/context)
   </Tab>
 
   <Tab title="Track Provenance">
@@ -195,7 +195,7 @@ Pick your goal to see the minimum imports and a working skeleton.
     diff     = manager.diff("v1.0", "v1.1")
     ```
 
-    **Next:** [Provenance reference →](reference/provenance) · [Change Management reference →](reference/change_management)
+    **Next:** [Provenance reference →](/reference/provenance) · [Change Management reference →](/reference/change_management)
   </Tab>
 
   <Tab title="Export">
@@ -222,7 +222,7 @@ Pick your goal to see the minimum imports and a working skeleton.
 
     **Formats:** Turtle · JSON-LD · N-Triples · RDF/XML · Parquet · Cypher · Arrow · OWL · CSV · ArangoDB AQL
 
-    **Next:** [Export module reference →](reference/export)
+    **Next:** [Export module reference →](/reference/export)
   </Tab>
 
   <Tab title="MCP — Claude / Cursor">
@@ -268,7 +268,7 @@ Pick your goal to see the minimum imports and a working skeleton.
       Set `SEMANTICA_KG_PATH` to persist your graph across restarts. Without it, all data is lost when the server process exits.
     </Warning>
 
-    **Next:** [MCP Server reference →](reference/mcp_server)
+    **Next:** [MCP Server reference →](/reference/mcp_server)
   </Tab>
 </Tabs>
 
@@ -283,11 +283,11 @@ Pick your goal to see the minimum imports and a working skeleton.
 
     Use **both together** via `AgentContext` (GraphRAG) to get grounded LLM responses where every claim traces back to a source node.
 
-    See also: [Core Concepts](concepts)
+    See also: [Core Concepts](/concepts)
   </Accordion>
 
   <Accordion title="I just want to run something quickly." icon="rocket">
-    Start with the [Quickstart](quickstart). It builds a complete pipeline (ingest → parse → extract → graph → visualize → export) with no API key required.
+    Start with the [Quickstart](/quickstart). It builds a complete pipeline (ingest → parse → extract → graph → visualize → export) with no API key required.
   </Accordion>
 
   <Accordion title="I'm adding Semantica to an existing agent — what's the minimum?" icon="plug">
@@ -304,7 +304,7 @@ Pick your goal to see the minimum imports and a working skeleton.
     )
     ```
 
-    [Context module reference →](reference/context)
+    [Context module reference →](/reference/context)
   </Accordion>
 
   <Accordion title="I need a compliance-ready pipeline — what's the minimum stack?" icon="shield-check">
@@ -322,6 +322,6 @@ Pick your goal to see the minimum imports and a working skeleton.
 
 ---
 
-- [Quickstart](quickstart) — Full pipeline in 5 minutes.
-- [Module Reference](modules) — Every module with examples and common chains.
-- [API Reference](reference/context) — Complete class and method documentation.
+- [Quickstart](/quickstart) — Full pipeline in 5 minutes.
+- [Module Reference](/modules) — Every module with examples and common chains.
+- [API Reference](/reference/context) — Complete class and method documentation.

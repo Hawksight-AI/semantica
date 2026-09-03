@@ -5,7 +5,7 @@ icon: "rocket"
 ---
 
 <Tip>
-  Already installed? Jump straight to [Quickstart](quickstart). Need setup help first? See [Installation](installation).
+  Already installed? Jump straight to [Quickstart](/quickstart). Need setup help first? See [Installation](/installation).
 </Tip>
 
 ## What You Can Build
@@ -52,15 +52,15 @@ icon: "rocket"
 
     | Track | You want to... | Start with |
     | :----- | :-------------- | :--------- |
-    | **Knowledge Graph** | Turn documents into structured, queryable graphs | [Quickstart → Step 1](quickstart) |
-    | **Agent Context** | Give your AI agent persistent memory and decision tracking | [Context reference](reference/context) |
-    | **GraphRAG** | Ground LLM answers in structured knowledge | [Concepts → GraphRAG](concepts#graphrag) |
-    | **MCP Integration** | Use Semantica from Claude Desktop or VS Code | [MCP Server](reference/mcp_server) |
+    | **Knowledge Graph** | Turn documents into structured, queryable graphs | [Quickstart → Step 1](/quickstart) |
+    | **Agent Context** | Give your AI agent persistent memory and decision tracking | [Context reference](/reference/context) |
+    | **GraphRAG** | Ground LLM answers in structured knowledge | [Concepts → GraphRAG](/concepts#graphrag) |
+    | **MCP Integration** | Use Semantica from Claude Desktop or VS Code | [MCP Server](/reference/mcp_server) |
 
   </Step>
 
   <Step title="Run the pipeline">
-    The full 6-step pipeline: ingest, parse, extract, build, visualize, export: is in the [Quickstart](quickstart). Takes under 5 minutes with pattern-based extraction (no API key required).
+    The full 6-step pipeline: ingest, parse, extract, build, visualize, export: is in the [Quickstart](/quickstart). Takes under 5 minutes with pattern-based extraction (no API key required).
 
     <Note>
       An LLM API key is **optional** for the quickstart. Pattern-based extraction works out of the box: upgrade to LLM extraction for higher accuracy when you're ready.
@@ -99,7 +99,7 @@ icon: "rocket"
     print(f"{len(graph['entities'])} nodes, {len(graph['relationships'])} edges")
     ```
 
-    **Next:** [Full pipeline walkthrough →](quickstart)
+    **Next:** [Full pipeline walkthrough →](/quickstart)
   </Tab>
 
   <Tab title="Agent Context">
@@ -131,7 +131,7 @@ icon: "rocket"
     precedents = context.find_precedents("model selection", limit=5)
     ```
 
-    **Next:** [Context module reference →](reference/context)
+    **Next:** [Context module reference →](/reference/context)
   </Tab>
 
   <Tab title="GraphRAG">
@@ -161,7 +161,7 @@ icon: "rocket"
         print(f"{claim.text}  →  source: {claim.source_node}")
     ```
 
-    **Next:** [GraphRAG concepts →](concepts#graphrag)
+    **Next:** [GraphRAG concepts →](/concepts#graphrag)
   </Tab>
 
   <Tab title="MCP Integration">
@@ -185,7 +185,7 @@ icon: "rocket"
 
     15 tools available instantly: extract entities, query graph, record decisions, run reasoning, export results.
 
-    **Next:** [MCP Server reference →](reference/mcp_server)
+    **Next:** [MCP Server reference →](/reference/mcp_server)
   </Tab>
 </Tabs>
 
@@ -194,29 +194,29 @@ icon: "rocket"
 
 Semantica uses a modular, layered architecture: import only what you need.
 
-- **[Input Layer](reference/ingest)** — Load and prepare data from any source. Modules: `ingest`, `parse`, `split`, `normalize`
-- **[Semantic Layer](reference/semantic_extract)** — Extract meaning from raw text. Modules: `semantic_extract`, `kg`, `ontology`, `reasoning`
-- **[Storage Layer](reference/vector_store)** — Persist knowledge for retrieval. Modules: `embeddings`, `vector_store`, `graph_store`, `triplet_store`
-- **[Quality Layer](reference/deduplication)** — Validate and deduplicate. Modules: `deduplication`, `conflicts`
-- **[Context Layer](reference/context)** — Track decisions and lineage. Modules: `context`, `provenance`, `change_management`
-- **[Output Layer](reference/export)** — Deliver results downstream. Modules: `export`, `visualization`, `pipeline`, `explorer`
+- **[Input Layer](/reference/ingest)** — Load and prepare data from any source. Modules: `ingest`, `parse`, `split`, `normalize`
+- **[Semantic Layer](/reference/semantic_extract)** — Extract meaning from raw text. Modules: `semantic_extract`, `kg`, `ontology`, `reasoning`
+- **[Storage Layer](/reference/vector_store)** — Persist knowledge for retrieval. Modules: `embeddings`, `vector_store`, `graph_store`, `triplet_store`
+- **[Quality Layer](/reference/deduplication)** — Validate and deduplicate. Modules: `deduplication`, `conflicts`
+- **[Context Layer](/reference/context)** — Track decisions and lineage. Modules: `context`, `provenance`, `change_management`
+- **[Output Layer](/reference/export)** — Deliver results downstream. Modules: `export`, `visualization`, `pipeline`, `explorer`
 
 
 ## Which Module Do I Need?
 
-See the [Choose the Right Module](choose-your-module) guide — it maps 35+ developer goals to the right starting point across all 27 modules, with working code for the most common paths.
+See the [Choose the Right Module](/choose-your-module) guide — it maps 35+ developer goals to the right starting point across all 27 modules, with working code for the most common paths.
 
 
 ## Next Steps
 
-- [Core Concepts](concepts) — Knowledge graphs, ontologies, and reasoning explained in depth.
-- [Quickstart Tutorial](quickstart) — Full 6-step pipeline walkthrough with working code.
-- [Module Reference](modules) — Every module, class, and common chain explained.
-- [API Reference](reference/context) — Complete module documentation for every class and method.
+- [Core Concepts](/concepts) — Knowledge graphs, ontologies, and reasoning explained in depth.
+- [Quickstart Tutorial](/quickstart) — Full 6-step pipeline walkthrough with working code.
+- [Module Reference](/modules) — Every module, class, and common chain explained.
+- [API Reference](/reference/context) — Complete module documentation for every class and method.
 
 
 ## Help
 
 - [Discord](https://discord.gg/sV34vps5hH) — Ask questions, share projects, get community support.
 - [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — Report bugs or request features.
-- [FAQ](faq) — Common questions answered.
+- [FAQ](/faq) — Common questions answered.

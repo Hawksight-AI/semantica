@@ -420,7 +420,7 @@ for info in ingestor.scan_directory("data/reports/", recursive=True):
 ```
 
 For multi-step orchestration with configurable parallelism, see the
-[Pipeline guide](guides/pipeline).
+[Pipeline guide](/guides/pipeline).
 
 </Accordion>
 
@@ -452,7 +452,7 @@ pip install --upgrade semantica
 
 ## Next Steps
 
-- [Core Concepts](concepts) — Knowledge graphs, ontologies, reasoning engines: the mental model behind Semantica.
-- [Module Reference](modules) — Every module explained with key classes and common chains.
-- [API Reference](reference/context) — Complete documentation for every module, class, and parameter.
-- [Cookbook](cookbook) — 40+ interactive Jupyter notebooks with real-world datasets.
+- [Core Concepts](/concepts) — Knowledge graphs, ontologies, reasoning engines: the mental model behind Semantica.
+- [Module Reference](/modules) — Every module explained with key classes and common chains.
+- [API Reference](/reference/context) — Complete documentation for every module, class, and parameter.
+- [Cookbook](/cookbook) — 40+ interactive Jupyter notebooks with real-world datasets.

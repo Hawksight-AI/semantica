@@ -719,7 +719,7 @@ for src in best["sources"]:
 
 ## Related Guides
 
-- [Agent Memory](agent-memory) — using `query_with_reasoning()` with any LLM provider for graph-grounded retrieval
-- [Multi-Agent Systems](multi-agent) — wiring different LLM providers to different agent tiers in a shared-graph pipeline
-- [Semantic Extraction](semantic-extraction) — LLM-powered NER, relation extraction, event detection, and triplet extraction
-- [GraphRAG](graphrag) — multi-hop graph reasoning with `query_with_reasoning()`
+- [Agent Memory](/guides/agent-memory) — using `query_with_reasoning()` with any LLM provider for graph-grounded retrieval
+- [Multi-Agent Systems](/guides/multi-agent) — wiring different LLM providers to different agent tiers in a shared-graph pipeline
+- [Semantic Extraction](/guides/semantic-extraction) — LLM-powered NER, relation extraction, event detection, and triplet extraction
+- [GraphRAG](/guides/graphrag) — multi-hop graph reasoning with `query_with_reasoning()`

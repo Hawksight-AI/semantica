@@ -607,7 +607,7 @@ The Knowledge Explorer embeds Distance Intelligence directly in the browser dash
   The 10× cache improvement applies when the graph is unchanged between requests. In write-heavy pipelines where nodes are added continuously, cache hit rates will be lower. Use `force_refresh=False` (default) for read-heavy Explorer usage and `force_refresh=True` for batch pipeline contexts.
 </Note>
 
-- [Context Module](context) — `ContextGraph.get_neighbors()` and proximity-blended retrieval.
-- [Knowledge Graph Module](kg) — `NodeEmbedder`, `SimilarityCalculator`, and graph analytics.
+- [Context Module](/reference/context) — `ContextGraph.get_neighbors()` and proximity-blended retrieval.
+- [Knowledge Graph Module](/reference/kg) — `NodeEmbedder`, `SimilarityCalculator`, and graph analytics.
 - [Visualization](visualization) — Programmatic distance heatmaps and ego-mode graph renders.
-- [Explorer](explorer) — Knowledge Explorer with built-in Distance Intelligence dashboard.
+- [Explorer](/reference/explorer) — Knowledge Explorer with built-in Distance Intelligence dashboard.

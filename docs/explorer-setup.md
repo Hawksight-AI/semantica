@@ -6,7 +6,7 @@ icon: "map"
 
 **`semantica-explorer`** is an **interactive browser dashboard** for knowledge graph exploration. You give it a graph file, it starts a local server, and opens a browser tab where you can search nodes, find paths, inspect provenance, and run analytics: no code required after launch.
 
-This page covers everything needed to go from zero to a running Explorer. For the full REST API reference and endpoint catalogue, see [Explorer Reference](reference/explorer).
+This page covers everything needed to go from zero to a running Explorer. For the full REST API reference and endpoint catalogue, see [Explorer Reference](/reference/explorer).
 
 
 ## Prerequisites
@@ -27,7 +27,7 @@ Verify:
 semantica-explorer --help
 ```
 
-You should see the usage message with the four available flags. If you see `command not found`, activate your virtual environment first. See [CLI Setup](cli-setup#troubleshooting) for PATH help.
+You should see the usage message with the four available flags. If you see `command not found`, activate your virtual environment first. See [CLI Setup](/cli-setup#troubleshooting) for PATH help.
 
 
 ## Minimal End-to-End Example
@@ -264,7 +264,7 @@ Once running, Explorer exposes a REST API and dashboard for:
 
 The full endpoint catalogue is documented in the Swagger UI at `/docs` and in the reference page below.
 
-- [Explorer Reference](reference/explorer) — Every REST endpoint, WebSocket events, analytics, and all supported flags.
-- [CLI Setup](cli-setup) — All five Semantica executables and when to use each one.
-- [Context Module](reference/context) — Full documentation for ContextGraph: build, query, save, and load.
-- [Quickstart](quickstart) — End-to-end pipeline: ingest → extract → build graph → export.
+- [Explorer Reference](/reference/explorer) — Every REST endpoint, WebSocket events, analytics, and all supported flags.
+- [CLI Setup](/cli-setup) — All five Semantica executables and when to use each one.
+- [Context Module](/reference/context) — Full documentation for ContextGraph: build, query, save, and load.
+- [Quickstart](/quickstart) — End-to-end pipeline: ingest → extract → build graph → export.

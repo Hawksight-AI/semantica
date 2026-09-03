@@ -522,7 +522,7 @@ Provenance tracking in Semantica produces the following audit artifacts:
   `ProvenanceManager` does not include built-in Turtle or JSON-LD serialization. Use `entry.to_dict()` and `get_lineage()` to retrieve provenance data, then serialize with your preferred RDF library if W3C PROV-O RDF output is required.
 </Note>
 
-- [Change Management](change_management) — Version control and snapshot audit trails.
+- [Change Management](/reference/change_management) — Version control and snapshot audit trails.
 - [Ingest](ingest) — Provenance begins at the ingestion stage.
 - [Export](export) — Include provenance metadata in RDF exports.
-- [Context](context) — Decision provenance via AgentContext.
+- [Context](/reference/context) — Decision provenance via AgentContext.
