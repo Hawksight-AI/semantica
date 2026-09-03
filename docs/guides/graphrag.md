@@ -132,16 +132,17 @@ stats = context.store(
 print("Graph built: {} nodes, {} edges".format(
     stats["graph_nodes"], stats["graph_edges"]
 ))
-# Graph built: 18 nodes, 14 edges
-# Nodes: APT29, HAMMERTOSS, NATO, LifeCare, AS59796, CISA Sector 6, ...
-# Edges: deployed, observed_on, classified_as, targets, operates_in, ...
 ```
+
+`store()` returns a dict with `stored_count`, `memory_ids`, `graph_nodes`, and
+`graph_edges`. The extracted nodes (APT29, HAMMERTOSS, LifeCare, AS59796, …) and
+edges (`deployed`, `observed_on`, `classified_as`, …) now span all four documents.
 
 The graph now contains a connected subgraph linking APT29 to healthcare infrastructure across four document boundaries, something that would be invisible to a pure vector search.
 
 ## Retrieving the relevant subgraph
 
-With the graph populated, a plain `retrieve()` call already does more than vector search. When `use_graph=True`, the retriever seeds the graph traversal from the top-k vector matches and expands outward by following edges, collecting connected facts within `max_hops`:
+With the graph populated, a plain `retrieve()` call already does more than vector search. When `use_graph=True`, the retriever seeds the graph traversal from the top-k vector matches and expands outward by following edges. Expansion depth is set once, by `max_expansion_hops` on the `AgentContext` constructor:
 
 ```python
 results = context.retrieve(
@@ -149,7 +150,6 @@ results = context.retrieve(
     use_graph=True,
     max_results=10,
     expand_graph=True,
-    max_hops=3,
 )
 
 for r in results:
@@ -175,10 +175,18 @@ apt29_intel = context.retrieve(
     use_graph=True,
     anchor_node="APT29",
     proximity_weight=0.7,   # strongly favour nodes close to APT29
-    max_hops=3,
+    max_hops=3,             # with an anchor, this bounds the proximity radius
     max_results=8,
 )
 ```
+
+<Note>
+  `max_hops` on `retrieve()` only takes effect when `anchor_node` is set: it
+  bounds the proximity radius used for scoring and drops results farther than
+  `max_hops` from the anchor. Without an `anchor_node` it is ignored. It does
+  **not** change how far graph expansion reaches: that is fixed by
+  `max_expansion_hops` on the constructor.
+</Note>
 
 ## Getting a grounded LLM answer with a reasoning path
 
@@ -466,12 +474,17 @@ compliance_context = AgentContext(
     retention_days=2555,   # 7-year regulatory retention
 )
 
-# In production these come from ingest_file(); shown as strings here for brevity
-basel_cre20_text  = "CRE20.32: For income-producing real estate where repayment depends on "
-                    "property cash flows, RWA = exposure × risk weight, where risk weight "
-                    "is determined by LTV bucket per Table CRE20.3..."
-bcbs239_text      = "Principle 3: Risk data should be accurate and have a single authoritative source. "
-                    "Where data is aggregated across systems, reconciliation must be documented..."
+# In production the text comes from a parsed file, e.g. FileIngestor().ingest_file(path).text;
+# inline strings here for brevity
+basel_cre20_text = (
+    "CRE20.32: For income-producing real estate where repayment depends on "
+    "property cash flows, RWA = exposure × risk weight, where risk weight "
+    "is determined by LTV bucket per Table CRE20.3..."
+)
+bcbs239_text = (
+    "Principle 3: Risk data should be accurate and have a single authoritative source. "
+    "Where data is aggregated across systems, reconciliation must be documented..."
+)
 
 compliance_context.store(
     [
@@ -535,7 +548,7 @@ results = context.retrieve(
 )
 ```
 
-Each additional hop in `max_hops` exponentially increases the subgraph size. Practical defaults by domain:
+Each additional expansion hop exponentially increases the subgraph size. Practical defaults by domain:
 
 ```text
 General Q&A             max_expansion_hops=2  (95% of useful facts within 2 hops)
@@ -544,7 +557,7 @@ Drug interactions       max_expansion_hops=3  (drug → enzyme → metabolite �
 Regulatory cross-ref    max_expansion_hops=2  (rule → article → article)
 ```
 
-Set globally in the constructor; override per call with the `max_hops` argument to `retrieve()`.
+Expansion depth is a constructor setting only (`max_expansion_hops`); there is no per-call override on `retrieve()`. `query_with_reasoning()` does take a per-call `max_hops` argument.
 
 ## How GraphRAG works internally
 
