@@ -3488,9 +3488,9 @@ nbconvert==7.17.1 \
     # via
     #   jupyter
     #   jupyter-server
-nbformat==5.11.0 \
-    --hash=sha256:7dbaed4a69cae28c2b4d44ab7430a6af4544fb89455023f6f21550be757b60c8 \
-    --hash=sha256:f70a17f591a9ccd1c601d5e61a4b20972703926df0ba42458ce14bf575766bb6
+nbformat==5.11.1 \
+    --hash=sha256:32d4521c68c6e7d5b29c76defaeed9f42ea733142b9b19f88277ce10390b9c4d \
+    --hash=sha256:cc6698fa75f4fab8755ead786317815f13a6fee3b53311c0abb1a8b51d52f7ec
     # via
     #   jupyter-server
     #   nbclient
