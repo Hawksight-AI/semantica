@@ -28,7 +28,9 @@ Semantica is organized into **27 modules** across six logical layers. Each modul
 
 ### Ingest
 
-Loads data from files, web, databases, and streams into a unified `SourceDocument` format.
+Loads data from files, web, databases, and streams. Each ingestor returns its own
+result type (`FileIngestor` → `FileObject`, `WebIngestor` → `WebContent`, …);
+document-oriented ones expose a `.text` payload and `.metadata`.
 
 ```python
 from semantica.ingest import FileIngestor, WebIngestor, ParquetIngestor, XMLIngestor, DatabricksIngestor
@@ -37,7 +39,7 @@ from semantica.ingest import FileIngestor, WebIngestor, ParquetIngestor, XMLInge
 ingestor = FileIngestor()
 documents = ingestor.ingest_directory("data/")
 
-# Web crawl
+# Web page: returns a WebContent with .text, .title, .links, .metadata
 web_ingestor = WebIngestor()
 page = web_ingestor.ingest_url("https://example.com")
 
@@ -67,13 +69,13 @@ Extracts structured text and layout metadata from raw documents.
 ```python
 from semantica.parse import DocumentParser, DoclingParser
 
-# Standard parser: all common formats
+# Standard parser: all common formats. parse() takes a path, returns a dict
 parser = DocumentParser()
-parsed = parser.parse_document("document.pdf")
+parsed = parser.parse("document.pdf")   # {"full_text": ..., "metadata": ..., ...}
 
-# Advanced parser: multi-column PDFs, merged-cell tables, OCR
-parser = DoclingParser(extract_tables=True, extract_images=True, output_format="markdown")
-parsed = parser.parse("data/annual_report.pdf")
+# Advanced parser (pip install semantica[parse-docling]): tables, OCR, layout
+parser = DoclingParser(export_format="markdown", enable_ocr=True)
+parsed = parser.parse("data/annual_report.pdf")   # dict with full_text, tables, pages
 ```
 
 **Available parsers:** `DocumentParser`, `DoclingParser`, `CodeParser`, `CSVParser`, `DocxParser`, `EmailParser`, `ExcelParser`, `HTMLParser`, `ImageParser`, `JSONParser`, `MCPParser`, `MediaParser`, `PDFParser`, `PPTXParser`, `StructuredDataParser`, `WebParser`, `XMLParser`
@@ -85,11 +87,12 @@ Chunks text for embedding and RAG pipelines with awareness of semantic boundarie
 ```python
 from semantica.split import TextSplitter
 
-splitter = TextSplitter(method="semantic_transformer")
-chunks = splitter.split(text, chunk_size=1000, chunk_overlap=200)
+# chunk_size / chunk_overlap are constructor arguments
+splitter = TextSplitter(method="semantic_transformer", chunk_size=1000, chunk_overlap=200)
+chunks = splitter.split(text)
 ```
 
-**Chunking strategies:** `recursive`, `semantic_transformer`, `entity_aware`, `relation_aware`, `sliding_window`, `structural`
+**Chunking methods:** `recursive`, `token`, `sentence`, `paragraph`, `semantic_transformer`, `entity_aware`, `relation_aware`, `graph_based`, `ontology_aware`, `hierarchical`, `community_detection`, `centrality_based`, `llm`
 
 ### Normalize
 
@@ -115,17 +118,18 @@ Named entity recognition, relation extraction, and triplet generation.
 ```python
 from semantica.semantic_extract import NERExtractor, RelationExtractor, TripletExtractor
 
-ner = NERExtractor(method="llm", llm_provider=llm)
-entities = ner.extract("Apple Inc. was founded by Steve Jobs.")
+# LLM method: provider + llm_model select the backend; the API key comes from the env
+ner = NERExtractor(method="llm", provider="groq", llm_model="llama-3.3-70b-versatile")
+entities = ner.extract("Apple Inc. was founded by Steve Jobs.")   # list[Entity]
 
-rel = RelationExtractor(method="llm", llm_provider=llm)
-relationships = rel.extract(text, entities=entities)
+rel = RelationExtractor(method="llm", provider="groq", llm_model="llama-3.3-70b-versatile")
+relationships = rel.extract(text, entities=entities)              # list[Relation]
 
-trip = TripletExtractor(method="llm", llm_provider=llm)
-triplets = trip.extract(text)
+trip = TripletExtractor(method="pattern")
+triplets = trip.extract(text)                                     # list[Triplet]
 ```
 
-**Extraction methods:** `"pattern"` (no API key), `"ml"` (local model), `"llm"` (any of the 8 supported providers)
+**Extraction methods:** `"pattern"` (no API key), `"ml"` (local spaCy model), `"llm"` (any of the 9 supported providers)
 
 **Additional extractors:** `CoreferenceResolver`, `EventDetector`, `SemanticAnalyzer`, `SemanticNetworkExtractor`
 
@@ -137,17 +141,17 @@ Graph construction, graph algorithms, temporal model, and distance intelligence.
 from semantica.kg import GraphBuilder, GraphAnalyzer, TemporalGraphQuery, SimilarityCalculator
 from datetime import datetime
 
-# Build
+# Build: build() takes a {"entities": ..., "relationships": ...} dict
 builder = GraphBuilder(merge_entities=True)
-kg = builder.build(entities=entities, relationships=relationships)
+kg = builder.build({"entities": entities, "relationships": relationships})
 
 # Temporal graphs (v0.4.0)
 query_engine = TemporalGraphQuery(enable_temporal_reasoning=True)
 snapshot = query_engine.query_at_time(kg, query="", at_time=datetime(2021, 6, 15))
 
-# Semantic similarity (v0.5.0)
-calc = SimilarityCalculator()
-scores = calc.calculate_similarity(entity_a, entity_b)
+# Semantic similarity (v0.5.0): operates on embedding vectors
+calc = SimilarityCalculator(method="cosine")
+score = calc.cosine_similarity(vec_a, vec_b)
 ```
 
 **Graph algorithms available:** centrality calculation, community detection, connectivity analysis, entity resolution, link prediction, path finding, similarity calculation
@@ -175,19 +179,23 @@ Derives new facts from existing knowledge using multiple inference strategies.
 ```python
 from semantica.reasoning import Reasoner, DatalogReasoner
 
-# Rule-based reasoning
+# Forward chaining: facts and rules as predicate(args) / IF-THEN strings
 engine = Reasoner()
-engine.apply_transitivity("located_in")
-engine.apply_symmetry("knows")
-result = engine.infer()
+engine.add_fact("Manager(Alice)")
+engine.add_rule("IF Manager(?x) THEN HasAuthority(?x)")
+results = engine.forward_chain()          # list[InferenceResult] with .conclusion, .rule_used
 
 # Datalog: recursive Horn clause rules (v0.4.0)
-datalog = DatalogEngine()
+datalog = DatalogReasoner()
+datalog.add_fact("parent(tom, bob)")
+datalog.add_fact("parent(bob, ann)")
+datalog.add_rule("ancestor(X, Y) :- parent(X, Y).")
 datalog.add_rule("ancestor(X, Z) :- parent(X, Y), ancestor(Y, Z).")
-results = datalog.query("ancestor(alice, ?)")
+datalog.derive_all()
+results = datalog.query("ancestor(tom, ?Z)")   # [{"Z": "bob"}, {"Z": "ann"}], order not guaranteed
 ```
 
-**Engines:** forward chaining, Rete network, deductive, abductive, SPARQL, Datalog: all produce explainable inference paths
+**Engines:** `Reasoner` (forward/backward chaining), `ReteEngine`, `SPARQLReasoner`, `DatalogReasoner`, `TemporalReasoningEngine`, `GraphReasoner` (LLM)
 
 
 ## Storage
@@ -199,9 +207,9 @@ Generates and manages vector embeddings for semantic similarity.
 ```python
 from semantica.embeddings import EmbeddingGenerator
 
-generator  = EmbeddingGenerator(model="sentence-transformers")
-embeddings = generator.generate(["text1", "text2"])
-similarity = generator.similarity(embeddings[0], embeddings[1])
+generator  = EmbeddingGenerator()
+embeddings = generator.generate_embeddings(["text1", "text2"])   # np.ndarray
+similarity = generator.compare_embeddings(embeddings[0], embeddings[1])
 ```
 
 **Supported models:** Sentence-Transformers, FastEmbed, OpenAI, BGE
@@ -215,12 +223,18 @@ Multi-backend vector database with hybrid search support.
 ```python
 from semantica.vector_store import VectorStore
 
-store   = VectorStore(backend="faiss", dimension=768)
-store.add_vectors(embeddings, ids)
-results = store.search(query_vector, top_k=10)
+store = VectorStore(backend="faiss", dimension=768)
+
+# Raw vectors
+ids     = store.store_vectors(embeddings)                 # returns generated ids
+hits    = store.search_vectors(query_vector, k=10)
+
+# Or store text and let the store embed it
+store.add_documents(["Apple was founded in 1976.", "Google was founded in 1998."])
+results = store.search("tech company founding dates", limit=10)
 ```
 
-**Backends:** FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector, in-memory
+**Backends:** FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector, SQLite, in-memory
 
 **Search modes:** semantic top-k, hybrid (vector + keyword), metadata-filtered
 
@@ -232,8 +246,8 @@ Connects to graph databases for persistent, query-able storage.
 from semantica.graph_store import GraphStore
 
 store = GraphStore(backend="neo4j")
-store.add_nodes(entities)
-store.add_edges(relationships)
+store.add_nodes([{"id": "acme", "type": "Organization", "properties": {"name": "Acme"}}])
+store.add_edges([{"source": "alice", "target": "acme", "type": "works_for"}])
 results = store.query("MATCH (n)-[r]->(m) RETURN n, r, m")
 ```
 
@@ -246,9 +260,9 @@ RDF triple-based storage with SPARQL query support.
 ```python
 from semantica.triplet_store import TripletStore
 
-store = TripletStore(backend="blazegraph")
-store.add_triplets(subject, predicate, obj)
-results = store.sparql("SELECT ?s ?p ?o WHERE { ?s ?p ?o }")
+store = TripletStore(backend="oxigraph")
+store.add_triplets(triplets)                 # list of Triplet objects (or add_triplet for one)
+results = store.execute_query("SELECT ?s ?p ?o WHERE { ?s ?p ?o }")
 ```
 
 **Backends:** Oxigraph (embedded), Blazegraph, Apache Jena, RDF4J
@@ -261,15 +275,18 @@ results = store.sparql("SELECT ?s ?p ?o WHERE { ?s ?p ?o }")
 Detects, scores, and merges duplicate entities across sources.
 
 ```python
-from semantica.deduplication import EntityResolver
+from semantica.deduplication import DuplicateDetector, EntityMerger
 
-resolver = EntityResolver()
-merged   = resolver.resolve(entities, strategy="semantic_v2")
+detector   = DuplicateDetector(similarity_threshold=0.85)
+candidates = detector.detect_duplicates(entities)
+
+merger     = EntityMerger()
+operations = merger.merge_duplicates(entities, strategy="keep_most_complete")
 ```
 
-**v2 strategies** (`blocking_v2`, `hybrid_v2`, `semantic_v2`) are up to 7x faster than v1.
+**v2 candidate-generation modes** (`blocking_v2`, `hybrid_v2`, `semantic_v2`) are up to 7x faster than v1.
 
-**Components:** `EntityResolver`, `DuplicateDetector`, `EntityMerger`, `SimilarityCalculator`, `ClusterBuilder`
+**Components:** `DuplicateDetector`, `EntityMerger`, `ClusterBuilder`, `MergeStrategyManager`
 
 **`DuplicateDetector` options:** `max_results`, `top_k_per_entity`, `min_similarity`, `sort_by`
 
@@ -278,14 +295,13 @@ merged   = resolver.resolve(entities, strategy="semantic_v2")
 Detects and resolves fact conflicts across overlapping knowledge sources.
 
 ```python
-from semantica.conflicts import ConflictDetector
+from semantica.conflicts import ConflictDetector, ConflictResolver
 
-detector  = ConflictDetector()
-conflicts = detector.detect_conflicts(kg)
-resolved  = detector.resolve(conflicts, strategy="most_recent")
+conflicts = ConflictDetector().detect_conflicts(entities)   # list of entity dicts
+resolved  = ConflictResolver().resolve_conflicts(conflicts, strategy="most_recent")
 ```
 
-**Detection types:** value conflicts, type conflicts, temporal conflicts, logical conflicts
+**Detection types:** value conflicts, type conflicts, relationship conflicts, temporal conflicts, logical conflicts
 
 **Resolution strategies:** prefer most recent, prefer most reliable source, majority vote, flag for manual review
 
@@ -298,6 +314,7 @@ Agent context graphs, decision tracking, causal chains, and precedent search.
 
 ```python
 from semantica.context import AgentContext, ContextGraph
+from semantica.vector_store import VectorStore
 
 context = AgentContext(
     vector_store=VectorStore(backend="faiss", dimension=768),
@@ -328,7 +345,7 @@ W3C PROV-O compliant lineage tracking across all modules.
 from semantica.provenance import ProvenanceManager
 
 manager = ProvenanceManager()
-manager.track_entity("entity_1", "document.pdf", "person")
+manager.track_entity("entity_1", source="document.pdf", metadata={"type": "person"})
 lineage = manager.get_lineage("entity_1")
 ```
 
@@ -364,8 +381,8 @@ RDFExporter().export(graph, file_path="graph.ttl", format="turtle")
 # Analytics
 ParquetExporter().export(graph, file_path="output/graph.parquet")
 
-# ArangoDB
-aql = ArangoAQLExporter().export(graph)
+# ArangoDB: writes AQL INSERT statements to the given path
+ArangoAQLExporter().export(graph, file_path="graph.aql")
 ```
 
 **Export formats:** RDF (Turtle, JSON-LD, N-Triples, XML), Parquet, ArangoDB AQL, CSV, OWL, Arrow, LPG, YAML, distance matrices
@@ -390,16 +407,23 @@ viz.visualize_network(graph, output="html", file_path="graph.html")
 Pipeline DSL with parallel workers, retry policies, and failure handling.
 
 ```python
-from semantica.pipeline import Pipeline
+from semantica.pipeline import PipelineBuilder, ExecutionEngine
 
-pipeline = Pipeline()
-pipeline.add_step("ingest",   FileIngestor())
-pipeline.add_step("extract",  NERExtractor())
-pipeline.add_step("build",    GraphBuilder())
-result = pipeline.run("data/")
+builder = PipelineBuilder()
+builder.add_step("ingest",  step_type="ingest", source="data/", recursive=True)
+builder.add_step("extract", step_type="ner_extract")
+builder.add_step("build",   step_type="kg_build", merge_entities=True)
+
+pipeline = (
+    builder
+    .connect_steps("ingest", "extract")
+    .connect_steps("extract", "build")
+    .build(name="docs_to_kg")
+)
+result = ExecutionEngine().execute_pipeline(pipeline)
 ```
 
-**Components:** `Pipeline`, `PipelineBuilder`, `ExecutionEngine`, `FailureHandler`, `PipelineValidator`, `ParallelismManager`, `ResourceScheduler`
+**Components:** `PipelineBuilder`, `Pipeline`, `ExecutionEngine`, `FailureHandler`, `PipelineValidator`, `ParallelismManager`, `ResourceScheduler`
 
 ### Explorer
 
@@ -428,7 +452,7 @@ llm = OpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
 llm = LiteLLM(model="anthropic/claude-opus-4-7", api_key=os.getenv("ANTHROPIC_API_KEY"))
 ```
 
-**Supported providers:** OpenAI, Anthropic, Google Gemini, Groq, Ollama, DeepSeek, Novita AI, LiteLLM (20+ models via one interface)
+**Supported providers:** OpenAI, Anthropic, Google Gemini, Groq, Ollama, DeepSeek, Novita AI, HuggingFace, plus LiteLLM (100+ models via one interface)
 
 ### MCP Server
 
@@ -445,44 +469,43 @@ python -m semantica.mcp_server
 Bootstrap knowledge graphs from verified structured sources: fixed-point reference data, controlled vocabularies, and domain anchors.
 
 ```python
-from semantica.seed import SeedManager
+from semantica.seed import SeedDataManager
 
-seed = SeedManager()
-seed.populate(kg, dataset="companies", count=100)
+seed = SeedDataManager()
 
-# Load domain seeds from file or built-in datasets
-seed.load_from_file("seed_data/industries.json")
-seed.inject(kg)   # merges seed nodes without duplicating existing entities
+# Load trusted reference data from CSV / JSON / a database / an API
+seed_data = seed.load_from_csv("seed_data/industries.csv", entity_type="Industry")
+
+# Merge seed data with extraction output (seed values win on conflict by default)
+combined = seed.integrate_with_extracted(
+    {"entities": seed_data, "relationships": []},
+    {"entities": extracted_entities, "relationships": extracted_relationships},
+    merge_strategy="seed_first",
+)
 ```
 
 **Use cases:** anchoring extraction with known entities, pre-populating ontology classes, deterministic test graph generation.
 
 ### Evals
 
-Evaluation framework for measuring KG quality, extraction accuracy, and pipeline performance.
+Scores decision-intelligence outputs (decision records, audit trails, reasoning
+text) with a registry of deterministic and model-backed evaluators plus a small
+run harness.
 
 ```python
-from semantica.evals import KGEvaluator, ExtractionEvaluator, PipelineEvaluator, RegressionTracker
+from semantica.evals import evaluate, list_evaluators
 
-# KG quality
-report = KGEvaluator().evaluate(kg, ontology=ontology)
-print(f"Completeness: {report.completeness:.2%}  Consistency: {report.consistency:.2%}")
+list_evaluators()
+# ['decision_scores', 'exact_match', 'keyword_check', 'length_range',
+#  'levenshtein', 'llm_as_judge', 'numeric_range', 'regex_match', 'rouge',
+#  'temporal_range']
 
-# Extraction accuracy
-report = ExtractionEvaluator().evaluate_ner(predictions=extracted, gold_standard=annotated)
-print(f"Precision: {report.precision:.3f}  Recall: {report.recall:.3f}  F1: {report.f1:.3f}")
-
-# Pipeline throughput and latency
-metrics = PipelineEvaluator().benchmark(pipeline, data="data/", bench_runs=5)
-print(f"Throughput: {metrics.docs_per_second:.1f} docs/sec")
-
-# Regression tracking across runs
-tracker = RegressionTracker(db_path="eval_history.db")
-run_id  = tracker.record_run(pipeline_version="v1.2.0", metrics=metrics)
-diff    = tracker.compare(run_id, baseline_run_id="run_abc123")
+cases = [("apple", "aple"), ("night", "nacht")]
+summary = evaluate(cases, evaluators=["levenshtein"])
+print(summary.total, summary.passed, summary.pass_rate)
 ```
 
-**Components:** `KGEvaluator`, `ExtractionEvaluator`, `PipelineEvaluator`, `RegressionTracker`
+**Public API:** `evaluate(cases, evaluators, config=None)`, `list_evaluators()`, `get_evaluator(name)`, and the `EvalMetric` / `CaseResult` / `EvalSummary` result types. See the [Evals reference](/reference/evals).
 
 ### Core
 
@@ -492,19 +515,19 @@ Base classes, shared data models, and the plugin registry used across all module
 from semantica.core import Semantica, PluginRegistry, ConfigManager
 
 # Top-level orchestrator
-sem = Semantica(config_path="config.yaml")
+sem = Semantica(config="config.yaml")
 sem.initialize()
 
-# Plugin registry: register custom components
+# Plugin registry: register custom components under a name
 registry = PluginRegistry()
-registry.register("my_ingestor", MyCustomIngestor)
+registry.register_plugin("my_ingestor", MyCustomIngestor, version="1.0.0")
 
-# Config management
-config  = ConfigManager(config_path="config.yaml")
-batch   = config.get("processing.batch_size", default=32)
+# Config management: ConfigManager loads a Config; Config.get() does dotted lookups
+config = ConfigManager().load_from_file("config.yaml")
+batch  = config.get("processing.batch_size", default=32)
 ```
 
-**Components:** `Semantica`, `PluginRegistry`, `ConfigManager`, `LifecycleManager`, `HealthMonitor`, `Config`
+**Components:** `Semantica`, `PluginRegistry`, `ConfigManager`, `Config`, `LifecycleManager`, `HealthStatus`, `MethodRegistry`
 
 ### Utils
 
@@ -532,11 +555,13 @@ from semantica.semantic_extract import NERExtractor, RelationExtractor
 from semantica.kg import GraphBuilder
 
 sources       = FileIngestor().ingest("data/")
-parsed        = DocumentParser().parse(sources[0])
-entities      = NERExtractor(method="llm", llm_provider=llm).extract(parsed)
-relationships = RelationExtractor(method="llm", llm_provider=llm).extract(parsed, entities=entities)
+text          = DocumentParser().parse(sources[0].path)["full_text"]
+ner           = NERExtractor(method="llm", provider="groq", llm_model="llama-3.3-70b-versatile")
+rel           = RelationExtractor(method="llm", provider="groq", llm_model="llama-3.3-70b-versatile")
+entities      = ner.extract(text)
+relationships = rel.extract(text, entities=entities)
 graph         = GraphBuilder(merge_entities=True).build(
-                    entities=entities, relationships=relationships
+                    {"entities": entities, "relationships": relationships}
                 )
 ```
 
@@ -555,16 +580,20 @@ from semantica.vector_store import VectorStore
 context = AgentContext(
     vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=ContextGraph(advanced_analytics=True),
+    graph_expansion=True,
 )
-context.load_graph("company_kg.json")
 
-result = context.query(
+# store() extracts entities and populates the graph + vector index
+context.store([{"content": "Steve Wozniak co-founded Apple with Steve Jobs."}])
+
+# retrieve() blends vector similarity with multi-hop graph traversal
+results = context.retrieve(
     "What companies did Apple alumni found?",
-    mode="graphrag",
-    reasoning=True,
+    use_graph=True,
+    expand_graph=True,
 )
-for claim in result.claims:
-    print(f"{claim.text}  →  {claim.source_node}")
+for r in results:
+    print(f"[{r['score']:.3f}]  {r['content']}  (source: {r['source']})")
 ```
 
     **Best for:** question-answering systems, RAG with source attribution, research assistants
@@ -606,18 +635,22 @@ precedents = context.find_precedents("model selection", limit=5)
 
 ```python
 from semantica.ingest import FileIngestor
+from semantica.parse import DocumentParser
 from semantica.semantic_extract import NERExtractor
 from semantica.kg import GraphBuilder
 from semantica.provenance import ProvenanceManager
 from semantica.export import RDFExporter
 
 sources  = FileIngestor().ingest("records/")
-entities = NERExtractor(method="llm", llm_provider=llm).extract(sources)
-graph    = GraphBuilder(merge_entities=True).build(entities=entities, relationships=[])
-prov     = ProvenanceManager()
-lineage  = prov.get_entity_lineage("entity_id")
+ner      = NERExtractor(method="llm", provider="groq", llm_model="llama-3.3-70b-versatile")
+entities = ner.extract(DocumentParser().parse(sources[0].path)["full_text"])
+graph    = GraphBuilder(merge_entities=True).build({"entities": entities, "relationships": []})
 
-RDFExporter(include_provenance=True).export(graph, file_path="audit.ttl", format="turtle")
+prov     = ProvenanceManager()
+prov.track_entity("entity_id", source="records/filing.pdf", metadata={"extractor": "llm"})
+lineage  = prov.get_lineage("entity_id")
+
+RDFExporter().export(graph, file_path="audit.ttl", format="turtle")
 ```
 
     **Best for:** HIPAA, SOX, GDPR, FDA 21 CFR Part 11 deployments
@@ -633,17 +666,23 @@ from semantica.ingest import WebIngestor
 from semantica.normalize import TextNormalizer
 from semantica.semantic_extract import NERExtractor, RelationExtractor
 from semantica.graph_store import Neo4jStore
+from semantica.kg import GraphBuilder
 
-pages      = WebIngestor(max_depth=2).ingest("https://example.com")
+ingestor   = WebIngestor()
 normalizer = TextNormalizer()
+ner        = NERExtractor(method="pattern")
+rel        = RelationExtractor(method="pattern")
 store      = Neo4jStore(uri="bolt://localhost:7687", user="neo4j", password="password")
 
-for page in pages:
+# GraphBuilder persists straight to the store as it builds
+builder = GraphBuilder(merge_entities=True, graph_store=store)
+
+for url in ["https://example.com/a", "https://example.com/b"]:
+    page          = ingestor.ingest_url(url)          # WebContent, has .text
     text          = normalizer.normalize_text(page.text)
-    entities      = NERExtractor().extract(text)
-    relationships = RelationExtractor().extract(text, entities=entities)
-    store.add_nodes(entities)
-    store.add_edges(relationships)
+    entities      = ner.extract(text)
+    relationships = rel.extract(text, entities=entities)
+    builder.build({"entities": entities, "relationships": relationships})
 ```
 
     **Best for:** competitive intelligence, news monitoring, research aggregation
@@ -692,8 +731,8 @@ versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description=
 | [vector_store](/reference/vector_store) | Vector database | `VectorStore` |
 | [graph_store](/reference/graph_store) | Graph database | `GraphStore` |
 | [triplet_store](/reference/triplet_store) | RDF triple store | `TripletStore` |
-| [deduplication](/reference/deduplication) | Entity resolution | `EntityResolver`, `DuplicateDetector`, `ClusterBuilder`, `MergeStrategyManager` |
-| [conflicts](/reference/conflicts) | Conflict resolution | `ConflictDetector` |
+| [deduplication](/reference/deduplication) | Entity resolution | `DuplicateDetector`, `EntityMerger`, `ClusterBuilder`, `MergeStrategyManager` |
+| [conflicts](/reference/conflicts) | Conflict resolution | `ConflictDetector`, `ConflictResolver`, `SourceTracker` |
 | [context](/reference/context) | Agent context & decisions | `AgentContext`, `ContextGraph` |
 | [provenance](/reference/provenance) | W3C PROV-O lineage | `ProvenanceManager` |
 | [change_management](/reference/change_management) | Version control | `TemporalVersionManager` |
@@ -703,8 +742,8 @@ versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description=
 | [explorer](/reference/explorer) | Knowledge Explorer UI | `semantica-explorer --graph <file>` |
 | [llms](/reference/llms) | LLM providers | `Groq`, `OpenAI`, `create_provider` |
 | [mcp_server](/reference/mcp_server) | MCP stdio server | `python -m semantica.mcp_server` |
-| [seed](/reference/seed) | KG bootstrapping from structured sources | `SeedManager` |
-| [evals](/reference/evals) | Quality evaluation | `KGEvaluator`, `ExtractionEvaluator`, `PipelineEvaluator`, `RegressionTracker` |
+| [seed](/reference/seed) | KG bootstrapping from structured sources | `SeedDataManager` |
+| [evals](/reference/evals) | Decision-intelligence evaluation | `evaluate`, `list_evaluators`, `EvalSummary` |
 | [core](/reference/core) | Base classes & registry | `Semantica`, `ConfigManager`, `PluginRegistry`, `LifecycleManager` |
 | [utils](/reference/utils) | Shared utilities | `helpers`, `validators` |
 
