@@ -1923,6 +1923,9 @@ async def get_ontology_graph(
     except GraphTruncationError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
 
+    # Invariant: the helpers raise the moment their accumulation passes
+    # _MAX_ANALYSIS_NODES, so core_nodes_by_id and selected_edges are both
+    # within the cap here; a post-filter re-check would be unreachable.
     external_node_ids = {
         node_id
         for edge in selected_edges
