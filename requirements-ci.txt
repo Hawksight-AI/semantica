@@ -1747,9 +1747,9 @@ graphviz==0.21 \
     --hash=sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78 \
     --hash=sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42
     # via semantica (pyproject.toml)
-groq==1.6.0 \
-    --hash=sha256:c4237ecf0053ba85fd926bb31cb4b178996310474b4618867994e3e40d8e3c02 \
-    --hash=sha256:fa16db582455db324adcff1b5908519474736872e28cd5c8fa2b8bef6860e12a
+groq==1.7.0 \
+    --hash=sha256:cb1518f823423d4e52445859eb7d2918a927794cec12f8d5e50d9161e3690fc8 \
+    --hash=sha256:d582dbb3f071b92ca339baba83af9f57ba6f46a51c34b04565d7cb9badb2785b
     # via semantica (pyproject.toml)
 grpcio==1.83.0 \
     --hash=sha256:009667eaf3dcd5224c713589cdc98e7ca4ed0ff0b61132c6b276e930eb83a2df \
