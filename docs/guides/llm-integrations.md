@@ -157,7 +157,7 @@ Install with `pip install "semantica[llm-anthropic]"` (or just `pip install anth
 ```python
 from semantica.llms import Anthropic
 
-claude = Anthropic(model="claude-sonnet-5", api_key="YOUR_ANTHROPIC_KEY")
+claude = Anthropic(model="claude-sonnet-4-6", api_key="YOUR_ANTHROPIC_KEY")
 # api_key falls back to the ANTHROPIC_API_KEY environment variable
 
 # is_available() only confirms a client was constructed from some key.
