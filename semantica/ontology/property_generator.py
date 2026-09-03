@@ -37,6 +37,29 @@ from .naming_conventions import NamingConventions
 from .relationship_utils import build_entity_aliases, resolve_relationship_endpoint_type
 
 
+# Top-level entity keys that describe structure or provenance rather than
+# business attributes. GraphBuilder and EntityMerger attach these to entity
+# dicts (relationships list, nested properties/metadata maps, merge history),
+# so they must not be inferred as datatype properties. Each key mirrors what
+# the framework actually writes to a merged entity top level
+# (see MergeStrategyManager._merge_entities merged_entity dict and GraphBuilder).
+_CONTROL_FIELDS = frozenset(
+    {
+        "id",
+        "type",
+        "entity_type",
+        "text",
+        "label",
+        "confidence",
+        "properties",
+        "relationships",
+        "metadata",
+        "merged_from",
+        "merge_strategy",
+    }
+)
+
+
 class PropertyGenerator:
     """
     Property generation engine for ontologies.
@@ -347,7 +370,7 @@ class PropertyGenerator:
 
         for entity in entities:
             for key, value in entity.items():
-                if key in ["id", "type", "entity_type", "text", "label", "confidence"]:
+                if key in _CONTROL_FIELDS:
                     continue
 
                 # Infer type
