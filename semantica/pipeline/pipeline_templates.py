@@ -239,6 +239,89 @@ class PipelineTemplateManager:
             metadata={"category": "ontology"},
         )
 
+        # Bug Bounty Hunting (graph/case-management orchestration)
+        self.templates["bug_bounty_hunting"] = PipelineTemplate(
+            name="bug_bounty_hunting",
+            description=(
+                "Authorized bug bounty hunting flow: scope gates, asset inventory, "
+                "evidence provenance, surface mapping, finding triage, and report "
+                "composition as a dependency graph (n8n-style)."
+            ),
+            steps=[
+                {
+                    "name": "program_scope",
+                    "type": "program_scope",
+                    "config": {"program_name": "example-program", "in_scope": []},
+                },
+                {
+                    "name": "scope_check",
+                    "type": "scope_check",
+                    "config": {"block_out_of_scope": True},
+                    "dependencies": ["program_scope"],
+                },
+                {
+                    "name": "asset_inventory",
+                    "type": "asset_inventory",
+                    "config": {"assets": []},
+                    "dependencies": ["scope_check"],
+                },
+                {
+                    "name": "evidence_ingest",
+                    "type": "evidence_ingest",
+                    "config": {},
+                    "dependencies": ["asset_inventory"],
+                },
+                {
+                    "name": "surface_map",
+                    "type": "surface_map",
+                    "config": {},
+                    "dependencies": ["evidence_ingest"],
+                },
+                {
+                    "name": "finding_record",
+                    "type": "finding_record",
+                    "config": {},
+                    "dependencies": ["surface_map"],
+                },
+                {
+                    "name": "duplicate_check",
+                    "type": "duplicate_check",
+                    "config": {"threshold": 0.85},
+                    "dependencies": ["finding_record"],
+                },
+                {
+                    "name": "severity_triage",
+                    "type": "severity_triage",
+                    "config": {"min_severity": "low"},
+                    "dependencies": ["duplicate_check"],
+                },
+                {
+                    "name": "report_compose",
+                    "type": "report_compose",
+                    "config": {},
+                    "dependencies": ["severity_triage"],
+                },
+                {
+                    "name": "submission_gate",
+                    "type": "submission_gate",
+                    "config": {"block_if_not_ready": True},
+                    "dependencies": ["report_compose"],
+                },
+                {
+                    "name": "graph_export",
+                    "type": "graph_export",
+                    "config": {},
+                    "dependencies": ["submission_gate"],
+                },
+            ],
+            config={"parallelism": 1},
+            metadata={
+                "category": "security_research",
+                "style": "n8n_graph",
+                "authorized_only": True,
+            },
+        )
+
     def get_template(self, template_name: str) -> Optional[PipelineTemplate]:
         """
         Get template by name.

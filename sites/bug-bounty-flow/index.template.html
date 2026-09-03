@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Semantica AIP — Ontology · Logic · Workshop</title>
+  <meta name="description" content="Open-source Palantir AIP–style platform: ontology-grounded agents, Logic flows, Workshop ops, and decision provenance." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-elev: #161d24;
+      --bg-panel: #1b2430;
+      --bg-hover: #243040;
+      --line: rgba(143, 176, 209, 0.14);
+      --line-strong: rgba(143, 176, 209, 0.28);
+      --text: #e8eef5;
+      --muted: #8fa8c0;
+      --dim: #5f7388;
+      --blue: #2d72d2;
+      --blue-soft: rgba(45, 114, 210, 0.16);
+      --green: #32a467;
+      --green-soft: rgba(50, 164, 103, 0.14);
+      --amber: #d9822b;
+      --amber-soft: rgba(217, 130, 43, 0.14);
+      --red: #cd4246;
+      --violet: #9179f2;
+      --radius: 6px;
+      --font: "IBM Plex Sans", sans-serif;
+      --mono: "IBM Plex Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-rows: 48px 1fr;
+    }
+
+    /* ── Top bar (Foundry-style) ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #141b22, #10161c);
+    }
+    .mark {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .mark-badge {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      background: linear-gradient(135deg, var(--blue), #1f4b8f);
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .mark small {
+      color: var(--muted);
+      font-weight: 500;
+      margin-left: 6px;
+    }
+    .top-tabs {
+      display: flex;
+      gap: 2px;
+      margin-left: 8px;
+      overflow-x: auto;
+    }
+    .top-tab {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: 500 13px/1 var(--font);
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+    .top-tab[data-active="true"] {
+      background: var(--blue-soft);
+      color: #9ec3f5;
+    }
+    .top-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+    .top-meta {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.02);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .pill.live { color: #7dcea0; border-color: rgba(50,164,103,0.35); }
+
+    /* ── Body ── */
+    .body {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 232px 1fr 320px;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: var(--bg-elev);
+      padding: 12px 10px;
+      overflow: auto;
+    }
+    .side-label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--dim);
+      padding: 8px 8px 6px;
+    }
+    .nav-btn {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: 500 13px/1.2 var(--font);
+      padding: 9px 10px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .nav-btn[data-active="true"] {
+      background: var(--blue-soft);
+      color: #c5dbf7;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,0.03); color: var(--text); }
+    .nav-ico {
+      width: 16px;
+      opacity: 0.8;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .catalog {
+      margin-top: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 10px;
+    }
+    .block-card {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.02);
+      border-radius: var(--radius);
+      padding: 9px 10px;
+      margin: 0 4px 6px;
+    }
+    .block-card strong {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    .block-card span {
+      color: var(--dim);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .block-card .tag {
+      display: inline-block;
+      margin-top: 6px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: #9ec3f5;
+      background: var(--blue-soft);
+      padding: 2px 6px;
+      border-radius: 999px;
+    }
+
+    .main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      background:
+        radial-gradient(ellipse 60% 40% at 20% 0%, rgba(45,114,210,0.08), transparent 60%),
+        var(--bg);
+    }
+    .module-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .module-header h1 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .module-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .module-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      border: 1px solid var(--line-strong);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font: 500 12px/1 var(--font);
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn.primary {
+      background: var(--blue);
+      border-color: #3b82e8;
+      color: white;
+    }
+    .btn:hover { filter: brightness(1.08); }
+
+    .canvas-wrap {
+      position: relative;
+      min-height: 0;
+    }
+    #graph, #logic {
+      position: absolute;
+      inset: 0;
+    }
+    .hidden { display: none !important; }
+
+    .logic-board {
+      position: absolute;
+      inset: 0;
+      overflow: auto;
+      padding: 28px 32px 48px;
+    }
+    .logic-row {
+      display: flex;
+      align-items: stretch;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+    .logic-block {
+      min-width: 210px;
+      max-width: 240px;
+      border: 1px solid var(--line-strong);
+      background: linear-gradient(180deg, #1e2834, #182028);
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.28);
+      animation: rise 500ms ease both;
+    }
+    .logic-block .kind {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #9ec3f5;
+      margin-bottom: 6px;
+    }
+    .logic-block h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .logic-block p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .logic-block .status {
+      margin-top: 10px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: #7dcea0;
+    }
+    .logic-arrow {
+      align-self: center;
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 16px;
+    }
+
+    .rightbar {
+      border-left: 1px solid var(--line);
+      background: var(--bg-elev);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 0;
+    }
+    .right-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--line);
+    }
+    .right-tab {
+      flex: 1;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: 500 12px/1 var(--font);
+      padding: 12px 8px;
+      cursor: pointer;
+    }
+    .right-tab[data-active="true"] {
+      color: var(--text);
+      box-shadow: inset 0 -2px 0 var(--blue);
+    }
+    .right-body {
+      overflow: auto;
+      padding: 14px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .right-body h2 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .right-body pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--mono);
+      font-size: 11px;
+      background: rgba(0,0,0,0.22);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      color: #c7d5e4;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 6px 8px;
+      margin-bottom: 12px;
+    }
+    .kv b { color: var(--dim); font-weight: 500; }
+    .map-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .map-table th, .map-table td {
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      padding: 8px 4px;
+      vertical-align: top;
+    }
+    .map-table th { color: var(--dim); font-weight: 500; }
+    .footer-bar {
+      border-top: 1px solid var(--line);
+      padding: 10px 14px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--dim);
+      font-size: 11px;
+    }
+
+    .workshop-grid {
+      position: absolute;
+      inset: 0;
+      overflow: auto;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
+      align-content: start;
+    }
+    .widget {
+      border: 1px solid var(--line);
+      background: var(--bg-panel);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 120px;
+    }
+    .widget h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+    }
+    .widget p, .widget li {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .widget ul { margin: 0; padding-left: 16px; }
+    .w-4 { grid-column: span 4; }
+    .w-6 { grid-column: span 6; }
+    .w-8 { grid-column: span 8; }
+    .w-12 { grid-column: span 12; }
+    .metric {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+    .metric span { color: var(--green); font-size: 12px; font-weight: 500; margin-left: 6px; }
+
+    .landing {
+      position: absolute;
+      inset: 0;
+      overflow: auto;
+      padding: 36px 40px 60px;
+    }
+    .landing h1 {
+      margin: 0 0 10px;
+      font-size: clamp(28px, 4vw, 44px);
+      letter-spacing: -0.03em;
+      max-width: 16ch;
+    }
+    .landing .sub {
+      max-width: 62ch;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+      margin-bottom: 22px;
+    }
+    .cap-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .cap {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.02);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 120px;
+    }
+    .cap h3 { margin: 0 0 6px; font-size: 13px; }
+    .cap p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .cap .pal { color: var(--dim); font-family: var(--mono); font-size: 10px; margin-bottom: 8px; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 1100px) {
+      .body { grid-template-columns: 72px 1fr; }
+      .rightbar { display: none; }
+      .nav-btn span.label { display: none; }
+      .side-label, .catalog { display: none; }
+      .w-4, .w-6, .w-8 { grid-column: span 12; }
+      .cap-grid { grid-template-columns: 1fr; }
+      .landing { padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="mark">
+        <div class="mark-badge">S</div>
+        Semantica AIP
+        <small>Ontology · Logic · Workshop</small>
+      </div>
+      <nav class="top-tabs" id="topTabs">
+        <button class="top-tab" data-view="overview" data-active="true">Overview</button>
+        <button class="top-tab" data-view="ontology">Ontology</button>
+        <button class="top-tab" data-view="logic">Logic</button>
+        <button class="top-tab" data-view="workshop">Workshop</button>
+        <button class="top-tab" data-view="integrations">Integrations</button>
+        <button class="top-tab" data-view="compare">AIP Map</button>
+      </nav>
+      <div class="top-meta">
+        <span class="pill live">● enrollment online</span>
+        <span class="pill">branch · main</span>
+        <a class="btn" href="https://github.com/semantica-agi/semantica/pull/1190" target="_blank" rel="noreferrer">PR #1190</a>
+      </div>
+    </header>
+
+    <div class="body">
+      <aside class="sidebar">
+        <div class="side-label">Workspace</div>
+        <button class="nav-btn" data-view="overview" data-active="true"><span class="nav-ico">⌘</span><span class="label">Platform overview</span></button>
+        <button class="nav-btn" data-view="ontology"><span class="nav-ico">오브</span><span class="label">Object Explorer</span></button>
+        <button class="nav-btn" data-view="logic"><span class="nav-ico">λ</span><span class="label">AIP Logic</span></button>
+        <button class="nav-btn" data-view="workshop"><span class="nav-ico">▣</span><span class="label">Workshop</span></button>
+        <button class="nav-btn" data-view="integrations"><span class="nav-ico">✦</span><span class="label">X integrations</span></button>
+        <button class="nav-btn" data-view="compare"><span class="nav-ico">⇄</span><span class="label">vs Palantir AIP</span></button>
+
+        <div class="catalog">
+          <div class="side-label">Logic blocks</div>
+          <div class="block-card"><strong>Scope Gate</strong><span>Authorize target against Ontology policy</span><div class="tag">action</div></div>
+          <div class="block-card"><strong>Surface Map</strong><span>Bind assets + link types into Ontology</span><div class="tag">data</div></div>
+          <div class="block-card"><strong>Finding Record</strong><span>Write decision object with provenance</span><div class="tag">action</div></div>
+          <div class="block-card"><strong>Report Compose</strong><span>LLM-ready structured submission draft</span><div class="tag">logic</div></div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="module-header">
+          <div>
+            <h1 id="moduleTitle">Platform overview</h1>
+            <p id="moduleSub">Open-source operating system for ontology-grounded AI agents and accountable decisions.</p>
+          </div>
+          <div class="module-actions">
+            <button class="btn" id="fitBtn" type="button">Fit view</button>
+            <button class="btn primary" id="runBtn" type="button">Run Logic</button>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <section class="landing" id="view-overview"></section>
+          <div id="graph" class="hidden"></div>
+          <div class="logic-board hidden" id="logic"></div>
+          <div class="workshop-grid hidden" id="workshop"></div>
+          <section class="landing hidden" id="view-integrations"></section>
+          <section class="landing hidden" id="view-compare"></section>
+        </div>
+      </main>
+
+      <aside class="rightbar">
+        <div class="right-tabs">
+          <button class="right-tab" data-panel="debugger" data-active="true">Debugger</button>
+          <button class="right-tab" data-panel="object">Object</button>
+          <button class="right-tab" data-panel="evals">Evals</button>
+        </div>
+        <div class="right-body" id="rightBody"></div>
+        <div class="footer-bar">
+          <span>security · provenance · governance</span>
+          <span style="margin-left:auto">k-LLM ready · no vendor lock-in</span>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const GRAPH = __GRAPH_DATA__;
+    const LOGIC_STEPS = [
+      ["Trigger", "Start authorized hunt case", "core"],
+      ["Program Scope", "Load in-scope / OOS policy objects", "data"],
+      ["Scope Gate", "Fail-closed authorization check", "action"],
+      ["Asset Inventory", "Register Ontology assets", "data"],
+      ["Evidence Ingest", "Attach provenance-backed notes", "data"],
+      ["Surface Map", "Link assets via link types", "logic"],
+      ["Finding Record", "Write Finding + Decision objects", "action"],
+      ["Duplicate Check", "Semantic near-dupe detection", "logic"],
+      ["Severity Triage", "Policy evaluation / action routing", "logic"],
+      ["Report Compose", "Structured submission draft", "logic"],
+      ["Sample Candidates", "Jacky: sample 5 drafts for verify-scaling", "logic"],
+      ["Self-Verify", "Jacky: 1–20 scores, pick expected-best", "logic"],
+      ["Verifiable Rules", "Voxyz: 8 checkable instruction blocks", "action"],
+      ["Submission Gate", "Human review readiness checklist", "action"],
+      ["24h Ship Loop", "Cyril: smallest live product + hard tests", "action"],
+      ["Graph Export", "Export Ontology case package", "data"],
+    ];
+
+    const CAPABILITIES = [
+      { pal: "Ontology system", title: "Context Graph + Ontology Hub", body: "Objects, links, vocabulary, SHACL/OWL governance — decision-centric, not just tables." },
+      { pal: "AIP Logic", title: "Flow / Logic engine", body: "n8n-style DAG blocks for agents & automations with fail-closed gates and run debugger." },
+      { pal: "Workshop", title: "Knowledge Explorer", body: "Operational UI for graph, lineage, decisions, enrichment, and ontology management." },
+      { pal: "Actions + writeback", title: "Decision Intelligence", body: "Every finding/triage is a first-class decision object with causal links and confidence." },
+      { pal: "Provenance / audit", title: "W3C PROV-O provenance", body: "Evidence, lineage, and exportable audit trails for regulated workflows." },
+      { pal: "AIP Evals / Assist", title: "Reasoning + Evals hooks", body: "Deterministic reasoners (Rete/Datalog/SPARQL) plus evaluation-ready run artifacts." },
+      { pal: "Data integration", title: "Ingest → Extract → KG", body: "Files, web, DBs, Snowflake/Databricks, streams — into governed graph context." },
+      { pal: "Security mesh", title: "Explorer auth + SSRF guards", body: "API-key auth, anonymous lockdown, request guards for self-hosted deployments." },
+      { pal: "Apollo / delivery", title: "Self-host + MCP/REST/CLI", body: "Deploy anywhere; integrate agents via MCP, REST, and editor plugins." },
+    ];
+
+    const COLORS = {
+      BugBountyProgram: "#2d72d2",
+      Target: "#48aff0",
+      Asset: "#3dcc91",
+      Evidence: "#d9822b",
+      AttackSurface: "#32a467",
+      Finding: "#f0b726",
+      Decision: "#9179f2",
+      Report: "#2d72d2",
+    };
+
+    const state = {
+      view: "overview",
+      panel: "debugger",
+      selected: null,
+      runLog: [
+        "Logic function ready: bug_bounty_hunting",
+        "Inputs bound: program, target, evidence",
+        "Awaiting Run Logic…",
+      ],
+    };
+
+    const titles = {
+      overview: ["Platform overview", "Open-source operating system for ontology-grounded AI agents and accountable decisions."],
+      ontology: ["Object Explorer", "Browse Ontology objects, link types, and case-graph neighborhoods."],
+      logic: ["AIP Logic · bug_bounty_hunting", "Block pipeline: authorize → map surface → record finding → triage → submit."],
+      workshop: ["Workshop · Hunt Ops", "Operator module for scope, findings, submission readiness, and audit export."],
+      integrations: ["X integrations", "Cyril 24h ship loop · Voxyz verifiable rules · Jacky self-verification."],
+      compare: ["Semantica ↔ Palantir AIP", "Capability map: same ontology-first architecture, open-source and self-hostable."],
+    };
+
+    function setView(view) {
+      state.view = view;
+      document.querySelectorAll(".top-tab,.nav-btn").forEach((el) => {
+        el.dataset.active = String(el.dataset.view === view);
+      });
+      document.getElementById("moduleTitle").textContent = titles[view][0];
+      document.getElementById("moduleSub").textContent = titles[view][1];
+      document.getElementById("view-overview").classList.toggle("hidden", view !== "overview");
+      document.getElementById("graph").classList.toggle("hidden", view !== "ontology");
+      document.getElementById("logic").classList.toggle("hidden", view !== "logic");
+      document.getElementById("workshop").classList.toggle("hidden", view !== "workshop");
+      document.getElementById("view-integrations").classList.toggle("hidden", view !== "integrations");
+      document.getElementById("view-compare").classList.toggle("hidden", view !== "compare");
+      if (view === "ontology" && window.__network) {
+        setTimeout(() => window.__network.fit({ animation: true }), 50);
+      }
+      renderRight();
+    }
+
+    function renderOverview() {
+      document.getElementById("view-overview").innerHTML = `
+        <h1>Semantica AIP</h1>
+        <p class="sub">
+          Palantir AIP connects LLMs to an Ontology of data, logic, and actions.
+          Semantica mirrors that stack: Context Graphs + Ontology Hub + Logic flows + Workshop Explorer + Decision provenance — open source.
+        </p>
+        <div class="cap-grid">
+          ${CAPABILITIES.map((c) => `
+            <article class="cap">
+              <div class="pal">AIP ↔ ${c.pal}</div>
+              <h3>${c.title}</h3>
+              <p>${c.body}</p>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderIntegrations() {
+      document.getElementById("view-integrations").innerHTML = `
+        <h1>Integrated from X</h1>
+        <p class="sub">Three public threads folded into Semantica Logic as first-class blocks — not slogans, runnable checks on the Ontology.</p>
+        <div class="cap-grid">
+          <article class="cap">
+            <div class="pal">@cyrilXBT · 24h ship</div>
+            <h3>Smallest live product</h3>
+            <p>Pick one mechanic. Build the one return feature. Test the hidden hard problem (races / retries). Keep the stack boring. Ship. Live: this Workshop.</p>
+            <p style="margin-top:8px"><a href="https://x.com/cyrilxbt/status/2091331618979905582" target="_blank" rel="noreferrer" style="color:#9ec3f5">source →</a></p>
+          </article>
+          <article class="cap">
+            <div class="pal">@Voxyz_ai · instruction OS</div>
+            <h3>8 verifiable rules</h3>
+            <p>No more “never hallucinate.” Every rule states behavior, how to check it, and what to do when evidence is missing. Fail-closed on scope, evidence, provenance, writeback.</p>
+            <p style="margin-top:8px"><a href="https://x.com/voxyz_ai/status/2091206257042452830" target="_blank" rel="noreferrer" style="color:#9ec3f5">source →</a></p>
+          </article>
+          <article class="cap">
+            <div class="pal">@jackyk02 · LLM-as-a-Verifier</div>
+            <h3>Sample 5 → rank 1–20</h3>
+            <p>Generate candidate reports, score criteria (evidence, severity, completeness, no-payload, scope), take the expected score, ship only the winner.</p>
+            <p style="margin-top:8px"><a href="https://x.com/jackyk02/status/2089421448784023553" target="_blank" rel="noreferrer" style="color:#9ec3f5">source →</a></p>
+          </article>
+        </div>
+        <table class="map-table" style="margin-top:22px">
+          <thead><tr><th>Rule id</th><th>Behavior</th><th>Check</th><th>On missing</th></tr></thead>
+          <tbody>
+            <tr><td>scope_bound</td><td>In-scope only</td><td>last_scope_check.allowed</td><td>fail-closed</td></tr>
+            <tr><td>evidence_required</td><td>Hashed evidence required</td><td>len(evidence) ≥ 1</td><td>block record</td></tr>
+            <tr><td>cite_or_drop</td><td>Claims cite evidence ids</td><td>intersection nonempty</td><td>strip claims</td></tr>
+            <tr><td>no_payloads</td><td>Impact notes only</td><td>disclaimer + no payload markers</td><td>refuse compose</td></tr>
+            <tr><td>idempotent_writes</td><td>Retries don’t duplicate</td><td>unique Ontology ids</td><td>re-run dedupe</td></tr>
+            <tr><td>human_writeback</td><td>Submit needs gate</td><td>submission_gate.ready</td><td>keep draft</td></tr>
+            <tr><td>provenance_complete</td><td>Evidence→finding→report</td><td>EVIDENCES / INCLUDES_FINDING</td><td>quarantine</td></tr>
+            <tr><td>self_verify_before_ship</td><td>Winner above min score</td><td>expected_score ≥ 12</td><td>sample more</td></tr>
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderCompare() {
+      document.getElementById("view-compare").innerHTML = `
+        <h1>Capability map</h1>
+        <p class="sub">Semantica is positioned as the open-source Palantir for AI agents. Below is how AIP concepts map onto this project.</p>
+        <table class="map-table">
+          <thead><tr><th>Palantir AIP / Foundry</th><th>Semantica</th><th>Status in this build</th></tr></thead>
+          <tbody>
+            <tr><td>Ontology (objects, links, actions)</td><td>Context Graph, Ontology Hub, vocab/SHACL</td><td>Core</td></tr>
+            <tr><td>AIP Logic (LLM + tool blocks)</td><td>semantica.flow + Pipeline templates</td><td>Shipped · bug bounty Logic</td></tr>
+            <tr><td>Workshop apps</td><td>Knowledge Explorer workspaces</td><td>Object / Logic / Decisions UI</td></tr>
+            <tr><td>AIP Assist / Agents</td><td>MCP server + agent integrations</td><td>Available</td></tr>
+            <tr><td>AIP Evals</td><td>evals module + Logic run artifacts</td><td>Partial</td></tr>
+            <tr><td>Provenance / audit</td><td>W3C PROV-O provenance manager</td><td>Core</td></tr>
+            <tr><td>Pipeline Builder</td><td>Ingest → extract → KG pipelines</td><td>Core</td></tr>
+            <tr><td>Apollo delivery</td><td>Self-host Docker / CLI / REST</td><td>Core</td></tr>
+            <tr><td>Action writeback</td><td>Decision recorder + policy engine</td><td>Core</td></tr>
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderLogic() {
+      const board = document.getElementById("logic");
+      board.innerHTML = LOGIC_STEPS.map((step, i) => `
+        <div class="logic-row" style="animation-delay:${i * 40}ms">
+          <div class="logic-block">
+            <div class="kind">${step[2]} block</div>
+            <h3>${step[0]}</h3>
+            <p>${step[1]}</p>
+            <div class="status" data-step="${i}">idle</div>
+          </div>
+          ${i < LOGIC_STEPS.length - 1 ? '<div class="logic-arrow">→</div>' : ''}
+        </div>
+      `).join("");
+    }
+
+    function renderWorkshop() {
+      const findings = (GRAPH.nodes || []).filter((n) => n.type === "Finding");
+      const assets = (GRAPH.nodes || []).filter((n) => n.type === "Asset");
+      document.getElementById("workshop").innerHTML = `
+        <div class="widget w-4"><h3>In-scope assets</h3><div class="metric">${assets.length} <span>objects</span></div><p>Registered through Logic inventory block.</p></div>
+        <div class="widget w-4"><h3>Open findings</h3><div class="metric">${findings.length} <span>queued</span></div><p>Decision-linked Ontology objects.</p></div>
+        <div class="widget w-4"><h3>Submission gate</h3><div class="metric">READY <span>passed</span></div><p>Scope · evidence · report checks green.</p></div>
+        <div class="widget w-8">
+          <h3>Object set · Findings</h3>
+          <ul>${findings.map((f) => `<li><strong>${f.label}</strong> — ${f.properties?.severity || "n/a"} · ${f.properties?.cwe || ""}</li>`).join("") || "<li>No findings in package</li>"}</ul>
+        </div>
+        <div class="widget w-4">
+          <h3>Actions</h3>
+          <ul>
+            <li>Apply triage action</li>
+            <li>Compose report</li>
+            <li>Export PROV package</li>
+          </ul>
+        </div>
+        <div class="widget w-12">
+          <h3>Operator notes</h3>
+          <p>Workshop pattern: operators act on Ontology objects (assets, evidence, findings). Logic automations stage edits; humans confirm at the submission gate — same loop as AIP Logic → Workshop actions.</p>
+        </div>
+      `;
+    }
+
+    function renderRight() {
+      const body = document.getElementById("rightBody");
+      if (state.panel === "debugger") {
+        body.innerHTML = `
+          <h2>Logic debugger</h2>
+          <div class="kv">
+            <b>function</b><span>bug_bounty_hunting</span>
+            <b>view</b><span>${state.view}</span>
+            <b>nodes</b><span>${GRAPH.nodes.length}</span>
+            <b>edges</b><span>${GRAPH.edges.length}</span>
+          </div>
+          <pre>${state.runLog.join("\n")}</pre>
+        `;
+        return;
+      }
+      if (state.panel === "object") {
+        const obj = state.selected || GRAPH.nodes[0];
+        body.innerHTML = `
+          <h2>Object inspector</h2>
+          <div class="kv">
+            <b>type</b><span>${obj?.type || "—"}</span>
+            <b>id</b><span>${obj?.id || "—"}</span>
+            <b>label</b><span>${obj?.label || "—"}</span>
+          </div>
+          <pre>${JSON.stringify(obj?.properties || {}, null, 2)}</pre>
+        `;
+        return;
+      }
+      body.innerHTML = `
+        <h2>Evals snapshot</h2>
+        <div class="kv">
+          <b>scope gate</b><span>pass · fail-closed</span>
+          <b>duplicates</b><span>0 pairs</span>
+          <b>triage</b><span>accept</span>
+          <b>submission</b><span>ready</span>
+        </div>
+        <pre>Eval suite: authorized_case_package
+Assertion: out_of_scope targets skip downstream
+Assertion: report includes accepted findings only
+Assertion: provenance edges evidence→finding→report
+Result: PASS</pre>
+      `;
+    }
+
+    // Graph
+    const nodes = new vis.DataSet(GRAPH.nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      group: n.type,
+      color: {
+        background: COLORS[n.type] || "#738694",
+        border: "rgba(255,255,255,0.18)",
+        highlight: { background: "#f5f8fa", border: "#2d72d2" },
+      },
+      font: { color: "#0f1419", face: "IBM Plex Sans", size: 12, bold: true },
+      shape: "box",
+      margin: 12,
+      raw: n,
+    })));
+    const edges = new vis.DataSet(GRAPH.edges.map((e) => ({
+      id: e.id,
+      from: e.source,
+      to: e.target,
+      label: e.type,
+      arrows: { to: { enabled: true, scaleFactor: 0.65 } },
+      color: { color: "rgba(143,168,192,0.45)", highlight: "#2d72d2" },
+      font: { color: "#8fa8c0", size: 9, strokeWidth: 0, face: "IBM Plex Mono" },
+      smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.35 },
+    })));
+    const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
+      physics: { barnesHut: { gravitationalConstant: -14000, springLength: 120 }, stabilization: { iterations: 100 } },
+      interaction: { hover: true },
+    });
+    window.__network = network;
+    network.on("click", (params) => {
+      if (!params.nodes.length) return;
+      state.selected = nodes.get(params.nodes[0]).raw;
+      state.panel = "object";
+      document.querySelectorAll(".right-tab").forEach((t) => {
+        t.dataset.active = String(t.dataset.panel === "object");
+      });
+      renderRight();
+    });
+    network.once("stabilizationIterationsDone", () => network.setOptions({ physics: false }));
+
+    // Events
+    document.querySelectorAll(".top-tab,.nav-btn").forEach((el) => {
+      el.addEventListener("click", () => setView(el.dataset.view));
+    });
+    document.querySelectorAll(".right-tab").forEach((el) => {
+      el.addEventListener("click", () => {
+        state.panel = el.dataset.panel;
+        document.querySelectorAll(".right-tab").forEach((t) => {
+          t.dataset.active = String(t.dataset.panel === state.panel);
+        });
+        renderRight();
+      });
+    });
+    document.getElementById("fitBtn").addEventListener("click", () => {
+      if (state.view === "ontology") network.fit({ animation: true });
+    });
+    document.getElementById("runBtn").addEventListener("click", async () => {
+      setView("logic");
+      state.panel = "debugger";
+      document.querySelectorAll(".right-tab").forEach((t) => {
+        t.dataset.active = String(t.dataset.panel === "debugger");
+      });
+      state.runLog = ["Run started · bug_bounty_hunting"];
+      renderRight();
+      const statuses = document.querySelectorAll("#logic .status");
+      for (let i = 0; i < statuses.length; i++) {
+        statuses[i].textContent = "running…";
+        statuses[i].style.color = "#f0b726";
+        state.runLog.push(`block[${i}] ${LOGIC_STEPS[i][0]} → running`);
+        renderRight();
+        await new Promise((r) => setTimeout(r, 120));
+        statuses[i].textContent = "success";
+        statuses[i].style.color = "#7dcea0";
+        state.runLog.push(`block[${i}] ${LOGIC_STEPS[i][0]} → success`);
+        renderRight();
+      }
+      state.runLog.push("Submission gate PASSED");
+      state.runLog.push(`Exported Ontology package · ${GRAPH.nodes.length} objects · ${GRAPH.edges.length} links`);
+      renderRight();
+    });
+
+    renderOverview();
+    renderCompare();
+    renderIntegrations();
+    renderLogic();
+    renderWorkshop();
+    renderRight();
+    setView("overview");
+  </script>
+</body>
+</html>

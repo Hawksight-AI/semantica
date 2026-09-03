@@ -169,6 +169,7 @@ def create_app(
     from .routes.decisions import router as decisions_router
     from .routes.enrich import router as enrich_router
     from .routes.export_import import router as export_import_router
+    from .routes.flow import router as flow_router
     from .routes.graph import router as graph_router
     from .routes.ontology import router as ontology_router
     from .routes.provenance import router as provenance_router
@@ -183,6 +184,7 @@ def create_app(
     app.include_router(temporal_router, dependencies=_auth)
     app.include_router(enrich_router, dependencies=_auth)
     app.include_router(export_import_router, dependencies=_auth)
+    app.include_router(flow_router, dependencies=_auth)
     app.include_router(annotations_router, dependencies=_auth)
     app.include_router(sparql_router, dependencies=_auth)
     app.include_router(provenance_router, dependencies=_auth)
