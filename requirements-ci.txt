@@ -1119,6 +1119,8 @@ cryptography==50.0.1 \
     #   google-auth
     #   joserfc
     #   pyjwt
+cuda-toolkit==13.0.3 \
+    --hash=sha256:d693caaa261214ddd7dbb60d68e71cbed884e68c2be7509778f3051da0b91c3f
 cycler==0.12.1 \
     --hash=sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30 \
     --hash=sha256:88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c
