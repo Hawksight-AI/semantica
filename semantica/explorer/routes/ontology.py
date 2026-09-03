@@ -787,12 +787,13 @@ def _node_belongs_to_ontology(
     stem = ontology_uri.rstrip("#/")
     if not nid.startswith((stem + "#", stem + "/")):
         return False
-    if "#" in nid:
-        # A fragment namespace nested below the ontology (<stem>/child#Term)
-        # is its own vocabulary. Without a registration or an explicit owner
-        # it must not be absorbed into the parent prefix.
-        return nid.split("#", 1)[0] == stem
-    return True
+    # Prefix ownership only extends to names minted directly in the
+    # ontology's namespace (<stem>#Term or <stem>/Term). Any further
+    # delimiter marks a nested vocabulary (<stem>/child#Term,
+    # <stem>/child/Term), which must not be absorbed into the parent
+    # until it is registered or carries an explicit owner.
+    local_name = nid[len(stem) + 1 :]
+    return "#" not in local_name and "/" not in local_name
 
 
 def _is_ontology_entity(node: Dict[str, Any]) -> bool:

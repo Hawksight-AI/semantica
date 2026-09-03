@@ -248,11 +248,14 @@ def test_node_belongs_to_ontology_nested_namespace_matrix():
 
     assert _node_belongs_to_ontology(node(f"{parent}#Person"), parent, {parent})
     assert _node_belongs_to_ontology(node(f"{parent}/Person"), parent, {parent})
-    # Unregistered nested fragment namespace is not absorbed into the parent
+    # An unregistered nested namespace is not absorbed into the parent,
+    # whether fragment-based or path-based
     assert not _node_belongs_to_ontology(node(f"{child}#Term"), parent, {parent})
+    assert not _node_belongs_to_ontology(node(f"{child}/Term"), parent, {parent})
     # Once registered, the nested namespace owns its nodes
     assert not _node_belongs_to_ontology(node(f"{child}#Term"), parent, {parent, child})
     assert _node_belongs_to_ontology(node(f"{child}#Term"), child, {parent, child})
+    assert _node_belongs_to_ontology(node(f"{child}/Term"), child, {parent, child})
 
 
 def test_load_fallback_import_without_declaration_is_editable(client):
