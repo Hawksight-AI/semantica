@@ -53,7 +53,7 @@ def _raise_http_error(error: MarkdownResourceError) -> NoReturn:
     elif isinstance(error, MarkdownRevisionConflict):
         status_code = status.HTTP_409_CONFLICT
     elif isinstance(error, (InvalidMarkdownFrontmatter, ResourceIdentityMismatch)):
-        status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
     else:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     raise HTTPException(status_code=status_code, detail=_error_detail(error)) from error

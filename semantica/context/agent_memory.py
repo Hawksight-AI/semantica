@@ -1721,6 +1721,9 @@ class AgentMemory:
                 f"AgentMemory item {memory_id!r} was not found."
             )
         if expected_revision is not None:
+            # _memory_lock is an RLock; this re-entrant call into
+            # export_item_markdown (also @_with_memory_lock) is intentional
+            # and safe because RLock allows the same thread to re-acquire.
             current_revision = markdown_document_revision(
                 self.export_item_markdown(memory_id)
             )

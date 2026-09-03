@@ -256,3 +256,64 @@ def test_default_app_does_not_expose_agent_memory():
     assert memories.json()["detail"] == (
         "AgentMemory is not configured for this Explorer instance."
     )
+
+
+def test_slash_and_unicode_node_id_round_trip():
+    """GET and PUT work for node IDs containing '/' and Unicode characters.
+
+    Tests that:
+    - encodeURIComponent-style %2F encoding is transparent to the route
+    - the returned resource.id is the original unencoded string
+    - a successful PUT persists to the correct node
+    - the node ID is never rewritten by the apply path
+    """
+    node_id = "policy/\u6771\u4eac"  # "policy/東京"
+    graph = ContextGraph(advanced_analytics=False)
+    graph.add_node(node_id, "Policy", "Original slash body")
+    app = create_app(session=GraphSession(graph))
+
+    with TestClient(app) as client:
+        # GET via percent-encoded path (what encodeURIComponent produces)
+        import urllib.parse
+        encoded_id = urllib.parse.quote(node_id, safe="")
+        get_response = client.get(f"/api/markdown/context-node/{encoded_id}")
+
+        assert get_response.status_code == 200, (
+            f"GET returned {get_response.status_code}: {get_response.text}"
+        )
+        doc = get_response.json()
+        assert doc["resource"]["id"] == node_id, (
+            f"resource.id should be {node_id!r}, got {doc['resource']['id']!r}"
+        )
+        assert doc["resource"]["kind"] == "context-node"
+        assert doc["body"] == "Original slash body"
+        assert doc["revision"].startswith("sha256:")
+
+        # PUT an edit back via the same percent-encoded URL
+        updated_markdown = doc["source"].replace("Original slash body", "Updated slash body")
+        put_response = client.put(
+            f"/api/markdown/context-node/{encoded_id}",
+            json={
+                "markdown": updated_markdown,
+                "expected_revision": doc["revision"],
+            },
+        )
+
+        assert put_response.status_code == 200, (
+            f"PUT returned {put_response.status_code}: {put_response.text}"
+        )
+        result = put_response.json()
+        assert result["changed"] is True
+        assert result["body"] == "Updated slash body"
+        assert result["resource"]["id"] == node_id, (
+            f"PUT response resource.id should be {node_id!r}, got {result['resource']['id']!r}"
+        )
+
+        # Verify the live graph node was updated
+        assert graph.nodes[node_id].content == "Updated slash body"
+
+        # Also verify GET via literal slash URL works identically
+        get_literal = client.get(f"/api/markdown/context-node/{node_id}")
+        assert get_literal.status_code == 200
+        assert get_literal.json()["resource"]["id"] == node_id
+        assert get_literal.json()["body"] == "Updated slash body"

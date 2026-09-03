@@ -137,7 +137,9 @@ export function MemoryWorkspace({ onDirtyChange }: MemoryWorkspaceProps = {}) {
     if (memoryId === selectedId) return;
     if (dirty && !window.confirm("Discard the unapplied Markdown draft and open another memory?")) return;
     const selectionGeneration = ++selectionGenerationRef.current;
-    handleDirtyChange(false);
+    // Do NOT call handleDirtyChange(false) here: the editor's own onDirtyChange
+    // callback fires automatically when MarkdownContentViewer re-renders with
+    // the new resource prop and its session is cleared.
     setLoading(true);
     setError("");
     try {

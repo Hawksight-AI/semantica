@@ -5104,9 +5104,18 @@ class ContextGraph:
     def _sync_decision_from_node(self, node_id: str) -> None:
         """Synchronise a single decision index entry from the node store.
 
-        Called after ``add_node_attribute`` mutates a decision node so that
-        ``_decisions`` and the derived indexes stay consistent without
-        requiring a full rebuild of all decisions.
+        Called after ``add_node_attribute`` mutates a decision node and after
+        ``apply_node_markdown`` replaces a node whose old or new type is
+        ``"decision"``, so that ``_decisions`` and the derived indexes stay
+        consistent without requiring a full rebuild of all decisions.
+
+        Temporal index cleanup (``_temporal_index``) runs unconditionally
+        before the node-type guard so that stale entries are removed even when
+        transitioning a decision node to a non-decision type.  Callers are
+        expected to ensure this is only invoked when at least one of the
+        current or previous node types is ``"decision"``; callers that bypass
+        that invariant will have ``node_id`` silently removed from
+        ``_temporal_index`` even if it was never a decision node.
         """
         node = self.nodes.get(node_id)
         if not hasattr(self, "_decisions"):

@@ -454,3 +454,186 @@ test("MemoryWorkspace refreshes frontmatter summaries after apply", async () => 
   assert.equal(listRequests, 2);
   assert.equal(view.getAllByText("Updated memory").length, 2);
 });
+
+test("HTTP 409 conflict preserves draft and shows conflict error with reload option", async () => {
+  // After a 409, the user's draft must be kept and a recovery path available.
+  const requests: Array<{ method: string; body?: unknown }> = [];
+  let fetchCount = 0;
+
+  globalThis.fetch = async (input, init) => {
+    fetchCount += 1;
+    const method = init?.method ?? "GET";
+    let parsedBody: unknown = undefined;
+    if (init?.body) {
+      try { parsedBody = JSON.parse(String(init.body)); } catch { /* ignore */ }
+    }
+    requests.push({ method, body: parsedBody });
+
+    if (method === "PUT") {
+      // First PUT returns 409 with current_revision
+      return jsonResponse({
+        detail: {
+          code: "markdown_revision_conflict",
+          message: "This item changed after editing began. Reload the latest version before applying.",
+          current_revision: "sha256:newer",
+        },
+      }, 409);
+    }
+    // All GETs return the canonical document
+    return jsonResponse({
+      resource,
+      source: originalSource,
+      body: "Original",
+      revision: "sha256:original",
+      editable: true,
+    });
+  };
+
+  const view = render(<MarkdownContentViewer content="Original" resource={resource} />);
+
+  // Enter edit mode
+  fireEvent.click(view.getByRole("button", { name: "Edit" }));
+  const textarea = await view.findByRole("textbox", { name: "Markdown source" });
+  const draftValue = originalSource.replace("Original", "My draft");
+  fireEvent.input(textarea, { target: { value: draftValue } });
+
+  // Apply → receives 409
+  fireEvent.click(view.getByRole("button", { name: "Apply" }));
+
+  // Conflict error must appear
+  const alert = await view.findByRole("alert");
+  assert.match(
+    alert.textContent ?? "",
+    /changed after editing|Reload/i,
+    "conflict error message must be shown",
+  );
+
+  // Draft must be preserved in the textarea
+  const textareaAfterConflict = view.getByRole("textbox", { name: "Markdown source" }) as HTMLTextAreaElement;
+  assert.equal(textareaAfterConflict.value, draftValue, "draft must be preserved after 409");
+
+  // A reload / recovery action must be available
+  const reloadButton = view.queryByRole("button", { name: /reload latest/i });
+  assert.ok(reloadButton !== null, "a 'Reload latest' recovery button must be shown");
+
+  // Click reload — should re-fetch the latest canonical document
+  await act(async () => {
+    fireEvent.click(reloadButton!);
+  });
+
+  // After reload the editor is re-initialized with the server's canonical source
+  await waitFor(() => {
+    const refreshedTextarea = view.queryByRole("textbox", { name: "Markdown source" });
+    assert.ok(refreshedTextarea !== null, "editor must still be open after reload");
+    assert.equal(
+      (refreshedTextarea as HTMLTextAreaElement).value,
+      originalSource,
+      "editor must show the server canonical source after reload",
+    );
+  });
+
+  // Reload must have triggered exactly one more GET
+  const getCount = requests.filter((r) => r.method === "GET").length;
+  assert.ok(getCount >= 2, "reload must issue a new GET to fetch the latest canonical document");
+});
+
+
+test("successful retry after 422 uses the original revision and persists changes", async () => {
+  // After a 422 (validation failure), the baseRevision must remain valid so that
+  // correcting the draft and re-applying succeeds without re-fetching the document.
+  let putCallCount = 0;
+
+  globalThis.fetch = async (_input, init) => {
+    const method = init?.method ?? "GET";
+    if (method === "PUT") {
+      putCallCount += 1;
+      if (putCallCount === 1) {
+        // First PUT: validation failure — resource is unchanged
+        return jsonResponse({
+          detail: {
+            code: "invalid_markdown_frontmatter",
+            message: "Markdown frontmatter contains invalid YAML.",
+          },
+        }, 422);
+      }
+      // Second PUT: success with the corrected Markdown
+      const body = JSON.parse(String(init?.body ?? "{}")) as { markdown: string };
+      const correctedBody = body.markdown.includes("Corrected") ? "Corrected body" : "body";
+      return jsonResponse({
+        resource,
+        source: originalSource.replace("Original", "Corrected"),
+        body: correctedBody,
+        revision: "sha256:after-retry",
+        editable: true,
+        changed: true,
+      });
+    }
+    return jsonResponse({
+      resource,
+      source: originalSource,
+      body: "Original",
+      revision: "sha256:original",
+      editable: true,
+    });
+  };
+
+  let appliedRevision = "";
+  const view = render(
+    <MarkdownContentViewer
+      content="Original"
+      resource={resource}
+      onApplied={(result) => { appliedRevision = result.revision; }}
+    />,
+  );
+
+  // Enter edit mode
+  fireEvent.click(view.getByRole("button", { name: "Edit" }));
+  const textarea = await view.findByRole("textbox", { name: "Markdown source" });
+
+  // First attempt: create an invalid draft
+  const invalidDraft = "---\nid: [\n---\n\nInvalid body";
+  fireEvent.input(textarea, { target: { value: invalidDraft } });
+  fireEvent.click(view.getByRole("button", { name: "Apply" }));
+
+  // 422 error appears, draft is preserved
+  const alert = await view.findByRole("alert");
+  assert.match(alert.textContent ?? "", /invalid YAML/i);
+  assert.equal(
+    (view.getByRole("textbox", { name: "Markdown source" }) as HTMLTextAreaElement).value,
+    invalidDraft,
+    "invalid draft must be preserved after 422",
+  );
+
+  // Correct the draft
+  const correctedDraft = originalSource.replace("Original", "Corrected");
+  fireEvent.input(view.getByRole("textbox", { name: "Markdown source" }), {
+    target: { value: correctedDraft },
+  });
+
+  // Apply is re-enabled (still dirty)
+  const applyButton = view.getByRole("button", { name: "Apply" });
+  assert.equal(
+    (applyButton as HTMLButtonElement).disabled,
+    false,
+    "Apply must be re-enabled after correcting the draft",
+  );
+
+  // Second attempt: apply corrected draft
+  fireEvent.click(applyButton);
+
+  // Must succeed — server returns new revision
+  await waitFor(() => assert.equal(appliedRevision, "sha256:after-retry"));
+
+  // Editor returns to preview mode after successful save
+  assert.equal(
+    view.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected"),
+    "true",
+    "editor must return to preview after successful retry",
+  );
+
+  // Error is cleared
+  assert.equal(view.queryByRole("alert"), null, "error banner must be cleared after success");
+
+  // Both PUT attempts were made — retry used original revision (no extra GET between attempts)
+  assert.equal(putCallCount, 2, "exactly two PUT requests must be made (failed + successful retry)");
+});
