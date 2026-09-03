@@ -110,6 +110,15 @@ range references, and unresolved KG relationship endpoints. It includes
 machine-readable issue codes, severity, counts, metrics, and threshold
 failures. The first version reports findings only; it does not auto-fix data.
 
+### Thresholds
+
+| Threshold | Default | Fails the gate when |
+| :-------- | :------ | :------------------- |
+| `min_coverage` | `0.0` | The `coverage` metric (average of class and property coverage, `0.0`-`1.0`) is below this value |
+| `max_errors` | `0.0` | The count of `error`/`critical` issues exceeds this value |
+| `max_warnings` | `None` | The count of `warning` issues exceeds this value. `None` means warnings never fail the gate on their own |
+| `fail_on_warnings` | `False` | Passed to `OntologyQualityGate(...)` or `.check(...)`, not inside `thresholds`. When `True`, any warning fails the gate regardless of `max_warnings` |
+
 ## OntologyGenerator (5-Stage Pipeline)
 
 **`OntologyGenerator`** auto-generates a formal ontology from your knowledge graph entities and relationships:
