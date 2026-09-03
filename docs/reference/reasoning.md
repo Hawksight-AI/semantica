@@ -323,7 +323,7 @@ all_facts = datalog.derive_all()
 
 # Query with variable pattern: variables start with uppercase or ?
 results = datalog.query("ancestor(alice, ?Z)")
-# → [{"Z": "bob"}, {"Z": "charlie"}, {"Z": "dave"}]
+# → a list of binding dicts: [{"Z": "bob"}, {"Z": "charlie"}, {"Z": "dave"}] (order not guaranteed)
 
 # Clear and start over
 datalog.clear()

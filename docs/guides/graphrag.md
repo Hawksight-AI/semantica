@@ -195,7 +195,7 @@ apt29_intel = context.retrieve(
 ```python
 from semantica.llms import LiteLLM
 
-llm = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm = LiteLLM(model="anthropic/claude-sonnet-5")
 
 result = context.query_with_reasoning(
     "What are APT29's known TTPs against healthcare infrastructure, "
@@ -281,7 +281,7 @@ context.store(
     link_entities=True,
 )
 
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 result = context.query_with_reasoning(
     "Trace the C2 infrastructure chain for APT29 operations targeting "
     "ITAR-controlled contractors in 2025. Include IP ranges, ASNs, and TTPs.",
@@ -351,7 +351,7 @@ Parent: wmiprvse.exe
 Sigma match: T1053.005 Scheduled Task/Job
 """
 
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 triage = soc_context.query_with_reasoning(
     "Triage this SIEM alert and identify the correct response runbook:\n{}".format(alert_text),
     llm_provider=llm,
@@ -425,7 +425,7 @@ Patient: 68F, AF, CKD stage 3b (eGFR 32). On warfarin (INR target 2.0–3.0).
 Presenting for elective hip replacement. Concurrent: amiodarone 200mg, atorvastatin 40mg.
 """
 
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 answer = clinical_context.query_with_reasoning(
     "What is the evidence-based warfarin bridging protocol for this patient "
     "given CKD and amiodarone interaction risk?\n\n{}".format(patient_context),
@@ -495,7 +495,7 @@ compliance_context.store(
     extract_relationships=True,
 )
 
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 answer = compliance_context.query_with_reasoning(
     "Under Basel III CRE20, what are the RWA calculation requirements for "
     "commercial real estate exposures with LTV > 80%? "
