@@ -408,19 +408,20 @@ Pipeline DSL with parallel workers, retry policies, and failure handling.
 
 ```python
 from semantica.pipeline import PipelineBuilder, ExecutionEngine
+from semantica.ingest import FileIngestor
+from semantica.semantic_extract import NERExtractor
 
 builder = PipelineBuilder()
-builder.add_step("ingest",  step_type="ingest", source="data/", recursive=True)
-builder.add_step("extract", step_type="ner_extract")
-builder.add_step("build",   step_type="kg_build", merge_entities=True)
 
-pipeline = (
-    builder
-    .connect_steps("ingest", "extract")
-    .connect_steps("extract", "build")
-    .build(name="docs_to_kg")
-)
-result = ExecutionEngine().execute_pipeline(pipeline)
+# Each step type dispatches to a handler you register (or supply explicitly)
+builder.register_step_handler("ingest",  lambda data, **c: FileIngestor().ingest(c["source"]))
+builder.register_step_handler("extract", lambda docs, **c: NERExtractor(method="pattern").extract(docs[0].text))
+
+builder.add_step("ingest",  step_type="ingest", source="data/")
+builder.add_step("extract", step_type="extract")
+
+pipeline = builder.connect_steps("ingest", "extract").build(name="docs_to_entities")
+result   = ExecutionEngine().execute_pipeline(pipeline)
 ```
 
 **Components:** `PipelineBuilder`, `Pipeline`, `ExecutionEngine`, `FailureHandler`, `PipelineValidator`, `ParallelismManager`, `ResourceScheduler`
@@ -514,17 +515,17 @@ Base classes, shared data models, and the plugin registry used across all module
 ```python
 from semantica.core import Semantica, PluginRegistry, ConfigManager
 
-# Top-level orchestrator
-sem = Semantica(config="config.yaml")
+# ConfigManager loads a Config; Config.get() does dotted lookups
+config = ConfigManager().load_from_file("config.yaml")
+batch  = config.get("processing.batch_size", default=32)
+
+# Top-level orchestrator: pass the Config object (or a dict), not a path
+sem = Semantica(config=config)
 sem.initialize()
 
 # Plugin registry: register custom components under a name
 registry = PluginRegistry()
 registry.register_plugin("my_ingestor", MyCustomIngestor, version="1.0.0")
-
-# Config management: ConfigManager loads a Config; Config.get() does dotted lookups
-config = ConfigManager().load_from_file("config.yaml")
-batch  = config.get("processing.batch_size", default=32)
 ```
 
 **Components:** `Semantica`, `PluginRegistry`, `ConfigManager`, `Config`, `LifecycleManager`, `HealthStatus`, `MethodRegistry`
@@ -665,16 +666,17 @@ RDFExporter().export(graph, file_path="audit.ttl", format="turtle")
 from semantica.ingest import WebIngestor
 from semantica.normalize import TextNormalizer
 from semantica.semantic_extract import NERExtractor, RelationExtractor
-from semantica.graph_store import Neo4jStore
+from semantica.graph_store import GraphStore
 from semantica.kg import GraphBuilder
 
 ingestor   = WebIngestor()
 normalizer = TextNormalizer()
 ner        = NERExtractor(method="pattern")
 rel        = RelationExtractor(method="pattern")
-store      = Neo4jStore(uri="bolt://localhost:7687", user="neo4j", password="password")
 
-# GraphBuilder persists straight to the store as it builds
+# The generic GraphStore wrapper exposes the add_nodes/add_edges interface
+# GraphBuilder persists through; a raw Neo4jStore does not
+store   = GraphStore(backend="neo4j", uri="bolt://localhost:7687", user="neo4j", password="password")
 builder = GraphBuilder(merge_entities=True, graph_store=store)
 
 for url in ["https://example.com/a", "https://example.com/b"]:
