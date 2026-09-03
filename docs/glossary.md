@@ -17,7 +17,7 @@ A quick-reference dictionary of every concept, data structure, algorithm, and st
 An autonomous AI system that perceives its environment, reasons about information, and takes actions to achieve goals. In Semantica, agents use knowledge graphs for structured memory and context, with every decision recorded as a first-class object.
 
 **Context Graph**
-A persistent, queryable graph of everything an agent knows, decides, and reasons about (entities, relationships, decisions, and their causal links). The core data structure of `semantica.context`.
+A persistent, queryable graph of everything an agent knows, decides, and reasons about: entities, relationships, decisions, and their causal links. The core data structure of `semantica.context`.
 
 **Decision**
 A first-class object in Semantica: a recorded agent choice with category, scenario, reasoning, outcome, confidence score, causal chain, and source provenance. Stored and searchable via `context.record_decision()`.
