@@ -5,9 +5,10 @@ Graph tools — add entities/relationships, search, analytics, summary.
 from __future__ import annotations
 
 import logging
+import os
 
 from mcp.schemas import ADD_ENTITY, ADD_RELATIONSHIP, EMPTY, GET_ANALYTICS, SEARCH_GRAPH
-from mcp.session import get_graph
+from mcp.session import get_graph, is_persistence_safe
 
 log = logging.getLogger("semantica.mcp.tools.graph")
 
@@ -25,6 +26,35 @@ def handle_add_entity(args: dict) -> dict:
             node_type=args.get("type", "Entity"),
             metadata=args.get("metadata", {}),
         )
+        # Persist back to disk so the entity survives server restarts.
+        # Skip when the initial load failed to avoid overwriting original data.
+        kg_path = os.environ.get("SEMANTICA_KG_PATH", "").strip()
+        if kg_path:
+            if not is_persistence_safe():
+                # Roll back: remove the node we just added.
+                try:
+                    with graph._lock:
+                        graph._drop_node_from_indexes(node_id)
+                except Exception:
+                    pass
+                return {
+                    "error": (
+                        "Persistence blocked: the configured SEMANTICA_KG_PATH "
+                        "could not be loaded at startup. Restart the server with "
+                        "a readable graph file to re-enable persistence."
+                    )
+                }
+            try:
+                graph.save_to_file(kg_path)
+            except Exception as save_exc:
+                # Roll back: remove the node so in-memory and persisted state agree.
+                try:
+                    with graph._lock:
+                        graph._drop_node_from_indexes(node_id)
+                except Exception:
+                    pass
+                log.exception("save_to_file failed after add_entity; mutation rolled back")
+                return {"error": f"Mutation rolled back: could not persist graph: {save_exc}"}
         return {"status": "added", "id": node_id, "type": args.get("type", "Entity")}
     except Exception as exc:
         log.exception("add_entity failed")
@@ -46,6 +76,45 @@ def handle_add_relationship(args: dict) -> dict:
             edge_type=rel_type,
             metadata=args.get("metadata", {}),
         )
+        # Persist back to disk so the relationship survives server restarts.
+        # Skip when the initial load failed to avoid overwriting original data.
+        kg_path = os.environ.get("SEMANTICA_KG_PATH", "").strip()
+        if kg_path:
+            if not is_persistence_safe():
+                # Roll back: remove the edge we just added (last matching edge).
+                try:
+                    with graph._lock:
+                        for edge in reversed(list(graph.edges)):
+                            if (edge.source_id == source
+                                    and edge.target_id == target
+                                    and edge.edge_type == rel_type):
+                                graph._drop_edge_from_indexes(edge)
+                                break
+                except Exception:
+                    pass
+                return {
+                    "error": (
+                        "Persistence blocked: the configured SEMANTICA_KG_PATH "
+                        "could not be loaded at startup. Restart the server with "
+                        "a readable graph file to re-enable persistence."
+                    )
+                }
+            try:
+                graph.save_to_file(kg_path)
+            except Exception as save_exc:
+                # Roll back: remove the edge so in-memory and persisted state agree.
+                try:
+                    with graph._lock:
+                        for edge in reversed(list(graph.edges)):
+                            if (edge.source_id == source
+                                    and edge.target_id == target
+                                    and edge.edge_type == rel_type):
+                                graph._drop_edge_from_indexes(edge)
+                                break
+                except Exception:
+                    pass
+                log.exception("save_to_file failed after add_relationship; mutation rolled back")
+                return {"error": f"Mutation rolled back: could not persist graph: {save_exc}"}
         return {"status": "added", "source": source, "target": target, "type": rel_type}
     except Exception as exc:
         log.exception("add_relationship failed")

@@ -8,8 +8,9 @@ Connects Claude Code, Cursor, Windsurf, Cline, Continue, VS Code (GitHub Copilot
 ## Quick start
 
 ```bash
-# From the repo root
-pip install -e ".[mcp]"
+# From the repo root — no extra install flag needed; the root mcp/ package is
+# part of the repository and does not require an external MCP SDK.
+pip install -e .
 
 # Test the server (type a JSON-RPC request, press Enter)
 python -m mcp
@@ -89,7 +90,14 @@ python -m mcp [--debug]
 
 ## Per-tool configuration
 
-### Claude Code (`~/.claude/settings.json`)
+### Claude Code (`~/.claude.json` or `.mcp.json`)
+
+Claude Code supports two MCP configuration scopes:
+
+- **User scope** — `~/.claude.json` applies across all projects for your user account.
+- **Project scope** — `.mcp.json` in your project root applies only to that project.
+
+Both files use the same `mcpServers` structure:
 
 ```json
 {
@@ -97,15 +105,33 @@ python -m mcp [--debug]
     "semantica": {
       "command": "python",
       "args": ["-m", "mcp"],
-      "cwd": "/path/to/semantica"
+      "env": {
+        "PYTHONPATH": "/path/to/semantica"
+      }
     }
   }
 }
 ```
 
-Or use the plugin bundle:
+> **Why `PYTHONPATH`?**  The root `mcp/` package is intentionally not included in
+> the installed wheel, so `python -m mcp` only works when the repository is on
+> Python's import path.  Setting `PYTHONPATH` here ensures this works regardless
+> of the working directory Claude uses when it launches the server.
+
+Or add it via the CLI (user scope):
+
 ```bash
-claude mcp add semantica python -m mcp --cwd /path/to/semantica
+claude mcp add --scope user semantica \
+  -e PYTHONPATH=/path/to/semantica \
+  -- python -m mcp
+```
+
+Or for project scope (omit `--scope user`):
+
+```bash
+claude mcp add semantica \
+  -e PYTHONPATH=/path/to/semantica \
+  -- python -m mcp
 ```
 
 ---
@@ -216,7 +242,7 @@ Add to your Q Developer MCP config:
 
 | Variable | Default | Description |
 |---|---|---|
-| `SEMANTICA_KG_PATH` | *(in-memory)* | Path to persist/load the graph (JSON file) |
+| `SEMANTICA_KG_PATH` | *(in-memory only)* | Path to a JSON file used to **load** the graph on startup and **persist** mutations (record decisions, add entities/relationships) back to disk after each change. When unset the graph lives in memory only and is lost when the server exits. |
 
 ---
 

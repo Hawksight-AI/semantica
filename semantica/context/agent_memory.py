@@ -588,16 +588,15 @@ class AgentMemory:
             return False
 
         # Remove from vector store unless a caller is staging an atomic local update.
-        if not skip_vector:
-            if self.vector_store:
-                try:
-                    vector_ids = list(self._vector_ids.get(memory_id, [])) or [
-                        memory_id
-                    ]
-                    self._delete_vector_ids(vector_ids)
-                except Exception as e:
-                    self.logger.warning(f"Failed to delete from vector store: {e}")
-            self._vector_ids.pop(memory_id, None)
+        if not skip_vector and self.vector_store:
+            try:
+                vector_ids = list(self._vector_ids.get(memory_id, [])) or [memory_id]
+                self._delete_vector_ids(vector_ids)
+            except Exception as e:
+                self.logger.warning(f"Failed to delete from vector store: {e}")
+        # Bookkeeping runs unconditionally: a skip_vector delete still removes the
+        # item, so leaving its tracked ids behind would orphan them permanently.
+        self._vector_ids.pop(memory_id, None)
 
         memory_item = self.memory_items[memory_id]
 
@@ -1588,12 +1587,16 @@ class AgentMemory:
                     memory_ids.append(memory_id)
         return memory_ids
 
-    def batch_delete(self, memory_ids: List[str]) -> int:
+    def batch_delete(self, memory_ids: List[str], *, skip_vector: bool = False) -> int:
         """
         Batch delete.
 
         Args:
             memory_ids: List of memory IDs to delete
+            skip_vector: If True, skip each item's own vector-store cascade
+                (see ``delete_memory``). A caller that is already erasing these
+                ids' vectors itself passes this to avoid a redundant,
+                best-effort delete against the vector store.
 
         Returns:
             Number of memories deleted
@@ -1603,7 +1606,7 @@ class AgentMemory:
         """
         deleted = 0
         for memory_id in memory_ids:
-            if self.delete_memory(memory_id):
+            if self.delete_memory(memory_id, skip_vector=skip_vector):
                 deleted += 1
         return deleted
 

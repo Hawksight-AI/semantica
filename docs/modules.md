@@ -438,7 +438,7 @@ Exposes Semantica as an MCP stdio server for IDE and agent integrations.
 python -m semantica.mcp_server
 ```
 
-**Integrations:** Claude Desktop, VS Code, Cursor, Windsurf, Cline: 12 MCP tools exposed
+**Integrations:** Claude Desktop, VS Code, Cursor, Windsurf, Cline: 15 MCP tools exposed
 
 ### Seed
 

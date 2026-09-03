@@ -6,7 +6,7 @@ icon: "plug"
 
 **`semantica.mcp_server`** exposes Semantica's knowledge graph, decision intelligence, semantic extraction, and reasoning capabilities as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) **server over stdio**:
 
-- 12 MCP tools exposed: extract entities, query graph, record decisions, run reasoning, export results
+- 15 MCP tools exposed: extract entities, query graph, record decisions, run reasoning, export results
 - No Python code required after launch: configure once, use from any MCP-aware client
 - Compatible with Claude Desktop, Windsurf, Cline, Continue, VS Code, Roo Code, Cursor
 
@@ -40,7 +40,7 @@ python -m semantica.mcp_server
 
 ## What You Get
 
-- **12 MCP Tools** — Extract entities, extract relations, record decisions, query decisions, find precedents, trace causal chains, add entities, add relationships, run analytics, summarise graph, run reasoning, export graph.
+- **15 MCP Tools** — Extract entities, extract relations, record decisions, query decisions, find precedents, trace causal chains, add entities, add relationships, run analytics, summarise graph, run reasoning, export graph, query the live graph, update nodes, archive nodes.
 - **3 Readable Resources** — Live graph JSON (`semantica://graph/summary`), decision list, and schema/version info: readable by any MCP client.
 - **Zero Infrastructure** — Runs over stdio: no server, no port, no Docker required. One config block to activate in any MCP client.
 - **Persistent Graphs** — Point `SEMANTICA_KG_PATH` at a saved graph file to reload it automatically on every server startup.
@@ -159,7 +159,7 @@ The MCP server is included in the base install: no extras required.
 
 ## Tools
 
-The MCP server exposes 12 tools that any connected AI assistant can call:
+The MCP server exposes 15 tools that any connected AI assistant can call:
 
 | Tool | Category | Description |
 | :---- | :-------- | :----------- |
@@ -173,6 +173,9 @@ The MCP server exposes 12 tools that any connected AI assistant can call:
 | `add_relationship` | Graph Operations | Add a directed edge between two nodes |
 | `get_graph_summary` | Graph Operations | Node count, decision count, graph status |
 | `get_graph_analytics` | Graph Operations | PageRank centrality and community detection |
+| `query_graph` | Graph Operations | Fetch a node, traverse its neighbours, or keyword-search nodes |
+| `update_node` | Graph Operations | Merge properties onto a node and persist to `SEMANTICA_KG_PATH` |
+| `delete_node` | Graph Operations | Soft-delete (archive) a node and persist to `SEMANTICA_KG_PATH` |
 | `run_reasoning` | Reasoning | Forward-chain IF/THEN rules over facts |
 | `export_graph` | Reasoning & Export | Serialise the graph (`turtle`/`ttl`: RDF Turtle aliases, `nt`, `xml`, `json-ld`, `json`) |
 
@@ -383,6 +386,51 @@ Takes no input parameters.
 Compute PageRank centrality and community detection over the current graph. Returns top nodes by PageRank, community count, and overall node/edge counts.
 
 Takes no input parameters.
+
+</Accordion>
+
+<Accordion title="query_graph" icon="magnifying-glass">
+
+Read the live graph in one of three modes, set by `mode`:
+
+- `node` — return a single node by `node_id`.
+- `neighbors` (default) — traverse outward and inward from `node_id` up to `depth` hops (clamped to 1-5, default 1). Optional `relationship_types` filters edge types; optional `limit` caps results.
+- `search` — keyword match `query` against each node's id and content. Optional `node_type` restricts the scan; `limit` defaults to 50.
+
+**Input:**
+
+```json
+{ "mode": "neighbors", "node_id": "apple_inc", "depth": 2 }
+```
+
+</Accordion>
+
+<Accordion title="update_node" icon="pen">
+
+Merge a set of properties onto an existing node. The change is applied in memory and, when `SEMANTICA_KG_PATH` is set, written back to that file so it survives a restart. Returns `persisted: false` when no path is configured.
+
+**Input:**
+
+```json
+{
+  "node_id": "task_42",
+  "properties": { "status": "done", "note": "shipped in v0.6.7" }
+}
+```
+
+`node_id` and a non-empty `properties` object are required. Updating a missing node returns an error.
+
+</Accordion>
+
+<Accordion title="delete_node" icon="box-archive">
+
+Soft-delete a node: it stays in the graph for history but is marked `status: "archived"`. Persists to `SEMANTICA_KG_PATH` when configured.
+
+**Input:**
+
+```json
+{ "node_id": "task_42" }
+```
 
 </Accordion>
 
