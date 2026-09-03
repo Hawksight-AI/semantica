@@ -8,16 +8,16 @@ icon: "book-open"
   New here? Start with [Getting Started](/getting-started) for hands-on examples, then return here for deeper understanding.
 </Info>
 
-Semantica transforms unstructured data: documents, web pages, reports, databases: into **knowledge graphs**: structured representations that AI systems can query, reason about, and trace back to sources.
+Semantica transforms unstructured data (documents, web pages, reports, databases) into **knowledge graphs**: structured representations that AI systems can query, reason about, and trace back to sources.
 
-At its core, Semantica adds a **context and accountability layer** on top of your existing AI stack. It doesn't replace LangChain, LlamaIndex, or your LLM provider: it makes their outputs **grounded**, **traceable**, and **auditable**.
+At its core, Semantica adds a context and semantic layer on top of your existing AI stack. It doesn't replace LangChain, LlamaIndex, or your LLM provider. It makes their outputs grounded, traceable, and auditable.
 
-- **Context Layer** — Knowledge graphs, GraphRAG retrieval, semantic embeddings, and temporal intelligence ground every LLM response in structured, queryable facts.
-- **Accountability Layer** — Provenance tracking, decision intelligence, conflict detection, and W3C PROV-O compliance make every claim in your AI stack auditable and explainable.
-- **Extension Layer** — `PluginRegistry` and `MethodRegistry` let you replace or augment any component: ingestors, extractors, reasoning engines, backends: without changing framework code.
+- **Context Layer.** Knowledge graphs, GraphRAG retrieval, semantic embeddings, and temporal intelligence ground every LLM response in structured, queryable facts.
+- **Accountability Layer.** Provenance tracking, decision intelligence, conflict detection, and W3C PROV-O compliance make every claim in your AI stack auditable and explainable.
+- **Extension Layer.** `PluginRegistry` and `MethodRegistry` let you replace or augment any component (ingestors, extractors, reasoning engines, backends) without changing framework code.
 
 <Warning>
-  **This is system-level explainability, not foundation-model explainability.** Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. What Semantica explains is *outside* the model: the context and data fed in, the decision produced, its provenance, the relevant relationships, the policies applied, and the full execution trail. In short, Semantica explains and audits *what the AI system did*, not the foundation model's private internal reasoning.
+  **This is system-level explainability, not foundation-model explainability.** Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model. Its internal reasoning or chain-of-thought stays opaque, as it does for any external system. What Semantica explains is *outside* the model: the context and data fed in, the decision produced, its provenance, the relevant relationships, the policies applied, and the full execution trail. In short, Semantica explains and audits *what the AI system did*, not the foundation model's private internal reasoning.
 </Warning>
 
 ## Knowledge Graphs
@@ -30,7 +30,7 @@ The foundation of everything in Semantica. A knowledge graph stores information 
 - **Edges (relationships)**: `works_for`, `located_in`, `founded_by`
 - **Properties**: name, date, confidence score, source URL
 
-This structure makes knowledge **searchable**, **connectable**, **queryable**, and: critically: **explainable**: every answer can be traced back to the facts and relationships that produced it.
+This structure makes knowledge searchable, connectable, and queryable. Critically, it's explainable: every answer can be traced back to the facts and relationships that produced it.
 
 
 ## Entity Extraction (NER)
@@ -513,6 +513,6 @@ Semantica is designed for extension. Any component: ingestor, extractor, graph b
   </Accordion>
 </AccordionGroup>
 
-- [Quickstart Tutorial](/quickstart) — Build a full pipeline with code.
-- [Modules Guide](/modules) — Every module explained with examples.
-- [API Reference](/reference/context) — Complete technical reference.
+- [Quickstart Tutorial](/quickstart): build a full pipeline with code.
+- [Modules Guide](/modules): every module explained with examples.
+- [API Reference](/reference/context): complete technical reference.
