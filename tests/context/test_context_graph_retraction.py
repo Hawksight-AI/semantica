@@ -24,11 +24,21 @@ from datetime import datetime
 
 from semantica.change_management import TemporalVersionManager
 from semantica.context import ContextEdge, ContextGraph
+from semantica.context.context_graph import normalize_temporal_input
 
 BEFORE = "2025-06-01T00:00:00Z"
 BETWEEN = "2025-09-01T00:00:00Z"
 CUTOFF = "2026-01-01T00:00:00Z"
 AFTER = "2026-06-01T00:00:00Z"
+
+
+class TestTemporalNormalization(unittest.TestCase):
+    def test_public_api_normalizes_datetime(self):
+        value = datetime(2026, 1, 1, 12, 0, 0)
+        self.assertEqual(
+            normalize_temporal_input(value),
+            "2026-01-01T12:00:00",
+        )
 
 
 def _graph():
