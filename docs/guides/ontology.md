@@ -477,7 +477,7 @@ regs = [
 ]
 
 # Use an LLM to extract the conceptual model from regulatory prose
-llm_gen  = LLMOntologyGenerator(provider="anthropic", model="claude-sonnet-4-20250514")
+llm_gen  = LLMOntologyGenerator(provider="anthropic", model="claude-sonnet-5")
 ontology = llm_gen.generate_ontology_from_text(
     "\n\n".join(r.text[:8000] for r in regs)  # token-safe excerpt per document
 )
