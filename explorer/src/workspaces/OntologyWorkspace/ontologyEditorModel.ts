@@ -45,6 +45,10 @@ export function classifyNodeType(rawType: string): EditorEntityType {
   return "external";
 }
 
+// Last-resort guess, reached only when the backend gave no verdict: it has no
+// notion of nested vocabularies, so it can name a parent that does not contain
+// the entity. Authority is owning_ontology from /api/ontology/entity
+// (_resolve_owning_ontology in semantica/explorer/routes/ontology.py).
 function ownsByNamespace(entityUri: string, ontologyUri: string): boolean {
   const stem = ontologyUri.replace(/[/#]+$/, "");
   return entityUri === ontologyUri
@@ -52,6 +56,8 @@ function ownsByNamespace(entityUri: string, ontologyUri: string): boolean {
     || entityUri.startsWith(`${stem}/`);
 }
 
+// Picks the registered ontology to open for an entity: the backend-resolved
+// explicitOwner wins outright, the namespace guess is only the fallback.
 export function inferOntologyUri(
   entries: RegistryEntry[],
   entityUri: string,

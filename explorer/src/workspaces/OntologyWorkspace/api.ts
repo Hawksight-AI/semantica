@@ -32,6 +32,7 @@ export type OntologyGraphResponse = {
 };
 
 export type OntologyEntityOwner = {
+  owning_ontology?: string;
   source_ontology?: string;
 };
 
@@ -66,7 +67,10 @@ export async function loadOntologyGraph(uri: string, signal?: AbortSignal): Prom
 export async function loadOntologyEntityOwner(uri: string): Promise<string | undefined> {
   const response = await fetch(`/api/ontology/entity/${encodeURIComponent(uri)}`);
   if (!response.ok) return undefined;
-  return (await response.json() as OntologyEntityOwner).source_ontology;
+  const owner = await response.json() as OntologyEntityOwner;
+  // owning_ontology is the backend's resolved verdict; source_ontology is the
+  // raw scheme_uri property, which only covers explicitly annotated entities.
+  return owner.owning_ontology ?? owner.source_ontology;
 }
 
 export async function loadAlignments(uri?: string): Promise<OntologyAlignment[]> {

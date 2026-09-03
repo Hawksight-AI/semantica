@@ -244,6 +244,7 @@ class EntityDetailResponse(BaseModel):
     entity_type: str
     definition: Optional[str] = None
     source_ontology: Optional[str] = None
+    owning_ontology: Optional[str] = None
     superclasses: List[str] = Field(default_factory=list)
     subclasses: List[str] = Field(default_factory=list)
     domain: List[str] = Field(default_factory=list)
@@ -812,6 +813,23 @@ def _node_belongs_to_ontology(
     # until it is registered or carries an explicit owner.
     local_name = nid[len(stem) + 1 :]
     return "#" not in local_name and "/" not in local_name
+
+
+def _resolve_owning_ontology(
+    node: Dict[str, Any],
+    known_ontology_uris: set[str],
+) -> Optional[str]:
+    """Return the one known ontology that owns this node, or None if none does.
+
+    The most specific (longest) match wins, so a nested vocabulary claims its
+    own terms instead of the parent absorbing them.
+    """
+    owners = [
+        candidate
+        for candidate in known_ontology_uris
+        if _node_belongs_to_ontology(node, candidate, known_ontology_uris)
+    ]
+    return max(owners, key=len) if owners else None
 
 
 def _is_ontology_entity(node: Dict[str, Any]) -> bool:
@@ -1952,6 +1970,7 @@ async def get_ontology_graph(
 @router.get("/entity/{entity_uri:path}", response_model=EntityDetailResponse)
 async def get_entity_detail(
     entity_uri: str,
+    request: Request,
     session: GraphSession = Depends(get_session),
 ):
     node = await asyncio.to_thread(session.get_node, entity_uri)
@@ -1973,12 +1992,18 @@ async def get_entity_detail(
 
     all_nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=999_999)
     instance_count = sum(1 for n in all_nodes if n.get("type") == entity_uri)
+    known_ontology_uris = set(_get_registry(request)) | {
+        str(n.get("id", ""))
+        for n in all_nodes
+        if n.get("id") and n.get("type") in _ONTOLOGY_TYPES
+    }
 
     return EntityDetailResponse(
         uri=entity_uri, label=label,
         type=ntype, entity_type=_classify_node_type(ntype),
         definition=definition,
         source_ontology=props.get("scheme_uri"),
+        owning_ontology=_resolve_owning_ontology(node, known_ontology_uris),
         superclasses=superclasses, subclasses=subclasses,
         domain=domain, range=range_,
         instance_count=instance_count, properties=props,
