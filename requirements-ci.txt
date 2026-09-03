@@ -5670,7 +5670,7 @@ pywin32==312 ; sys_platform == 'win32' \
     #   mcp
     #   mpire
     #   portalocker
-pywinpty==3.0.5 \
+pywinpty==3.0.5 ; sys_platform == 'win32' \
     --hash=sha256:03bb3c16d691d9242267201830bcd0e64a9b663170e9042bc84b210da9de15ac \
     --hash=sha256:22ce1b780d89821cc52daf6eac0708af22d93d000ce9c7c07e37489db8594598 \
     --hash=sha256:24366280a8aa677323da87bec729cb3ea3b35367386cece0978bdc6e4695c690 \
