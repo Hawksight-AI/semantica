@@ -11,7 +11,7 @@ MCP stands for the Model Context Protocol. It is an open standard that allows ex
 The Semantica MCP server exposes your knowledge graph as 12 callable tools. By connecting it, any compatible AI client can traverse the graph live, record decisions, run analytics, and export results during a conversation — without you having to write custom tool wrappers.
 
 <Info>
-  The Semantica MCP server exposes 12 tools and 3 read-only resources. All tools accept and return JSON. No configuration beyond an optional environment variable for graph persistence is required.
+  The Semantica MCP server exposes 15 tools and 3 read-only resources. All tools accept and return JSON. No configuration beyond an optional environment variable for graph persistence is required.
 </Info>
 
 ## Architecture & Communication
@@ -132,13 +132,15 @@ docker run --rm -i \
   ghcr.io/semantica-agi/semantica-mcp:latest
 ```
 
-## What the Agent Can Do: The 12 Tools
+## What the Agent Can Do: The 15 Tools
 
 Once connected, the LLM can call any of these tools during a conversation. The agent chains them automatically — you do not orchestrate the sequence, you just describe what you want.
 
 **Entity and relation extraction** — `extract_entities` pulls named entities from free text; `extract_relations` extracts semantic relationships and RDF triplets. These two tools turn a raw OSINT report into structured graph inputs without any preprocessing.
 
 **Knowledge graph manipulation** — `add_entity` adds a node, `add_relationship` adds a directed edge. After extraction, the agent calls these to persist what it found into the live graph.
+
+**Live graph queries and edits** — `query_graph` reads the graph without exporting it: fetch one node, walk its neighbours up to five hops, or keyword-search nodes. `update_node` merges properties onto an existing node (for example marking a task node `done`), and `delete_node` archives a node it no longer tracks. When `SEMANTICA_KG_PATH` is set, `update_node` and `delete_node` write their changes back to that file so they survive a restart.
 
 **Decision intelligence** — `record_decision` writes a decision as a provenance node with confidence score, reasoning, and decision maker identity. `query_decisions` retrieves past decisions by query or category. `find_precedents` finds the most similar past decisions by semantic similarity. `get_causal_chain` traces decision causality upstream or downstream.
 

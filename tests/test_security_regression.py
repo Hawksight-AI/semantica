@@ -24,9 +24,20 @@ import pytest
 # rdf:/rdfs: namespaces) and neither the code nor this test caught it,
 # since both had the same bug. Importing the real function makes that class
 # of drift impossible.
-from semantica.explorer.routes.sparql import _is_read_only_query
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this import
+# fails on a plain dev install. Only the SPARQL class below needs it; the Cypher,
+# XXE, vector-serialization and SSRF classes in this module are independent, so
+# the skip is scoped to the one class rather than the whole file.
+try:
+    from semantica.explorer.routes.sparql import _is_read_only_query
+except ImportError:  # pragma: no cover - depends on the installed extras
+    _is_read_only_query = None
 
 
+@pytest.mark.skipif(
+    _is_read_only_query is None,
+    reason="requires semantica[explorer] (fastapi)",
+)
 class TestSparqlReadOnlyValidation:
     """Regression tests for SPARQL injection prevention."""
 

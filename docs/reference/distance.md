@@ -611,5 +611,3 @@ The Knowledge Explorer embeds Distance Intelligence directly in the browser dash
 - [Knowledge Graph Module](kg) — `NodeEmbedder`, `SimilarityCalculator`, and graph analytics.
 - [Visualization](visualization) — Programmatic distance heatmaps and ego-mode graph renders.
 - [Explorer](explorer) — Knowledge Explorer with built-in Distance Intelligence dashboard.
-
-- [Distance Intelligence](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/12_Distance_Intelligence.ipynb) — Semantic neighborhoods and distance matrices · Advanced

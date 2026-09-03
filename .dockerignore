@@ -18,6 +18,9 @@
 .git/**
 .github
 .github/**
+!.github/requirements/
+!.github/requirements/explorer-extra-py313.txt
+!.github/requirements/pep517-build.txt
 .claude
 .claude/**
 .codex

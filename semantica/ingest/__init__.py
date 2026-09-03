@@ -130,7 +130,10 @@ Example Usage:
 from __future__ import annotations
 
 import importlib
-from typing import Any, Dict, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Tuple
+
+if TYPE_CHECKING:
+    from .salesforce_ingestor import SalesforceConnector, SalesforceData, SalesforceIngestor
 
 from .config import IngestConfig, ingest_config
 from .file_ingestor import (
@@ -152,6 +155,7 @@ from .methods import (
     ingest_parquet,
     ingest_public_api,
     ingest_repository,
+    ingest_salesforce,
     ingest_stream,
     ingest_web,
     ingest_xml,
@@ -218,6 +222,10 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
     "SnowflakeIngestor": (".snowflake_ingestor", "SnowflakeIngestor"),
     "SnowflakeData": (".snowflake_ingestor", "SnowflakeData"),
     "SnowflakeConnector": (".snowflake_ingestor", "SnowflakeConnector"),
+    # SAP OData ingestion
+    "SAPIngestor": (".sap_ingestor", "SAPIngestor"),
+    "SAPODataEntity": (".sap_ingestor", "SAPODataEntity"),
+    "SAPODataConnector": (".sap_ingestor", "SAPODataConnector"),
     # Databricks ingestion
     "DatabricksIngestor": (".databricks_ingestor", "DatabricksIngestor"),
     "DatabricksData": (".databricks_ingestor", "DatabricksData"),
@@ -231,6 +239,10 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
     # XML ingestion
     "XMLIngestor": (".xml_ingestor", "XMLIngestor"),
     "XMLIngestionData": (".xml_ingestor", "XMLIngestionData"),
+    # Salesforce ingestion
+    "SalesforceIngestor": (".salesforce_ingestor", "SalesforceIngestor"),
+    "SalesforceData": (".salesforce_ingestor", "SalesforceData"),
+    "SalesforceConnector": (".salesforce_ingestor", "SalesforceConnector"),
 }
 
 _OPTIONAL_DEPENDENCY_MESSAGES = {
@@ -258,6 +270,11 @@ _OPTIONAL_DEPENDENCY_MESSAGES = {
         "Arrow ingestion requires optional dependency 'pyarrow'. "
         "Install it before importing ArrowIngestor or using ingest_arrow()."
     ),
+    ".salesforce_ingestor": (
+        "Salesforce ingestion requires optional dependency 'simple-salesforce'. "
+        "Install it with: pip install \"semantica[db-salesforce]\" "
+        "or: pip install simple-salesforce>=1.12.0"
+    ),
 }
 
 
@@ -272,7 +289,7 @@ def __getattr__(name: str) -> Any:
     except ModuleNotFoundError as exc:
         message = _OPTIONAL_DEPENDENCY_MESSAGES.get(module_name)
         missing_name = getattr(exc, "name", None)
-        if message and missing_name in {"git", "bs4", "pyarrow"}:
+        if message and missing_name in {"git", "bs4", "pyarrow", "simple_salesforce"}:
             raise ImportError(message) from exc
         raise
 
@@ -345,6 +362,10 @@ __all__ = [
     "SnowflakeIngestor",
     "SnowflakeData",
     "SnowflakeConnector",
+    # SAP OData ingestion
+    "SAPIngestor",
+    "SAPODataEntity",
+    "SAPODataConnector",
     # Databricks ingestion
     "DatabricksIngestor",
     "DatabricksData",
@@ -358,6 +379,10 @@ __all__ = [
     # XML ingestion
     "XMLIngestor",
     "XMLIngestionData",
+    # Salesforce ingestion
+    "SalesforceIngestor",
+    "SalesforceData",
+    "SalesforceConnector",
     # Registry and Methods
     "MethodRegistry",
     "method_registry",
@@ -369,6 +394,7 @@ __all__ = [
     "ingest_repository",
     "ingest_email",
     "ingest_database",
+    "ingest_salesforce",
     "ingest_ontology",
     "ingest_arrow",
     "ingest_parquet",

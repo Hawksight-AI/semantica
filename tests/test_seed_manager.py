@@ -443,4 +443,3 @@ def test_export_seed_data(seed_manager, temp_data_dir):
         rows = list(reader)
         assert len(rows) == 1
         assert rows[0]["id"] == "1"
-

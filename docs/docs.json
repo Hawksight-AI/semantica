@@ -106,7 +106,8 @@
               "integrations/langchain",
               "integrations/docling",
               "integrations/snowflake",
-              "integrations/databricks"
+              "integrations/databricks",
+              "integrations/salesforce"
             ]
           },
           {

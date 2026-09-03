@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
+from semantica.utils.exceptions import ProcessingError
 from semantica.vector_store.vector_store import VectorStore, VectorManager
 
 
@@ -118,6 +119,172 @@ class VectorStoreCountTests(unittest.TestCase):
         self.assertNotIn("only supported for the inmemory", msg)
         # Must point at what to implement
         self.assertIn("count()", msg)
+
+
+# ---------------------------------------------------------------------------
+# VectorStore.scan_vectors() / iter_vectors() dispatch tests
+# ---------------------------------------------------------------------------
+
+class _ScanningBackendStore:
+    """Fake persistent backend store that supports scan_vectors()."""
+
+    def __init__(self, items):
+        self._items = items
+
+    def scan_vectors(self, offset=0, limit=100):
+        return self._items[offset:offset + limit]
+
+
+class _NonScanningBackendStore:
+    """Fake persistent backend store without any scan capability."""
+
+
+class _IterAllBackendStore:
+    """Fake cursor-based store: iter_all() only, no usable scan_vectors()."""
+
+    def __init__(self, items):
+        self._items = items
+        self.batch_sizes = []
+
+    def iter_all(self, batch_size=500):
+        self.batch_sizes.append(batch_size)
+        for item in self._items:
+            yield item
+
+    def scan_vectors(self, offset=0, limit=100):
+        raise AssertionError("scan_vectors() must not be called when iter_all() exists")
+
+
+class _MisShapedIterAllBackendStore:
+    """Backend store whose ``iter_all`` attribute is not callable."""
+
+    iter_all = 42  # plain attribute, not a method
+
+    def __init__(self, items):
+        self._items = items
+
+    def scan_vectors(self, offset=0, limit=100):
+        return self._items[offset:offset + limit]
+
+
+class VectorStoreScanVectorsTests(unittest.TestCase):
+    """VectorStore.scan_vectors() / iter_vectors() backend-agnostic accessors."""
+
+    def setUp(self):
+        self.vectors = [np.array([1.0, 0.0]), np.array([0.0, 1.0]), np.array([1.0, 1.0])]
+        self.metadata = [{"type": "a"}, {"type": "b"}, {"type": "c"}]
+
+    def test_scan_inmemory_pages_through_all_vectors(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        ids = store.store_vectors(self.vectors, self.metadata)
+
+        page1 = store.scan_vectors(offset=0, limit=2)
+        page2 = store.scan_vectors(offset=2, limit=2)
+
+        self.assertEqual([p["id"] for p in page1], ids[:2])
+        self.assertEqual([p["id"] for p in page2], ids[2:])
+        self.assertEqual(page2[0]["metadata"], {"type": "c"})
+
+    def test_scan_inmemory_empty_store(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        self.assertEqual(store.scan_vectors(offset=0, limit=10), [])
+
+    def test_scan_zero_limit_returns_empty_list(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.store_vectors(self.vectors, self.metadata)
+        self.assertEqual(store.scan_vectors(offset=0, limit=0), [])
+
+    def test_scan_delegates_to_backend_store(self):
+        items = [{"id": "a", "metadata": {}, "vector": None}]
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.backend = "faiss"
+        store._backend_store = _ScanningBackendStore(items)
+        self.assertEqual(store.scan_vectors(offset=0, limit=10), items)
+
+    def test_scan_raises_not_implemented_without_backend_support(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.backend = "faiss"
+        store._backend_store = _NonScanningBackendStore()
+        with self.assertRaises(NotImplementedError):
+            store.scan_vectors(offset=0, limit=10)
+
+    def test_iter_vectors_walks_every_page(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        ids = store.store_vectors(self.vectors, self.metadata)
+
+        collected = list(store.iter_vectors(batch_size=2))
+
+        self.assertEqual([item["id"] for item in collected], ids)
+
+    def test_iter_vectors_empty_store_yields_nothing(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        self.assertEqual(list(store.iter_vectors(batch_size=2)), [])
+
+
+# ---------------------------------------------------------------------------
+# VectorStore.iter_vectors() preference for a native iter_all()
+# ---------------------------------------------------------------------------
+
+class VectorStoreIterAllDispatchTests(unittest.TestCase):
+    """iter_vectors() prefers a backend's native iter_all() when present."""
+
+    def _persistent_store(self, backend_store, backend_name="qdrant"):
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.backend = backend_name
+        store._backend_store = backend_store
+        return store
+
+    def test_iter_vectors_uses_iter_all_when_available(self):
+        items = [
+            {"id": "a", "vector": None, "metadata": {"n": 1}},
+            {"id": "b", "vector": None, "metadata": {"n": 2}},
+        ]
+        backend = _IterAllBackendStore(items)
+        store = self._persistent_store(backend)
+
+        self.assertEqual(list(store.iter_vectors(batch_size=7)), items)
+
+    def test_iter_vectors_forwards_batch_size_to_iter_all(self):
+        backend = _IterAllBackendStore([])
+        store = self._persistent_store(backend)
+
+        list(store.iter_vectors(batch_size=32))
+
+        self.assertEqual(backend.batch_sizes, [32])
+
+    def test_iter_vectors_falls_back_to_scan_vectors_without_iter_all(self):
+        items = [{"id": "a", "vector": None, "metadata": {}}]
+        store = self._persistent_store(_ScanningBackendStore(items))
+
+        self.assertEqual(list(store.iter_vectors(batch_size=2)), items)
+
+    def test_iter_vectors_falls_back_when_iter_all_not_callable(self):
+        # Mirrors the count() precedent in _MisShapedBackendStore.
+        items = [{"id": "a", "vector": None, "metadata": {}}]
+        store = self._persistent_store(_MisShapedIterAllBackendStore(items))
+
+        self.assertEqual(list(store.iter_vectors(batch_size=2)), items)
+
+    def test_iter_vectors_inmemory_ignores_iter_all(self):
+        store = VectorStore(backend="inmemory", dimension=2)
+        store.store_vectors([np.array([1.0, 0.0])], [{"type": "a"}])
+        store._backend_store = _IterAllBackendStore([{"id": "wrong"}])
+
+        collected = list(store.iter_vectors(batch_size=2))
+
+        self.assertEqual([item["metadata"] for item in collected], [{"type": "a"}])
+
+    def test_iter_vectors_propagates_iter_all_errors(self):
+        # Silently yielding nothing would read as an empty source (#1083).
+        class _FailingIterAll:
+            def iter_all(self, batch_size=500):
+                raise ProcessingError("backend unreachable")
+                yield  # pragma: no cover - makes this a generator
+
+        store = self._persistent_store(_FailingIterAll())
+
+        with self.assertRaises(ProcessingError):
+            list(store.iter_vectors(batch_size=2))
 
 
 # ---------------------------------------------------------------------------

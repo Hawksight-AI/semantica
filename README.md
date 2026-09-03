@@ -18,15 +18,15 @@
 
 > Ingest your enterprise data, extract what matters, build a Context Graph and knowledge graph (KG), and run graph analytics and causal reasoning over all of it, with full decision provenance baked in. Explainable, traceable, and trustworthy by design.
 
-**Decision Intelligence &nbsp;·&nbsp; Context Management &nbsp;·&nbsp; Deterministic Reasoning &nbsp;·&nbsp; Ontology Management &nbsp;·&nbsp; Knowledge Modeling &nbsp;·&nbsp; End-to-End Traceability**
+**Context Management &nbsp;·&nbsp; Knowledge Modeling &nbsp;·&nbsp; Deterministic Reasoning &nbsp;·&nbsp; Ontology Management &nbsp;·&nbsp; Decision Intelligence &nbsp;·&nbsp; End-to-End Traceability**
 
-**Open Source &nbsp;·&nbsp; Self-Hostable &nbsp;·&nbsp; Auditable &nbsp;·&nbsp; Governed &nbsp;·&nbsp; Zero Vendor Lock-In**
+**Open Source &nbsp;·&nbsp; Governed &nbsp;·&nbsp; Zero Vendor Lock-In**
 
 **Polyglot Graph Storage &nbsp;·&nbsp; RDF & LPG Support &nbsp;·&nbsp; W3C Standards &nbsp;·&nbsp; Interoperable**
 
 #### Built for High-Stakes, Regulated Domains
 
-[![GitHub Stars](https://img.shields.io/github/stars/semantica-agi/semantica?style=flat-square&color=FFD700&logo=github&logoColor=white&label=Stars)](https://github.com/semantica-agi/semantica) [![GitHub Forks](https://img.shields.io/github/forks/semantica-agi/semantica?style=flat-square&color=6E40C9&logo=github&logoColor=white&label=Forks)](https://github.com/semantica-agi/semantica/network/members) [![Contributors](https://img.shields.io/github/contributors/semantica-agi/semantica?style=flat-square&color=2EA043&logo=github&logoColor=white)](https://github.com/semantica-agi/semantica/graphs/contributors) [![PyPI](https://img.shields.io/pypi/v/semantica.svg?style=flat-square&color=0066CC&logo=pypi&logoColor=white)](https://pypi.org/project/semantica/) [![Total Downloads](https://static.pepy.tech/badge/semantica?style=flat-square)](https://pepy.tech/project/semantica) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT) [![CI](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/ci.yml?style=flat-square&label=CI)](https://github.com/semantica-agi/semantica/actions) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/semantica-agi/semantica)
+[![GitHub Stars](https://img.shields.io/github/stars/semantica-agi/semantica?style=flat-square&color=FFD700&logo=github&logoColor=white&label=Stars)](https://github.com/semantica-agi/semantica) [![GitHub Forks](https://img.shields.io/github/forks/semantica-agi/semantica?style=flat-square&color=6E40C9&logo=github&logoColor=white&label=Forks)](https://github.com/semantica-agi/semantica/network/members) [![Contributors](https://img.shields.io/github/contributors/semantica-agi/semantica?style=flat-square&color=2EA043&logo=github&logoColor=white)](https://github.com/semantica-agi/semantica/graphs/contributors) [![PyPI](https://img.shields.io/pypi/v/semantica.svg?style=flat-square&color=0066CC&logo=pypi&logoColor=white)](https://pypi.org/project/semantica/) [![Total Downloads](https://static.pepy.tech/badge/semantica?style=flat-square)](https://pepy.tech/project/semantica) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT) [![CI](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/ci.yml?style=flat-square&label=CI)](https://github.com/semantica-agi/semantica/actions) [![Install Matrix](https://img.shields.io/github/actions/workflow/status/semantica-agi/semantica/install-matrix.yml?style=flat-square&label=pip%20install)](https://github.com/semantica-agi/semantica/actions/workflows/install-matrix.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/semantica-agi/semantica/badge?style=flat-square)](https://scorecard.dev/viewer/?uri=github.com/semantica-agi/semantica) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/semantica-agi/semantica)
 
 [![Website](https://img.shields.io/badge/Website-getsemantica.ai-000000?style=flat-square&logo=googlechrome&logoColor=white)](https://getsemantica.ai/) [![Docs](https://img.shields.io/badge/Docs-docs.getsemantica.ai-0099FF?style=flat-square&logo=readthedocs&logoColor=white)](https://docs.getsemantica.ai/) [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/sV34vps5hH) [![Twitter/X](https://img.shields.io/badge/Follow-%40BuildSemantica-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/BuildSemantica) [![YouTube](https://img.shields.io/badge/YouTube-Watch%20Demos-FF0000?style=flat-square&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=QfnNZg4-dZA) [![Changelog](https://img.shields.io/badge/Changelog-View-6E40C9?style=flat-square&logo=keepachangelog&logoColor=white)](CHANGELOG.md)
 
@@ -56,20 +56,18 @@ pip install semantica
 
 ---
 
-Most AI agents act without a trail. They store embeddings, not meaning: context that can't be explained, decisions that can't be audited. In lending, that gap is a compliance exposure, not an inconvenience: an underwriting agent's approval has to survive a regulator's "why" months later.
-
-Semantica sits underneath your LLM, vector store, and agent framework as a deterministic infrastructure layer: no LLM required for graph construction, reasoning, or provenance.
+Most AI agents run on embeddings, not meaning: similarity scores with no structure, no relationships, and no way to explain why a result came back. Semantica is the semantic/context layer underneath your LLM, vector store, and agent framework: a deterministic infrastructure layer (no LLM required for graph construction, reasoning, or provenance) that turns fragmented enterprise data into a structured, queryable Context Graph and knowledge graph, governed by ontologies and controlled vocabularies (OWL, SHACL, SKOS) so the meaning of your data is explicit, not just its embedding. Decision provenance and audit trails fall out of that structure as a property, not the product itself; in domains a regulator can question, that same structure just happens to double as a straight answer to "why."
 
 > ⚠️ **System-level explainability, not foundation-model explainability.** Semantica does not expose or reconstruct what happens *inside* the LLM — its internal reasoning or chain-of-thought stays opaque, as it does for any external system. Semantica explains what's *outside* the model: the context and data fed in, the decision produced, its provenance, relevant relationships, applied policies, and the full execution trail.
 
 **Who it's for:**
 
-- **AI/ML platform teams** shipping agents that make consequential decisions and need structured, queryable context built from fragmented raw data, not just a vector index
-- **Data platform teams on Databricks or Snowflake** who need to turn tables already sitting in Unity Catalog or a Snowflake warehouse into a governed, lineage-tracked knowledge graph, without exporting that data to a third-party SaaS first
-- **Compliance, risk, and audit teams** who need a straight answer to "why did the AI do that?" in a format a regulator will actually accept
-- **Regulated enterprises** (finance, healthcare, legal, government, defense) that can't ship a black box, and can't send their data to someone else's SaaS to get one
+- **AI/ML platform teams** shipping agents that make consequential decisions and need structured, queryable context, not just a vector index
+- **Data platform teams on Databricks or Snowflake** turning tables already in Unity Catalog or a warehouse into a governed, lineage-tracked knowledge graph, without exporting to a third-party SaaS
+- **Compliance, risk, and audit teams** who need a straight answer to "why did the AI do that?" in a format a regulator accepts
+- **Regulated enterprises** (finance, healthcare, legal, government, defense) that can't ship a black box or send their data to someone else's SaaS to get one
 - **Platform and infra engineers** who want the KG, reasoning, and provenance stack self-hosted and swappable, not locked to one vendor's backend
-- **Data and knowledge engineers** building a KG from messy, multi-source data: entities and relationships get extracted, conflicting or contradictory facts are flagged instead of silently overwritten, and duplicates are merged before they turn into noise
+- **Data and knowledge engineers** building a KG from messy, multi-source data, where conflicting facts get flagged and duplicates get merged, not silently overwritten
 
 **[Quick Start](#quick-start)** &nbsp;·&nbsp; **[Architecture](#architecture)** &nbsp;·&nbsp; **[What You Get](#what-semantica-gives-you)** &nbsp;·&nbsp; **[Why Semantica](#why-semantica)** &nbsp;·&nbsp; **[Decision Intelligence](#decision-intelligence)** &nbsp;·&nbsp; **[Context Graphs](#context-graphs)** &nbsp;·&nbsp; **[Recipe: Audit Trail](#recipe-audit-trail-for-a-regulated-decision)** &nbsp;·&nbsp; **[Module Reference](#module-reference)** &nbsp;·&nbsp; **[Integrations](#integrations)** &nbsp;·&nbsp; **[CLI](#cli)** &nbsp;·&nbsp; **[Performance](#performance)** &nbsp;·&nbsp; **[Install](#installation)**
 
@@ -83,7 +81,7 @@ Semantica sits underneath your LLM, vector store, and agent framework as a deter
 - **Full Auditability:** W3C PROV-O provenance on every fact, with audit trails exportable to JSON, CSV, or RDF
 - **Deterministic Reasoning:** Forward chaining, Rete network, Datalog, and SPARQL with fully explainable paths, not black boxes
 - **Knowledge Pipeline:** Multi-source ingestion, entity-aware chunking, NER/relation/event extraction, and knowledge graph construction, with semantic deduplication and provenance-preserving merges throughout
-- **Enterprise Data Platforms:** Native connectors for Databricks (Unity Catalog + Delta Lake, PAT/OAuth M2M auth, catalog/schema/table/lineage introspection) and Snowflake (warehouse/database/schema, key-pair and OAuth auth), so tables already living in your lakehouse or warehouse become graph nodes with provenance, not another export/import hop
+- **Enterprise Data Platforms:** Native connectors for Databricks (Unity Catalog + Delta Lake, PAT/OAuth M2M auth, catalog/schema/table/lineage introspection), Snowflake (warehouse/database/schema, key-pair and OAuth auth), and SAP OData (Business Partners, Sales Orders, OAuth2/Basic auth), so data already living in your lakehouse or warehouse becomes graph nodes with provenance, not another export/import hop
 - **Graph Analytics:** Centrality, community detection, link prediction, and shortest-path queries over the graph you just built
 - **Polyglot Graph Storage:** Native RDF (embedded Oxigraph, Blazegraph, Apache Jena, Eclipse RDF4J via SPARQL) and Labeled Property Graphs (Neo4j, FalkorDB, Apache AGE, AWS Neptune via Cypher), plus vector stores, all swappable without touching your code
 - **Visualization:** Explore any graph, ontology, or timeline in an interactive browser workbench
@@ -141,10 +139,6 @@ compliant = graph.check_decision_rules({"category": "vendor_selection"})  # poli
 
 ```bash
 semantica doctor
-# Python 3.11.9         pass
-# semantica 0.6.6       pass
-# faiss vector store    pass
-# Config file           pass    ~/.semantica/config.yaml
 ```
 
 **Running in a script or CI?** Progress bars are written only when stdout is an interactive terminal (or a Jupyter notebook), so piping and redirecting stay clean by default. Override with `SEMANTICA_DISABLE_PROGRESS=1` to silence progress everywhere, or `SEMANTICA_FORCE_PROGRESS=1` to keep it when stdout is redirected. `SEMANTICA_DISABLE_PROGRESS` takes precedence.
@@ -169,7 +163,7 @@ Sources → Ingest → Parse → Normalize → Split → Extract → Conflict De
    → Vector Store + Polyglot Graph Store (RDF & LPG) → Export / Visualize / REST · MCP · CLI
 ```
 
-- **Ingest:** files, web, databases, enterprise data platforms (Databricks, Snowflake), cloud (Google Drive, Elasticsearch), streams (Kafka, Kinesis), Git, email, MCP
+- **Ingest:** files, web, databases, enterprise data platforms (Databricks, Snowflake, SAP), cloud (Google Drive, Elasticsearch), streams (Kafka, Kinesis), Git, email, MCP
 - **Parse → Normalize → Split:** document parsing, text/entity/date normalization, GraphRAG-native entity-aware chunking
 - **Extract → Conflict Detection → Deduplication:** NER, relations, events, triplets; conflicting facts flagged and resolved before they merge
 - **Knowledge Graph:** `GraphBuilder` constructs the graph; bi-temporal facts and full graph analytics (centrality, communities, link prediction) run on top of it
@@ -279,7 +273,7 @@ retrieved = ctx.retrieve("who approved the Acme contract?")
 
 ## Recipe: Audit Trail for a Regulated Decision
 
-The flagship pattern: record a causally-linked decision chain, attach provenance to every entity, and export a regulator-ready audit trail.
+One pattern built on the same Context Graph: record a causally-linked decision chain, attach provenance to every entity, and export a regulator-ready audit trail.
 
 ```python
 from semantica.context import ContextGraph
@@ -322,7 +316,7 @@ Every module below is independently importable, with working code samples verifi
 
 | Module | What it does |
 | --- | --- |
-| [`semantica.ingest`](#semanticaingest-multi-source-ingestion) | Files, web, databases, APIs, streams, email, Git, Parquet, Databricks, Snowflake, MCP |
+| [`semantica.ingest`](#semanticaingest-multi-source-ingestion) | Files, web, databases, APIs, streams, email, Git, Parquet, Databricks, Snowflake, SAP, MCP |
 | [`semantica.semantic_extract`](#semanticasemantic_extract-ner-relations-events-triplets) | NER, relation extraction, event detection, triplet generation |
 | [`semantica.kg`](#semanticakg-knowledge-graph-construction--analysis) | Graph construction, centrality, communities, link prediction |
 | [`semantica.reasoning`](#semanticareasoning-forward-chaining-rete-datalog-sparql) | Forward chaining, Rete, Datalog, SPARQL, fully explainable |
@@ -351,7 +345,7 @@ Expand any module below for its runnable example.
 <summary><b><code>semantica.ingest</code></b>: Multi-Source Ingestion</summary>
 <a id="semanticaingest-multi-source-ingestion"></a>
 
-Ingest from files, web, databases, APIs, streams, email, Git repos, Parquet, Databricks, Snowflake, or MCP servers, all through a unified interface.
+Ingest from files, web, databases, APIs, streams, email, Git repos, Parquet, Databricks, Snowflake, SAP, or MCP servers, all through a unified interface.
 
 ```python
 from semantica.ingest import FileIngestor, WebIngestor, ParquetIngestor, DBIngestor
@@ -402,7 +396,7 @@ orders = snowflake.ingest_table("ORDERS", limit=10_000)
 
 > **Security Note:** Never hardcode credentials (`token`, `password`, `private_key`) in production code; pass them via environment variables (e.g., `DATABRICKS_TOKEN`, `SNOWFLAKE_PASSWORD`) or a secrets manager.
 
-**Supported sources:** Local files (PDF, DOCX, PPTX, HTML, TXT, CSV, JSON, YAML, Excel, XML) · Web pages · RSS/Atom feeds · REST APIs · Databases (PostgreSQL, MySQL, SQLite, Oracle, SQL Server) · Parquet datasets · Databricks (Unity Catalog + Delta Lake) · Snowflake · Git repositories · Email (IMAP/POP3) · Message streams (Kafka, RabbitMQ, Kinesis, Pulsar) · MCP resources · Apache Arrow/Feather/IPC (`ArrowIngestor`)
+**Supported sources:** Local files (PDF, DOCX, PPTX, HTML, TXT, CSV, JSON, YAML, Excel, XML) · Web pages · RSS/Atom feeds · REST APIs · Databases (PostgreSQL, MySQL, SQLite, Oracle, SQL Server) · Parquet datasets · Databricks (Unity Catalog + Delta Lake) · Snowflake · SAP (OData v2/v4) · Git repositories · Email (IMAP/POP3) · Message streams (Kafka, RabbitMQ, Kinesis, Pulsar) · MCP resources · Apache Arrow/Feather/IPC (`ArrowIngestor`)
 
 DuckDB, Elasticsearch, Google Drive, HuggingFace, MongoDB, and Pandas ingestion also ship (`DuckDBIngestor`, `ElasticIngestor`, `GDriveIngestor`, `HuggingFaceIngestor`, `MongoIngestor`, `PandasIngestor`) but aren't re-exported from the top-level `semantica.ingest` namespace yet — import them directly: `from semantica.ingest.duckdb_ingestor import DuckDBIngestor`.
 
@@ -1030,7 +1024,7 @@ team = Team(agents=[researcher, analyst], mode="coordinate")
 
 ## More Recipes
 
-The flagship audit-trail recipe is [above](#recipe-audit-trail-for-a-regulated-decision). Here are three more common patterns.
+The audit-trail recipe is [above](#recipe-audit-trail-for-a-regulated-decision). Here are three more common patterns.
 
 <details>
 <summary><b>End-to-End GraphRAG Pipeline</b></summary>
@@ -1147,7 +1141,7 @@ if report.valid:
 | **Vector Store** | FAISS · Pinecone · Weaviate · Qdrant · Milvus · PgVector · hybrid + filtered search |
 | **Graph Databases (LPG)** | Neo4j · FalkorDB · Apache AGE · AWS Neptune |
 | **Triple Stores (RDF)** | Oxigraph (embedded) · Blazegraph · Apache Jena · Eclipse RDF4J · unified `TripletStore` interface · SPARQL query & bulk load |
-| **Enterprise Data Platforms** | Databricks (`DatabricksIngestor`: Unity Catalog + Delta Lake, PAT/OAuth M2M, table/query ingestion, catalog/schema/table/lineage introspection) · Snowflake (`SnowflakeIngestor`: warehouse/database/schema, password/key-pair/OAuth auth) |
+| **Enterprise Data Platforms** | Databricks (`DatabricksIngestor`: Unity Catalog + Delta Lake, PAT/OAuth M2M, table/query ingestion, catalog/schema/table/lineage introspection) · Snowflake (`SnowflakeIngestor`: warehouse/database/schema, password/key-pair/OAuth auth) · SAP (`SAPIngestor`: OData v2/v4, OAuth2/Basic auth, Business Partners/Sales Orders) |
 | **LLM Providers** | **All already supported today:** OpenAI (GPT-4o, o1, o3) · Anthropic (Claude) · Google Gemini · Mistral · Meta Llama · Groq · Cohere · Azure OpenAI · AWS Bedrock · Ollama · DeepSeek · Perplexity · Together AI · Fireworks AI · Replicate · HuggingFace · via `semantica.llms` and LiteLLM |
 
 ---
@@ -1463,18 +1457,18 @@ For contributor / dev-server setup: **[explorer/README.md: Local Setup Guide](ex
 
 ---
 
-## What's New in v0.6.6
+## What's New in v0.6.7
 
-**Security release — upgrading is strongly recommended.** Fixes for a privately disclosed batch of vulnerabilities spanning backup/restore, database export, outbound requests, and triplet-store backends, plus SSRF hardening across ingestion:
+**Feature release**, plus one SSRF hardening fix and a large batch of correctness fixes across the RDF/ontology export pipeline:
 
-- **Tarball restore path traversal**: `semantica backup restore` now validates every archive member for path containment and rejects symlink/hardlink escapes before extraction
-- **Latent SQL injection in `DataExporter.export_table_data()`**: table/schema names are now identifier-allowlisted and `where`/`order_by` fragments are blocklist-checked
-- **DNS-rebinding TOCTOU in the shared SSRF guard**: the resolved IP that passes validation is now the one the connection is pinned to, closing the check-then-use race (also closes the `100.64.0.0/10` CGNAT gap)
-- **Stored XSS in HTML report generation** and **unvalidated SPARQL object IRIs in AnzoStore** (SPARQL injection): both now escape/validate before interpolation
-- **`Authorization`/`Proxy-Authorization` credential leakage across redirects**, plus **SSRF gaps in `FeedIngestor`/`FeedMonitor`, `RepoIngestor`, and the MCP/public-API ingest paths**: all now route through the shared, redirect-safe SSRF guard
-- **HTTP response header injection and an unbounded-memory DoS** in the Explorer API, and a **`fastapi`/`python-multipart` ReDoS** (PYSEC-2024-38): floors raised, inputs sanitized, candidate pools capped
+- **First-class LangChain integration** (`semantica[langchain]`): a `BaseRetriever` and `VectorStore` over `HybridSearch`, plus graph/decision-query tools
+- **SAP OData ingestor** (`semantica[ingest-sap]`): OAuth2/Basic-auth, SSRF-guarded ingestion for Business Partners and Sales Orders, following the existing Snowflake/Databricks connector pattern
+- **`ContextGraph` gains deterministic, human-editable Markdown round-trip persistence** alongside the existing JSON API, and the Explorer graph inspector gains a read-only Markdown content viewer
+- **`reasoning` gains a structured Action layer**: rule-driven `Assert`/`Retract`/`Call`/`EmitEvent` actions with optional provenance, turning the reasoner into a production-rule system
+- **`run_shacl_validation` is now a public, documented API**, and a dozen ontology/RDF export correctness fixes land: OWL property/class export, SHACL target-namespace resolution, one canonical confidence datatype across all four RDF formats, reachable OWL-Time reification, JSON-LD default-graph and content-derived document identity, and full metadata passthrough on every RDF serializer
+- **Security**: Agno's `AgnoKnowledgeGraph.load_urls()` and OpenClaw's MCP tool now route outbound requests through the shared SSRF guard
 
-Also ships: **first-class CrewAI integration** (`semantica[crewai]`, extraction/decision tools + a knowledge source), **`ContextGraph` retraction and purge** (GDPR-style erasure without a full `clear()`), a declared **Semantica RDF vocabulary with deterministic entity/relationship IRIs** (stable, diffable exports), and **timezone-aware timestamps** across `export/` and `provenance/`.
+Also fixes: `PipelineBuilder.set_parallelism()` now actually parallelizes independent pipeline steps, `flatten_dict()` no longer silently drops data on a key collision, `Config.get()` honors boolean environment overrides, and the MCP server's `export_graph` tool works again on every format.
 
 → [Full release notes](RELEASE_NOTES.md) · [Changelog](CHANGELOG.md)
 
@@ -1519,6 +1513,7 @@ pip install semantica[vectorstore-qdrant]   # Qdrant vector store
 pip install semantica[vectorstore-pinecone] # Pinecone vector store
 pip install semantica[db-snowflake]         # Snowflake
 pip install semantica[db-databricks]        # Databricks (SDK + SQL connector)
+pip install semantica[ingest-sap]           # SAP OData
 pip install semantica[ingest-parquet]       # Parquet / PyArrow
 pip install semantica[ingest-arrow]        # Apache Arrow, Feather, IPC
 pip install semantica[viz]                  # HTML interactive visualization
@@ -1533,6 +1528,20 @@ For production deployments, use Docker or Kubernetes rather than a local `pip in
 git clone https://github.com/semantica-agi/semantica.git
 cd semantica && pip install -e ".[dev]" && pytest tests/
 ```
+
+### CI & Deployment
+
+Wiring `semantica` into your own CI is a two-minute job. On GitHub Actions, use the reusable composite action:
+
+```yaml
+- uses: semantica-agi/semantica/.github/actions/setup-semantica@main
+  with:
+    python-version: '3.11'
+```
+
+Copy-paste starting templates for GitHub Actions, GitLab CI, and CircleCI live in [examples/ci/](examples/ci/). The published package itself is verified installable across Ubuntu/macOS/Windows and Python 3.9-3.12 every week by the [Install Matrix workflow](.github/workflows/install-matrix.yml).
+
+Ready-made deployment configs for AWS, GCP, Azure, Fly.io, Railway, Render, Kubernetes, and Helm are in [deploy/](deploy/).
 
 ---
 

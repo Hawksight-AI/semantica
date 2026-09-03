@@ -16,8 +16,8 @@ icon: "circle-question"
 | Python version? | 3.8+ (3.11+ recommended) |
 | API key required? | Optional: pattern extraction works with no keys |
 | Works with LangChain / LlamaIndex? | Yes: Semantica is a layer on top, not a replacement |
-| Production-ready? | Yes: 1,000+ tests, v0.5.0 ships with 12 security fixes |
-| Latest version? | **v0.6.6** (August 2026) |
+| Production-ready? | Yes: 1,000+ tests, security fixes shipped in every release (see [CHANGELOG](https://github.com/semantica-agi/semantica/blob/main/CHANGELOG.md)) |
+| Latest version? | **v0.6.7** (August 2026) |
 | Local LLMs? | Yes: Ollama via LiteLLM, HuggingFaceLLM for air-gapped |
 
 
@@ -70,9 +70,9 @@ Yes: MIT licensed, no vendor lock-in, no paywalled features. Some capabilities r
 
 <Accordion title="What's the latest version?" icon="star">
 
-**v0.5.0**: released May 2026.
+**v0.6.7**: released August 2026.
 
-Highlights: Ontology Hub, Distance Intelligence, Parquet/XML ingestion, 12 security fixes, Graph Explorer redesign, NER gateway fix.
+Highlights: first-class LangChain integration, SAP OData ingestor, human-editable Markdown round-trip persistence for `ContextGraph`, a structured Action layer for the reasoning engine, and a public `run_shacl_validation` entry point. The 0.6.x line also added first-class CrewAI support and the Semantica RDF vocabulary with deterministic IRIs. See the [CHANGELOG](https://github.com/semantica-agi/semantica/blob/main/CHANGELOG.md) for the full history.
 
 ```bash
 pip install --upgrade semantica
@@ -173,7 +173,7 @@ This includes PyTorch with CUDA, FAISS GPU, and CuPy.
 <Accordion title="How does Semantica handle large datasets?" icon="layer-group">
 
 - **Batching**: process documents in configurable chunks to control memory usage
-- **Parallel processing**: `Pipeline(workers=N)` runs extraction steps concurrently
+- **Parallel processing**: the `semantica.pipeline` module can run independent, parallel-safe steps in the same dependency layer concurrently (see the [Pipeline guide](guides/pipeline))
 - **Delta processing**: update graphs incrementally without full recompute on new data
 - **Persistent backends**: swap in-memory NetworkX for Neo4j, FalkorDB, or Apache AGE for large-scale production graphs
 
@@ -269,13 +269,13 @@ Groq, OpenAI, Anthropic, Google Gemini, Ollama (fully local), DeepSeek, Novita A
 
 <Accordion title="Is Semantica production-ready?" icon="shield-check">
 
-Yes. v0.5.0 ships with:
+Yes. Every release ships with:
 
 - 1,000+ passing tests across Python 3.8–3.12
 - `PipelineValidator` and `FailureHandler` with exponential backoff and configurable retry policies
 - W3C PROV-O provenance tracking across all modules
 - Change management with SHA-256 checksums and full audit trails
-- 12 security vulnerability fixes: eval injection, pickle deserialization, SQL injection, XXE, SSRF, ReDoS, path traversal, and more
+- Ongoing security hardening: eval injection, pickle deserialization, SQL injection, XXE, SSRF, ReDoS, and path traversal fixes have all landed across recent releases (see the [CHANGELOG](https://github.com/semantica-agi/semantica/blob/main/CHANGELOG.md) security sections)
 
 </Accordion>
 

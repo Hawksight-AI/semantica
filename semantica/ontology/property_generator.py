@@ -34,6 +34,7 @@ from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .naming_conventions import NamingConventions
+from .relationship_utils import build_entity_aliases, resolve_relationship_endpoint_type
 
 
 class PropertyGenerator:
@@ -106,7 +107,7 @@ class PropertyGenerator:
                 tracking_id, message="Inferring object properties from relationships..."
             )
             object_properties = self._infer_object_properties(
-                relationships, classes, **options
+                relationships, classes, entities=entities, **options
             )
             properties.extend(object_properties)
 
@@ -116,6 +117,8 @@ class PropertyGenerator:
             )
             data_properties = self._infer_data_properties(entities, classes, **options)
             properties.extend(data_properties)
+
+            properties = self._coalesce_normalized_properties(properties)
 
             self.progress_tracker.stop_tracking(
                 tracking_id,
@@ -134,6 +137,7 @@ class PropertyGenerator:
         self,
         relationships: List[Dict[str, Any]],
         classes: List[Dict[str, Any]],
+        entities: Optional[List[Dict[str, Any]]] = None,
         **options,
     ) -> List[Dict[str, Any]]:
         """Infer object properties from relationships."""
@@ -145,6 +149,7 @@ class PropertyGenerator:
 
         # Create class map
         class_map = {cls["name"]: cls for cls in classes}
+        entity_aliases = build_entity_aliases(entities or [])
 
         properties = []
         for rel_type, rels in rel_types.items():
@@ -154,12 +159,12 @@ class PropertyGenerator:
                 ranges = set()
 
                 for rel in rels:
-                    source_type = rel.get(
-                        "source_type"
-                    ) or self._infer_class_from_entity(rel.get("source_id"), classes)
-                    target_type = rel.get(
-                        "target_type"
-                    ) or self._infer_class_from_entity(rel.get("target_id"), classes)
+                    source_type = resolve_relationship_endpoint_type(
+                        rel, "source", entity_aliases
+                    )
+                    target_type = resolve_relationship_endpoint_type(
+                        rel, "target", entity_aliases
+                    )
 
                     if source_type:
                         domains.add(source_type)
@@ -192,6 +197,67 @@ class PropertyGenerator:
                 properties.append(property_def)
 
         return properties
+
+    def _coalesce_normalized_properties(
+        self, properties: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Merge same-kind properties that normalize to the same name."""
+        property_kinds = defaultdict(set)
+        for prop in properties:
+            property_kinds[prop["name"]].add(prop.get("type"))
+
+        collisions = {
+            name: sorted(kind for kind in kinds if kind is not None)
+            for name, kinds in property_kinds.items()
+            if len({kind for kind in kinds if kind is not None}) > 1
+        }
+        if collisions:
+            raise ValidationError(
+                "Normalized property names cannot be shared by object and "
+                "data properties.",
+                validation_context={"property_kind_collisions": collisions},
+            )
+
+        merged: Dict[tuple, Dict[str, Any]] = {}
+        result = []
+        for prop in properties:
+            key = (prop.get("type"), prop["name"])
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = prop
+                result.append(prop)
+                continue
+
+            existing["domain"] = self._merge_property_values(
+                existing.get("domain", []), prop.get("domain", [])
+            )
+            if prop.get("type") == "object":
+                existing["range"] = self._merge_property_values(
+                    existing.get("range", []), prop.get("range", [])
+                )
+                existing_metadata = existing.setdefault("metadata", {})
+                existing_metadata["occurrence_count"] = (
+                    existing_metadata.get("occurrence_count", 0)
+                    + prop.get("metadata", {}).get("occurrence_count", 0)
+                )
+            elif existing.get("range") != prop.get("range"):
+                existing["range"] = self._get_more_general_type(
+                    existing["range"], prop["range"]
+                )
+
+        return result
+
+    @staticmethod
+    def _merge_property_values(current: Any, incoming: Any) -> List[Any]:
+        """Merge scalar-or-list property values while preserving input order."""
+        values = list(current) if isinstance(current, list) else [current]
+        incoming_values = (
+            incoming if isinstance(incoming, list) else [incoming]
+        )
+        for value in incoming_values:
+            if value not in values:
+                values.append(value)
+        return [value for value in values if value is not None]
 
     def _infer_data_properties(
         self, entities: List[Dict[str, Any]], classes: List[Dict[str, Any]], **options

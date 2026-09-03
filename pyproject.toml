@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "semantica"
-version = "0.6.6"
+version = "0.6.7"
 description = "Graph-Native Infrastructure for Context and Accountable AI Systems: context graphs, decision intelligence, full provenance tracking, and explainable reasoning engines — every AI decision traceable, every output auditable."
 readme = "README.md"
 license = { text = "MIT" }
@@ -49,7 +49,14 @@ dependencies = [
   "scipy>=1.13.1",
   "scikit-learn>=1.7.2",
   "umap-learn>=0.5.12",
-  "spacy>=3.4.0",
+  # thinc (spacy's core dep) dropped Python 3.9 wheels at 8.3.10, and later
+  # spacy patch releases (3.8.8+) require thinc>=8.3.9-only-on-3.10+ ranges,
+  # which forces a source build that fails outright on 3.9 (see Install
+  # Matrix run history). Capping both keeps 3.9 on the last wheel-compatible
+  # pair; 3.10+ is left unconstrained to always get the latest spacy/thinc.
+  "spacy>=3.4.0,<3.8.8; python_version < '3.10'",
+  "spacy>=3.4.0; python_version >= '3.10'",
+  "thinc<8.3.5; python_version < '3.10'",
   "transformers>=4.20.0",
   "torch>=1.13.1",
   "sentence-transformers>=2.2.0",
@@ -107,11 +114,12 @@ llm-gemini = ["google-genai>=0.1.0"]
 llm-anthropic = ["anthropic>=0.122.0"]
 llm-ollama = ["ollama>=0.1.0"]
 llm-deepseek = ["openai>=1.0.0"]
+llm-novita = ["openai>=1.0.0"]
 llm-litellm = ["litellm>=1.83.9"]
 llm-instructor = ["instructor>=1.15.3"]
 
 llm-all = [
-  "semantica[llm-openai,llm-groq,llm-gemini,llm-anthropic,llm-ollama,llm-deepseek,llm-litellm,llm-instructor]"
+  "semantica[llm-openai,llm-groq,llm-gemini,llm-anthropic,llm-ollama,llm-deepseek,llm-novita,llm-litellm,llm-instructor]"
 ]
 
 # ---- Document Parsing ----
@@ -124,11 +132,13 @@ shacl = ["pyshacl>=0.25.0"]
 db-snowflake = ["snowflake-connector-python>=4.6.0", "cryptography>=49.0.0"]
 db-databricks = ["databricks-sdk>=0.60.0", "databricks-sql-connector>=4.0.0"]
 db-arrow = ["pyarrow>=24.0.0"]
+db-salesforce = ["simple-salesforce>=1.12.0"]
 ingest-parquet = ["pyarrow>=24.0.0"]
 ingest-arrow = ["pyarrow>=24.0.0"]
+ingest-sap = ["requests>=2.28.0"]
 
 db-all = [
-  "semantica[db-snowflake,db-databricks,db-arrow]"
+  "semantica[db-snowflake,db-databricks,db-salesforce,db-arrow]"
 ]
 
 # ---- Embedding / Models ----

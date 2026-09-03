@@ -46,7 +46,7 @@ Whether you're running your first pipeline or deploying Semantica in production,
         [Building Knowledge Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb): multi-source, deduplication, conflict resolution.
       </Step>
       <Step title="Add semantic search">
-        [Embeddings notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb): providers, pooling strategies, vector stores.
+        [Embedding Generation notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/12_Embedding_Generation.ipynb): generating embeddings, provider and model switching, dimensions. Then [Vector Store notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/13_Vector_Store.ipynb): storing and searching vectors for retrieval.
       </Step>
       <Step title="Multi-source integration">
         [Multi-Source Data Integration notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb) for multi-source patterns.

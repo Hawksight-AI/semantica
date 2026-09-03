@@ -42,7 +42,7 @@ icon: "rocket"
       Verify installation:
       ```python
       import semantica
-      print(semantica.__version__)  # 0.6.6
+      print(semantica.__version__)  # 0.6.7
       ```
     </Check>
   </Step>
@@ -183,7 +183,7 @@ icon: "rocket"
     }
     ```
 
-    12 tools available instantly: extract entities, query graph, record decisions, run reasoning, export results.
+    15 tools available instantly: extract entities, query graph, record decisions, run reasoning, export results.
 
     **Next:** [MCP Server reference →](reference/mcp_server)
   </Tab>
