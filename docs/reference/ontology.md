@@ -105,6 +105,15 @@ if not report.passed:
         print(issue.code, issue.message)
 ```
 
+The available gate controls are:
+
+| Threshold | Default | Meaning |
+| :-------- | :------ | :------ |
+| `min_coverage` | `0.0` | Minimum required `coverage` value (the average of class and property coverage, from 0.0 to 1.0). |
+| `max_errors` | `0.0` | Maximum number of `error` or `critical` issues allowed. |
+| `max_warnings` | `None` (unlimited) | Maximum number of `warning` issues allowed. Warnings alone do not fail the gate when unset. |
+| `fail_on_warnings` | `False` | Separate gate flag; when enabled, any warning fails the gate. It is not a `thresholds` key. |
+
 The report checks class/property coverage, orphan schema elements, domain and
 range references, and unresolved KG relationship endpoints. It includes
 machine-readable issue codes, severity, counts, metrics, and threshold
