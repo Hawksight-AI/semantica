@@ -399,6 +399,24 @@ class TestReceipt(unittest.TestCase):
 
         self.assertEqual(receipt.stores["graph"]["status"], STATUS_ERASED)
 
+    def test_to_dict_copies_nested_store_results(self):
+        receipt = ErasureReceipt(
+            entity_id="customer-4471",
+            stores={
+                "vectors": {
+                    "status": STATUS_ERASED,
+                    "backend_result": {"status": "completed"},
+                }
+            },
+        )
+
+        payload = receipt.to_dict()
+        payload["stores"]["vectors"]["backend_result"]["status"] = "redacted"
+
+        self.assertEqual(
+            receipt.stores["vectors"]["backend_result"]["status"], "completed"
+        )
+
     def test_receipt_and_tombstone_agree_on_when_the_erasure_happened(self):
         graph = _graph()
         receipt = ErasureCoordinator(graph=graph).erase_entity(

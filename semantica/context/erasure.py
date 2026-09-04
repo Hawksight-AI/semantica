@@ -34,6 +34,7 @@ Example:
     'unsupported'
 """
 
+import copy
 import inspect
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -123,7 +124,9 @@ class ErasureReceipt:
             "reason": self.reason,
             "erased_at": self.erased_at,
             "complete": self.complete,
-            "stores": {name: dict(result) for name, result in self.stores.items()},
+            "stores": {
+                name: copy.deepcopy(result) for name, result in self.stores.items()
+            },
         }
 
 
