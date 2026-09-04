@@ -309,7 +309,7 @@ semantica-mcp = "semantica.mcp_server:main"
 # ---------------- TOOLING ----------------
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["semantica*", "integrations*"]
+include = ["semantica*", "integrations*", "semantica_mcp*"]
 
 [tool.setuptools.package-data]
 # Explicit patterns are more reliable than **/* across setuptools versions.

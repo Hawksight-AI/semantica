@@ -1,4 +1,4 @@
-"""Regression tests for root mcp/ graph persistence (issue #1134).
+"""Regression tests for semantica_mcp/mcp graph persistence (issue #1134).
 
 Covers:
   1. get_graph() loads an existing JSON file via load_from_file(), not the
@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 from semantica.context.context_graph import ContextGraph
 
-import mcp.session as _session
+import semantica_mcp.mcp.session as _session
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ def _fresh_graph() -> ContextGraph:
 
 
 class _IsolatedSession:
-    """Context manager that resets the mcp.session singleton before and after
+    """Context manager that resets the semantica_mcp.mcp.session singleton before and after
     each test so tests are independent of process-level state."""
 
     def __enter__(self):
@@ -132,14 +132,14 @@ class TestMCPSessionLoad(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestMCPPackageMutationPersistence(unittest.TestCase):
-    """Mutations via the root mcp/ tool handlers must persist to SEMANTICA_KG_PATH
+    """Mutations via the semantica_mcp/mcp tool handlers must persist to SEMANTICA_KG_PATH
     so the data survives a server restart (simulated by a fresh load_from_file)."""
 
     # ---- record_decision ------------------------------------------------
 
     def test_record_decision_persists_when_kg_path_set(self):
         """handle_record_decision must write to disk when SEMANTICA_KG_PATH is set."""
-        from mcp.tools.decisions import handle_record_decision
+        from semantica_mcp.mcp.tools.decisions import handle_record_decision
 
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             path = f.name
@@ -175,7 +175,7 @@ class TestMCPPackageMutationPersistence(unittest.TestCase):
 
     def test_record_decision_works_without_kg_path(self):
         """handle_record_decision must succeed even when SEMANTICA_KG_PATH is unset."""
-        from mcp.tools.decisions import handle_record_decision
+        from semantica_mcp.mcp.tools.decisions import handle_record_decision
 
         with _IsolatedSession():
             env = {k: v for k, v in os.environ.items() if k != "SEMANTICA_KG_PATH"}
@@ -195,7 +195,7 @@ class TestMCPPackageMutationPersistence(unittest.TestCase):
 
     def test_add_entity_persists_when_kg_path_set(self):
         """handle_add_entity must write to disk when SEMANTICA_KG_PATH is set."""
-        from mcp.tools.graph import handle_add_entity
+        from semantica_mcp.mcp.tools.graph import handle_add_entity
 
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             path = f.name
@@ -225,7 +225,7 @@ class TestMCPPackageMutationPersistence(unittest.TestCase):
 
     def test_add_entity_works_without_kg_path(self):
         """handle_add_entity must succeed when SEMANTICA_KG_PATH is unset."""
-        from mcp.tools.graph import handle_add_entity
+        from semantica_mcp.mcp.tools.graph import handle_add_entity
 
         with _IsolatedSession():
             env = {k: v for k, v in os.environ.items() if k != "SEMANTICA_KG_PATH"}
@@ -239,7 +239,7 @@ class TestMCPPackageMutationPersistence(unittest.TestCase):
 
     def test_add_relationship_persists_when_kg_path_set(self):
         """handle_add_relationship must write to disk when SEMANTICA_KG_PATH is set."""
-        from mcp.tools.graph import handle_add_relationship
+        from semantica_mcp.mcp.tools.graph import handle_add_relationship
 
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             path = f.name
@@ -247,7 +247,7 @@ class TestMCPPackageMutationPersistence(unittest.TestCase):
             with _IsolatedSession():
                 with patch.dict(os.environ, {"SEMANTICA_KG_PATH": path}):
                     # Nodes must exist before an edge can be added.
-                    from mcp.tools.graph import handle_add_entity
+                    from semantica_mcp.mcp.tools.graph import handle_add_entity
                     handle_add_entity({"id": "rel_src", "label": "Source"})
                     handle_add_entity({"id": "rel_tgt", "label": "Target"})
                     result = handle_add_relationship({
@@ -273,7 +273,7 @@ class TestMCPPackageMutationPersistence(unittest.TestCase):
 
     def test_add_relationship_works_without_kg_path(self):
         """handle_add_relationship must succeed when SEMANTICA_KG_PATH is unset."""
-        from mcp.tools.graph import handle_add_entity, handle_add_relationship
+        from semantica_mcp.mcp.tools.graph import handle_add_entity, handle_add_relationship
 
         with _IsolatedSession():
             env = {k: v for k, v in os.environ.items() if k != "SEMANTICA_KG_PATH"}
