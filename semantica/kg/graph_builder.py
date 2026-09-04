@@ -162,6 +162,39 @@ class GraphBuilder:
             # It's likely a Relation object
             subj = item.subject
             obj = item.object
+            # Relation extraction synthesizes an UNKNOWN Entity for an endpoint
+            # that is absent from the NER entity list (metadata synthetic=True).
+            # Only its string id survives in the relationship today, so the
+            # synthetic object never reaches the entity collection and graph
+            # validation reports DANGLING_EDGE. Promote those endpoint entities
+            # into the graph here instead.
+            synthetic_endpoints = [
+                endpoint
+                for endpoint in (subj, obj)
+                if (
+                    not isinstance(endpoint, str)
+                    and isinstance(getattr(endpoint, "metadata", None), dict)
+                    and endpoint.metadata.get("synthetic")
+                )
+            ]
+            endpoint_policy = self.config.get("unknown_relation_endpoint", "include")
+            if endpoint_policy == "reject" and synthetic_endpoints:
+                return
+            existing_ids = {e.get("id") for e in all_entities if isinstance(e, dict)}
+            for endpoint in synthetic_endpoints:
+                endpoint_id = endpoint.id if hasattr(endpoint, "id") else endpoint.text
+                if endpoint_id in existing_ids:
+                    continue
+                all_entities.append(
+                    {
+                        "id": endpoint_id,
+                        "name": endpoint.text,
+                        "type": getattr(endpoint, "label", "UNKNOWN"),
+                        "confidence": getattr(endpoint, "confidence", 0.8),
+                        "metadata": endpoint.metadata,
+                    }
+                )
+                existing_ids.add(endpoint_id)
             subj_id = getattr(subj, "id", getattr(subj, "text", str(subj))) if not isinstance(subj, str) else subj
             obj_id = getattr(obj, "id", getattr(obj, "text", str(obj))) if not isinstance(obj, str) else obj
             rel_dict = {
