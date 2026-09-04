@@ -2517,16 +2517,27 @@ Text to extract from:
         # Convert back to internal Triplet format
         triplets = []
         for t_out in result_obj.triplets:
+            # An LLM triple may reference an endpoint that does not match any
+            # entity extracted by NER. Record those endpoints so the GraphBuilder
+            # can promote them as synthetic entities instead of leaving a
+            # dangling edge (see issue #1463).
+            synthetic_endpoints = []
+            for endpoint_text in (t_out.subject, t_out.object):
+                if not match_entity(endpoint_text, entities or []):
+                    synthetic_endpoints.append(endpoint_text)
+            metadata = {
+                "provider": provider,
+                "model": model,
+                "extraction_method": "llm_typed",
+            }
+            if synthetic_endpoints:
+                metadata["synthetic_endpoints"] = synthetic_endpoints
             triplets.append(Triplet(
                 subject=t_out.subject,
                 predicate=t_out.predicate,
                 object=t_out.object,
                 confidence=t_out.confidence,
-                metadata={
-                    "provider": provider, 
-                    "model": model, 
-                    "extraction_method": "llm_typed"
-                }
+                metadata=metadata,
             ))
         
         logger.info(f"Successfully extracted {len(triplets)} triplets using {provider}/{model} (typed)")

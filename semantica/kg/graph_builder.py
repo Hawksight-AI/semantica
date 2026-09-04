@@ -23,7 +23,7 @@ License: MIT
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import time
 
 
@@ -159,39 +159,64 @@ class GraphBuilder:
             }
             all_entities.append(entity_dict)
         elif hasattr(item, "subject") and hasattr(item, "predicate") and hasattr(item, "object"):
-            # It's likely a Relation object
+            # It's likely a Relation or Triplet object
             subj = item.subject
             obj = item.object
             # Relation extraction synthesizes an UNKNOWN Entity for an endpoint
             # that is absent from the NER entity list (metadata synthetic=True).
-            # Only its string id survives in the relationship today, so the
-            # synthetic object never reaches the entity collection and graph
-            # validation reports DANGLING_EDGE. Promote those endpoint entities
-            # into the graph here instead.
-            synthetic_endpoints = [
-                endpoint
-                for endpoint in (subj, obj)
+            # Triplet extraction does the same, but its endpoints are strings, so
+            # the extractor records the absent endpoint texts instead. Only the
+            # id/text survives in the relationship today, so the synthetic object
+            # never reaches the entity collection and graph validation reports
+            # DANGLING_EDGE. Promote those endpoint entities into the graph here.
+            item_metadata = getattr(item, "metadata", None) or {}
+            # Triplet LLM path tags endpoint texts it could not match to an entity.
+            triplet_synthetic = [
+                text
+                for text in item_metadata.get("synthetic_endpoints", [])
+                if isinstance(text, str)
+            ]
+            synthetic_endpoints = []
+            for endpoint in (subj, obj):
                 if (
                     not isinstance(endpoint, str)
                     and isinstance(getattr(endpoint, "metadata", None), dict)
                     and endpoint.metadata.get("synthetic")
-                )
-            ]
-            endpoint_policy = self.config.get("unknown_relation_endpoint", "include")
+                ):
+                    synthetic_endpoints.append(endpoint)
+                elif isinstance(endpoint, str) and endpoint in triplet_synthetic:
+                    synthetic_endpoints.append(endpoint)
+            cfg = self.config
+            nested_cfg = cfg.get("config")
+            if isinstance(nested_cfg, dict):
+                cfg = nested_cfg
+            endpoint_policy = cfg.get("unknown_relation_endpoint", "include")
             if endpoint_policy == "reject" and synthetic_endpoints:
+                self.logger.info(
+                    "Dropping relationship %r->%r (%s): endpoint is synthetic and "
+                    "unknown_relation_endpoint='reject'",
+                    subj,
+                    obj,
+                    item.predicate,
+                )
                 return
             existing_ids = {e.get("id") for e in all_entities if isinstance(e, dict)}
             for endpoint in synthetic_endpoints:
-                endpoint_id = endpoint.id if hasattr(endpoint, "id") else endpoint.text
+                if isinstance(endpoint, str):
+                    endpoint_id = endpoint
+                    endpoint_text = endpoint
+                else:
+                    endpoint_id = endpoint.id if hasattr(endpoint, "id") else endpoint.text
+                    endpoint_text = endpoint.text
                 if endpoint_id in existing_ids:
                     continue
                 all_entities.append(
                     {
                         "id": endpoint_id,
-                        "name": endpoint.text,
-                        "type": getattr(endpoint, "label", "UNKNOWN"),
-                        "confidence": getattr(endpoint, "confidence", 0.8),
-                        "metadata": endpoint.metadata,
+                        "name": endpoint_text,
+                        "type": "UNKNOWN",
+                        "confidence": 0.8,
+                        "metadata": {"synthetic": True},
                     }
                 )
                 existing_ids.add(endpoint_id)
@@ -814,6 +839,37 @@ class GraphBuilder:
                 )
                 if has_merged_entities:
                     self._remap_relationship_endpoints(resolved_entities, all_relationships)
+
+            # When a synthetic endpoint is promoted before the real entity arrives
+            # (e.g. relation data precedes NER entity data for the same text),
+            # the same id can appear once as synthetic and once as real. Prefer
+            # the real entity so the graph does not carry a duplicated,
+            # lower-confidence duplicate.
+            _real_ids: Set[Any] = set()
+            for _entity in resolved_entities:
+                if (
+                    isinstance(_entity, dict)
+                    and not _entity.get("metadata", {}).get("synthetic")
+                    and _entity.get("id") is not None
+                ):
+                    try:
+                        _real_ids.add(_entity["id"])
+                    except TypeError:
+                        # Invalid/unhashable IDs are left for graph validation
+                        # to report rather than failing graph construction here.
+                        continue
+            if _real_ids:
+                filtered = []
+                for _entity in resolved_entities:
+                    if (
+                        isinstance(_entity, dict)
+                        and _entity.get("metadata", {}).get("synthetic")
+                    ):
+                        _eid = _entity.get("id")
+                        if _eid in _real_ids:
+                            continue
+                    filtered.append(_entity)
+                resolved_entities = filtered
 
             if input_relationships_count > 0 and len(all_relationships) == 0:
                 warning_msg = (

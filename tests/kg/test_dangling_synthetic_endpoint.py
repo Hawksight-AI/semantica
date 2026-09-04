@@ -134,3 +134,62 @@ def test_dict_source_relationship_with_all_endpoints_present():
 
     assert "Known Entity" in {e["id"] for e in graph["entities"]}
     assert not [i for i in _issues(graph) if i.get("code") == "DANGLING_EDGE"]
+
+
+def test_reject_policy_via_nested_config():
+    # The orchestrator constructs GraphBuilder(config=self.config.get("kg", {})),
+    # which lands as a nested "config" keyword. The policy lookup must read
+    # through that nesting so the reject option works end to end.
+    builder = GraphBuilder(
+        resolve_conflicts=False,
+        config={"unknown_relation_endpoint": "reject"},
+    )
+    graph = builder.build(
+        [_rel(_known(), "related_to", _synthetic("Synthetic Entity"))],
+        extract=False,
+    )
+
+    assert graph["relationships"] == []
+    assert "Synthetic Entity" not in {e["id"] for e in graph["entities"]}
+
+
+def test_real_entity_wins_over_prior_synthetic():
+    # A synthetic endpoint promoted early must yield to a real entity with the
+    # same id that arrives later (e.g. relation data precedes NER entity data).
+    graph = GraphBuilder(resolve_conflicts=False).build(
+        [_rel(_synthetic("Shared"), "related_to", _known("Other"))],
+        extract=False,
+    )
+    # Force a real "Shared" entity to coexist with the promoted synthetic one and
+    # confirm only the real one survives.
+    real_graph = GraphBuilder(resolve_conflicts=False).build(
+        [
+            _synthetic("Shared"),
+            _known("Shared"),
+            _rel(_synthetic("Shared"), "related_to", _known("Other")),
+        ],
+        extract=False,
+    )
+
+    shared = [e for e in real_graph["entities"] if e["id"] == "Shared"]
+    assert len(shared) == 1
+    assert shared[0]["metadata"].get("synthetic") is not True
+
+
+def test_triplet_with_synthetic_endpoint_promoted():
+    # The LLM triplet path tags endpoint texts it could not match, and the
+    # GraphBuilder promotes them as synthetic entities (issue #1463).
+    triplet = Relation(
+        subject="Missing Subj",  # string, Triplet shape
+        predicate="related_to",
+        object="Known Target",
+    )
+    triplet.metadata = {"synthetic_endpoints": ["Missing Subj"]}
+    graph = GraphBuilder(resolve_conflicts=False).build(
+        [_known("Known Target"), triplet],
+        extract=False,
+    )
+
+    entity_ids = {e["id"] for e in graph["entities"]}
+    assert "Missing Subj" in entity_ids
+    assert not [i for i in _issues(graph) if i.get("code") == "DANGLING_EDGE"]
