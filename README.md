@@ -1461,6 +1461,22 @@ semantica-explorer --graph my_graph.json
 
 For contributor / dev-server setup: **[explorer/README.md: Local Setup Guide](explorer/README.md)**
 
+The CLI exposes the loaded `ContextGraph`. To also browse and edit an existing
+`AgentMemory`, create the ASGI app programmatically with both live objects:
+
+```python
+from semantica.context import AgentMemory, ContextGraph
+from semantica.explorer.app import create_app
+from semantica.explorer.session import GraphSession
+
+graph = ContextGraph()
+memory = AgentMemory()
+app = create_app(session=GraphSession(graph), agent_memory=memory)
+```
+
+The Memories workspace is shown only when `agent_memory` is provided. Apply
+updates the supplied runtime object; it does not add disk persistence.
+
 ---
 
 ## What's New in v0.6.7
@@ -1469,7 +1485,7 @@ For contributor / dev-server setup: **[explorer/README.md: Local Setup Guide](ex
 
 - **First-class LangChain integration** (`semantica[langchain]`): a `BaseRetriever` and `VectorStore` over `HybridSearch`, plus graph/decision-query tools
 - **SAP OData ingestor** (`semantica[ingest-sap]`): OAuth2/Basic-auth, SSRF-guarded ingestion for Business Partners and Sales Orders, following the existing Snowflake/Databricks connector pattern
-- **`ContextGraph` gains deterministic, human-editable Markdown round-trip persistence** alongside the existing JSON API, and the Explorer graph inspector gains a read-only Markdown content viewer
+- **`ContextGraph` gains deterministic, human-editable Markdown round-trip persistence** alongside the existing JSON API, and Explorer can validate and apply Markdown edits to individual graph nodes and AgentMemory items supplied by the hosting application
 - **`reasoning` gains a structured Action layer**: rule-driven `Assert`/`Retract`/`Call`/`EmitEvent` actions with optional provenance, turning the reasoner into a production-rule system
 - **`run_shacl_validation` is now a public, documented API**, and a dozen ontology/RDF export correctness fixes land: OWL property/class export, SHACL target-namespace resolution, one canonical confidence datatype across all four RDF formats, reachable OWL-Time reification, JSON-LD default-graph and content-derived document identity, and full metadata passthrough on every RDF serializer
 - **Security**: Agno's `AgnoKnowledgeGraph.load_urls()` and OpenClaw's MCP tool now route outbound requests through the shared SSRF guard
