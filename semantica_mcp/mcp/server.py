@@ -6,8 +6,8 @@ Implements the Model Context Protocol so any MCP-compatible AI tool
 can interact with the Semantica knowledge graph.
 
 Run:
-    python -m mcp                  # via __main__.py
-    python -m mcp.server           # direct
+    python -m semantica_mcp.mcp                  # via __main__.py
+    python -m semantica_mcp.mcp.server           # direct
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ import logging
 import sys
 from typing import Any
 
-from mcp import __version__
-from mcp.resources import RESOURCE_DEFINITIONS, handle_resource_read
-from mcp.tools import TOOL_DEFINITIONS
+from . import __version__
+from .resources import RESOURCE_DEFINITIONS, handle_resource_read
+from .tools import TOOL_DEFINITIONS
 
 log = logging.getLogger("semantica.mcp.server")
 
