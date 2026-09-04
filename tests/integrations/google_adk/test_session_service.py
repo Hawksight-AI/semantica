@@ -96,6 +96,44 @@ def test_get_session():
     assert loaded.state == {"foo": "bar"}
 
 
+def test_get_session_honors_num_recent_events_config():
+    from google.adk.events import Event
+    from google.adk.sessions.base_session_service import GetSessionConfig
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(app_name="test-app", user_id="test-user")
+    )
+
+    for i in range(5):
+        asyncio.run(
+            service.append_event(
+                session,
+                Event(author="agent", invocation_id=f"inv-{i}"),
+            )
+        )
+
+    full = asyncio.run(
+        service.get_session(
+            app_name="test-app", user_id="test-user", session_id=session.id
+        )
+    )
+    assert len(full.events) == 5
+
+    bounded = asyncio.run(
+        service.get_session(
+            app_name="test-app",
+            user_id="test-user",
+            session_id=session.id,
+            config=GetSessionConfig(num_recent_events=2),
+        )
+    )
+    assert [e.invocation_id for e in bounded.events] == ["inv-3", "inv-4"]
+
+
 def test_get_missing_session():
     from semantica.context import ContextGraph
 

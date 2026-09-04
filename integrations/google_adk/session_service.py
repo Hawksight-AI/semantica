@@ -27,6 +27,10 @@ try:
         # the sessions package __init__; it always lives in
         # base_session_service.
         from google.adk.sessions.base_session_service import ListSessionsResponse
+    try:
+        from google.adk.sessions import GetSessionConfig
+    except ImportError:
+        from google.adk.sessions.base_session_service import GetSessionConfig
     ADK_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     ADK_AVAILABLE = False
@@ -34,6 +38,7 @@ except (ImportError, ModuleNotFoundError):
     Session = Any
     Event = Any
     ListSessionsResponse = Any
+    GetSessionConfig = Any
 
 
 class SemanticaSessionService(BaseSessionService):
@@ -418,11 +423,9 @@ class SemanticaSessionService(BaseSessionService):
             app_name: str,
             user_id: str,
             session_id: str,
-            config: Optional[Any] = None,
+            config: Optional[GetSessionConfig] = None,
     ) -> Optional[Session]:
         """Retrieve an ADK session from ContextGraph."""
-        del config
-
         with self._lock:
             node = self._find_session_node(app_name, user_id, session_id)
 
@@ -435,7 +438,24 @@ class SemanticaSessionService(BaseSessionService):
             if properties.get("user_id") != user_id:
                 return None
 
-            return self._session_from_node(node)
+            session = self._session_from_node(node)
+
+        # Bound the returned event history the same way ADK's own
+        # InMemorySessionService does, outside the lock since it only
+        # trims the already-built Session object.
+        if config:
+            if config.num_recent_events:
+                session.events = session.events[-config.num_recent_events:]
+            if config.after_timestamp:
+                i = len(session.events) - 1
+                while i >= 0:
+                    if session.events[i].timestamp < config.after_timestamp:
+                        break
+                    i -= 1
+                if i >= 0:
+                    session.events = session.events[i + 1:]
+
+        return session
 
     async def append_event(
             self,
