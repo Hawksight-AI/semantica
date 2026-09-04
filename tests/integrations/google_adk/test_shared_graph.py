@@ -38,6 +38,18 @@ def test_all_integrations_share_same_graph():
     assert len(decision_tools) == 2
 
 
+def test_kg_tools_and_decision_tools_lock_the_same_graph():
+    """kg_tools and decision_tools must serialize writes against each other
+    when handed the same graph, not just within their own module."""
+    from integrations.google_adk.decision_tools import _graph_lock as decision_graph_lock
+    from integrations.google_adk.kg_tools import _graph_lock as kg_graph_lock
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+
+    assert kg_graph_lock(graph) is decision_graph_lock(graph)
+
+
 def test_shared_graph_session_and_decision_state():
     from semantica.context import ContextGraph
 

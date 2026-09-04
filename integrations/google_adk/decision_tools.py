@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-import threading
+from typing import Any, List, Optional
 import uuid
+
+from ._shared import graph_lock as _graph_lock
+from ._shared import get_default_graph as _get_default_graph
 
 
 try:
@@ -13,40 +15,6 @@ try:
 except ImportError:
     FunctionTool = None
     ADK_AVAILABLE = False
-_default_graph: Optional[Any] = None
-_default_graph_lock = threading.Lock()
-
-
-_graph_locks_guard = threading.Lock()
-_graph_locks: Dict[int, threading.RLock] = {}
-
-
-def _graph_lock(graph: Any) -> threading.RLock:
-    """return a lock associated with a graph instance."""
-    key = id(graph)
-
-    with _graph_locks_guard:
-        lock = _graph_locks.get(key)
-
-        if lock is None:
-            lock = threading.RLock()
-            _graph_locks[key] = lock
-
-        return lock
-
-
-def _get_default_graph() -> Any:
-    """Return the process-local default ContextGraph."""
-    global _default_graph
-
-    if _default_graph is None:
-        with _default_graph_lock:
-            if _default_graph is None:
-                from semantica.context import ContextGraph
-
-                _default_graph = ContextGraph()
-
-    return _default_graph
 
 
 def _get_decision_models() -> Any:

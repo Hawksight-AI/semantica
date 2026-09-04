@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import threading
 from typing import Any, Dict, List, Optional
+
+from ._shared import graph_lock as _graph_lock
+from ._shared import get_default_graph as _get_default_graph
 
 try:
     from google.adk.tools import FunctionTool
@@ -10,35 +12,6 @@ try:
 except ImportError:
     FunctionTool = None  # type: ignore
     ADK_AVAILABLE = False
-
-_graph_locks_guard = threading.Lock()
-_graph_locks: Dict[int, threading.RLock] = {}
-_default_graph = None
-_default_graph_lock = threading.Lock()
-
-
-def _graph_lock(graph: Any) -> threading.RLock:
-    """Return the mutation lock associated with a ContextGraph instance."""
-    key = id(graph)
-
-    with _graph_locks_guard:
-        lock = _graph_locks.get(key)
-
-        if lock is None:
-            lock = threading.RLock()
-            _graph_locks[key] = lock
-
-        return lock
-
-
-def _get_default_graph():
-    """Create or return the cached default Semantica ContextGraph."""
-    global _default_graph
-    with _default_graph_lock:
-        if _default_graph is None:
-            from semantica.context import ContextGraph
-            _default_graph = ContextGraph()
-        return _default_graph
 
 
 def _get_ner_extractor() -> Any:
