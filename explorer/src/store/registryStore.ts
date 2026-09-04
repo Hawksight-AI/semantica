@@ -15,6 +15,7 @@ export type RegistryEntryOp =
   | "export"
   | "merge"
   | "add-node"
+  | "update-node"
   | "add-edge"
   | "delete"
   | "infer"

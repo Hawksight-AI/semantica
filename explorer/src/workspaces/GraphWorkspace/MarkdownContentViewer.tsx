@@ -1,125 +1,243 @@
-import { useState, useRef, useEffect, useMemo, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy, Code2, Eye, ExternalLink, Image as ImageIcon } from "lucide-react";
+import {
+  Check,
+  Code2,
+  Copy,
+  Eye,
+  ExternalLink,
+  Image as ImageIcon,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { GRAPH_THEME } from "./graphTheme";
+import type { MarkdownApplyResult } from "./markdownResourceClient";
+import type { MarkdownResourceRef } from "./markdownEditorState";
 import { isSafeUrl } from "./markdownUrlSafety";
+import { useMarkdownEditor } from "./useMarkdownEditor";
 
 export interface MarkdownContentViewerProps {
   content?: string | null;
+  resource?: MarkdownResourceRef;
+  onApplied?: (result: MarkdownApplyResult) => void;
+  onDirtyChange?: (dirty: boolean) => void;
   className?: string;
   defaultMode?: "preview" | "source";
 }
 
 export function MarkdownContentViewer({
   content,
+  resource,
+  onApplied,
+  onDirtyChange,
   className,
   defaultMode = "preview",
 }: MarkdownContentViewerProps) {
   const [activeMode, setActiveMode] = useState<"preview" | "source">(defaultMode);
   const [copied, setCopied] = useState(false);
+  const modeBeforeEditRef = useRef<"preview" | "source">(defaultMode);
+  const resourceKey = resource ? `${resource.kind}:${resource.id}` : "";
+  const [activeResourceKey, setActiveResourceKey] = useState(resourceKey);
+  const editor = useMarkdownEditor({ resource, onApplied, onDirtyChange });
+  const {
+    session,
+    error,
+    dirty,
+    editing,
+    saving,
+    loading,
+  } = editor;
+
+  if (activeResourceKey !== resourceKey) {
+    setActiveResourceKey(resourceKey);
+    setCopied(false);
+    setActiveMode(defaultMode);
+  }
+
   // Track the content value for which the copied indicator is valid.
-  // When content changes (i.e. the user selects a different node), reset the
-  // copied indicator inline during render rather than in a useEffect — this
-  // avoids a cascading-render lint error and is the React-recommended pattern
-  // for resetting derived visual state on prop changes.
   const [copiedForContent, setCopiedForContent] = useState<string | null | undefined>(content);
   if (copiedForContent !== content) {
     setCopiedForContent(content);
-    if (copied) {
-      // Clear the stale indicator synchronously so the new node's copy button
-      // never shows "Copied" from the previous selection.
-      setCopied(false);
-    }
+    if (copied) setCopied(false);
   }
 
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Clean up any outstanding timeout on unmount.
+  const copyTimeoutRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
+      clearTimeout(copyTimeoutRef.current);
     };
   }, []);
 
-  const rawContent = typeof content === "string" ? content : "";
+  const rawContent = editor.editing
+    ? editor.session?.draft ?? ""
+    : (typeof content === "string" ? content : "");
+  const previewContent = useMemo(() => {
+    if (!editor.editing) return rawContent;
+    const lines = rawContent.split(/\r?\n/);
+    if (lines[0] !== "---") return rawContent;
+    const closingIndex = lines.findIndex((line, index) => index > 0 && line === "---");
+    return closingIndex < 0 ? rawContent : lines.slice(closingIndex + 1).join("\n").replace(/^\n/, "");
+  }, [editor.editing, rawContent]);
   const hasContent = rawContent.trim().length > 0;
-
-  // react-markdown runs the whole remark pipeline synchronously inside its own
-  // render, so without this memo every unrelated re-render of this component --
-  // clicking Copy, toggling Preview/Source -- re-parses the entire document.
-  // Measured at ~364ms per re-render for a 1000-row GFM table (issue #1118).
-  // Keyed on rawContent so a genuine node change still re-parses exactly once.
   const renderedMarkdown = useMemo(
     () => (
       <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
-        {rawContent}
+        {previewContent}
       </ReactMarkdown>
     ),
-    [rawContent],
+    [previewContent],
   );
-
   const handleCopy = async () => {
     if (!hasContent) return;
     try {
       await navigator.clipboard.writeText(rawContent);
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
+      clearTimeout(copyTimeoutRef.current);
       setCopied(true);
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
+      copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Clipboard write unavailable
+      // Clipboard write unavailable.
+    }
+  };
+
+  const handleEdit = async () => {
+    modeBeforeEditRef.current = activeMode;
+    setActiveMode("source");
+    if (!await editor.beginEdit()) {
+      setActiveMode(modeBeforeEditRef.current);
+    }
+  };
+
+  const handleCancel = () => {
+    editor.discard();
+    setActiveMode(modeBeforeEditRef.current);
+  };
+
+  const handleApply = async () => {
+    if (await editor.save()) {
+      setActiveMode("preview");
     }
   };
 
   return (
     <div className={className} style={viewerContainerStyle}>
       <div style={viewerHeaderStyle}>
-        <div style={{ display: "flex", gap: 4 }} role="tablist">
+        <div style={{ display: "flex", gap: 4 }} role="tablist" aria-label="Markdown view">
           <button
             type="button"
             role="tab"
             aria-selected={activeMode === "preview"}
+            aria-controls="markdown-viewer-panel"
             onClick={() => setActiveMode("preview")}
             style={{ ...tabBtnStyle, ...(activeMode === "preview" ? activeTabBtnStyle : {}) }}
           >
-            <Eye size={12} style={{ marginRight: 5 }} />
+            <Eye size={12} style={{ marginRight: 5 }} aria-hidden="true" />
             Preview
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={activeMode === "source"}
+            aria-controls="markdown-viewer-panel"
             onClick={() => setActiveMode("source")}
             style={{ ...tabBtnStyle, ...(activeMode === "source" ? activeTabBtnStyle : {}) }}
           >
-            <Code2 size={12} style={{ marginRight: 5 }} />
+            <Code2 size={12} style={{ marginRight: 5 }} aria-hidden="true" />
             Source
           </button>
         </div>
 
-        {hasContent && (
-          <button type="button" onClick={() => void handleCopy()} style={copyBtnStyle} title="Copy raw content">
-            {copied ? (
-              <>
-                <Check size={12} color="#3fb950" style={{ marginRight: 4 }} />
-                <span style={{ color: "#3fb950", fontSize: 11 }}>Copied</span>
-              </>
-            ) : (
-              <>
-                <Copy size={12} style={{ marginRight: 4 }} />
-                <span style={{ fontSize: 11 }}>Copy</span>
-              </>
-            )}
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {hasContent && (
+            <button type="button" onClick={() => void handleCopy()} style={copyBtnStyle} title="Copy raw content">
+              {copied ? (
+                <>
+                  <Check size={12} color="#3fb950" style={{ marginRight: 4 }} aria-hidden="true" />
+                  <span style={{ color: "#3fb950", fontSize: 11 }}>Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={12} style={{ marginRight: 4 }} aria-hidden="true" />
+                  <span style={{ fontSize: 11 }}>Copy</span>
+                </>
+              )}
+            </button>
+          )}
+          {resource && !editing && !loading ? (
+            <button type="button" onClick={() => void handleEdit()} style={copyBtnStyle}>
+              <Pencil size={12} style={{ marginRight: 4 }} aria-hidden="true" />
+              Edit
+            </button>
+          ) : null}
+          {loading ? (
+            <button type="button" disabled style={{ ...copyBtnStyle, opacity: 0.65 }}>
+              <Loader2 size={12} className="animate-spin" style={{ marginRight: 4 }} aria-hidden="true" />
+              Loading…
+            </button>
+          ) : null}
+          {editing ? (
+            <>
+              <button type="button" onClick={handleCancel} disabled={saving} style={copyBtnStyle}>
+                <X size={12} style={{ marginRight: 4 }} aria-hidden="true" />
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleApply()}
+                disabled={saving || !dirty}
+                title={!dirty ? "Make a change before applying" : undefined}
+                style={{ ...saveBtnStyle, opacity: saving || !dirty ? 0.55 : 1 }}
+              >
+                {saving ? (
+                  <Loader2 size={12} className="animate-spin" style={{ marginRight: 4 }} aria-hidden="true" />
+                ) : (
+                  <Check size={12} style={{ marginRight: 4 }} aria-hidden="true" />
+                )}
+                {saving ? "Applying…" : "Apply"}
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
 
-      <div style={viewerBodyStyle}>
-        {!hasContent ? (
+      {error ? (
+        <div id="markdown-editor-error" role="alert" style={errorStyle}>
+          <span>{error.message}</span>
+          {error.kind === "conflict" ? (
+            <button type="button" onClick={() => void editor.reloadLatest()} style={errorActionStyle}>
+              <RefreshCw size={12} style={{ marginRight: 4 }} aria-hidden="true" />
+              Reload latest
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div
+        id="markdown-viewer-panel"
+        role="tabpanel"
+        aria-busy={saving || loading}
+        style={viewerBodyStyle}
+      >
+        {activeMode === "source" && editing ? (
+          <textarea
+            aria-label="Markdown source"
+            aria-describedby={error ? "markdown-editor-error" : undefined}
+            aria-invalid={error?.kind === "validation" || undefined}
+            value={session?.draft ?? ""}
+            onChange={(event) => editor.changeDraft(event.target.value)}
+            disabled={saving}
+            spellCheck={false}
+            style={editorStyle}
+          />
+        ) : !hasContent ? (
           <div style={emptyTextStyle}>No content available for this node.</div>
         ) : activeMode === "source" ? (
           <pre style={sourcePreStyle}>
@@ -238,6 +356,8 @@ const viewerHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
+  gap: 8,
+  flexWrap: "wrap",
   padding: "6px 10px",
   background: "rgba(0, 0, 0, 0.2)",
   borderBottom: `1px solid ${GRAPH_THEME.ui.surface.panelBorder}`,
@@ -275,10 +395,54 @@ const copyBtnStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const saveBtnStyle: CSSProperties = {
+  ...copyBtnStyle,
+  background: GRAPH_THEME.ui.control.primaryBg,
+  border: `1px solid ${GRAPH_THEME.ui.control.primaryBorder}`,
+  color: GRAPH_THEME.ui.control.primaryText,
+  fontWeight: 700,
+};
+
+const errorStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  padding: "8px 12px",
+  color: "#ffb4ad",
+  background: "rgba(248, 81, 73, 0.1)",
+  borderBottom: "1px solid rgba(248, 81, 73, 0.25)",
+  fontSize: 12,
+  lineHeight: 1.5,
+};
+
+const errorActionStyle: CSSProperties = {
+  ...copyBtnStyle,
+  flexShrink: 0,
+  color: "#ffb4ad",
+  border: "1px solid rgba(248, 81, 73, 0.32)",
+};
+
 const viewerBodyStyle: CSSProperties = {
   padding: 12,
   maxHeight: 380,
   overflowY: "auto",
+};
+
+const editorStyle: CSSProperties = {
+  display: "block",
+  boxSizing: "border-box",
+  width: "100%",
+  minHeight: 280,
+  resize: "vertical",
+  padding: 10,
+  borderRadius: 8,
+  border: `1px solid ${GRAPH_THEME.ui.control.activeBorder}`,
+  background: "rgba(0, 0, 0, 0.3)",
+  color: GRAPH_THEME.ui.text.strong,
+  fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+  fontSize: 12,
+  lineHeight: 1.6,
 };
 
 const emptyTextStyle: CSSProperties = {

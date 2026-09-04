@@ -4571,7 +4571,7 @@ def mcp_start(cli_ctx: CLIContext, transport: str, port: int) -> None:
 
     def _action() -> None:
         import subprocess as sp
-        cmd = [sys.executable, "-m", "mcp.server"]
+        cmd = [sys.executable, "-m", "semantica_mcp.mcp.server"]
         if transport == "http":
             cmd += ["--port", str(port)]
         proc = sp.Popen(cmd)
@@ -4614,7 +4614,7 @@ def mcp_list_tools(cli_ctx: CLIContext, local_json: bool) -> None:
 
     def _action() -> None:
         try:
-            from mcp.tools import __all__ as tools
+            from semantica_mcp.mcp.tools import __all__ as tools
         except ImportError:
             tools = [
                 "extract_entities", "extract_relations", "build_graph",
@@ -4655,7 +4655,7 @@ def mcp_call(cli_ctx: CLIContext, tool_name: str, args: str, local_json: bool) -
         except json.JSONDecodeError as exc:
             raise click.ClickException(f"Invalid JSON in --args: {exc}") from exc
         try:
-            from mcp.session import MCPSession
+            from semantica_mcp.mcp.session import MCPSession
             session = MCPSession(config=cli_ctx.config.to_dict())
             result = session.call_tool(tool_name, **tool_args)
         except ImportError as exc:

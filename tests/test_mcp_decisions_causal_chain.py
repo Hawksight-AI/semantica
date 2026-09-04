@@ -1,6 +1,6 @@
 """
 Regression tests for Issue #781 — Causal chain error signaling & fallback parameter forwarding
-in mcp/tools/decisions.py: handle_get_causal_chain.
+in semantica_mcp/mcp/tools/decisions.py: handle_get_causal_chain.
 """
 
 import sys
@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import unittest
 from unittest.mock import MagicMock, patch
-from mcp.tools.decisions import handle_get_causal_chain
+from semantica_mcp.mcp.tools.decisions import handle_get_causal_chain
 
 
 class TestMCPDecisionsCausalChain(unittest.TestCase):
@@ -31,7 +31,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
             {"error": "decision_id is required", "chain": []},
         )
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     def test_runtime_outer_exception_shape(self, mock_get_graph):
         """Verify outer exception handler returns standard error shape without count/direction."""
         mock_get_graph.side_effect = RuntimeError("database failure")
@@ -43,7 +43,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
         self.assertNotIn("count", response)
         self.assertNotIn("direction", response)
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_unsupported_backend_returns_error(self, mock_analyzer_cls, mock_get_graph):
         """
@@ -67,7 +67,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
         self.assertNotIn("count", response)
         self.assertNotIn("direction", response)
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_fallback_path_forwards_direction_and_max_depth(self, mock_analyzer_cls, mock_get_graph):
         """Verify fallback graph.get_causal_chain receives direction and max_depth keyword arguments."""
@@ -90,7 +90,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
             {"chain": ["node_a", "node_b"], "count": 2, "direction": "upstream"},
         )
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_fallback_success_response(self, mock_analyzer_cls, mock_get_graph):
         """Verify fallback graph.get_causal_chain default parameters and success response shape."""
@@ -111,7 +111,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
             {"chain": ["node_default"], "count": 1, "direction": "downstream"},
         )
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_primary_analyzer_success_path(self, mock_analyzer_cls, mock_get_graph):
         """Verify normal operation via CausalChainAnalyzer when available."""
@@ -136,7 +136,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
             {"chain": ["dec_down_1", "dec_down_2"], "count": 2, "direction": "downstream"},
         )
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_fallback_depth_kwarg_signature(self, mock_analyzer_cls, mock_get_graph):
         """Verify fallback works for backends accepting 'depth' kwarg (like OpenClaw)."""
@@ -163,7 +163,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
             {"chain": ["openclaw_a", "openclaw_b"], "count": 2, "direction": "upstream"},
         )
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_fallback_positional_only_signature(self, mock_analyzer_cls, mock_get_graph):
         """Verify fallback works for backends accepting only positional decision_id."""
@@ -188,7 +188,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
             {"chain": ["pos_node"], "count": 1, "direction": "downstream"},
         )
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_input_hardening_and_dos_prevention(
         self, mock_analyzer_cls, mock_get_graph
@@ -212,7 +212,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
             "12345", direction="downstream", max_depth=100
         )
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_internal_typeerror_not_masked(self, mock_analyzer_cls, mock_get_graph):
         """Verify internal TypeError inside get_causal_chain is not masked as signature error."""
@@ -232,7 +232,7 @@ class TestMCPDecisionsCausalChain(unittest.TestCase):
             },
         )
 
-    @patch("mcp.tools.decisions.get_graph")
+    @patch("semantica_mcp.mcp.tools.decisions.get_graph")
     @patch("semantica.context.causal_analyzer.CausalChainAnalyzer")
     def test_internal_typeerror_calls_backend_only_once(self, mock_analyzer_cls, mock_get_graph):
         """

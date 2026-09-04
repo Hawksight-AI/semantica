@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from mcp.schemas import EXTRACT_ALL, EXTRACT_ENTITIES, EXTRACT_RELATIONS
+from ..schemas import EXTRACT_ALL, EXTRACT_ENTITIES, EXTRACT_RELATIONS
 
 log = logging.getLogger("semantica.mcp.tools.extraction")
 

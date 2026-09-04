@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import logging
 
-from mcp.schemas import EXPORT_GRAPH, GET_PROVENANCE
-from mcp.session import get_graph
+from ..schemas import EXPORT_GRAPH, GET_PROVENANCE
+from ..session import get_graph
 
 log = logging.getLogger("semantica.mcp.tools.export")
 
