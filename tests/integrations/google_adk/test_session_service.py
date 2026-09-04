@@ -207,6 +207,39 @@ def test_append_event():
     assert returned is event
 
 
+def test_append_event_does_not_persist_partial_events():
+    """ADK's own base append_event is a no-op for partial/streaming events;
+    a graph-backed session must not persist them either."""
+    from google.adk.events import Event
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    partial_event = Event(author="test-agent", invocation_id="chunk-1", partial=True)
+    final_event = Event(author="test-agent", invocation_id="chunk-1", partial=False)
+
+    asyncio.run(service.append_event(session, partial_event))
+    asyncio.run(service.append_event(session, final_event))
+
+    fetched = asyncio.run(
+        service.get_session(
+            app_name="test-app",
+            user_id="test-user",
+            session_id=session.id,
+        )
+    )
+
+    assert len(fetched.events) == 1
+
+
 def test_append_event_persists():
     from google.adk.events import Event
     from semantica.context import ContextGraph

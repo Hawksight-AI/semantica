@@ -443,6 +443,14 @@ class SemanticaSessionService(BaseSessionService):
             event: Event,
     ) -> Event:
         """Persist an ADK event and associate it with a session."""
+        # ADK's own base implementation is a no-op for partial/streaming
+        # events (it returns before touching session.events or state), so
+        # a graph-backed session must not persist them either -- otherwise
+        # every intermediate chunk of a streamed response becomes a
+        # permanent event node.
+        if getattr(event, "partial", False):
+            return event
+
         with self._lock:
             session_id = str(session.id)
             app_name = str(session.app_name)
