@@ -200,7 +200,19 @@ class GraphBuilder:
                     item.predicate,
                 )
                 return
-            existing_ids = {e.get("id") for e in all_entities if isinstance(e, dict)}
+            existing_ids: Set[Any] = set()
+            for _ent in all_entities:
+                if not isinstance(_ent, dict):
+                    continue
+                for _key in ("id", "entity_id"):
+                    _cid = _ent.get(_key)
+                    if _cid is None:
+                        continue
+                    try:
+                        existing_ids.add(_cid)
+                    except TypeError:
+                        # Invalid/unhashable IDs are left for graph validation.
+                        continue
             for endpoint in synthetic_endpoints:
                 if isinstance(endpoint, str):
                     endpoint_id = endpoint
@@ -847,17 +859,16 @@ class GraphBuilder:
             # lower-confidence duplicate.
             _real_ids: Set[Any] = set()
             for _entity in resolved_entities:
-                if (
-                    isinstance(_entity, dict)
-                    and not _entity.get("metadata", {}).get("synthetic")
-                    and _entity.get("id") is not None
-                ):
-                    try:
-                        _real_ids.add(_entity["id"])
-                    except TypeError:
-                        # Invalid/unhashable IDs are left for graph validation
-                        # to report rather than failing graph construction here.
-                        continue
+                if isinstance(_entity, dict) and not _entity.get("metadata", {}).get("synthetic"):
+                    for _cid in (_entity.get("id"), _entity.get("entity_id")):
+                        if _cid is None:
+                            continue
+                        try:
+                            _real_ids.add(_cid)
+                        except TypeError:
+                            # Invalid/unhashable IDs are left for graph validation
+                            # to report rather than failing graph construction here.
+                            continue
             if _real_ids:
                 filtered = []
                 for _entity in resolved_entities:

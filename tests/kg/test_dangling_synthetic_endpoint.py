@@ -7,7 +7,7 @@ the endpoint string. The resulting graph then failed ``GraphValidator`` with
 """
 
 from semantica.kg import GraphBuilder, GraphValidator
-from semantica.semantic_extract import Entity, Relation
+from semantica.semantic_extract import Entity, Relation, Triplet
 
 
 def _known(text="Known Entity", label="CONCEPT"):
@@ -80,14 +80,18 @@ def test_no_duplicate_when_endpoint_already_present():
     assert len(ids) == 1
 
 
-def test_default_settings_no_dangling_edge():
-    # merge_entities=True, conflict resolution enabled (the default).
-    graph = GraphBuilder().build(
+def test_merge_entities_true_no_dangling_edge():
+    # With entity merging explicitly enabled (and conflict resolution on, the
+    # default), a promoted synthetic endpoint still must not leave a dangling
+    # edge and must not duplicate the existing entity.
+    graph = GraphBuilder(merge_entities=True).build(
         [_known(), _rel(_known(), "related_to", _synthetic("Synthetic Entity"))],
         extract=False,
     )
 
     assert not [i for i in _issues(graph) if i.get("code") == "DANGLING_EDGE"]
+    synthetic = [e for e in graph["entities"] if e["id"] == "Synthetic Entity"]
+    assert len(synthetic) == 1
 
 
 def test_reject_policy_drops_dangling_relationship():
@@ -179,8 +183,8 @@ def test_real_entity_wins_over_prior_synthetic():
 def test_triplet_with_synthetic_endpoint_promoted():
     # The LLM triplet path tags endpoint texts it could not match, and the
     # GraphBuilder promotes them as synthetic entities (issue #1463).
-    triplet = Relation(
-        subject="Missing Subj",  # string, Triplet shape
+    triplet = Triplet(
+        subject="Missing Subj",
         predicate="related_to",
         object="Known Target",
     )
@@ -193,3 +197,41 @@ def test_triplet_with_synthetic_endpoint_promoted():
     entity_ids = {e["id"] for e in graph["entities"]}
     assert "Missing Subj" in entity_ids
     assert not [i for i in _issues(graph) if i.get("code") == "DANGLING_EDGE"]
+
+
+def test_synthetic_endpoint_deduped_against_entity_id():
+    # A dict entity may carry its canonical id under "entity_id". A synthetic
+    # endpoint promoted with the same id must not create a duplicate node.
+    graph = GraphBuilder(resolve_conflicts=False).build(
+        [
+            {"entity_id": "Shared", "name": "Shared"},
+            _rel(_synthetic("Shared"), "related_to", _known("Other")),
+        ],
+        extract=False,
+    )
+
+    ids = [
+        e.get("id")
+        for e in graph["entities"]
+        if e.get("id") == "Shared" or e.get("entity_id") == "Shared"
+    ]
+    assert len(ids) == 1
+
+
+def test_dict_relationship_unknown_endpoint_untouched_by_design():
+    # Dictionary-form relationships stay out of the synthetic reconcile path by
+    # design; they have no synthetic marker so no entity is invented on their
+    # behalf.
+    graph = GraphBuilder(resolve_conflicts=False).build(
+        {
+            "entities": [{"id": "Known"}],
+            "relationships": [
+                {"source": "Known", "target": "Absent", "type": "related_to"}
+            ],
+        },
+        extract=False,
+    )
+
+    ids = {e["id"] for e in graph["entities"]}
+    assert "Known" in ids
+    assert "Absent" not in ids

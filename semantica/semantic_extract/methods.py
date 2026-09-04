@@ -2348,16 +2348,30 @@ def extract_triplets_huggingface(
                 tail = match.group("tail").strip()
                 
                 if head and relation and tail:
+                    # Head/tail are raw decoded strings from the model; tag any
+                    # that match no extracted entity so the GraphBuilder can
+                    # promote them instead of leaving a dangling edge (#1463).
+                    # `entities` is not a declared param on this path, so read
+                    # it defensively from kwargs (it is absent, nothing matches).
+                    hf_entities = kwargs.get("entities") or []
+                    synthetic_endpoints = [
+                        endpoint_text
+                        for endpoint_text in (head, tail)
+                        if not match_entity(endpoint_text, hf_entities)
+                    ]
+                    hf_metadata = {
+                        "model": model,
+                        "extraction_method": "huggingface_rebel",
+                    }
+                    if synthetic_endpoints:
+                        hf_metadata["synthetic_endpoints"] = synthetic_endpoints
                     triplets.append(
                         Triplet(
                             subject=head,
                             predicate=relation,
                             object=tail,
                             confidence=0.9, # Model generation doesn't provide per-triplet confidence
-                            metadata={
-                                "model": model,
-                                "extraction_method": "huggingface_rebel"
-                            }
+                            metadata=hf_metadata
                         )
                     )
 
