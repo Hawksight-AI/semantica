@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 
-from mcp.schemas import ABDUCTIVE_REASONING, RUN_REASONING
+from ..schemas import ABDUCTIVE_REASONING, RUN_REASONING
 
 log = logging.getLogger("semantica.mcp.tools.reasoning")
 

@@ -8,16 +8,19 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
+from ..context.agent_memory import AgentMemory
 from ..context.context_graph import ContextGraph
-from .dependencies import anonymous_access_allowed, get_expected_api_key, is_valid_api_key, require_auth
+from .dependencies import anonymous_access_allowed, get_expected_api_key, require_auth
+from .markdown_resources import MarkdownResourceRegistry
+from .runtime import explorer_capabilities, install_mutation_bridge
 from .session import GraphSession
-from .ws import ConnectionManager
+from .ws import ConnectionManager, install_graph_updates_websocket
 
 
 def _read_int_env(name: str, default: int) -> int:
@@ -53,37 +56,23 @@ def _read_explorer_settings() -> dict:
     }
 
 
-def _install_mutation_bridge(app: FastAPI, session: GraphSession) -> None:
-    if getattr(session.graph, "_mutation_bridge_installed", False):
-        return
-    session.graph._mutation_bridge_installed = True
-    previous_callback = getattr(session.graph, "mutation_callback", None)
-
-    def on_mutation(event_type: str, entity_id: str, payload: dict) -> None:
-        session.handle_graph_mutation(event_type, entity_id, payload)
-        if callable(previous_callback):
-            previous_callback(event_type, entity_id, payload)
-        loop = getattr(app.state, "event_loop", None)
-        manager = getattr(app.state, "ws_manager", None)
-        if loop is None or manager is None or loop.is_closed():
-            return
-        message = {
-            "event_type": event_type,
-            "entity_id": entity_id,
-            "payload": payload,
-        }
-        asyncio.run_coroutine_threadsafe(
-            manager.broadcast("graph_mutation", message),
-            loop,
-        )
-
-    session.graph.mutation_callback = on_mutation
-
-
 def create_app(
     session: Optional[GraphSession] = None,
     provenance_storage_path: Optional[str] = None,
+    agent_memory: Optional[AgentMemory] = None,
 ) -> FastAPI:
+    """Create an Explorer application over live graph and memory objects.
+
+    Args:
+        session: Graph session exposed by the Explorer. A new in-memory graph
+            session is created when omitted.
+        provenance_storage_path: Optional per-app provenance database path.
+        agent_memory: Existing AgentMemory instance to expose in the Memories
+            workspace. The workspace is unavailable when omitted.
+
+    Returns:
+        Configured FastAPI application.
+    """
     settings = _read_explorer_settings()
     prov_path = provenance_storage_path or settings.get("provenance_storage_path")
     if session is None:
@@ -95,6 +84,7 @@ def create_app(
         active_session = session
         if prov_path is not None:
             active_session.set_provenance_storage_path(prov_path)
+    markdown_resources = MarkdownResourceRegistry(active_session.graph, agent_memory)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -117,7 +107,9 @@ def create_app(
         app.state.event_loop = asyncio.get_running_loop()
         app.state.ws_manager = ConnectionManager()
         app.state.session = active_session
-        _install_mutation_bridge(app, active_session)
+        app.state.agent_memory = agent_memory
+        app.state.markdown_resources = markdown_resources
+        install_mutation_bridge(app, active_session)
         yield
 
     app = FastAPI(
@@ -139,7 +131,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=settings["allowed_origins"],
         allow_credentials=_allow_credentials,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-API-Key"],
         max_age=600,
     )
@@ -170,6 +162,8 @@ def create_app(
     from .routes.enrich import router as enrich_router
     from .routes.export_import import router as export_import_router
     from .routes.graph import router as graph_router
+    from .routes.markdown import router as markdown_router
+    from .routes.memories import router as memories_router
     from .routes.ontology import router as ontology_router
     from .routes.provenance import router as provenance_router
     from .routes.sparql import router as sparql_router
@@ -183,54 +177,15 @@ def create_app(
     app.include_router(temporal_router, dependencies=_auth)
     app.include_router(enrich_router, dependencies=_auth)
     app.include_router(export_import_router, dependencies=_auth)
+    app.include_router(markdown_router, dependencies=_auth)
+    app.include_router(memories_router, dependencies=_auth)
     app.include_router(annotations_router, dependencies=_auth)
     app.include_router(sparql_router, dependencies=_auth)
     app.include_router(provenance_router, dependencies=_auth)
     app.include_router(vocabulary_router, dependencies=_auth)
     app.include_router(ontology_router, dependencies=_auth)
 
-    _WS_MAX_MESSAGE_BYTES = 64 * 1024  # 64 KB — control messages only
-
-    @app.websocket("/ws/graph-updates")
-    async def websocket_endpoint(websocket: WebSocket):
-        # CORSMiddleware doesn't cover WebSocket handshakes (Starlette's
-        # CORS support only wraps HTTP), so under SEMANTICA_ALLOW_ANONYMOUS
-        # the key check below accepts any origin — loopback binding isn't a
-        # boundary against a browser, since any page the operator has open
-        # can still reach ws://localhost:.../ws/graph-updates directly.
-        # Reject a foreign Origin explicitly here, against the same
-        # allowlist CORSMiddleware already enforces for HTTP
-        # (GHSA-4643-wpgq-w329). Browsers always send Origin on a
-        # cross-origin WebSocket handshake; native/CLI clients omit it
-        # entirely, so a missing Origin is allowed through — the browser is
-        # the only threat this check is closing.
-        origin = websocket.headers.get("origin")
-        allowed_origins = app.state.explorer_settings["allowed_origins"]
-        if origin is not None and origin not in allowed_origins:
-            await websocket.close(code=4403)  # forbidden
-            return
-
-        # Browsers can't set custom headers on a WebSocket handshake, so
-        # accept the key via header (non-browser clients) or query param
-        # (browser clients), same SEMANTICA_API_KEY the REST routes check.
-        candidate = websocket.headers.get("x-api-key") or websocket.query_params.get("api_key")
-        if not is_valid_api_key(candidate):
-            await websocket.close(code=4401)  # unauthorized
-            return
-
-        manager: ConnectionManager = app.state.ws_manager
-        await manager.connect(websocket)
-        await manager.send_personal(websocket, "connection_ack", {"connected": True})
-        try:
-            while True:
-                message = await websocket.receive_text()
-                if len(message) > _WS_MAX_MESSAGE_BYTES:
-                    await websocket.close(code=1009)  # 1009 = message too big
-                    break
-                if message.strip().lower() == "ping":
-                    await manager.send_personal(websocket, "pong", {"ok": True})
-        except WebSocketDisconnect:
-            manager.disconnect(websocket)
+    install_graph_updates_websocket(app, settings["allowed_origins"])
 
     @app.get("/", include_in_schema=False)
     async def root():
@@ -269,6 +224,7 @@ def create_app(
             "name": "Semantica Knowledge Explorer",
             "version": __version__,
             "status": "active",
+            "capabilities": explorer_capabilities(agent_memory),
         }
 
     static_dir = Path(__file__).resolve().parent.parent / "static"

@@ -43,10 +43,10 @@ icon: "quote-left"
 
 ## Share Your Research
 
-Published research using Semantica? [Let us know](https://github.com/semantica-agi/semantica/issues): we may feature your work.
+If you publish research using Semantica, [let us know](https://github.com/semantica-agi/semantica/issues) so we can feature your work.
 
 
 ## See Also
 
-- [License](/project-license) — MIT License details.
-- [Community](/community) — Connect with the Semantica community.
+- [License](/project-license): MIT License details.
+- [Community](/community): connect with the Semantica community.
