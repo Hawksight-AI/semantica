@@ -6,6 +6,7 @@ for recording decisions with full context.
 """
 
 import pytest
+import json
 from datetime import datetime
 from unittest.mock import Mock, patch
 from typing import Dict, Any
@@ -117,6 +118,33 @@ class TestDecisionRecorder:
         
         assert decision_id == decision.decision_id
         assert mock_graph_store.execute_query.called
+
+    def test_record_decision_serializes_metadata_for_neo4j_properties(self, mock_graph_store):
+        """Decision node params must not contain Map-valued Neo4j properties."""
+        recorder = DecisionRecorder(graph_store=mock_graph_store)
+        decision = Decision(
+            decision_id="test_001",
+            category="test",
+            scenario="test scenario",
+            reasoning="test reasoning",
+            outcome="test outcome",
+            confidence=0.8,
+            timestamp=datetime.now(),
+            decision_maker="test_agent",
+            metadata={"tags": ["t"]},
+        )
+
+        def reject_map_properties(query, parameters):
+            if "CREATE (d:Decision" in query and isinstance(parameters["metadata"], dict):
+                raise RuntimeError("Encountered: Map{}")
+
+        mock_graph_store.execute_query.side_effect = reject_map_properties
+
+        decision_id = recorder.record_decision(decision, [], [])
+
+        assert decision_id == decision.decision_id
+        params = mock_graph_store.execute_query.call_args_list[0][0][1]
+        assert json.loads(params["metadata"]) == {"tags": ["t"]}
     
     def test_record_decision_failure(self, decision_recorder, sample_decision, mock_graph_store):
         """Test decision recording failure."""
