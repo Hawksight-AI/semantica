@@ -95,7 +95,26 @@ _ERROR_HINTS: Dict[type, str] = {
 }
 
 
+def _json_error_mode() -> bool:
+    """True when this invocation promised machine-readable stdout.
+
+    Covers both the global ``--json`` flag (stored on the CLI context) and a
+    subcommand's local ``--json`` flag (uniformly named ``local_json``).
+    """
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return False
+    if ctx.params.get("local_json"):
+        return True
+    return isinstance(ctx.obj, CLIContext) and ctx.obj.json_output
+
+
 def _show_error_card(title: str, detail: str, hint: Optional[str] = None) -> None:
+    if _json_error_mode():
+        # --json promises machine-readable stdout with errors on stderr, so
+        # emit a structured error line there instead of a Rich panel.
+        click.echo(json.dumps({"error": detail, "type": title}), err=True)
+        return
     body = f"[bold]{title}[/bold]\n[{_DIM}]{detail}[/{_DIM}]"
     if hint:
         body += f"\n\n[{_KEY}]→[/{_KEY}] [{_DIM}]{hint}[/{_DIM}]"
@@ -105,7 +124,7 @@ def _show_error_card(title: str, detail: str, hint: Optional[str] = None) -> Non
 
 
 def _run_with_error_handling(action: Callable[[], None]) -> None:
-    """Run a CLI action with Rich error cards on failure."""
+    """Run a CLI action with error cards (or JSON-mode stderr errors) on failure."""
     try:
         action()
     except click.ClickException as exc:
@@ -4613,15 +4632,11 @@ def mcp_list_tools(cli_ctx: CLIContext, local_json: bool) -> None:
     cli_ctx = _require_ctx(cli_ctx)
 
     def _action() -> None:
-        try:
-            from mcp.tools import __all__ as tools
-        except ImportError:
-            tools = [
-                "extract_entities", "extract_relations", "build_graph",
-                "query_graph", "get_graph_analytics", "run_reasoning",
-                "record_decision", "get_decisions", "export_graph",
-                "validate_shacl", "get_provenance", "embed_and_search",
-            ]
+        # Source the catalog from the installed MCP server package rather
+        # than the repo-root ``mcp`` dev package, which is not distributed
+        # (see issue #1355).
+        from semantica.mcp_server import TOOLS
+        tools = [t["name"] for t in TOOLS]
         if _is_json(cli_ctx, local_json):
             _jecho({"tools": list(tools)})
         else:
@@ -4654,12 +4669,16 @@ def mcp_call(cli_ctx: CLIContext, tool_name: str, args: str, local_json: bool) -
             tool_args = json.loads(args)
         except json.JSONDecodeError as exc:
             raise click.ClickException(f"Invalid JSON in --args: {exc}") from exc
+        if not isinstance(tool_args, dict):
+            raise click.ClickException("--args must be a JSON object")
+        # Dispatch through the installed MCP server package — the repo-root
+        # ``mcp`` package is not distributed, and its session module never
+        # defined MCPSession (issue #1355).
+        from semantica.mcp_server import UnknownToolError, call_tool
         try:
-            from mcp.session import MCPSession
-            session = MCPSession(config=cli_ctx.config.to_dict())
-            result = session.call_tool(tool_name, **tool_args)
-        except ImportError as exc:
-            raise click.ClickException(f"MCP module not available: {exc}") from exc
+            result = call_tool(tool_name, tool_args)
+        except UnknownToolError as exc:
+            raise click.ClickException(str(exc)) from exc
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
         else:

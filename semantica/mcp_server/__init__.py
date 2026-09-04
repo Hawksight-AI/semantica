@@ -813,6 +813,32 @@ TOOLS = [
     },
 ]
 
+
+class UnknownToolError(Exception):
+    """Raised by :func:`call_tool` when the tool name is not in ``TOOLS``.
+
+    A dedicated type (rather than ``KeyError``) so callers can distinguish
+    a bad tool name from a ``KeyError`` raised inside a tool handler
+    (handlers index required arguments, e.g. ``args["category"]``).
+    """
+
+
+def call_tool(name: str, arguments: dict) -> dict:
+    """Invoke an MCP tool in-process by name and return its raw result dict.
+
+    Public entry point shared by the JSON-RPC ``tools/call`` dispatcher and
+    the ``semantica mcp call`` CLI command (issue #1355), so tool lookup and
+    invocation live in one place instead of the CLI reaching into the
+    private ``_handler`` catalog entries.
+
+    Raises ``UnknownToolError`` if ``name`` does not match any tool.
+    """
+    tool = next((t for t in TOOLS if t["name"] == name), None)
+    if tool is None:
+        raise UnknownToolError(f"Unknown tool: {name}")
+    return tool["_handler"](arguments)
+
+
 RESOURCES = [
     {
         "uri": "semantica://graph/summary",
@@ -904,13 +930,12 @@ def _handle(req: dict) -> dict | None:
     if method == "tools/call":
         name = params.get("name", "")
         arguments = params.get("arguments") or {}
-        handler = next((t["_handler"] for t in TOOLS if t["name"] == name), None)
-        if handler is None:
-            return err(-32601, f"Unknown tool: {name}")
         try:
-            result = handler(arguments)
+            result = call_tool(name, arguments)
             text = json.dumps(result, ensure_ascii=False, indent=2)
             return ok({"content": [{"type": "text", "text": text}]})
+        except UnknownToolError:
+            return err(-32601, f"Unknown tool: {name}")
         except Exception as exc:
             log.exception("Tool %s raised", name)
             return err(-32603, str(exc))
