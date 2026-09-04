@@ -249,6 +249,11 @@ def _normalize_temporal_input(value: Optional[Union[str, int, float, datetime]])
     raise ValueError("Temporal values must be datetime, epoch seconds, ISO strings, or None")
 
 
+def normalize_temporal_input(value: Optional[Union[str, int, float, datetime]]) -> Optional[str]:
+    """Public temporal normalization helper shared by context callers."""
+    return _normalize_temporal_input(value)
+
+
 def _closing_valid_until(current: Optional[str], at_iso: str) -> str:
     """Return the earlier of an existing end bound and a retraction time.
 
