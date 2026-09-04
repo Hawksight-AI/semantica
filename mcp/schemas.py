@@ -289,4 +289,122 @@ GET_ANALYTICS = {
     },
 }
 
+STORE_DOCUMENT = {
+    "type": "object",
+    "properties": {
+        "content": {
+            "type": "string",
+            "description": "Document text to chunk and store for semantic retrieval",
+        },
+        "source": {
+            "type": "string",
+            "description": "Provenance identifier, e.g. 'policy_manual_v2#page12'",
+        },
+        "authority": {
+            "type": "string",
+            "description": "Authority level of the content, e.g. 'official', 'draft', 'external'",
+        },
+        "version": {
+            "type": "string",
+            "description": "Document version tag used together with source as the upsert key (default: 'v1')",
+        },
+        "project": {
+            "type": "string",
+            "description": "Optional project namespace for later filtering",
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Additional key-value properties stored on every chunk",
+        },
+        "chunk_size": {
+            "type": "integer",
+            "minimum": 100,
+            "description": "Chunk window in characters (default: 1000)",
+        },
+        "chunk_overlap": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Overlap between consecutive chunks in characters (default: 200)",
+        },
+    },
+    "required": ["content", "source", "authority"],
+}
+
+RETRIEVE_CONTEXT = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": "Natural language query to embed and search for",
+        },
+        "top_k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "Maximum number of chunks to return (default: 5, capped at 10)",
+        },
+        "project": {
+            "type": "string",
+            "description": "Only return chunks stored under this project namespace (optional)",
+        },
+    },
+    "required": ["query"],
+}
+
+UPDATE_DOCUMENT = {
+    "type": "object",
+    "properties": {
+        "content": {
+            "type": "string",
+            "description": "New document text replacing the stored version",
+        },
+        "source": {
+            "type": "string",
+            "description": "Provenance identifier of the document to update",
+        },
+        "version": {
+            "type": "string",
+            "description": "Version tag identifying which stored version to replace (default: 'v1')",
+        },
+        "authority": {
+            "type": "string",
+            "description": "Updated authority level (defaults to the stored value)",
+        },
+        "project": {
+            "type": "string",
+            "description": "Updated project namespace (defaults to the stored value)",
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Additional key-value properties merged into chunk metadata",
+        },
+        "chunk_size": {
+            "type": "integer",
+            "minimum": 100,
+            "description": "Chunk window in characters (default: 1000)",
+        },
+        "chunk_overlap": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Overlap between consecutive chunks in characters (default: 200)",
+        },
+    },
+    "required": ["content", "source"],
+}
+
+REMOVE_DOCUMENT = {
+    "type": "object",
+    "properties": {
+        "source": {
+            "type": "string",
+            "description": "Provenance identifier of the document to remove",
+        },
+        "version": {
+            "type": "string",
+            "description": "Version tag identifying which stored version to remove (default: 'v1')",
+        },
+    },
+    "required": ["source"],
+}
+
 EMPTY = {"type": "object", "properties": {}}
