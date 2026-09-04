@@ -246,7 +246,7 @@ agno = ["agno>=1.0.0"]
 # duplicate the prebuilt tooling users can install separately.
 crewai = ["crewai>=0.80.0"]
 langchain = ["langchain-core>=0.3.0"]
-google-adk = ["google-adk>=1.11.0,<1.27.0; python_version >= '3.10'"]
+google-adk = ["google-adk>=1.27.0; python_version >= '3.10'"]
 
 # ---- File Watching ----
 watch = ["watchdog>=6.0.0"]
@@ -277,6 +277,7 @@ dev = [
 # Explorer Dashboard
 explorer = [
   "fastapi>=0.109.2",
+  "starlette>=0.53.0",
   "uvicorn[standard]>=0.22.0",
   "websockets>=15.0.1",
   "python-multipart>=0.0.7",
