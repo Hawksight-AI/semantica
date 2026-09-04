@@ -9,6 +9,7 @@ Google ADK is an optional dependency.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import inspect
 import threading
@@ -390,6 +391,17 @@ class SemanticaSessionService(BaseSessionService):
             session_id: Optional[str] = None,
     ) -> Session:
         """Create and persist an ADK session."""
+        return await asyncio.to_thread(
+            self._create_session_sync, app_name, user_id, state, session_id
+        )
+
+    def _create_session_sync(
+            self,
+            app_name: str,
+            user_id: str,
+            state: Optional[dict[str, Any]],
+            session_id: Optional[str],
+    ) -> Session:
         with self._lock:
             session_id = session_id or str(uuid.uuid4())
 
@@ -426,6 +438,17 @@ class SemanticaSessionService(BaseSessionService):
             config: Optional[GetSessionConfig] = None,
     ) -> Optional[Session]:
         """Retrieve an ADK session from ContextGraph."""
+        return await asyncio.to_thread(
+            self._get_session_sync, app_name, user_id, session_id, config
+        )
+
+    def _get_session_sync(
+            self,
+            app_name: str,
+            user_id: str,
+            session_id: str,
+            config: Optional[GetSessionConfig],
+    ) -> Optional[Session]:
         with self._lock:
             node = self._find_session_node(app_name, user_id, session_id)
 
@@ -471,6 +494,10 @@ class SemanticaSessionService(BaseSessionService):
         if getattr(event, "partial", False):
             return event
 
+        await asyncio.to_thread(self._append_event_sync, session, event)
+        return event
+
+    def _append_event_sync(self, session: Session, event: Event) -> None:
         with self._lock:
             session_id = str(session.id)
             app_name = str(session.app_name)
@@ -486,12 +513,16 @@ class SemanticaSessionService(BaseSessionService):
             if properties.get("app_name") != app_name or properties.get("user_id") != user_id:
                 raise ValueError("Cross-tenant session write denied: app_name or user_id mismatch.")
 
-            # Apply ADK in-memory event and state delta semantics
-            if hasattr(super(), "append_event"):
-                if inspect.iscoroutinefunction(super().append_event):
-                    await super().append_event(session, event)
+            # Apply ADK in-memory event and state delta semantics. This
+            # runs inside asyncio.to_thread's worker thread, which has no
+            # event loop of its own, so a coroutine base implementation is
+            # driven with a private event loop scoped to this one call.
+            base_append = getattr(super(), "append_event", None)
+            if base_append is not None:
+                if inspect.iscoroutinefunction(base_append):
+                    asyncio.run(base_append(session, event))
                 else:
-                    super().append_event(session, event)
+                    base_append(session, event)
             else:
                 if hasattr(session, "events"):
                     session.events.append(event)
@@ -521,8 +552,6 @@ class SemanticaSessionService(BaseSessionService):
                 },
             )
 
-            return event
-
     async def delete_session(
             self,
             *,
@@ -531,6 +560,16 @@ class SemanticaSessionService(BaseSessionService):
             session_id: str,
     ) -> None:
         """Delete a session and all of its graph-backed events."""
+        await asyncio.to_thread(
+            self._delete_session_sync, app_name, user_id, session_id
+        )
+
+    def _delete_session_sync(
+            self,
+            app_name: str,
+            user_id: str,
+            session_id: str,
+    ) -> None:
         with self._lock:
             session_node = self._find_session_node(app_name, user_id, session_id)
             if session_node is None:
@@ -569,6 +608,13 @@ class SemanticaSessionService(BaseSessionService):
             user_id: Optional[str] = None,
     ) -> ListSessionsResponse:
         """List sessions for an app, optionally scoped to one user."""
+        return await asyncio.to_thread(self._list_sessions_sync, app_name, user_id)
+
+    def _list_sessions_sync(
+            self,
+            app_name: str,
+            user_id: Optional[str],
+    ) -> ListSessionsResponse:
         with self._lock:
             sessions: List[Session] = []
 

@@ -526,6 +526,44 @@ def test_session_and_event_are_connected():
     assert edge["source"] == f"adk-session:{session.app_name}:{session.user_id}:{session.id}"
 
 
+def test_slow_graph_scan_does_not_block_the_event_loop():
+    """A synchronous, CPU-bound graph scan inside a session-service call
+    must not block other coroutines on the same event loop."""
+    import time
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    original_find_nodes = graph.find_nodes
+
+    def _slow_find_nodes(*args, **kwargs):
+        time.sleep(0.3)
+        return original_find_nodes(*args, **kwargs)
+
+    graph.find_nodes = _slow_find_nodes
+
+    async def _run():
+        heartbeats = 0
+
+        async def _heartbeat():
+            nonlocal heartbeats
+            while True:
+                await asyncio.sleep(0.01)
+                heartbeats += 1
+
+        heartbeat_task = asyncio.create_task(_heartbeat())
+        await service.list_sessions(app_name="test-app")
+        heartbeat_task.cancel()
+        return heartbeats
+
+    heartbeats = asyncio.run(_run())
+
+    # If list_sessions blocked the event loop for the 0.3s sleep, the
+    # heartbeat coroutine would never have gotten a chance to run.
+    assert heartbeats > 0
+
+
 def test_missing_adk_graceful_failure(monkeypatch):
     import pytest
     import integrations.google_adk.session_service as session_module
