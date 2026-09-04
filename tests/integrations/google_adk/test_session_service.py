@@ -233,7 +233,7 @@ def test_list_sessions():
         )
     )
 
-    sessions = asyncio.run(
+    response = asyncio.run(
         service.list_sessions(
             app_name="test-app",
             user_id="test-user",
@@ -242,12 +242,51 @@ def test_list_sessions():
 
     session_ids = {
         session.id
-        for session in sessions
+        for session in response.sessions
     }
 
     assert session1.id in session_ids
     assert session2.id in session_ids
-    assert len(sessions) == 2
+    assert len(response.sessions) == 2
+
+
+def test_list_sessions_returns_list_sessions_response():
+    from google.adk.sessions.base_session_service import ListSessionsResponse
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    asyncio.run(service.create_session(app_name="test-app", user_id="test-user"))
+
+    response = asyncio.run(
+        service.list_sessions(app_name="test-app", user_id="test-user")
+    )
+
+    assert isinstance(response, ListSessionsResponse)
+    assert isinstance(response.sessions, list)
+
+
+def test_list_sessions_without_user_id_returns_all_users():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session1 = asyncio.run(
+        service.create_session(app_name="test-app", user_id="user-1")
+    )
+    session2 = asyncio.run(
+        service.create_session(app_name="test-app", user_id="user-2")
+    )
+    asyncio.run(service.create_session(app_name="other-app", user_id="user-1"))
+
+    response = asyncio.run(service.list_sessions(app_name="test-app"))
+
+    session_ids = {session.id for session in response.sessions}
+    assert session1.id in session_ids
+    assert session2.id in session_ids
+    assert len(response.sessions) == 2
 
 
 def test_session_state_is_persisted_in_graph():

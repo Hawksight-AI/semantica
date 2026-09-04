@@ -168,22 +168,22 @@ def test_shared_graph_supports_multiple_sessions():
 
     assert session1.id != session2.id
 
-    sessions1 = asyncio.run(
+    response1 = asyncio.run(
         service.list_sessions(
             app_name="multi-agent",
             user_id="user-1",
         )
     )
 
-    sessions2 = asyncio.run(
+    response2 = asyncio.run(
         service.list_sessions(
             app_name="multi-agent",
             user_id="user-2",
         )
     )
 
-    assert len(sessions1) == 1
-    assert len(sessions2) == 1
+    assert len(response1.sessions) == 1
+    assert len(response2.sessions) == 1
 
-    assert sessions1[0].id == session1.id
-    assert sessions2[0].id == session2.id
+    assert response1.sessions[0].id == session1.id
+    assert response2.sessions[0].id == session2.id

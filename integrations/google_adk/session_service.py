@@ -22,7 +22,10 @@ try:
     try:
         from google.adk.sessions import ListSessionsResponse
     except ImportError:
-        ListSessionsResponse = Any
+        # Not every google-adk release re-exports ListSessionsResponse from
+        # the sessions package __init__; it always lives in
+        # base_session_service.
+        from google.adk.sessions.base_session_service import ListSessionsResponse
     ADK_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     ADK_AVAILABLE = False
@@ -518,9 +521,9 @@ class SemanticaSessionService(BaseSessionService):
             self,
             *,
             app_name: str,
-            user_id: str,
+            user_id: Optional[str] = None,
     ) -> ListSessionsResponse:
-        """List all sessions for an application/user pair."""
+        """List sessions for an app, optionally scoped to one user."""
         with self._lock:
             sessions: List[Session] = []
 
@@ -532,7 +535,7 @@ class SemanticaSessionService(BaseSessionService):
 
                 if properties.get("app_name") != app_name:
                     continue
-                if properties.get("user_id") != user_id:
+                if user_id is not None and properties.get("user_id") != user_id:
                     continue
                 if not properties.get("session_id"):
                     continue
