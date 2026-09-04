@@ -288,9 +288,9 @@ For a full browser-based UI with search, path finding, and the Ontology Hub, lau
 semantica-explorer --graph my_graph.json
 ```
 
-See the [Explorer reference](explorer) for the full feature set and REST API.
+See the [Explorer reference](/reference/explorer) for the full feature set and REST API.
 
-- [Knowledge Graph](kg) — The graph being visualized.
+- [Knowledge Graph](/reference/kg) — The graph being visualized.
 - [Ontology](ontology) — Visualize ontology class structure.
-- [Embeddings](embeddings) — Generate the embeddings visualized here.
-- [Explorer](explorer) — Full interactive Knowledge Explorer UI.
+- [Embeddings](/reference/embeddings) — Generate the embeddings visualized here.
+- [Explorer](/reference/explorer) — Full interactive Knowledge Explorer UI.

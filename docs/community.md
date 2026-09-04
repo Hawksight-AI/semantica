@@ -55,7 +55,7 @@ There's no single right way to contribute. Pick the path that fits your skills a
 - Review open pull requests
 - Share your Semantica projects in GitHub Discussions
 
-See the [Contributing Guide](contributing-guide) for the full development workflow.
+See the [Contributing Guide](/contributing-guide) for the full development workflow.
 
 
 ## Stay Connected
@@ -68,7 +68,7 @@ See the [Contributing Guide](contributing-guide) for the full development workfl
 
 ## See Also
 
-- [Contributing Guide](contributing-guide) — Step-by-step guide for submitting PRs and setting up your dev environment.
-- [Community Projects](community-projects) — Projects and integrations built by the community.
-- [FAQ](faq) — Common questions answered.
-- [Governance](governance) — How the project is run and decisions are made.
+- [Contributing Guide](/contributing-guide) — Step-by-step guide for submitting PRs and setting up your dev environment.
+- [Community Projects](/community-projects) — Projects and integrations built by the community.
+- [FAQ](/faq) — Common questions answered.
+- [Governance](/governance) — How the project is run and decisions are made.

@@ -8,7 +8,7 @@ icon: "flask"
   **Where to start:**
   - **New to Semantica**: begin with [Core Tutorials](#core-tutorials)
   - **Building an application**: see [Advanced Concepts](#advanced-concepts)
-  - **Need installation help**: see the [Installation Guide](installation)
+  - **Need installation help**: see the [Installation Guide](/installation)
 </Tip>
 
 <Note>
@@ -36,6 +36,7 @@ Essential guides to master the Semantica framework.
 - **[Graph Store](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Graph_Store.ipynb)** — Persisting knowledge graphs in Neo4j or FalkorDB. Topics: Neo4j, Cypher, Persistence · *Intermediate*
 - **[Ontology](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb)** — Defining domain schemas and ontologies to structure your data. Topics: OWL, RDF, Schema Design · *Intermediate*
 - **[Seed Data](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/25_Seed_Data.ipynb)** — Bootstrapping a knowledge graph from trusted CSV, JSON, database, and API sources before extraction runs. Topics: SeedDataManager, Foundation Graphs · *Intermediate*
+- **[Semantic Layer Basics](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/26_Semantic_Layer_Basics.ipynb)** — Capstone tutorial that combines a knowledge graph, generated ontology, explicit mappings, ontology-aligned RDF, and a SPARQL query. Topics: Semantic Layer, Ontology Mapping, Oxigraph, SPARQL · *Intermediate*
 
 
 ## Advanced Concepts

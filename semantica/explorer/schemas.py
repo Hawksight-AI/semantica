@@ -428,3 +428,39 @@ class DistanceExportRequest(BaseModel):
     include: List[str] = Field(
         default_factory=lambda: ["source_id", "target_id", "hop_count", "distance_band"],
     )
+
+
+class MarkdownResourceRefResponse(BaseModel):
+    kind: Literal["context-node", "agent-memory"]
+    id: str
+
+
+class MarkdownDocumentResponse(BaseModel):
+    resource: MarkdownResourceRefResponse
+    source: str
+    body: str
+    revision: str
+    editable: bool = True
+
+
+class MarkdownApplyRequest(BaseModel):
+    markdown: str
+    expected_revision: str = Field(..., pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class MarkdownApplyResponse(MarkdownDocumentResponse):
+    changed: bool
+
+
+class MemorySummaryResponse(BaseModel):
+    id: str
+    type: str
+    excerpt: str
+    updated_at: Optional[str] = None
+
+
+class MemoryListResponse(BaseModel):
+    items: List[MemorySummaryResponse]
+    total: int
+    skip: int
+    limit: int

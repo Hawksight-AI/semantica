@@ -3714,19 +3714,61 @@ def store_stats(cli_ctx: CLIContext, backend: str, fmt: str, local_json: bool) -
     _run_with_error_handling(_action)
 
 
+_MIGRATE_SUPPORTED_BACKENDS = {"faiss", "sqlite", "pgvector"}
+_MIGRATE_BATCH_SIZE = 500
+
+
+def _migrate_backend_config(vs_cfg: Dict[str, Any], backend: str) -> Dict[str, Any]:
+    """Resolve per-backend config out of the vector_store config section.
+
+    Supports both a per-backend nested shape (``vector_store.faiss.dimension``)
+    and the common flat single-backend shape (``vector_store.backend`` +
+    sibling keys), since either can appear depending on how many backends a
+    user has configured.
+    """
+    nested = vs_cfg.get(backend)
+    if isinstance(nested, dict):
+        return dict(nested)
+    if vs_cfg.get("backend") == backend:
+        return {k: v for k, v in vs_cfg.items() if k != "backend"}
+    return {}
+
+
+def _require_faiss_index_path(cfg: Dict[str, Any], role: str) -> str:
+    """FAISS has no server to hold state between commands: a fresh FAISSStore
+    starts empty and nothing outside the process persists it, so migration
+    needs an explicit on-disk index to read from or write to."""
+    index_path = cfg.get("index_path")
+    if not index_path:
+        raise click.ClickException(
+            f"faiss as migration {role} requires 'index_path' in the vector_store "
+            f"config (vector_store.faiss.index_path or vector_store.index_path "
+            f"when faiss is the configured backend)."
+        )
+    return index_path
+
+
 @store.command("migrate")
 @click.option("--from", "from_backend", required=True)
 @click.option("--to", "to_backend", required=True)
 @click.option("--namespace", default=None)
 @click.option("--dry-run", "local_dry", is_flag=True, default=False)
+@click.option("--json", "local_json", is_flag=True, default=False)
 @click.pass_obj
 def store_migrate(cli_ctx: CLIContext, from_backend: str, to_backend: str,
-                  namespace: Optional[str], local_dry: bool) -> None:
+                  namespace: Optional[str], local_dry: bool, local_json: bool) -> None:
     """Migrate data between backends.
+
+    Direct migration is only wired up between faiss, sqlite, and pgvector -
+    these are the backends whose storage contract supports paging through
+    every stored vector. Migrating to or from qdrant, pinecone, milvus, or
+    weaviate still needs the export/reindex workaround below, since each of
+    those needs its own enumeration design (Qdrant scroll, Pinecone list,
+    etc.) that hasn't been built yet.
 
     \b
     Example:
-      semantica store migrate --from faiss --to qdrant --namespace production --dry-run
+      semantica store migrate --from faiss --to sqlite --namespace production --dry-run
     """
     cli_ctx = _require_ctx(cli_ctx)
 
@@ -3734,13 +3776,76 @@ def store_migrate(cli_ctx: CLIContext, from_backend: str, to_backend: str,
         if _is_dry(cli_ctx, local_dry):
             _dry(cli_ctx, "migrate", from_backend=from_backend, to_backend=to_backend)
             return
-        raise click.ClickException(
-            f"Direct backend migration ({from_backend} → {to_backend}) is not yet supported "
-            "by the vector store layer. To migrate, export your data first:\n"
-            "  semantica export --format parquet --output dump.parquet\n"
-            f"  semantica embed index dump.parquet --store {to_backend}"
-            + (f" --namespace {namespace}" if namespace else "")
-        )
+
+        if from_backend not in _MIGRATE_SUPPORTED_BACKENDS or to_backend not in _MIGRATE_SUPPORTED_BACKENDS:
+            raise click.ClickException(
+                f"Direct backend migration ({from_backend} → {to_backend}) is only supported "
+                f"between {', '.join(sorted(_MIGRATE_SUPPORTED_BACKENDS))}. To migrate involving "
+                "another backend, export your data first:\n"
+                "  semantica export --format parquet --output dump.parquet\n"
+                f"  semantica embed index dump.parquet --store {to_backend}"
+                + (f" --namespace {namespace}" if namespace else "")
+            )
+
+        from .vector_store import VectorStore
+
+        vs_cfg = cli_ctx.config.to_dict().get("vector_store", {}) or {}
+        source_cfg = _migrate_backend_config(vs_cfg, from_backend)
+        dest_cfg = _migrate_backend_config(vs_cfg, to_backend)
+
+        source_index_path = None
+        if from_backend == "faiss":
+            source_index_path = _require_faiss_index_path(source_cfg, "source")
+        dest_index_path = None
+        if to_backend == "faiss":
+            dest_index_path = _require_faiss_index_path(dest_cfg, "destination")
+
+        source = VectorStore(backend=from_backend, config=source_cfg)
+        if source_index_path:
+            source._backend_store.load_index(source_index_path)
+
+        source_dimension = getattr(source._backend_store, "dimension", None)
+        if source_dimension and "dimension" not in dest_cfg:
+            dest_cfg["dimension"] = source_dimension
+
+        dest = VectorStore(backend=to_backend, config=dest_cfg)
+        if dest_index_path and Path(dest_index_path).exists():
+            dest._backend_store.load_index(dest_index_path)
+
+        migrated = 0
+        vectors_batch: List[Any] = []
+        metadata_batch: List[Dict[str, Any]] = []
+        ids_batch: List[str] = []
+
+        def _flush() -> None:
+            nonlocal migrated
+            if not vectors_batch:
+                return
+            dest.store_vectors(list(vectors_batch), list(metadata_batch), ids=list(ids_batch))
+            migrated += len(vectors_batch)
+            vectors_batch.clear()
+            metadata_batch.clear()
+            ids_batch.clear()
+
+        for item in source.iter_vectors(batch_size=_MIGRATE_BATCH_SIZE):
+            meta = dict(item.get("metadata") or {})
+            if namespace and "namespace" not in meta:
+                meta["namespace"] = namespace
+            vectors_batch.append(item["vector"])
+            metadata_batch.append(meta)
+            ids_batch.append(item["id"])
+            if len(vectors_batch) >= _MIGRATE_BATCH_SIZE:
+                _flush()
+        _flush()
+
+        if dest_index_path and migrated:
+            dest._backend_store.save_index(dest_index_path)
+
+        result = {"from": from_backend, "to": to_backend, "migrated": migrated}
+        if _is_json(cli_ctx, local_json):
+            _jecho(result)
+        else:
+            _ok(cli_ctx, f"Migrated {migrated} vectors from {from_backend} to {to_backend}")
 
     _run_with_error_handling(_action)
 

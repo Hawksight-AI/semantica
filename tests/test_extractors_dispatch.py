@@ -6,54 +6,40 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Mock dependencies to avoid import hangs and external calls
-sys.modules['spacy'] = MagicMock()
-sys.modules['semantica.semantic_extract.methods'] = MagicMock()
-sys.modules['semantica.utils.logging'] = MagicMock()
-sys.modules['semantica.utils.progress_tracker'] = MagicMock()
-sys.modules['semantica.semantic_extract.providers'] = MagicMock()
+# The extractors are imported for real. Mocks are installed per test in setUp
+# rather than at module scope: pytest imports every test module during
+# collection, so anything assigned into sys.modules here is still in place when
+# later test modules are imported, and they bind the mocks into their own
+# globals. A tearDownModule cannot undo that — by then collection is finished.
+from semantica.semantic_extract.ner_extractor import NERExtractor, Entity  # noqa: E402
+from semantica.semantic_extract.relation_extractor import RelationExtractor, Relation  # noqa: E402
+from semantica.semantic_extract.triplet_extractor import TripletExtractor  # noqa: E402
 
-# Mock get_logger and get_progress_tracker
-mock_logger = MagicMock()
-sys.modules['semantica.utils.logging'].get_logger.return_value = mock_logger
-
-mock_tracker = MagicMock()
-sys.modules['semantica.utils.progress_tracker'].get_progress_tracker.return_value = mock_tracker
-
-# Mock the methods module functions specifically
-mock_methods = sys.modules['semantica.semantic_extract.methods']
-mock_methods.get_entity_method = MagicMock()
-mock_methods.get_relation_method = MagicMock()
-mock_methods.get_triplet_method = MagicMock()
-
-# Mock specific extraction functions
-mock_extract_entities_hf = MagicMock()
-mock_extract_relations_hf = MagicMock()
-mock_extract_triplets_hf = MagicMock()
-
-# Setup the registry mocks to return our mock functions
-mock_methods.get_entity_method.return_value = mock_extract_entities_hf
-mock_methods.get_relation_method.return_value = mock_extract_relations_hf
-mock_methods.get_triplet_method.return_value = mock_extract_triplets_hf
-
-# Now import the classes under test
-# We need to patch where they import 'methods' locally if they do
-with patch.dict(sys.modules):
-    from semantica.semantic_extract.ner_extractor import NERExtractor
-    from semantica.semantic_extract.relation_extractor import RelationExtractor
-    from semantica.semantic_extract.triplet_extractor import TripletExtractor
-    from semantica.semantic_extract.ner_extractor import Entity
-    from semantica.semantic_extract.relation_extractor import Relation
 
 class TestExtractorsDispatch(unittest.TestCase):
     def setUp(self):
-        self.mock_extract_entities_hf = mock_extract_entities_hf
-        self.mock_extract_relations_hf = mock_extract_relations_hf
-        self.mock_extract_triplets_hf = mock_extract_triplets_hf
-        
-        self.mock_extract_entities_hf.reset_mock()
-        self.mock_extract_relations_hf.reset_mock()
-        self.mock_extract_triplets_hf.reset_mock()
+        # The extractors resolve `from .methods import get_entity_method` lazily
+        # inside their methods, so the stand-in only has to be in sys.modules
+        # while a test runs. patch.dict removes it again afterwards.
+        self.mock_methods = MagicMock()
+        patcher = patch.dict(
+            sys.modules,
+            {"semantica.semantic_extract.methods": self.mock_methods},
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.mock_extract_entities_hf = MagicMock()
+        self.mock_extract_relations_hf = MagicMock()
+        self.mock_extract_triplets_hf = MagicMock()
+
+        self.mock_methods.get_entity_method.return_value = self.mock_extract_entities_hf
+        self.mock_methods.get_relation_method.return_value = (
+            self.mock_extract_relations_hf
+        )
+        self.mock_methods.get_triplet_method.return_value = (
+            self.mock_extract_triplets_hf
+        )
         
         # Configure mocks to return something iterable/valid
         self.mock_extract_entities_hf.return_value = [MagicMock(spec=Entity, confidence=0.9, text="Test Entity")]
@@ -71,7 +57,7 @@ class TestExtractorsDispatch(unittest.TestCase):
         extractor.extract_entities(text, model="my-custom-ner-model")
         
         # Verify get_entity_method was called with "huggingface"
-        mock_methods.get_entity_method.assert_called_with("huggingface")
+        self.mock_methods.get_entity_method.assert_called_with("huggingface")
         
         # Verify the extraction function was called with correct model
         # We need to check the call args to see if 'model' was passed correctly
@@ -96,7 +82,7 @@ class TestExtractorsDispatch(unittest.TestCase):
         extractor.extract_relations(text, entities, model="my-relation-model")
         
         # Verify dispatch
-        mock_methods.get_relation_method.assert_called_with("huggingface")
+        self.mock_methods.get_relation_method.assert_called_with("huggingface")
         
         call_args = self.mock_extract_relations_hf.call_args
         self.assertIsNotNone(call_args, "extract_relations_huggingface should have been called")
@@ -116,7 +102,7 @@ class TestExtractorsDispatch(unittest.TestCase):
         extractor.extract_triplets(text, model="my-triplet-model")
         
         # Verify dispatch
-        mock_methods.get_triplet_method.assert_called_with("huggingface")
+        self.mock_methods.get_triplet_method.assert_called_with("huggingface")
         
         call_args = self.mock_extract_triplets_hf.call_args
         self.assertIsNotNone(call_args, "extract_triplets_huggingface should have been called")

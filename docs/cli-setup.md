@@ -24,7 +24,7 @@ After installation the following commands are available:
 | `semantica-mcp` | `semantica.mcp_server:main` | MCP server (stdio) for Claude Desktop, Cursor, Windsurf, and other MCP clients |
 
 <Note>
-  `semantica-explorer` requires `pip install semantica[explorer]`. Running it without that extra will immediately print an error and exit. See [Explorer Setup](explorer-setup) for the full walkthrough.
+  `semantica-explorer` requires `pip install semantica[explorer]`. Running it without that extra will immediately print an error and exit. See [Explorer Setup](/explorer-setup) for the full walkthrough.
 </Note>
 
 
@@ -52,8 +52,8 @@ python -c "import semantica; print(semantica.__version__)"
 - **semantica** — The general-purpose CLI. Use it for one-off pipeline runs, entity extraction, and graph operations from a shell script or CI job.
 - **semantica-server** — Starts the REST API server. Binds to `0.0.0.0:8000`. Use this when another service or application needs programmatic access to Semantica over HTTP.
 - **semantica-worker** — Background task processor. Run alongside `semantica-server` when you need async pipeline execution outside the request cycle. Start the server first, then start one or more workers pointing at the same backend.
-- **semantica-explorer** — Launches the browser dashboard. Requires `pip install semantica[explorer]`. Use this to explore a saved knowledge graph interactively. See [Explorer Setup](explorer-setup).
-- **semantica-mcp** — Runs the MCP server over stdio. Configure it in your MCP client's settings file to expose all 12 tools and 3 resources to Claude Desktop, Cursor, Windsurf, or any MCP-aware client. See [MCP Server](reference/mcp_server).
+- **semantica-explorer** — Launches the browser dashboard. Requires `pip install semantica[explorer]`. Use this to explore a saved knowledge graph interactively. See [Explorer Setup](/explorer-setup).
+- **semantica-mcp** — Runs the MCP server over stdio. Configure it in your MCP client's settings file to expose all 15 tools and 3 resources to Claude Desktop, Cursor, Windsurf, or any MCP-aware client. See [MCP Server](/reference/mcp_server).
 
 
 ## Usage Examples
@@ -116,7 +116,7 @@ python -c "import semantica; print(semantica.__version__)"
     echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | semantica-mcp
     ```
 
-    You should receive a JSON-RPC response. See [MCP Server](reference/mcp_server) for the full list of tools and resources.
+    You should receive a JSON-RPC response. See [MCP Server](/reference/mcp_server) for the full list of tools and resources.
   </Tab>
   <Tab title="Explorer">
     ```bash
@@ -124,7 +124,7 @@ python -c "import semantica; print(semantica.__version__)"
     semantica-explorer --graph my_graph.json
     ```
 
-    See [Explorer Setup](explorer-setup) for the full walkthrough including how to build and save a graph file.
+    See [Explorer Setup](/explorer-setup) for the full walkthrough including how to build and save a graph file.
   </Tab>
   <Tab title="Python module form">
     Every command also runs as a Python module: useful when the script directory is not on `PATH`:
@@ -228,7 +228,7 @@ Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/
 
 ## Next Steps
 
-- [Explorer Setup](explorer-setup) — Build a graph, save it, and launch the browser dashboard.
-- [MCP Server](reference/mcp_server) — All 12 tools and 3 resources exposed over the MCP protocol.
-- [Installation](installation) — Virtual environments, optional extras, and platform-specific notes.
-- [Quickstart](quickstart) — End-to-end pipeline walkthrough with working code.
+- [Explorer Setup](/explorer-setup) — Build a graph, save it, and launch the browser dashboard.
+- [MCP Server](/reference/mcp_server) — All 15 tools and 3 resources exposed over the MCP protocol.
+- [Installation](/installation) — Virtual environments, optional extras, and platform-specific notes.
+- [Quickstart](/quickstart) — End-to-end pipeline walkthrough with working code.

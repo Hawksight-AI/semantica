@@ -12,13 +12,13 @@ icon: "link"
 pip install "semantica[langchain]"
 ```
 
-Requires `langchain-core >= 0.3`. If langchain-core is not installed, the integration still imports — every class carries the full Semantica API and degrades gracefully (`build()` returns `None`; branch on `LANGCHAIN_AVAILABLE`).
+Requires `langchain-core >= 0.3`. If langchain-core is not installed, the integration still imports. Every class carries the full Semantica API and degrades gracefully (`build()` returns `None`; branch on `LANGCHAIN_AVAILABLE`).
 
 ## Components at a Glance
 
-- **SemanticaRetriever** — `BaseRetriever`: hybrid-search seeds retrieval, then graph edges are walked `hops` steps (default 2) for GraphRAG-style results.
-- **SemanticaVectorStore** — `VectorStore`: `add_texts` / `similarity_search` / `similarity_search_with_score` / `from_texts` over `HybridSearch`.
-- **SemanticaKGTool** / **SemanticaDecisionTool** — `BaseTool` subclasses: `semantica_query_graph` and `semantica_query_decisions` for LangGraph / tool-calling agents.
+- **SemanticaRetriever** (`BaseRetriever`): hybrid-search seeds retrieval, then graph edges are walked `hops` steps (default 2) for GraphRAG-style results.
+- **SemanticaVectorStore** (`VectorStore`): `add_texts` / `similarity_search` / `similarity_search_with_score` / `from_texts` over `HybridSearch`.
+- **SemanticaKGTool** / **SemanticaDecisionTool** (`BaseTool` subclasses): `semantica_query_graph` and `semantica_query_decisions` for LangGraph / tool-calling agents.
 
 ## Component Details
 

@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Semantica",
-  "description": "The Accountability and Context Layer for AI — Context Graphs · Decision Intelligence · Full Provenance",
+  "description": "The Context and Semantic Layer for AI in High-Stakes Domains — Context Graphs · Decision Intelligence · Full Provenance",
   "colors": {
     "primary": "#10B981",
     "light": "#10B981",
@@ -43,7 +43,7 @@
     "raiseIssue": true
   },
   "metadata": {
-    "og:title": "Semantica — Accountability & Context Layer for AI",
+    "og:title": "Semantica — Context & Semantic Layer for AI in High-Stakes Domains",
     "og:description": "Build explainable, auditable knowledge graphs with full provenance. Open source. MIT licensed.",
     "og:image": "/assets/img/semantica-logo.png",
     "twitter:card": "summary_large_image",
@@ -106,7 +106,8 @@
               "integrations/langchain",
               "integrations/docling",
               "integrations/snowflake",
-              "integrations/databricks"
+              "integrations/databricks",
+              "integrations/salesforce"
             ]
           },
           {
@@ -119,6 +120,23 @@
             "group": "Vector Stores",
             "pages": [
               "vector_stores/pgvector"
+            ]
+          },
+          {
+            "group": "FAQ",
+            "pages": [
+              "faq"
+            ]
+          },
+          {
+            "group": "Community",
+            "pages": [
+              "community",
+              "community-projects",
+              "contributing-guide",
+              "governance",
+              "citation",
+              "project-license"
             ]
           }
         ]
@@ -166,7 +184,17 @@
               "guides/policy-engine",
               "guides/visualization",
               "guides/distance-intelligence",
-              "guides/graph-analytics",
+              "guides/graph-analytics"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Context & Intelligence",
+            "pages": [
               "reference/context",
               "reference/kg",
               "reference/temporal",
@@ -235,32 +263,6 @@
             ]
           }
         ]
-      },
-      {
-        "tab": "FAQ",
-        "groups": [
-          {
-            "group": "FAQ",
-            "pages": [
-              "faq"
-            ]
-          },
-          {
-            "group": "Community",
-            "pages": [
-              "community",
-              "community-projects",
-              "contributing-guide",
-              "governance",
-              "citation",
-              "project-license"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Changelog",
-        "href": "https://github.com/semantica-agi/semantica/releases"
       }
     ]
   },

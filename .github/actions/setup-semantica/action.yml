@@ -1,0 +1,56 @@
+name: 'Setup Semantica'
+description: 'Install Python, cache pip, and install the semantica package into a workflow'
+author: 'Semantica'
+
+inputs:
+  python-version:
+    description: 'Python version to set up'
+    required: false
+    default: '3.11'
+  version:
+    description: 'Version constraint to append to the pip spec, e.g. "==0.6.7" or ">=0.6,<0.7". Leave empty for the latest release.'
+    required: false
+    default: ''
+  extras:
+    description: 'Comma-separated extras to install, e.g. "explorer,all"'
+    required: false
+    default: ''
+  cache:
+    description: 'Pip cache mode passed straight to actions/setup-python ("pip" to enable). Left empty (disabled) by default because this action is meant to run standalone in any caller repo, and actions/setup-python errors out if it cannot find a requirements.txt/pyproject.toml/setup.py/poetry.lock to key the cache on. Opt in only when the caller repo has one of those files.'
+    required: false
+    default: ''
+
+outputs:
+  version:
+    description: 'The installed semantica version'
+    value: ${{ steps.verify.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: ${{ inputs.cache }}
+
+    - name: Install semantica
+      shell: bash
+      env:
+        SEMANTICA_EXTRAS: ${{ inputs.extras }}
+        SEMANTICA_VERSION: ${{ inputs.version }}
+      run: |
+        python -m pip install --upgrade pip
+        if [ -n "$SEMANTICA_EXTRAS" ]; then
+          spec="semantica[$SEMANTICA_EXTRAS]$SEMANTICA_VERSION"
+        else
+          spec="semantica$SEMANTICA_VERSION"
+        fi
+        python -m pip install -- "$spec"
+
+    - name: Verify install
+      id: verify
+      shell: bash
+      run: |
+        VERSION=$(python -c "import semantica; print(semantica.__version__)")
+        echo "Installed semantica $VERSION"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"

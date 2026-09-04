@@ -239,6 +239,82 @@ print(f"Python importance score: {importance.get('degree', 0)}")
 
 ---
 
+## 🧹 Erasing an Entity Everywhere - ErasureCoordinator
+
+`purge_node()` removes an entity from **one graph**. The same content can still be
+sitting in agent memory and in your vector store, so purge on its own is one step
+of an erasure workflow rather than the whole of it.
+
+`ErasureCoordinator` drives the whole cascade and hands you a receipt saying what
+it actually managed to erase.
+
+```python
+from semantica.context import AgentMemory, ContextGraph, ErasureCoordinator
+
+coordinator = ErasureCoordinator(graph=knowledge, memory=memory)
+
+receipt = coordinator.erase_entity(
+    "customer-4471",
+    reason="GDPR Art. 17 request #882",
+)
+
+if receipt.complete:
+    print("Erased everywhere")
+else:
+    print("Still holding data:", receipt.incomplete_stores)
+```
+
+### Always Check the Receipt
+
+The receipt is the point of the feature — **do not treat the call itself as proof
+the data is gone**. Each store reports one of five statuses:
+
+| Status | Meaning |
+|---|---|
+| `erased` | Reached, data removed (on the vectors leg: the store accepted the delete for the ids given) |
+| `not_found` | Reached, held nothing for this entity |
+| `not_configured` | No such store was bound — normal, not a failure |
+| `unsupported` | The store cannot delete at all; retrying will not help |
+| `failed` | The store was reached and the deletion did not succeed |
+
+```python
+receipt.to_dict()
+# {
+#   "entity_id": "customer-4471",
+#   "reason": "GDPR Art. 17 request #882",
+#   "erased_at": "2026-08-16T09:03:36.813220",
+#   "complete": False,
+#   "stores": {
+#     "vectors": {"status": "unsupported", "backend": "faiss",
+#                 "detail": "backend exposes no delete()/delete_vectors(); ..."},
+#     "memory":  {"status": "erased", "items": 14},
+#     "graph":   {"status": "erased", "nodes": 1, "edges": 3},
+#   },
+# }
+```
+
+`complete` is `False` when any store reports `unsupported` or `failed`, which is
+your signal to handle that store out of band. FAISS, Milvus and Weaviate expose
+no delete method today, so erasure genuinely cannot be completed on them — the
+coordinator says so rather than reporting a success it did not achieve.
+
+### Good to Know
+
+- **Order is vectors → memory → graph.** The graph tombstone is the durable record
+  that an erasure happened, so it is written last: a crash mid-cascade leaves the
+  node present and the receipt incomplete, rather than a tombstone claiming more
+  than actually happened.
+- **A failing store does not abort the rest.** Partial failure is recorded in the
+  receipt and the remaining stores are still erased.
+- **Every store is optional.** `ErasureCoordinator(graph=graph)` is fine; the other
+  legs report `not_configured`.
+- **It is idempotent.** Erasing the same entity twice returns a receipt saying
+  there was nothing left to do, rather than raising.
+- **Batch:** `coordinator.erase_entities([...], reason=...)` returns one receipt per
+  entity, in order, so one entity's failure does not stop the others.
+
+---
+
 ## 🔄 Using Both Together - The Complete Setup
 
 ### Your Smart Agent System

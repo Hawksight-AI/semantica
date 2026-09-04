@@ -16,6 +16,7 @@ const OP_META: Record<
   export:       { label: "EXPORT",       color: "#8fa8c6", bg: "rgba(143,168,198,0.08)", border: "rgba(143,168,198,0.18)" },
   merge:        { label: "MERGE",        color: "#f2b66d", bg: "rgba(242,182,109,0.12)", border: "rgba(242,182,109,0.28)" },
   "add-node":   { label: "ADD NODE",     color: "#4cc38a", bg: "rgba(76,195,138,0.12)",  border: "rgba(76,195,138,0.28)" },
+  "update-node": { label: "UPDATE NODE",  color: "#79c0ff", bg: "rgba(121,192,255,0.10)", border: "rgba(121,192,255,0.24)" },
   "add-edge":   { label: "ADD EDGE",     color: "#4cc38a", bg: "rgba(76,195,138,0.10)",  border: "rgba(76,195,138,0.22)" },
   delete:       { label: "DELETE",       color: "#ff7b72", bg: "rgba(255,123,114,0.12)", border: "rgba(255,123,114,0.28)" },
   infer:        { label: "INFER",        color: "#d2a8ff", bg: "rgba(210,168,255,0.12)", border: "rgba(210,168,255,0.28)" },
@@ -23,7 +24,7 @@ const OP_META: Record<
 };
 
 const ALL_OPS: (RegistryEntryOp | "all")[] = [
-  "all", "import", "export", "merge", "add-node", "add-edge", "infer", "delete", "vocab-import",
+  "all", "import", "export", "merge", "add-node", "update-node", "add-edge", "infer", "delete", "vocab-import",
 ];
 
 function formatTimestamp(date: Date): string {

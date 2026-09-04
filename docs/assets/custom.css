@@ -1,13 +1,8 @@
 /* ============================================================
-   SEMANTICA DOCS — PREMIUM DESIGN SYSTEM
+   SEMANTICA DOCS — DESIGN SYSTEM
    Dark-first (#080C10 bg, #10B981 emerald accent)
+   Minimal, static styling — no decorative motion.
    ============================================================ */
-
-/* ── Keyframes ─────────────────────────────────────────────── */
-@keyframes pageFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0);   }
-}
 
 /* ── Global ─────────────────────────────────────────────────── */
 html {
@@ -29,16 +24,7 @@ html {
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(16, 185, 129, 0.4); }
 
-/* ── Page entrance ──────────────────────────────────────────── */
-main,
-article,
-[class*="content-area"],
-[class*="ContentArea"],
-[class*="prose"] {
-  animation: pageFadeIn 0.35s ease both;
-}
-
-/* ── Focus rings ─────────────────────────────────────────────── */
+/* ── Focus rings (accessibility — kept) ─────────────────────── */
 *:focus-visible {
   outline: 2px solid rgba(16, 185, 129, 0.55) !important;
   outline-offset: 3px !important;
@@ -59,7 +45,7 @@ h1::after {
   left: 0;
   width: 44px;
   height: 2px;
-  background: linear-gradient(90deg, #10B981 0%, transparent 100%);
+  background: #10B981;
   border-radius: 1px;
 }
 
@@ -71,9 +57,6 @@ article a,
 [class*="prose"] a {
   text-decoration-color: rgba(16, 185, 129, 0.35);
   text-underline-offset: 3px;
-  transition:
-    text-decoration-color 0.15s ease,
-    color                 0.15s ease;
 }
 
 article a:hover,
@@ -89,14 +72,6 @@ blockquote {
   padding: 0.9rem 1.2rem !important;
   font-style: italic;
   color: rgba(255, 255, 255, 0.68) !important;
-  transition:
-    border-color     0.2s ease,
-    background-color 0.2s ease !important;
-}
-
-blockquote:hover {
-  border-left-color: rgba(16, 185, 129, 0.65) !important;
-  background: rgba(16, 185, 129, 0.07) !important;
 }
 
 /* ── HR / Divider ────────────────────────────────────────────── */
@@ -123,165 +98,11 @@ table thead th {
   border-bottom: 1px solid rgba(16, 185, 129, 0.18) !important;
 }
 
-table tbody tr {
-  transition: background-color 0.15s ease;
-  cursor: default;
-}
-
-table tbody tr:hover {
-  background-color: rgba(16, 185, 129, 0.06) !important;
-}
-
-table tbody tr:hover td {
-  background-color: transparent !important;
-}
-
-table td,
-table th {
-  transition: background-color 0.15s ease;
-}
-
-/* ── CODE BLOCKS ─────────────────────────────────────────────── */
-pre,
-[class*="codeblock"],
-[class*="code-group"],
-[class*="CodeBlock"],
-[data-rehype-pretty-code-fragment] {
-  transition:
-    box-shadow   0.25s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-    transform    0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-pre:hover,
-[class*="codeblock"]:hover,
-[class*="CodeBlock"]:hover,
-[data-rehype-pretty-code-fragment]:hover {
-  transform: translateY(-1px) !important;
-  box-shadow:
-    0 0 0 1px rgba(16, 185, 129, 0.18),
-    0 2px 12px rgba(16, 185, 129, 0.06),
-    0 8px 32px rgba(0, 0, 0, 0.2) !important;
-  border-color: rgba(16, 185, 129, 0.2) !important;
-}
-
-/* ── CARDS ───────────────────────────────────────────────────── */
-[class*="card"],
-[class*="Card"],
-[data-card],
-.group\/card {
-  transition:
-    transform    0.22s ease,
-    box-shadow   0.22s ease,
-    border-color 0.22s ease !important;
-}
-
-[class*="card"]:hover,
-[class*="Card"]:hover,
-[data-card]:hover,
-.group\/card:hover {
-  transform: translateY(-3px) !important;
-  box-shadow:
-    0 8px 28px rgba(0, 0, 0, 0.18),
-    0 0 0 1px rgba(16, 185, 129, 0.22) !important;
-  border-color: rgba(16, 185, 129, 0.28) !important;
-}
-
-/* ── CALLOUTS / ADMONITIONS ──────────────────────────────────── */
-[class*="callout"],
-[class*="Callout"],
-[class*="admonition"] {
-  transition:
-    box-shadow   0.2s ease,
-    border-color 0.2s ease !important;
-}
-
-[class*="callout"]:hover,
-[class*="Callout"]:hover,
-[class*="admonition"]:hover {
-  box-shadow: 0 2px 16px rgba(16, 185, 129, 0.08) !important;
-  border-color: rgba(16, 185, 129, 0.35) !important;
-}
-
-/* ── STEPS ───────────────────────────────────────────────────── */
-[class*="step"],
-[class*="Step"] {
-  transition: background-color 0.15s ease !important;
-}
-
-[class*="step"]:hover,
-[class*="Step"]:hover {
-  background-color: rgba(16, 185, 129, 0.04) !important;
-}
-
-/* ── INLINE CODE ─────────────────────────────────────────────── */
-:not(pre) > code {
-  transition:
-    background-color 0.15s ease,
-    color            0.15s ease !important;
-  cursor: text;
-}
-
-:not(pre) > code:hover {
-  background-color: rgba(16, 185, 129, 0.16) !important;
-}
-
 /* ── NAVIGATION / SIDEBAR ────────────────────────────────────── */
 nav a,
 [class*="sidebar"] a,
 [class*="Sidebar"] a {
-  transition: color 0.15s ease !important;
   text-decoration: none;
-  position: relative;
-}
-
-nav a::after,
-[class*="sidebar"] a::after,
-[class*="Sidebar"] a::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  width: 0;
-  height: 1px;
-  background: #10B981;
-  transition: width 0.2s ease;
-}
-
-nav a:hover::after,
-[class*="sidebar"] a:hover::after,
-[class*="Sidebar"] a:hover::after {
-  width: 100%;
-}
-
-/* ── TEXT / LIST ITEMS ───────────────────────────────────────── */
-ul > li,
-ol > li {
-  border-radius: 3px;
-  transition: background-color 0.12s ease;
-}
-
-ul > li:hover,
-ol > li:hover {
-  background-color: rgba(16, 185, 129, 0.04);
-}
-
-/* ── PRIMARY BUTTON / CTA ────────────────────────────────────── */
-button[class*="primary"],
-a[class*="primary"],
-[class*="btn-primary"],
-[class*="ButtonPrimary"] {
-  transition:
-    box-shadow 0.2s ease,
-    transform  0.2s ease !important;
-}
-
-button[class*="primary"]:hover,
-a[class*="primary"]:hover,
-[class*="btn-primary"]:hover,
-[class*="ButtonPrimary"]:hover {
-  box-shadow: 0 0 22px rgba(16, 185, 129, 0.28) !important;
-  transform: translateY(-1px) !important;
 }
 
 /* ── HIDE THEME TOGGLE ───────────────────────────────────────── */

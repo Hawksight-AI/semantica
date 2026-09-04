@@ -373,7 +373,7 @@ for chunk in chunks:
 
 For the full pipeline orchestration API, see the [Pipeline reference](pipeline).
 
-- [Parse](parse) — Parse documents before chunking: produces sections and metadata.
-- [Embeddings](embeddings) — Embed chunks for vector search and semantic chunking.
-- [Semantic Extract](semantic_extract) — Extract entities and relations from individual chunks.
+- [Parse](/reference/parse) — Parse documents before chunking: produces sections and metadata.
+- [Embeddings](/reference/embeddings) — Embed chunks for vector search and semantic chunking.
+- [Semantic Extract](/reference/semantic_extract) — Extract entities and relations from individual chunks.
 - [Pipeline](pipeline) — Integrate splitting as a named pipeline step.
