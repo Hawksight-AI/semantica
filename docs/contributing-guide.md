@@ -4,7 +4,7 @@ description: "How to contribute code, documentation, tests, and community suppor
 icon: "code-pull-request"
 ---
 
-Contributions of all kinds are welcome: code, documentation, tests, and community support. Every contribution is recognized in release notes and the GitHub contributors list.
+Contributions of all kinds are welcome (code, documentation, tests, and community support). Every contribution is recognized in release notes and the GitHub contributors list.
 
 
 ## Quick Start
@@ -17,15 +17,15 @@ pip install -e ".[dev]"
 pytest
 ```
 
-New to the project? Start with [`good-first-issue`](https://github.com/semantica-agi/semantica/labels/good-first-issue) labeled tickets: they're scoped to be completable in a few hours without deep codebase knowledge.
+First-time contributors can start with [`good-first-issue`](https://github.com/semantica-agi/semantica/labels/good-first-issue) labeled tickets, which are scoped to be completable in a few hours without deep codebase knowledge.
 
 
 ## Ways to Contribute
 
-- **Code** — Fix bugs, implement features, optimize performance, or add new ingestors, parsers, and exporters using the plugin registry.
-- **Documentation** — Fix typos, improve clarity, add missing examples, write tutorials, or keep the API reference accurate as modules evolve.
-- **Testing** — Add test coverage for untested modules or edge cases, reproduce reported bugs with minimal repros, or improve cross-platform reliability.
-- **Community** — Answer questions in GitHub Issues and Discussions, review pull requests with constructive feedback, or share Semantica in blog posts and talks.
+- **Code**: fix bugs, implement features, optimize performance, or add new ingestors, parsers, and exporters using the plugin registry.
+- **Documentation**: fix typos, improve clarity, add missing examples, write tutorials, or keep the API reference accurate as modules evolve.
+- **Testing**: add test coverage for untested modules or edge cases, reproduce reported bugs with minimal repros, or improve cross-platform reliability.
+- **Community**: answer questions in GitHub Issues and Discussions, review pull requests with constructive feedback, or share Semantica in blog posts and talks.
 
 
 ## Development Setup
@@ -76,7 +76,7 @@ Before submitting a PR, confirm:
 
 ## Code of Conduct
 
-All contributors are expected to follow the [Contributor Covenant Code of Conduct](https://github.com/semantica-agi/semantica/blob/main/CODE_OF_CONDUCT.md). Be respectful, patient, and constructive: especially toward newcomers. Report violations by opening an issue with the `[CoC]` prefix.
+All contributors are expected to follow the [Contributor Covenant Code of Conduct](https://github.com/semantica-agi/semantica/blob/main/CODE_OF_CONDUCT.md). Be respectful, patient, and constructive, especially toward newcomers. Report violations by opening an issue with the `[CoC]` prefix.
 
 
 ## Help
@@ -85,5 +85,5 @@ All contributors are expected to follow the [Contributor Covenant Code of Conduc
 - [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions)
 - [Discord](https://discord.gg/sV34vps5hH)
 
-- [Community](/community) — Community guidelines and values.
-- [Governance](/governance) — How decisions are made and the project is run.
+- [Community](/community): community guidelines and values.
+- [Governance](/governance): how decisions are made and the project is run.
