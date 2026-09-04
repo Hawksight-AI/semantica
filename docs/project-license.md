@@ -76,5 +76,5 @@ By contributing to Semantica, you agree that your contributions will be licensed
 
 ## See Also
 
-- [Contributing](/contributing-guide) — How to contribute to the project.
-- [Citation](/citation) — How to cite Semantica in research.
+- [Contributing](/contributing-guide): how to contribute to the project.
+- [Citation](/citation): how to cite Semantica in research.

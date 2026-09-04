@@ -5,23 +5,23 @@ icon: "puzzle-piece"
 ---
 
 <Info>
-  Looking for a quick reference? Jump to the [Module Index](#module-index) at the bottom.
+  Jump to the [Module Index](#module-index) for a quick reference.
 </Info>
 
 <Tip>
-  Not sure which module to use? The [Choose the Right Module](/choose-your-module) guide maps 35+ developer goals to modules with code examples — start there if you're orienting for the first time.
+  The [Choose the Right Module](/choose-your-module) guide maps 35+ developer goals to modules with code examples; start there if you're orienting for the first time.
 </Tip>
 
 Semantica is organized into **27 modules** across six logical layers. Each module is independently importable: you never pay for what you don't use.
 
 ## Architecture Overview
 
-- **Input Layer** — Data ingestion and preparation. Modules: `ingest`, `parse`, `split`, `normalize`
-- **Core Processing** — Intelligence and understanding. Modules: `semantic_extract`, `kg`, `ontology`, `reasoning`
-- **Storage** — Persistent data storage. Modules: `embeddings`, `vector_store`, `graph_store`, `triplet_store`
-- **Quality Assurance** — Data quality and consistency. Modules: `deduplication`, `conflicts`
-- **Context & Memory** — Agent memory and decision tracking. Modules: `context`, `provenance`, `change_management`
-- **Output & Orchestration** — Export, visualization, and workflows. Modules: `export`, `visualization`, `pipeline`, `explorer`
+- **Input Layer**: data ingestion and preparation. Modules: `ingest`, `parse`, `split`, `normalize`
+- **Core Processing**: intelligence and understanding. Modules: `semantic_extract`, `kg`, `ontology`, `reasoning`
+- **Storage**: persistent data storage. Modules: `embeddings`, `vector_store`, `graph_store`, `triplet_store`
+- **Quality Assurance**: data quality and consistency. Modules: `deduplication`, `conflicts`
+- **Context & Memory**: agent memory and decision tracking. Modules: `context`, `provenance`, `change_management`
+- **Output & Orchestration**: export, visualization, and workflows. Modules: `export`, `visualization`, `pipeline`, `explorer`
 
 
 ## Input Layer
@@ -51,7 +51,7 @@ sources = parquet.ingest("data/events.parquet")
 xml = XMLIngestor()
 sources = xml.ingest("data/records/", schema_path="schema.xsd")
 
-# Enterprise lakehouse/warehouse — Unity Catalog + Delta Lake, or a Snowflake warehouse
+# Enterprise lakehouse/warehouse: Unity Catalog + Delta Lake, or a Snowflake warehouse
 databricks = DatabricksIngestor(host="...", token="...", http_path="...")
 customers   = databricks.ingest_table("customers")
 ```
@@ -59,7 +59,7 @@ customers   = databricks.ingest_table("customers")
 **Available ingestors:** `FileIngestor`, `WebIngestor`, `ParquetIngestor`, `XMLIngestor`, `RESTIngestor`, `PublicAPIIngestor`, `DBIngestor`, `DatabricksIngestor`, `SnowflakeIngestor`, `EmailIngestor`, `FeedIngestor`, `MCPIngestor`, `OntologyIngestor`, `RepoIngestor`, `StreamIngestor`, `ArrowIngestor`, `CloudStorageIngestor`
 
 <Note>
-  `DuckDBIngestor`, `ElasticIngestor`, `GDriveIngestor`, `HuggingFaceIngestor`, `MongoIngestor`, and `PandasIngestor` also ship but aren't re-exported from the top-level `semantica.ingest` namespace yet — import them directly, e.g. `from semantica.ingest.duckdb_ingestor import DuckDBIngestor`.
+  `DuckDBIngestor`, `ElasticIngestor`, `GDriveIngestor`, `HuggingFaceIngestor`, `MongoIngestor`, and `PandasIngestor` also ship but aren't re-exported from the top-level `semantica.ingest` namespace yet; import them directly, e.g. `from semantica.ingest.duckdb_ingestor import DuckDBIngestor`.
 </Note>
 
 ### Parse
@@ -463,7 +463,7 @@ Exposes Semantica as an MCP stdio server for IDE and agent integrations.
 python -m semantica.mcp_server
 ```
 
-**Integrations:** Claude Desktop, VS Code, Cursor, Windsurf, Cline: 15 MCP tools exposed
+**Integrations:** Claude Desktop, VS Code, Cursor, Windsurf, Cline. 15 MCP tools are exposed.
 
 ### Seed
 
@@ -749,6 +749,6 @@ versioner.create_snapshot(kg, "2024-Q1", author="user@example.com", description=
 | [core](/reference/core) | Base classes & registry | `Semantica`, `ConfigManager`, `PluginRegistry`, `LifecycleManager` |
 | [utils](/reference/utils) | Shared utilities | `helpers`, `validators` |
 
-- [Getting Started](/getting-started) — Your first knowledge graph in 5 minutes.
-- [Cookbook](/cookbook) — 40+ domain notebooks with real-world examples.
-- [API Reference](/reference/context) — Full technical documentation.
+- [Getting Started](/getting-started): your first knowledge graph in 5 minutes.
+- [Cookbook](/cookbook): 40+ domain notebooks with real-world examples.
+- [API Reference](/reference/context): full technical documentation.

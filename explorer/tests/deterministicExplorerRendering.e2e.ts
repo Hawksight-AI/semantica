@@ -42,6 +42,9 @@ async function startVite(): Promise<void> {
 }
 
 async function installApiFixture(page: Page): Promise<void> {
+  await page.route("**/api/info", async (route) => {
+    await route.fulfill({ json: { capabilities: { agent_memory: false } } });
+  });
   await page.route("**/api/graph/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === "/api/graph/stats") {
