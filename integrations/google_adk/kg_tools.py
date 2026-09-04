@@ -391,14 +391,10 @@ def _add_to_graph(text: str, graph: Any) -> dict:
                     # be inserted.
                     continue
 
-            try:
-                raw_relations = relation_extractor.extract_relations(
-                    text,
-                    entities=entities,
-                ) or []
-            except TypeError:
-                # Compatibility with extractors that do not accept entities=.
-                raw_relations = relation_extractor.extract_relations(text) or []
+            raw_relations = relation_extractor.extract_relations(
+                text,
+                entities=entities,
+            ) or []
 
             for relation in raw_relations:
                 source = _relation_source(relation)

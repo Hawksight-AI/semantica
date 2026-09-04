@@ -44,6 +44,28 @@ def test_extract_relations_returns_dict():
     assert len(result["relations"]) > 0, "Relation list should not ne empty"
 
 
+def test_add_to_graph_surfaces_the_real_relation_extractor_error():
+    """A genuine bug in the relation extractor must surface its own message,
+    not a second, unrelated TypeError from a compatibility shim that can
+    never succeed."""
+    from unittest.mock import MagicMock
+
+    from integrations.google_adk.kg_tools import _add_to_graph
+    from semantica.context import ContextGraph
+
+    fake_extractor = MagicMock()
+    fake_extractor.extract_relations.side_effect = TypeError("boom: bad entities shape")
+
+    with patch(
+        "integrations.google_adk.kg_tools._get_relation_extractor",
+        return_value=fake_extractor,
+    ):
+        result = _add_to_graph("Alice works at Acme Corp.", ContextGraph())
+
+    assert "error" in result
+    assert "boom: bad entities shape" in result["error"]
+
+
 def test_semantica_kg_tools_returns_function_tools():
     from semantica.context import ContextGraph
 
