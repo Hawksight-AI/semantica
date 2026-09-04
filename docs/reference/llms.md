@@ -129,7 +129,7 @@ from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
     from semantica.llms import LiteLLM
 
     llm = LiteLLM(
-        model="anthropic/claude-sonnet-4-20250514",
+        model="anthropic/claude-sonnet-5",
         api_key=os.getenv("ANTHROPIC_API_KEY"),
         temperature=0.0,
     )
@@ -198,7 +198,7 @@ llm = Groq(api_key=os.getenv("GROQ_API_KEY"), model="llama-3.1-8b-instant")
 # Method 3: Multiple providers via LiteLLM
 providers = {
     "fast": LiteLLM(model="groq/llama-3.1-8b-instant", api_key=os.getenv("GROQ_API_KEY")),
-    "smart": LiteLLM(model="anthropic/claude-sonnet-4-20250514", api_key=os.getenv("ANTHROPIC_API_KEY"))
+    "smart": LiteLLM(model="anthropic/claude-sonnet-5", api_key=os.getenv("ANTHROPIC_API_KEY"))
 }
 ```
 
@@ -252,7 +252,7 @@ from semantica.llms import LiteLLM
 # pip install "semantica[llm-litellm]"
 
 # Anthropic Claude
-llm = LiteLLM(model="anthropic/claude-opus-4-5",         api_key=os.getenv("ANTHROPIC_API_KEY"))
+llm = LiteLLM(model="anthropic/claude-opus-4-7",         api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 # Google Gemini
 llm = LiteLLM(model="gemini/gemini-1.5-pro",             api_key=os.getenv("GOOGLE_API_KEY"))
@@ -267,7 +267,7 @@ llm = LiteLLM(model="deepseek/deepseek-chat",            api_key=os.getenv("DEEP
 llm = LiteLLM(model="azure/gpt-4o",                      api_key=os.getenv("AZURE_API_KEY"))
 
 # AWS Bedrock
-llm = LiteLLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0")
+llm = LiteLLM(model="bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0")
 
 # Novita AI
 llm = LiteLLM(model="novita/deepseek/deepseek-v3.2",     api_key=os.getenv("NOVITA_API_KEY"))
@@ -297,12 +297,12 @@ from semantica.llms import LiteLLM
 
 # Pattern: LiteLLM(model="<provider>/<model-name>")
 providers = {
-    "Anthropic":  LiteLLM(model="anthropic/claude-opus-4-5",       api_key=os.getenv("ANTHROPIC_API_KEY")),
+    "Anthropic":  LiteLLM(model="anthropic/claude-opus-4-7",       api_key=os.getenv("ANTHROPIC_API_KEY")),
     "Gemini":     LiteLLM(model="gemini/gemini-1.5-pro",            api_key=os.getenv("GOOGLE_API_KEY")),
     "Ollama":     LiteLLM(model="ollama/llama3.2:3b",               api_base="http://localhost:11434"),
     "DeepSeek":   LiteLLM(model="deepseek/deepseek-chat",           api_key=os.getenv("DEEPSEEK_API_KEY")),
     "Azure":      LiteLLM(model="azure/gpt-4o",                     api_key=os.getenv("AZURE_API_KEY")),
-    "Bedrock":    LiteLLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0"),
+    "Bedrock":    LiteLLM(model="bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"),
     "Cohere":     LiteLLM(model="cohere/command-r-plus",            api_key=os.getenv("COHERE_API_KEY")),
     "Novita AI":  LiteLLM(model="novita/deepseek/deepseek-v3.2",    api_key=os.getenv("NOVITA_API_KEY")),
 }
@@ -416,7 +416,7 @@ for text in texts:
 | :---------- | :--------------------------- | :----------- |
 | **Entity Extraction** | `Groq("llama-3.3-70b-versatile")` | Fast, good accuracy for structured tasks |
 | **Relation Extraction** | `OpenAI("gpt-4o")` | Best at complex relationship reasoning |
-| **Complex Analysis** | `LiteLLM("anthropic/claude-sonnet-4-20250514")` | Highest reasoning capability |
+| **Complex Analysis** | `LiteLLM("anthropic/claude-sonnet-5")` | Highest reasoning capability |
 | **High Volume/Cost** | `LiteLLM("deepseek/deepseek-chat")` | Lowest cost per token |
 
 ### Error Handling

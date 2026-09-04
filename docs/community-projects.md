@@ -66,12 +66,12 @@ Production deployments span regulated and high-stakes industries where AI accoun
     | :-------- | :---- |
     | **OpenAI** | GPT-4o, GPT-4, GPT-3.5 |
     | **Anthropic** | Claude Opus, Sonnet, Haiku |
-    | **Google Gemini** |: |
-    | **Groq** | LLaMA, Mixtral: fast inference |
+    | **Google Gemini** | Gemini Pro and other Gemini models |
+    | **Groq** | LLaMA, Mixtral (fast inference) |
     | **Ollama** | Fully local, air-gapped |
-    | **HuggingFace** |: |
-    | **DeepSeek** |: |
-    | **Novita AI** |: |
+    | **HuggingFace** | Transformers-based local LLM models |
+    | **DeepSeek** | deepseek-chat and reasoning models |
+    | **Novita AI** | OpenAI-compatible gateway, DeepSeek-V3.2 default |
     | **LiteLLM** | 100+ model gateway |
   </Tab>
   <Tab title="NLP Libraries">
@@ -114,7 +114,7 @@ See [Architecture](/architecture#extension-points) for the full extension guide.
 
 ## How to Contribute
 
-- [Contributing Guide](/contributing-guide) — Submit code, documentation, tests, or cookbook notebooks.
-- [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — Report bugs, request features, or propose integrations.
-- [Discord](https://discord.gg/sV34vps5hH) — Share what you're building with the community.
-- [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions) — Long-form questions, design discussions, and ideas.
+- [Contributing Guide](/contributing-guide): submit code, documentation, tests, or cookbook notebooks.
+- [GitHub Issues](https://github.com/semantica-agi/semantica/issues): report bugs, request features, or propose integrations.
+- [Discord](https://discord.gg/sV34vps5hH): share what you're building with the community.
+- [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions): long-form questions, design discussions, and ideas.

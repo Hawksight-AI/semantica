@@ -197,7 +197,7 @@ reasoning_agent.load("./pipeline/enriched_intel/")
 # All memories, graph nodes, and vector embeddings from both ingestion agents are now available.
 
 # Use a high-capability model for the synthesis step
-llm = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm = LiteLLM(model="anthropic/claude-sonnet-5")
 
 synthesis = reasoning_agent.query_with_reasoning(
     "Summarize the APT29 exploitation of CVE-2024-3400: affected products, "
@@ -428,7 +428,7 @@ tier1.store(
 
 # --- Tier 2: deep investigation when Tier 1 confidence is low ---
 if triage["confidence"] < 0.90:
-    deep_llm = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+    deep_llm = LiteLLM(model="anthropic/claude-sonnet-5")
 
     investigation = tier2.query_with_reasoning(
         "Full MITRE ATT&CK analysis of incident {}. "
@@ -533,7 +533,7 @@ t1.start(); t2.start()
 t1.join();  t2.join()
 
 # Chief agent synthesizes across literature and experimental data
-llm = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm = LiteLLM(model="anthropic/claude-sonnet-5")
 
 synthesis = chief.query_with_reasoning(
     "Identify the top two candidate compounds for KRAS G12C NSCLC that show "
@@ -576,7 +576,7 @@ credit_officer  = make_desk_agent()
 committee_chair = make_desk_agent()
 
 app_id = "LOAN-2025-88421"
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 
 # --- Risk Desk: PD/LGD/EL analysis ---
 risk_desk.store(

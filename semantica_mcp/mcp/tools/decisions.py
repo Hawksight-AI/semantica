@@ -7,14 +7,14 @@ from __future__ import annotations
 import logging
 import os
 
-from mcp.schemas import (
+from ..schemas import (
     ANALYZE_DECISION_IMPACT,
     FIND_PRECEDENTS,
     GET_CAUSAL_CHAIN,
     QUERY_DECISIONS,
     RECORD_DECISION,
 )
-from mcp.session import get_graph, is_persistence_safe
+from ..session import get_graph, is_persistence_safe
 
 log = logging.getLogger("semantica.mcp.tools.decisions")
 

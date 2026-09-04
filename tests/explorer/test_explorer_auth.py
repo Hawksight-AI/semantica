@@ -60,6 +60,22 @@ def test_write_route_also_refuses_when_auth_not_configured(client, monkeypatch):
     assert resp.status_code == 503
 
 
+def test_markdown_write_route_requires_api_key(client, monkeypatch):
+    monkeypatch.delenv("SEMANTICA_ALLOW_ANONYMOUS", raising=False)
+    monkeypatch.setenv("SEMANTICA_API_KEY", "correct-key")
+
+    response = client.put(
+        "/api/markdown/context-node/python",
+        headers={"X-API-Key": "wrong-key"},
+        json={
+            "markdown": "---\nid: python\ntype: language\n---\n\nChanged",
+            "expected_revision": "sha256:" + ("0" * 64),
+        },
+    )
+
+    assert response.status_code == 401
+
+
 # ---------------------------------------------------------------------------
 # Configured key: wrong/missing key rejected, correct key accepted.
 # ---------------------------------------------------------------------------

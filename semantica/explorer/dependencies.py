@@ -14,6 +14,8 @@ from typing import Optional
 from fastapi import Request, HTTPException, Security, status
 from fastapi.security.api_key import APIKeyHeader
 
+from ..context.agent_memory import AgentMemory
+from .markdown_resources import MarkdownResourceRegistry
 from .session import GraphSession
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -80,3 +82,25 @@ def get_session(request: Request) -> GraphSession:
             detail="GraphSession not initialized."
         )
     return request.app.state.session
+
+
+def get_markdown_resources(request: Request) -> MarkdownResourceRegistry:
+    """Retrieve the Markdown resource registry stored on ``app.state``."""
+    resources = getattr(request.app.state, "markdown_resources", None)
+    if resources is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Markdown resources are not initialized.",
+        )
+    return resources
+
+
+def get_agent_memory(request: Request) -> AgentMemory:
+    """Retrieve the optional AgentMemory configured for Explorer."""
+    memory = getattr(request.app.state, "agent_memory", None)
+    if memory is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AgentMemory is not configured for this Explorer instance.",
+        )
+    return memory

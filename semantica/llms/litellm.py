@@ -31,7 +31,7 @@ class LiteLLM:
     Provides unified interface to 100+ LLM providers through LiteLLM library.
     Supports providers like OpenAI, Anthropic, Groq, Azure, Bedrock, Vertex AI, etc.
     
-    Model format: "provider/model-name" (e.g., "openai/gpt-4o", "anthropic/claude-sonnet-4-20250514", "groq/llama-3.1-8b-instant")
+    Model format: "provider/model-name" (e.g., "openai/gpt-4o", "anthropic/claude-sonnet-5", "groq/llama-3.1-8b-instant")
     
     Example:
         >>> from semantica.llms import LiteLLM
@@ -39,7 +39,7 @@ class LiteLLM:
         >>> response = llm.generate("What is AI?")
         >>> 
         >>> # Use with different providers
-        >>> llm = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+        >>> llm = LiteLLM(model="anthropic/claude-sonnet-5")
         >>> response = llm.generate("Hello!")
     """
 
@@ -54,7 +54,7 @@ class LiteLLM:
 
         Args:
             model: Model identifier in format "provider/model-name"
-                   Examples: "openai/gpt-4o", "anthropic/claude-sonnet-4-20250514",
+                   Examples: "openai/gpt-4o", "anthropic/claude-sonnet-5",
                              "groq/llama-3.1-8b-instant", "azure/gpt-4", etc.
             api_key: API key (optional, can use environment variables)
             **kwargs: Additional LiteLLM options (temperature, max_tokens, etc.)

@@ -47,7 +47,11 @@ dependencies = [
   "numpy>=2.0.2",
   "pandas>=1.3.0",
   "scipy>=1.13.1",
-  "scikit-learn>=1.7.2",
+  # scikit-learn dropped Python 3.9 support at 1.7.0 (requires_python >=3.10),
+  # so an unqualified >=1.7.2 floor is unsatisfiable on 3.9. Cap 3.9 to the
+  # last 3.9-compatible release line; 3.10+ is left unconstrained.
+  "scikit-learn>=1.6.1,<1.7.0; python_version < '3.10'",
+  "scikit-learn>=1.7.2; python_version >= '3.10'",
   "umap-learn>=0.5.12",
   # thinc (spacy's core dep) dropped Python 3.9 wheels at 8.3.10, and later
   # spacy patch releases (3.8.8+) require thinc>=8.3.9-only-on-3.10+ ranges,
@@ -66,24 +70,49 @@ dependencies = [
   "seaborn>=0.13.2",
   "plotly>=6.8.0",
   "ipywidgets>=8.0.0",
-  "requests>=2.34.2",
+  # requests dropped Python 3.9 support at 2.33.0 (requires_python >=3.10),
+  # so an unqualified >=2.34.2 floor is unsatisfiable on 3.9. Cap 3.9 to the
+  # last 3.9-compatible release; 3.10+ is left unconstrained.
+  "requests>=2.32.5,<2.33.0; python_version < '3.10'",
+  "requests>=2.34.2; python_version >= '3.10'",
   "GitPython>=3.1.58",
-  "chardet>=7.4.3",
+  # chardet dropped Python 3.9 support at 6.0.0 (requires_python >=3.10), so
+  # an unqualified >=7.4.3 floor is unsatisfiable on 3.9. Cap 3.9 to the last
+  # 3.9-compatible release; 3.10+ is left unconstrained.
+  "chardet>=5.2.0,<6.0.0; python_version < '3.10'",
+  "chardet>=7.4.3; python_version >= '3.10'",
   "protobuf>=5.29.1,<8.0",
-  "grpcio>=1.81.1",
+  # grpcio dropped Python 3.9 support at 1.81.0 (requires_python >=3.10), so
+  # an unqualified >=1.81.1 floor is unsatisfiable on 3.9. Cap 3.9 to the last
+  # 3.9-compatible release; 3.10+ is left unconstrained.
+  "grpcio>=1.80.0,<1.81.0; python_version < '3.10'",
+  "grpcio>=1.81.1; python_version >= '3.10'",
   "beautifulsoup4>=4.15.0",
   "lxml>=6.1.1",
   "python-docx>=1.2.0",
   "openpyxl>=3.1.5",
-  "pillow>=12.2.0",
+  # pillow dropped Python 3.9 support at 12.0.0 (requires_python >=3.10), so
+  # an unqualified >=12.2.0 floor is unsatisfiable on 3.9. Cap 3.9 to the last
+  # 3.9-compatible release; 3.10+ is left unconstrained.
+  "pillow>=11.3.0,<12.0.0; python_version < '3.10'",
+  "pillow>=12.2.0; python_version >= '3.10'",
   "librosa>=0.9.0",
   "opencv-python>=4.13.0.92",
   "faiss-cpu>=1.7.0",
   "fastembed>=0.2.0",
-  "onnxruntime>=1.20.1",
+  # onnxruntime stopped shipping cp39 wheels at 1.20.0 (its PyPI metadata
+  # still claims requires_python >=3.9, but no matching wheel exists), so an
+  # unqualified >=1.20.1 floor is unsatisfiable on 3.9. Cap 3.9 to the last
+  # release with a cp39 wheel; 3.10+ is left unconstrained.
+  "onnxruntime>=1.19.2,<1.20.0; python_version < '3.10'",
+  "onnxruntime>=1.20.1; python_version >= '3.10'",
   "tokenizers>=0.15.0",
   "pydantic>=2.13.4",
-  "click>=8.4.2",
+  # click dropped Python 3.9 support at 8.2.0 (requires_python >=3.10), so an
+  # unqualified >=8.4.2 floor is unsatisfiable on 3.9. Cap 3.9 to the last
+  # 3.9-compatible release; 3.10+ is left unconstrained.
+  "click>=8.1.8,<8.2.0; python_version < '3.10'",
+  "click>=8.4.2; python_version >= '3.10'",
   "rich>=12.5.0",
   "tqdm>=4.68.3",
   "pyyaml>=6.0",
@@ -163,7 +192,7 @@ tripletstore-oxigraph = ["pyoxigraph>=0.5.0"]
 # ---- Vector Store Backends ----
 vectorstore-qdrant = ["qdrant-client>=1.0.0"]
 vectorstore-weaviate = ["weaviate-client>=4.0.0"]
-vectorstore-pinecone = ["pinecone-client>=3.0.0"]
+vectorstore-pinecone = ["pinecone>=3.0.0"]
 vectorstore-milvus = ["pymilvus>=2.0.0"]
 vectorstore-pgvector = ["psycopg[binary,pool]>=3.0.0", "pgvector>=0.2.0"]
 vectorstore-sqlite = ["sqlite-vec>=0.1.1"]
@@ -217,6 +246,7 @@ agno = ["agno>=1.0.0"]
 # duplicate the prebuilt tooling users can install separately.
 crewai = ["crewai>=0.80.0"]
 langchain = ["langchain-core>=0.3.0"]
+google-adk = ["google-adk>=1.27.0; python_version >= '3.10'"]
 
 # ---- File Watching ----
 watch = ["watchdog>=6.0.0"]
@@ -247,6 +277,7 @@ dev = [
 # Explorer Dashboard
 explorer = [
   "fastapi>=0.109.2",
+  "starlette>=0.53.0",
   "uvicorn[standard]>=0.22.0",
   "websockets>=15.0.1",
   "python-multipart>=0.0.7",
@@ -264,7 +295,7 @@ explorer-lite = [
 # dependency-audit/security gates.  Install it explicitly via ``semantica[crewai]``.
 all = [
   "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,explorer]",
-  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno,langchain]"
+  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,tripletstore-oxigraph,vectorstore-all,parse-docling,ingest-parquet,ingest-arrow,shacl,agno,langchain,google-adk]"
 ]
 
 # ---------------- ENTRYPOINTS ----------------
@@ -278,7 +309,7 @@ semantica-mcp = "semantica.mcp_server:main"
 # ---------------- TOOLING ----------------
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["semantica*", "integrations*"]
+include = ["semantica*", "integrations*", "semantica_mcp*"]
 
 [tool.setuptools.package-data]
 # Explicit patterns are more reliable than **/* across setuptools versions.

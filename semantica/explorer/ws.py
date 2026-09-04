@@ -9,9 +9,53 @@ import asyncio
 import json
 import threading
 from datetime import datetime, timezone
-from typing import Any, Dict, Set
+from typing import Any, Dict, List, Sequence, Set
 
-from fastapi import WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+from .dependencies import is_valid_api_key
+
+_WS_MAX_MESSAGE_BYTES = 64 * 1024
+
+
+def install_graph_updates_websocket(
+    app: FastAPI,
+    allowed_origins: Sequence[str],
+) -> None:
+    """Install the authenticated graph-mutation WebSocket endpoint."""
+    allowed_origin_set = frozenset(allowed_origins)
+
+    @app.websocket("/ws/graph-updates")
+    async def websocket_endpoint(websocket: WebSocket) -> None:
+        # CORSMiddleware does not cover WebSocket handshakes. Reject foreign
+        # browser origins against the same allowlist used for HTTP CORS.
+        origin = websocket.headers.get("origin")
+        if origin is not None and origin not in allowed_origin_set:
+            await websocket.close(code=4403)
+            return
+
+        # Browser clients pass the API key as a query parameter because the
+        # WebSocket API cannot set custom headers.
+        candidate = websocket.headers.get("x-api-key") or websocket.query_params.get(
+            "api_key"
+        )
+        if not is_valid_api_key(candidate):
+            await websocket.close(code=4401)
+            return
+
+        manager: ConnectionManager = app.state.ws_manager
+        await manager.connect(websocket)
+        await manager.send_personal(websocket, "connection_ack", {"connected": True})
+        try:
+            while True:
+                message = await websocket.receive_text()
+                if len(message) > _WS_MAX_MESSAGE_BYTES:
+                    await websocket.close(code=1009)
+                    break
+                if message.strip().lower() == "ping":
+                    await manager.send_personal(websocket, "pong", {"ok": True})
+        except WebSocketDisconnect:
+            manager.disconnect(websocket)
 
 
 class ConnectionManager:
@@ -63,8 +107,7 @@ class ConnectionManager:
         with self._lock:
             connections = set(self._active_connections)
 
-    
-        disconnected: list[WebSocket] = []
+        disconnected: List[WebSocket] = []
         for ws in connections:
             try:
                 await ws.send_text(message)

@@ -12,6 +12,10 @@ import pytest
 import yaml
 
 from semantica.context.agent_memory import AgentMemory
+from semantica.context.markdown import (
+    MarkdownRevisionConflictError,
+    markdown_document_revision,
+)
 
 _ERROR_PRIVILEGE_NOT_HELD = 1314
 
@@ -1008,3 +1012,144 @@ def test_markdown_import_rejects_non_regular_file(tmp_path):
     with patch("semantica.context.agent_memory.os.fstat", return_value=fake_stat):
         with pytest.raises(ValueError, match="not a regular file"):
             memory._read_markdown_file_content(real_file)
+
+
+def _editable_memory(vector_store=None):
+    memory = AgentMemory(vector_store=vector_store)
+    memory.store(
+        "Original body",
+        memory_id="mem-edit",
+        timestamp=datetime.fromisoformat("2026-07-22T09:00:00+00:00"),
+        metadata={
+            "type": "note",
+            "updated_at": "2026-07-22T10:00:00+00:00",
+            "owner": "before",
+        },
+    )
+    return memory
+
+
+def test_single_item_markdown_export_and_apply_preserve_identity():
+    memory = _editable_memory()
+    source = memory.export_item_markdown("mem-edit")
+    edited = source.replace("owner: before", "owner: after").replace(
+        "Original body", "Updated body"
+    )
+
+    assert memory.apply_item_markdown("mem-edit", edited) is True
+    item = memory.get("mem-edit")
+    assert item["memory_id"] == "mem-edit"
+    assert item["content"] == "Updated body"
+    assert item["metadata"]["owner"] == "after"
+    assert memory.export_item_markdown("mem-edit") == edited
+
+
+def test_single_item_markdown_rejects_identity_change_without_mutation():
+    memory = _editable_memory()
+    before = deepcopy(memory.get("mem-edit"))
+    document = memory.export_item_markdown("mem-edit").replace(
+        "id: mem-edit", "id: mem-other"
+    )
+
+    with pytest.raises(ValueError, match="does not match resource id"):
+        memory.apply_item_markdown("mem-edit", document)
+
+    assert memory.get("mem-edit") == before
+    assert memory.get("mem-other") is None
+
+
+def test_single_item_markdown_invalid_document_and_missing_item_are_safe():
+    memory = _editable_memory()
+    before = deepcopy(memory.get("mem-edit"))
+
+    with pytest.raises(ValueError, match="Invalid Markdown frontmatter"):
+        memory.apply_item_markdown("mem-edit", "---\nid: [\n---\n\nBroken")
+    with pytest.raises(KeyError, match="missing"):
+        memory.export_item_markdown("missing")
+
+    assert memory.get("mem-edit") == before
+
+
+def test_single_item_markdown_noop_skips_vector_sync():
+    vector_store = TrackingVectorStore()
+    memory = _editable_memory(vector_store=vector_store)
+    vector_store.events.clear()
+    source = memory.export_item_markdown("mem-edit")
+
+    assert memory.apply_item_markdown("mem-edit", source) is False
+    assert vector_store.events == []
+
+
+def test_single_item_markdown_revision_check_is_atomic_with_apply():
+    memory = _editable_memory()
+    source = memory.export_item_markdown("mem-edit")
+    expected_revision = markdown_document_revision(source)
+    memory.update("mem-edit", content="Concurrent update")
+
+    with pytest.raises(MarkdownRevisionConflictError):
+        memory.apply_item_markdown(
+            "mem-edit",
+            source.replace("Original body", "Stale edit"),
+            expected_revision=expected_revision,
+        )
+
+    assert memory.get("mem-edit")["content"] == "Concurrent update"
+
+
+def test_apply_item_markdown_rolls_back_all_state_on_store_failure():
+    """apply_item_markdown fully restores AgentMemory state if _replace_memory_item fails.
+
+    The test injects a failure inside the store() call that executes AFTER
+    delete_memory() completes, so that at least one real mutation has already
+    happened before the exception is raised.  This verifies the rollback path
+    inside _replace_memory_item is exercised through apply_item_markdown, not
+    just through import_data.
+    """
+    memory = _editable_memory()
+    original_item = deepcopy(memory.get("mem-edit"))
+    original_stats = deepcopy(memory.stats)
+    original_index = list(memory.memory_index)
+    original_stm = [item.memory_id for item in memory.short_term_memory]
+    original_vector_ids = deepcopy(memory._vector_ids)
+
+    source = memory.export_item_markdown("mem-edit")
+    edited = source.replace("Original body", "Replaced body")
+
+    # Patch store() so it succeeds (internally called by _replace_memory_item),
+    # but raises AFTER the new item is inserted into memory_items.
+    real_store = memory.store
+    call_count = 0
+
+    def fail_after_store(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        result = real_store(*args, **kwargs)
+        # Raise on the store() call made by _replace_memory_item (not any earlier call)
+        if call_count >= 1:
+            raise RuntimeError("simulated store failure after insert")
+        return result
+
+    with patch.object(memory, "store", side_effect=fail_after_store):
+        with pytest.raises(RuntimeError, match="simulated store failure"):
+            memory.apply_item_markdown("mem-edit", edited)
+
+    # All state must be identical to what it was before apply_item_markdown
+    assert memory.get("mem-edit") == original_item, (
+        "memory_items must be fully restored after rollback"
+    )
+    assert memory.stats == original_stats, (
+        "stats must be fully restored after rollback"
+    )
+    assert list(memory.memory_index) == original_index, (
+        "memory_index must be fully restored after rollback"
+    )
+    assert [item.memory_id for item in memory.short_term_memory] == original_stm, (
+        "short_term_memory must be fully restored after rollback"
+    )
+    assert memory._vector_ids == original_vector_ids, (
+        "vector_ids must be fully restored after rollback"
+    )
+    # The memory must still be readable and unchanged
+    assert memory.exists("mem-edit")
+    assert memory.get("mem-edit")["content"] == "Original body"
+    assert memory.count() == 1
