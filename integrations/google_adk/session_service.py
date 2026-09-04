@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import inspect
 import threading
+import urllib.parse
 import uuid
 from datetime import datetime
 from typing import Any, List, Optional
@@ -69,8 +70,20 @@ class SemanticaSessionService(BaseSessionService):
 
     @staticmethod
     def _node_id(app_name: str, user_id: str, session_id: str) -> str:
-        """Return the internal ContextGraph node ID for a session."""
-        return f"adk-session:{app_name}:{user_id}:{session_id}"
+        """Return the internal ContextGraph node ID for a session.
+
+        Each component is percent-encoded before joining so a ':' inside
+        app_name/user_id/session_id can never be mistaken for the
+        separator: without this, distinct identities such as
+        (app_name="tenant:A", user_id="alice") and
+        (app_name="tenant", user_id="A:alice") would collide on the same
+        node ID.
+        """
+        parts = (
+            urllib.parse.quote(part, safe="")
+            for part in (app_name, user_id, session_id)
+        )
+        return "adk-session:" + ":".join(parts)
 
     @staticmethod
     def _event_node_id(event: Any) -> str:
@@ -324,12 +337,16 @@ class SemanticaSessionService(BaseSessionService):
             if graph_node_id:
                 graph_node_id = str(graph_node_id)
                 if graph_node_id.startswith("adk-session:"):
-                    # the old format fallback, though we use composites now
-                    parts = graph_node_id.split(":")
-                    if len(parts) == 4:
-                        app_name = app_name or parts[1]
-                        user_id = user_id or parts[2]
-                        session_id = parts[3]
+                    # Each component is percent-encoded by _node_id(), so
+                    # splitting on ':' after the prefix always yields
+                    # exactly 3 parts regardless of what characters the
+                    # original app_name/user_id/session_id contained.
+                    parts = graph_node_id[len("adk-session:"):].split(":")
+                    if len(parts) == 3:
+                        decoded = [urllib.parse.unquote(part) for part in parts]
+                        app_name = app_name or decoded[0]
+                        user_id = user_id or decoded[1]
+                        session_id = decoded[2]
                     else:
                         session_id = graph_node_id[len("adk-session:"):]
                 else:

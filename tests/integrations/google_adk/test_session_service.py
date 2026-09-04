@@ -137,6 +137,47 @@ def test_create_duplicate_session_fails():
         )
 
 
+def test_colon_in_identity_does_not_collide_with_a_different_tenant():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    # app_name="tenant:A", user_id="alice" and app_name="tenant",
+    # user_id="A:alice" would join to the identical raw string
+    # "adk-session:tenant:A:alice:s1" if the components were not escaped
+    # before joining. Both must be creatable as distinct sessions.
+    session1 = asyncio.run(
+        service.create_session(
+            app_name="tenant:A",
+            user_id="alice",
+            session_id="s1",
+        )
+    )
+    session2 = asyncio.run(
+        service.create_session(
+            app_name="tenant",
+            user_id="A:alice",
+            session_id="s1",
+        )
+    )
+
+    fetched1 = asyncio.run(
+        service.get_session(app_name="tenant:A", user_id="alice", session_id="s1")
+    )
+    fetched2 = asyncio.run(
+        service.get_session(app_name="tenant", user_id="A:alice", session_id="s1")
+    )
+
+    assert fetched1 is not None
+    assert fetched2 is not None
+    assert fetched1.app_name == "tenant:A"
+    assert fetched1.user_id == "alice"
+    assert fetched2.app_name == "tenant"
+    assert fetched2.user_id == "A:alice"
+    assert session1.id == session2.id == "s1"
+
+
 def test_append_event():
     from google.adk.events import Event
     from semantica.context import ContextGraph
