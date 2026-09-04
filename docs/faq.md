@@ -27,7 +27,7 @@ icon: "circle-question"
 
 <Accordion title="What is Semantica?" icon="info-circle">
 
-Semantica is an open-source framework for building context graphs and decision intelligence layers for AI. It transforms unstructured data: documents, APIs, databases: into structured knowledge graphs with full provenance tracking, making AI systems explainable and auditable.
+Semantica is an open-source framework for building context graphs and decision intelligence layers for AI. It transforms unstructured data (documents, APIs, databases) into structured knowledge graphs with full provenance tracking, making AI systems explainable and auditable.
 
 It's not a replacement for LangChain or LlamaIndex. It's the **accountability layer** that goes on top: recording decisions, tracing facts to sources, and making reasoning transparent.
 
@@ -46,7 +46,7 @@ It's not a replacement for LangChain or LlamaIndex. It's the **accountability la
 
 <Accordion title="What makes Semantica different from LangChain or LlamaIndex?" icon="scale-balanced">
 
-Most frameworks stop at retrieval or generation. Semantica adds an **accountability layer**: every decision is recorded, every fact links to a source, and every reasoning step is explainable. It's designed for environments where you need to audit *why* an AI reached a conclusion: not just what it said.
+Most frameworks stop at retrieval or generation. Semantica adds an **accountability layer**: every decision is recorded, every fact links to a source, and every reasoning step is explainable. It's designed for environments where you need to audit *why* an AI reached a conclusion, not just what it said.
 
 Semantica works alongside these frameworks, not against them.
 
