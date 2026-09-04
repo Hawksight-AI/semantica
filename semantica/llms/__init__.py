@@ -35,7 +35,7 @@ Example Usage:
     >>> llm = LiteLLM(model="openai/gpt-4o", api_key="your-key")
     >>> response = llm.generate("Hello, world!")
     >>> # Or use other providers via LiteLLM
-    >>> llm = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+    >>> llm = LiteLLM(model="anthropic/claude-sonnet-5")
     >>> response = llm.generate("Hello, world!")
     >>>
     >>> # Anthropic provider

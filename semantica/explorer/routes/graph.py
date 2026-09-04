@@ -87,6 +87,13 @@ def _node_response(node: dict) -> NodeResponse:
     return NodeResponse(**node)
 
 
+async def _get_node_or_404(node_id: str, session: GraphSession) -> NodeResponse:
+    node = await asyncio.to_thread(session.get_node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
+    return _node_response(node)
+
+
 def _edge_response(edge: dict) -> EdgeResponse:
     return EdgeResponse(**edge)
 
@@ -121,15 +128,20 @@ async def list_nodes(
     )
 
 
+@router.get("/node", response_model=NodeResponse)
+async def get_node_by_query(
+    node_id: str = Query(..., description="Exact node ID"),
+    session: GraphSession = Depends(get_session),
+):
+    return await _get_node_or_404(node_id, session)
+
+
 @router.get("/node/{node_id}", response_model=NodeResponse)
 async def get_node(
     node_id: str,
     session: GraphSession = Depends(get_session),
 ):
-    node = await asyncio.to_thread(session.get_node, node_id)
-    if node is None:
-        raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
-    return _node_response(node)
+    return await _get_node_or_404(node_id, session)
 
 
 @router.get("/node/{node_id}/neighbors", response_model=list[NeighborResponse])
@@ -441,7 +453,7 @@ async def distance_matrix(
                     embeddings = _get_cached_embeddings(session)
                     src_embedding = embeddings.get(src)
                     tgt_embedding = embeddings.get(tgt)
-                    
+
                     if src_embedding is None or tgt_embedding is None:
                         val = None
                     else:
@@ -451,7 +463,7 @@ async def distance_matrix(
                         tgt_vec = np.array(tgt_embedding)
                         sim = np.dot(src_vec, tgt_vec) / (np.linalg.norm(src_vec) * np.linalg.norm(tgt_vec))
                         val = 1.0 - float(sim) if isinstance(sim, (int, float)) else None
-                    
+
                     matrix[i][j] = val
                     matrix[j][i] = val
                 elif path_finder is not None:

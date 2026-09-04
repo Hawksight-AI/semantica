@@ -301,7 +301,10 @@ class GraphValidator:
                     code="ORPHAN_NODES",
                     message=f"Found {len(isolates)} orphan nodes (no relationships).",
                     severity=ValidationSeverity.WARNING,
-                    details={"count": len(isolates), "ids": isolates[:10]} # Limit output
+                    details={
+                        "count": len(isolates),
+                        "ids": sorted(isolates, key=str)[:10],
+                    }  # Limit output deterministically
                 ))
 
         except Exception as e:
