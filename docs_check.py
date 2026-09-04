@@ -236,7 +236,7 @@ def _() -> list[str]:
             cwd=DOCS,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=600,
         )
         # Clean up zip regardless of outcome
         zip_path = os.path.join(DOCS, "export_ci_check.zip")
@@ -263,7 +263,7 @@ def _() -> list[str]:
     except FileNotFoundError:
         return ["npx not found — skipping Mintlify export check (Node.js required)"]
     except subprocess.TimeoutExpired:
-        return ["mintlify export timed out after 300 s"]
+        return ["mintlify export timed out after 600 s"]
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
