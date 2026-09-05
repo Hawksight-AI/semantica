@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 import pytest
 from click.testing import CliRunner, Result
+from rich.console import Console
 
 import semantica.cli as cli_module
 
@@ -379,6 +380,22 @@ def test_doctor_json_log_directory_check_is_not_false_failure(runner, monkeypatc
     checks = json.loads(result.output)
     log_check = next(item for item in checks if item["check"] == "Log directory")
     assert log_check["status"] == "ok"
+
+
+def test_doctor_terminal_output_keeps_remediation_hints_readable(runner, monkeypatch):
+    monkeypatch.setattr(
+        cli_module,
+        "console",
+        Console(width=80, force_terminal=False, color_system=None),
+    )
+    for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+
+    result = runner.invoke(cli_module.main, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "OPENAI_API_KEY not set" in result.output
+    assert "export OPENAI_API_KEY=…" in result.output
 
 
 # ---------------------------------------------------------------------------

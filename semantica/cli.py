@@ -921,15 +921,17 @@ def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None
         tbl.add_column("Check",  style=_KEY, no_wrap=True, min_width=16)
         tbl.add_column("Status", no_wrap=True, min_width=6)
         tbl.add_column("Note",   style=_DIM)
-        tbl.add_column("Hint",   style=_DIM)
 
         icons = {"ok": f"[{_SUCCESS}] ✓[/{_SUCCESS}]",
                  "warn": f"[{_WARN_STY}] ⚠[/{_WARN_STY}]",
                  "fail": "[bold red] ✗[/bold red]"}
 
         errors = warns = 0
+        hints = []
         for lbl, st, note, hint in checks:
-            tbl.add_row(lbl, icons.get(st, st), note or "", hint or "")
+            tbl.add_row(lbl, icons.get(st, st), note or "")
+            if hint:
+                hints.append((lbl, hint))
             if st == "fail":
                 errors += 1
             elif st == "warn":
@@ -937,6 +939,13 @@ def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None
 
         console.print()
         console.print(tbl)
+        if hints:
+            console.print()
+            for lbl, hint in hints:
+                line = Text("  ")
+                line.append(f"{lbl}: ", style=_KEY)
+                line.append(hint, style=_DIM)
+                console.print(line)
         console.print()
         summary = (f"[{_SUCCESS}]All checks passed[/{_SUCCESS}]" if not errors and not warns
                    else f"[bold red]{errors} error(s)[/bold red]  [{_WARN_STY}]{warns} warning(s)[/{_WARN_STY}]")
