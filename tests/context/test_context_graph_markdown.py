@@ -9,6 +9,10 @@ import yaml
 import semantica.context.context_graph as context_graph_module
 from semantica.change_management.managers import TemporalVersionManager
 from semantica.context.context_graph import ContextEdge, ContextGraph, ContextNode
+from semantica.context.markdown import (
+    MarkdownRevisionConflictError,
+    markdown_document_revision,
+)
 
 
 def _read_markdown(path: Path):
@@ -711,3 +715,135 @@ def test_json_remains_default_and_unknown_format_is_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="Unsupported context graph"):
         graph.save_to_file(tmp_path / "graph", format="html")
+
+
+def _edited_node_document(graph, node_id, **frontmatter_updates):
+    source = graph.export_node_markdown(node_id)
+    frontmatter, body = graph._parse_markdown_document(source, f"node {node_id!r}")
+    frontmatter.update(frontmatter_updates)
+    return graph._render_markdown_document(
+        frontmatter,
+        body.replace("Keep evidence.", "Keep verified evidence."),
+        f"node {node_id!r}",
+    )
+
+
+def test_single_node_markdown_export_and_apply_update_complete_node_state():
+    graph, _, _ = _sample_graph()
+    events = []
+    graph.mutation_callback = lambda *event: events.append(event)
+    before_edges = list(graph.edges)
+    document = _edited_node_document(
+        graph,
+        "policy/\u6771\u4eac",
+        type="Decision",
+        properties={"category": "retention", "reviewed": True},
+        metadata={"source": "editor"},
+        valid_from="2026-03-01T00:00:00+00:00",
+        valid_until="2028-01-01T00:00:00+00:00",
+    )
+
+    assert graph.apply_node_markdown("policy/\u6771\u4eac", document) is True
+    node = graph.nodes["policy/\u6771\u4eac"]
+    assert node.node_id == "policy/\u6771\u4eac"
+    assert node.node_type == "Decision"
+    assert node.content == "# Retention\n\nKeep verified evidence.\n---\n"
+    assert node.properties == {"category": "retention", "reviewed": True}
+    assert node.metadata == {"source": "editor"}
+    assert node.valid_from == "2026-03-01T00:00:00+00:00"
+    assert node.valid_until == "2028-01-01T00:00:00+00:00"
+    assert "policy/\u6771\u4eac" not in graph.node_type_index.get("Policy", set())
+    assert "policy/\u6771\u4eac" in graph.node_type_index["Decision"]
+    assert "policy/\u6771\u4eac" in graph._decisions
+    assert graph.edges == before_edges
+    assert [event[0] for event in events] == ["UPDATE_NODE"]
+    assert graph.export_node_markdown("policy/\u6771\u4eac") == document
+
+
+def test_single_node_markdown_transition_out_of_decision_clears_indexes():
+    graph = ContextGraph(advanced_analytics=False)
+    graph.add_node("decision-1", "Decision", "Choose")
+    graph._rebuild_decision_indexes()
+    source = graph.export_node_markdown("decision-1")
+    document = source.replace("type: Decision", "type: Policy")
+
+    assert graph.apply_node_markdown("decision-1", document) is True
+    assert "decision-1" not in graph._decisions
+
+
+def test_single_node_markdown_invalid_identity_and_yaml_do_not_mutate():
+    graph, _, _ = _sample_graph()
+    events = []
+    graph.mutation_callback = lambda *event: events.append(event)
+    before = _normalized_state(graph)
+    source = graph.export_node_markdown("policy/\u6771\u4eac")
+
+    with pytest.raises(ValueError, match="does not match resource id"):
+        graph.apply_node_markdown(
+            "policy/\u6771\u4eac",
+            source.replace("id: policy/", "id: changed/"),
+        )
+    with pytest.raises(ValueError, match="Invalid Markdown frontmatter"):
+        graph.apply_node_markdown("policy/\u6771\u4eac", "---\nid: [\n---\n\nBroken")
+
+    assert _normalized_state(graph) == before
+    assert events == []
+
+
+def test_single_node_markdown_index_failure_rolls_back_complete_graph_state():
+    graph, _, _ = _sample_graph()
+    graph._analytics_cache["cached"] = {"score": 1.0}
+    events = []
+    graph.mutation_callback = lambda *event: events.append(event)
+    before = _normalized_state(graph)
+    before_type_index = {
+        node_type: set(node_ids)
+        for node_type, node_ids in graph.node_type_index.items()
+    }
+    before_analytics_cache = dict(graph._analytics_cache)
+    document = _edited_node_document(
+        graph,
+        "policy/\u6771\u4eac",
+        type="Decision",
+        properties={"confidence": {"invalid": True}},
+    )
+
+    with pytest.raises(TypeError):
+        graph.apply_node_markdown("policy/\u6771\u4eac", document)
+
+    assert _normalized_state(graph) == before
+    assert {
+        node_type: set(node_ids)
+        for node_type, node_ids in graph.node_type_index.items()
+    } == before_type_index
+    assert graph._analytics_cache == before_analytics_cache
+    assert not hasattr(graph, "_decisions")
+    assert events == []
+
+
+def test_single_node_markdown_noop_and_missing_node_are_safe():
+    graph, _, _ = _sample_graph()
+    events = []
+    graph.mutation_callback = lambda *event: events.append(event)
+    source = graph.export_node_markdown("policy/\u6771\u4eac")
+
+    assert graph.apply_node_markdown("policy/\u6771\u4eac", source) is False
+    with pytest.raises(KeyError, match="missing"):
+        graph.export_node_markdown("missing")
+    assert events == []
+
+
+def test_single_node_markdown_revision_check_is_atomic_with_apply():
+    graph, _, _ = _sample_graph()
+    source = graph.export_node_markdown("policy/\u6771\u4eac")
+    expected_revision = markdown_document_revision(source)
+    graph.add_node_attribute("policy/\u6771\u4eac", {"concurrent": True})
+
+    with pytest.raises(MarkdownRevisionConflictError):
+        graph.apply_node_markdown(
+            "policy/\u6771\u4eac",
+            source.replace("Keep evidence.", "Stale edit."),
+            expected_revision=expected_revision,
+        )
+
+    assert graph.nodes["policy/\u6771\u4eac"].properties["concurrent"] is True

@@ -168,3 +168,5 @@ jobs:
 
           print("Explorer frontend is packaged")
           PY
+      - name: Run Google ADK Integration Tests
+        run: pytest tests/integrations/google_adk/

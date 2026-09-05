@@ -1415,6 +1415,31 @@ _INGEST_TYPES = [
 ]
 
 _INGEST_FORMATS = ["pdf", "docx", "csv", "excel", "html", "json", "parquet", "xml", "rdf"]
+_GRAPH_STORE_ENV_BACKEND_HINTS = {
+    "GRAPH_STORE_NEO4J_URI": "neo4j",
+    "GRAPH_STORE_FALKORDB_HOST": "falkordb",
+    "GRAPH_STORE_NEPTUNE_ENDPOINT": "neptune",
+    "GRAPH_STORE_AGE_CONNECTION_STRING": "age",
+}
+
+
+def _configured_ingest_graph_backend(
+    cli_ctx: CLIContext, store_override: Optional[str]
+) -> Optional[str]:
+    graph_db = dict(cli_ctx.config.to_dict().get("graph_db", {}))
+    backend = store_override or cli_ctx.store_backend or graph_db.get("backend")
+    if backend:
+        return str(backend)
+
+    env_backend = os.environ.get("GRAPH_STORE_DEFAULT_BACKEND")
+    if env_backend:
+        return env_backend
+
+    for env_var, hinted_backend in _GRAPH_STORE_ENV_BACKEND_HINTS.items():
+        if os.environ.get(env_var):
+            return hinted_backend
+
+    return None
 
 
 @main.command()
@@ -1427,8 +1452,13 @@ _INGEST_FORMATS = ["pdf", "docx", "csv", "excel", "html", "json", "parquet", "xm
 @click.option("--watch", is_flag=True, default=False, help="Re-ingest on file changes.")
 @click.option("--batch-size", default=500, type=int, show_default=True)
 @click.option("--store", "store_override", default=None,
-              help="Target graph backend: neo4j falkordb age neptune")
-@click.option("--output", default=None, type=click.Path(), help="Write to file instead of graph store.")
+              help="Target graph backend: neo4j falkordb age neptune. "
+                   "Not yet implemented — ingest cannot persist to a graph "
+                   "store, so this only determines whether the command "
+                   "refuses to report false success; use --output instead.")
+@click.option("--output", default=None, type=click.Path(),
+              help="Write ingested content to a .json/.jsonl/.csv file "
+                   "instead of the (unimplemented) graph store.")
 @click.option("--dry-run", "local_dry", is_flag=True, default=False)
 @click.option("--json", "local_json", is_flag=True, default=False)
 @click.pass_obj
@@ -1452,6 +1482,19 @@ def ingest(
             _dry(cli_ctx, "ingest", json_out=_is_json(cli_ctx, local_json),
                  source=source, type=ingestor_type, format=fmt)
             return
+        graph_backend = _configured_ingest_graph_backend(cli_ctx, store_override)
+        if graph_backend and graph_backend.lower() != "memory" and not output:
+            raise click.ClickException(
+                f"A graph backend is configured ({graph_backend}), but "
+                "semantica ingest does not write to graph stores yet — no CLI "
+                "command currently does (tracked in issues #1351, #1352). "
+                "Pass --output <file>.json to save the ingested content "
+                "instead, or build a GraphStore/GraphBuilder directly in "
+                "Python."
+            )
+        # NOTE: --store/GRAPH_STORE_DEFAULT_BACKEND are read only to decide
+        # whether to raise the error above — nothing downstream of this point
+        # writes to a graph store, so neither is forwarded as an ingest kwarg.
         kwargs: Dict[str, Any] = {"batch_size": batch_size}
         if ingestor_type:
             kwargs["source_type"] = ingestor_type
@@ -1461,10 +1504,6 @@ def ingest(
             kwargs["recursive"] = True
         if watch:
             kwargs["watch"] = True
-        if store_override or cli_ctx.store_backend:
-            kwargs["store"] = store_override or cli_ctx.store_backend
-        if output:
-            kwargs["output"] = output
         try:
             from .ingest import ingest as _ingest
             label = Path(source).name if Path(source).exists() else source
@@ -1478,7 +1517,10 @@ def ingest(
                     result = _ingest(source, **kwargs)
         except ImportError as exc:
             raise click.ClickException(f"Ingest module not available: {exc}") from exc
-        if _is_json(cli_ctx, local_json):
+        if output:
+            _write_result_output(Path(output), result)
+            _ok(cli_ctx, f"Wrote {output}")
+        elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"status": "ok"})
         else:
             _ok(cli_ctx, f"Ingested: {source}")
@@ -1735,9 +1777,19 @@ def embed(ctx: click.Context) -> None:
 def _json_default(obj) -> object:
     """JSON serialiser that converts NumPy scalars/arrays to native Python types.
 
+    Also expands dataclasses (e.g. ``FileObject`` from ``ingest``) to plain
+    dicts and decodes ``bytes`` as UTF-8 text where possible, so a domain
+    object round-trips through ``--output`` as data instead of a repr string.
     Falls back to ``str()`` for everything else so the writer never crashes on
-    unexpected types (e.g. ``datetime``, custom domain objects).
+    unexpected types (e.g. ``datetime``).
     """
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return asdict(obj)
+    if isinstance(obj, bytes):
+        try:
+            return obj.decode("utf-8")
+        except UnicodeDecodeError:
+            return obj.hex()
     try:
         import numpy as np  # local import — only needed when result contains numpy
         if isinstance(obj, np.ndarray):
@@ -4571,7 +4623,7 @@ def mcp_start(cli_ctx: CLIContext, transport: str, port: int) -> None:
 
     def _action() -> None:
         import subprocess as sp
-        cmd = [sys.executable, "-m", "mcp.server"]
+        cmd = [sys.executable, "-m", "semantica_mcp.mcp.server"]
         if transport == "http":
             cmd += ["--port", str(port)]
         proc = sp.Popen(cmd)
@@ -4614,7 +4666,7 @@ def mcp_list_tools(cli_ctx: CLIContext, local_json: bool) -> None:
 
     def _action() -> None:
         try:
-            from mcp.tools import __all__ as tools
+            from semantica_mcp.mcp.tools import __all__ as tools
         except ImportError:
             tools = [
                 "extract_entities", "extract_relations", "build_graph",
@@ -4655,7 +4707,7 @@ def mcp_call(cli_ctx: CLIContext, tool_name: str, args: str, local_json: bool) -
         except json.JSONDecodeError as exc:
             raise click.ClickException(f"Invalid JSON in --args: {exc}") from exc
         try:
-            from mcp.session import MCPSession
+            from semantica_mcp.mcp.session import MCPSession
             session = MCPSession(config=cli_ctx.config.to_dict())
             result = session.call_tool(tool_name, **tool_args)
         except ImportError as exc:

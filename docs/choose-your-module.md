@@ -5,7 +5,7 @@ icon: "compass"
 ---
 
 <Info>
-  Every module works independently — import only what you need. This page maps developer goals to starting points. The [Module Reference](/modules) covers every module in depth.
+  Every module works independently: import only what you need. This page maps developer goals to starting points. The [Module Reference](/modules) covers every module in depth.
 </Info>
 
 ## Quick Reference
@@ -75,7 +75,7 @@ Pick your goal to see the minimum imports and a working skeleton.
     sources       = FileIngestor().ingest("report.pdf")
     parsed        = DocumentParser().parse_document("report.pdf")
 
-    # No API key required — pattern-based extraction
+    # No API key required: pattern-based extraction
     entities      = NERExtractor(method="pattern").extract(parsed)
     relationships = RelationExtractor(method="rule").extract(parsed, entities=entities)
 
@@ -89,7 +89,7 @@ Pick your goal to see the minimum imports and a working skeleton.
       Pass `method="pattern"` to `NERExtractor` for zero-cost, zero-API-key extraction. Switch to `method="llm"` with any of the supported providers for higher recall.
     </Tip>
 
-    **Next:** [Quickstart →](/quickstart) — full pipeline with visualization and export.
+    See the [Quickstart →](/quickstart) for a full pipeline with visualization and export.
   </Tab>
 
   <Tab title="Build GraphRAG">
@@ -109,7 +109,7 @@ Pick your goal to see the minimum imports and a working skeleton.
         knowledge_graph=ContextGraph(advanced_analytics=True),
     )
 
-    # Store facts — retrieval uses both vectors and graph structure
+    # Store facts: retrieval uses both vectors and graph structure
     context.store("Apple Inc. was co-founded by Steve Jobs in 1976 in Cupertino.")
 
     # GraphRAG query with multi-hop reasoning trace
@@ -206,11 +206,11 @@ Pick your goal to see the minimum imports and a working skeleton.
     ```python
     from semantica.export import RDFExporter, ParquetExporter, LPGExporter, ArangoAQLExporter
 
-    # RDF — multiple serialization formats
+    # RDF: multiple serialization formats
     RDFExporter().export(graph, "graph.ttl",    format="turtle")
     RDFExporter().export(graph, "graph.jsonld", format="jsonld")
 
-    # Parquet — for Spark, BigQuery, Databricks, Snowflake
+    # Parquet: for Spark, BigQuery, Databricks, Snowflake
     ParquetExporter().export(graph, "output/graph.parquet")
 
     # Neo4j / Memgraph via Cypher
@@ -225,15 +225,15 @@ Pick your goal to see the minimum imports and a working skeleton.
     **Next:** [Export module reference →](/reference/export)
   </Tab>
 
-  <Tab title="MCP — Claude / Cursor">
-    Use Semantica from Claude Desktop, Cursor, VS Code, or any MCP-aware tool — no Python code required after setup. 15 tools available instantly.
+  <Tab title="MCP: Claude / Cursor">
+    Use Semantica from Claude Desktop, Cursor, VS Code, or any MCP-aware tool; no Python code required after setup. 15 tools are available.
 
-    **Step 1 — Install:**
+    **Step 1: Install**
     ```bash
     pip install semantica
     ```
 
-    **Step 2 — Add to your MCP client config:**
+    **Step 2: Add to your MCP client config**
 
     <CodeGroup>
 
@@ -273,10 +273,10 @@ Pick your goal to see the minimum imports and a working skeleton.
 </Tabs>
 
 
-## Still Unsure?
+## Architecture Selection Guidance
 
 <AccordionGroup>
-  <Accordion title="Knowledge graph vs. vector store — which do I need?" icon="scale-balanced">
+  <Accordion title="Knowledge graph vs. vector store selection" icon="scale-balanced">
     Use a **knowledge graph** (`kg`) when you need structured reasoning, multi-hop traversal, provenance, or compliance audit trails.
 
     Use a **vector store** (`vector_store`) when you need fast fuzzy similarity search over large text corpora and relationships between items don't matter.
@@ -286,12 +286,12 @@ Pick your goal to see the minimum imports and a working skeleton.
     See also: [Core Concepts](/concepts)
   </Accordion>
 
-  <Accordion title="I just want to run something quickly." icon="rocket">
+  <Accordion title="Fast local pipeline setup" icon="rocket">
     Start with the [Quickstart](/quickstart). It builds a complete pipeline (ingest → parse → extract → graph → visualize → export) with no API key required.
   </Accordion>
 
-  <Accordion title="I'm adding Semantica to an existing agent — what's the minimum?" icon="plug">
-    Add `AgentContext`. It wraps your existing agent with memory, decision tracking, and precedent search — no changes to your LLM provider or agent framework needed.
+  <Accordion title="Minimum configuration for existing agents" icon="plug">
+    Add `AgentContext` to equip an existing agent with memory, decision tracking, and precedent search, with no changes to your LLM provider or agent framework required.
 
     ```python
     from semantica.context import AgentContext, ContextGraph
@@ -307,7 +307,7 @@ Pick your goal to see the minimum imports and a working skeleton.
     [Context module reference →](/reference/context)
   </Accordion>
 
-  <Accordion title="I need a compliance-ready pipeline — what's the minimum stack?" icon="shield-check">
+  <Accordion title="Minimum stack for compliance-ready pipelines" icon="shield-check">
     | Layer | Module | Key class |
     | :---- | :------ | :--------- |
     | Ingestion | `ingest` | `FileIngestor` |
@@ -322,6 +322,6 @@ Pick your goal to see the minimum imports and a working skeleton.
 
 ---
 
-- [Quickstart](/quickstart) — Full pipeline in 5 minutes.
-- [Module Reference](/modules) — Every module with examples and common chains.
-- [API Reference](/reference/context) — Complete class and method documentation.
+- [Quickstart](/quickstart): full pipeline in 5 minutes.
+- [Module Reference](/modules): every module with examples and common chains.
+- [API Reference](/reference/context): complete class and method documentation.

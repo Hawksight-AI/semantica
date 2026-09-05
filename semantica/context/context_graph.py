@@ -131,6 +131,12 @@ from ..utils.progress_tracker import get_progress_tracker
 from ..utils.skos import is_skos_hierarchy_edge, validate_skos_hierarchy
 from ._markdown_filesystem import find_filesystem_link
 from .entity_linker import EntityLinker
+from .markdown import (
+    MarkdownIdentityError,
+    MarkdownResourceNotFoundError,
+    MarkdownRevisionConflictError,
+    markdown_document_revision,
+)
 
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
@@ -241,6 +247,42 @@ def _normalize_temporal_input(value: Optional[Union[str, int, float, datetime]])
             raise ValueError(f"Temporal value {value!r} is not a valid ISO datetime string")
         return parsed.isoformat()
     raise ValueError("Temporal values must be datetime, epoch seconds, ISO strings, or None")
+
+
+def normalize_temporal_input(
+    value: Optional[Union[str, int, float, datetime]]
+) -> Optional[str]:
+    """Normalize a temporal value to a tz-naive UTC ISO-8601 string.
+
+    This is the public surface of the normalization logic used throughout
+    :class:`ContextGraph` for retraction, purge, and decision timestamps.
+    Exposing it lets sibling modules (e.g. :mod:`erasure`) share the same
+    normalization without importing the private ``_normalize_temporal_input``.
+
+    Args:
+        value: Any of the following:
+
+            * ``None`` — returned as-is (no timestamp).
+            * :class:`~datetime.datetime` — converted to UTC if tz-aware,
+              then serialized as a tz-naive ISO string
+              (e.g. ``"2026-01-01T07:00:00"``).
+            * :class:`int` or :class:`float` — interpreted as a POSIX epoch
+              seconds value, converted to UTC, serialized as above.
+            * :class:`str` — must be a valid ISO-8601 datetime string;
+              offset-aware values (including ``Z``) are converted to UTC
+              before serialization.  Year-only (``"2026"``) and date-only
+              (``"2026-01-15"``) shorthand forms are also accepted.
+
+    Returns:
+        A tz-naive UTC ISO-8601 string (e.g. ``"2026-01-01T12:00:00"``),
+        or ``None`` when *value* is ``None``.
+
+    Raises:
+        ValueError: If *value* is a string that cannot be parsed as an
+            ISO-8601 datetime, or if *value* is a type that is not
+            supported (e.g. a :class:`~datetime.date` object).
+    """
+    return _normalize_temporal_input(value)
 
 
 def _closing_valid_until(current: Optional[str], at_iso: str) -> str:
@@ -1166,6 +1208,157 @@ class ContextGraph:
                     valid_until=valid_until,
                 )
             )
+
+    def export_node_markdown(self, node_id: str) -> str:
+        """Return one existing node as canonical Markdown.
+
+        Args:
+            node_id: Stable identifier of the node to export.
+
+        Returns:
+            Canonical Markdown containing the node frontmatter and body.
+
+        Raises:
+            MarkdownResourceNotFoundError: If ``node_id`` does not exist.
+        """
+        with self._lock:
+            node = self.nodes.get(node_id)
+            if node is None:
+                raise MarkdownResourceNotFoundError(
+                    f"ContextGraph node {node_id!r} was not found."
+                )
+            return self._node_markdown_source(node)
+
+    def _node_markdown_source(self, node: ContextNode) -> str:
+        frontmatter = {
+            "id": node.node_id,
+            "type": node.node_type,
+            "properties": copy.deepcopy(node.properties),
+            "metadata": copy.deepcopy(node.metadata),
+            "valid_from": node.valid_from,
+            "valid_until": node.valid_until,
+        }
+        return self._render_markdown_document(
+            frontmatter, node.content, f"node {node.node_id!r}"
+        )
+
+    def apply_node_markdown(
+        self,
+        node_id: str,
+        document: str,
+        *,
+        expected_revision: Optional[str] = None,
+    ) -> bool:
+        """Validate and atomically replace one existing node.
+
+        Args:
+            node_id: Stable identifier of the node to update.
+            document: Canonical Markdown containing the replacement node.
+            expected_revision: Optional revision returned by
+                :meth:`export_node_markdown`. A mismatch rejects stale edits.
+
+        Returns:
+            ``True`` when the node changed, otherwise ``False``.
+
+        Raises:
+            ValueError: If the Markdown or frontmatter is invalid.
+            MarkdownIdentityError: If the frontmatter changes the node ID.
+            MarkdownResourceNotFoundError: If ``node_id`` does not exist.
+            MarkdownRevisionConflictError: If ``expected_revision`` is stale.
+        """
+        source = f"node {node_id!r}"
+        frontmatter, body = self._parse_markdown_document(document, source)
+        candidate = self._parse_markdown_node(frontmatter, body, source)
+        if candidate.node_id != node_id:
+            raise MarkdownIdentityError(
+                f"Frontmatter id {candidate.node_id!r} does not match resource id "
+                f"{node_id!r}."
+            )
+
+        with self._lock:
+            existing = self.nodes.get(node_id)
+            if existing is None:
+                raise MarkdownResourceNotFoundError(
+                    f"ContextGraph node {node_id!r} was not found."
+                )
+            if expected_revision is not None:
+                current_revision = markdown_document_revision(
+                    self._node_markdown_source(existing)
+                )
+                if current_revision != expected_revision:
+                    raise MarkdownRevisionConflictError(current_revision)
+            if existing == candidate:
+                return False
+
+            # Decision index rebuilding can still reject YAML-valid property
+            # shapes, so retain every affected structure until commit succeeds.
+            decision_state_before = {}
+            if (
+                existing.node_type.lower() == "decision"
+                or candidate.node_type.lower() == "decision"
+            ):
+                for attribute in (
+                    "_decisions",
+                    "_decision_index",
+                    "_entity_index",
+                    "_temporal_index",
+                ):
+                    if not hasattr(self, attribute):
+                        decision_state_before[attribute] = None
+                    elif attribute in {"_decision_index", "_entity_index"}:
+                        decision_state_before[attribute] = {
+                            key: set(values)
+                            for key, values in getattr(self, attribute).items()
+                        }
+                    elif attribute == "_temporal_index":
+                        decision_state_before[attribute] = list(
+                            getattr(self, attribute)
+                        )
+                    else:
+                        decision_state_before[attribute] = dict(
+                            getattr(self, attribute)
+                        )
+
+            old_type = existing.node_type
+            try:
+                old_bucket = self.node_type_index.get(old_type)
+                if old_bucket is not None:
+                    old_bucket.discard(node_id)
+                    if not old_bucket:
+                        del self.node_type_index[old_type]
+
+                self.nodes[node_id] = candidate
+                self.node_type_index[candidate.node_type].add(node_id)
+                if (
+                    old_type.lower() == "decision"
+                    or candidate.node_type.lower() == "decision"
+                ):
+                    self._sync_decision_from_node(node_id)
+                payload = candidate.to_dict()
+                self._analytics_cache.clear()
+            except Exception:
+                self.nodes[node_id] = existing
+                candidate_bucket = self.node_type_index.get(candidate.node_type)
+                if candidate_bucket is not None:
+                    candidate_bucket.discard(node_id)
+                    if not candidate_bucket:
+                        del self.node_type_index[candidate.node_type]
+                self.node_type_index[old_type].add(node_id)
+                for attribute, state in decision_state_before.items():
+                    if state is None:
+                        if hasattr(self, attribute):
+                            delattr(self, attribute)
+                    else:
+                        restored = (
+                            defaultdict(set, state)
+                            if attribute in {"_decision_index", "_entity_index"}
+                            else state
+                        )
+                        setattr(self, attribute, restored)
+                raise
+
+        self._emit_mutation("UPDATE_NODE", node_id, payload)
+        return True
 
     def save_to_file(
         self, path: Union[str, Path], format: str = "json"
@@ -4947,32 +5140,42 @@ class ContextGraph:
     def _sync_decision_from_node(self, node_id: str) -> None:
         """Synchronise a single decision index entry from the node store.
 
-        Called after ``add_node_attribute`` mutates a decision node so that
-        ``_decisions`` and the derived indexes stay consistent without
-        requiring a full rebuild of all decisions.
+        Called after ``add_node_attribute`` mutates a decision node and after
+        ``apply_node_markdown`` replaces a node whose old or new type is
+        ``"decision"``, so that ``_decisions`` and the derived indexes stay
+        consistent without requiring a full rebuild of all decisions.
+
+        Temporal index cleanup (``_temporal_index``) runs unconditionally
+        before the node-type guard so that stale entries are removed even when
+        transitioning a decision node to a non-decision type.  Callers are
+        expected to ensure this is only invoked when at least one of the
+        current or previous node types is ``"decision"``; callers that bypass
+        that invariant will have ``node_id`` silently removed from
+        ``_temporal_index`` even if it was never a decision node.
         """
         node = self.nodes.get(node_id)
-        if node is None:
-            return
-        if (getattr(node, "node_type", None) or "").lower() != "decision":
-            return
-
         if not hasattr(self, "_decisions"):
             # Indexes don't exist yet — a full rebuild is safer.
             self._rebuild_decision_indexes()
             return
 
-        # Remove stale index entries for this decision ID.
-        old = self._decisions.get(node_id)
+        # Remove stale index entries before deciding whether the current node
+        # still belongs in the decision indexes.
+        old = self._decisions.pop(node_id, None)
         if old:
             old_cat = old.get("category", "")
-            if old_cat and node_id in self._decision_index.get(old_cat, set()):
+            if old_cat:
                 self._decision_index[old_cat].discard(node_id)
             for ent in old.get("entities", []):
                 self._entity_index[ent].discard(node_id)
-            self._temporal_index = [
-                (nid, ts) for nid, ts in self._temporal_index if nid != node_id
-            ]
+        self._temporal_index = [
+            (nid, ts) for nid, ts in self._temporal_index if nid != node_id
+        ]
+
+        if node is None:
+            return
+        if (getattr(node, "node_type", None) or "").lower() != "decision":
+            return
 
         # Rebuild the entry for this node and re-insert index entries.
         meta: Dict[str, Any] = {}

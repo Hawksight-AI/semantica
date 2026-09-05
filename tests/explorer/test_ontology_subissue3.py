@@ -796,6 +796,7 @@ onto:PersonShape a sh:NodeShape ;
         payload = response.json()
         assert payload["status"] == "error"
         assert "exceeds maximum allowed size" in payload["message"]
+        assert "SEMANTICA_MAX_SHACL_TURTLE_BYTES" in payload["message"]
 
 
 def test_validate_shacl_rejects_too_many_triples(client):
@@ -818,6 +819,7 @@ onto:PersonShape a sh:NodeShape ;
         payload = response.json()
         assert payload["status"] == "error"
         assert "exceeds maximum allowed limit" in payload["message"]
+        assert "SEMANTICA_MAX_SHACL_TRIPLES" in payload["message"]
 
 
 def test_validate_shacl_handles_timeout(client):
@@ -847,6 +849,7 @@ onto:PersonShape a sh:NodeShape ;
         payload = response.json()
         assert payload["status"] == "error"
         assert "timed out" in payload["message"]
+        assert "SEMANTICA_MAX_SHACL_TIMEOUT" in payload["message"]
 
 
 def test_validate_shacl_returns_unavailable_for_truncated_graph(client):

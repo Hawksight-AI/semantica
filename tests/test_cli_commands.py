@@ -69,6 +69,19 @@ def _json_output(result) -> Any:
     return json.loads(result.output.strip())
 
 
+def _flatten(output: str) -> str:
+    """Undo Rich panel wrapping for substring assertions on error text.
+
+    Rich wraps long messages across multiple bordered lines (each with its
+    own leading/trailing "│"), so a naive whitespace join still leaves those
+    border characters between words that were split across lines. Strip the
+    box-drawing characters first, then collapse whitespace.
+    """
+    for ch in "┌┐└┘│─":
+        output = output.replace(ch, " ")
+    return " ".join(output.split())
+
+
 # ─── Global flags ─────────────────────────────────────────────────────────────
 
 
@@ -335,6 +348,79 @@ class TestIngest:
         assert data["files"] == [{"path": "README.md"}]
         assert captured["sources"] == "README.md"
         assert captured["kwargs"]["method"] == "file"
+
+    def test_configured_graph_backend_does_not_report_false_success(
+        self, runner, monkeypatch
+    ):
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+
+        result = runner.invoke(cli_module.main, ["ingest", "README.md"])
+        output = _flatten(result.output)
+
+        assert result.exit_code != 0
+        assert "does not write to graph stores" in output
+        assert "Ingested:" not in output
+
+    def test_configured_graph_backend_error_does_not_recommend_broken_kg_build(
+        self, runner, monkeypatch
+    ):
+        # kg build also does not persist to a configured graph store
+        # (tracked separately as #1352), so the error must not send users to
+        # a command that will silently no-op the same way.
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+
+        result = runner.invoke(cli_module.main, ["ingest", "README.md"])
+        output = _flatten(result.output)
+
+        assert result.exit_code != 0
+        assert "kg build" not in output
+
+    def test_output_flag_writes_real_content_and_bypasses_graph_error(
+        self, runner, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+        out_path = tmp_path / "out.json"
+
+        result = runner.invoke(
+            cli_module.main, ["ingest", "README.md", "--output", str(out_path)]
+        )
+
+        _ok(result, substr="Wrote")
+        written = json.loads(out_path.read_text(encoding="utf-8"))
+        assert written == {"files": [{"path": "README.md"}]}
+
+    def test_store_and_output_are_not_forwarded_to_ingest_backend(
+        self, runner, monkeypatch, tmp_path
+    ):
+        captured = {}
+
+        def fake_ingest_file(sources, **kwargs):
+            captured["kwargs"] = kwargs
+            return [{"path": sources}]
+
+        monkeypatch.setattr("semantica.ingest.methods.ingest_file", fake_ingest_file)
+        out_path = tmp_path / "out.json"
+
+        result = runner.invoke(
+            cli_module.main,
+            ["ingest", "README.md", "--store", "neo4j", "--output", str(out_path)],
+        )
+
+        _ok(result)
+        assert "store" not in captured["kwargs"]
+        assert "output" not in captured["kwargs"]
 
     def test_import_error_is_clean(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "__import__", _import_side_effect, raising=False)
@@ -1797,7 +1883,7 @@ class TestMCP:
 
     def test_list_tools_with_mock_shows_known_tools(self, runner, monkeypatch):
         fake_tools = _fake_module(__all__=["extract_entities", "query_graph"])
-        monkeypatch.setitem(__import__("sys").modules, "mcp.tools", fake_tools)
+        monkeypatch.setitem(__import__("sys").modules, "semantica_mcp.mcp.tools", fake_tools)
         result = runner.invoke(cli_module.main, ["mcp", "list-tools"])
         _ok(result)
         assert "extract_entities" in result.output

@@ -10,7 +10,7 @@ Main exports:
     - Config: Configuration management
 """
 
-__version__ = "0.6.7"
+__version__ = "0.6.8"
 __author__ = "Semantica Contributors"
 __license__ = "MIT"
 
