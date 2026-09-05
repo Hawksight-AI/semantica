@@ -252,7 +252,36 @@ def _normalize_temporal_input(value: Optional[Union[str, int, float, datetime]])
 def normalize_temporal_input(
     value: Optional[Union[str, int, float, datetime]]
 ) -> Optional[str]:
-    """Normalize supported temporal inputs to ISO strings."""
+    """Normalize a temporal value to a tz-naive UTC ISO-8601 string.
+
+    This is the public surface of the normalization logic used throughout
+    :class:`ContextGraph` for retraction, purge, and decision timestamps.
+    Exposing it lets sibling modules (e.g. :mod:`erasure`) share the same
+    normalization without importing the private ``_normalize_temporal_input``.
+
+    Args:
+        value: Any of the following:
+
+            * ``None`` — returned as-is (no timestamp).
+            * :class:`~datetime.datetime` — converted to UTC if tz-aware,
+              then serialized as a tz-naive ISO string
+              (e.g. ``"2026-01-01T07:00:00"``).
+            * :class:`int` or :class:`float` — interpreted as a POSIX epoch
+              seconds value, converted to UTC, serialized as above.
+            * :class:`str` — must be a valid ISO-8601 datetime string;
+              offset-aware values (including ``Z``) are converted to UTC
+              before serialization.  Year-only (``"2026"``) and date-only
+              (``"2026-01-15"``) shorthand forms are also accepted.
+
+    Returns:
+        A tz-naive UTC ISO-8601 string (e.g. ``"2026-01-01T12:00:00"``),
+        or ``None`` when *value* is ``None``.
+
+    Raises:
+        ValueError: If *value* is a string that cannot be parsed as an
+            ISO-8601 datetime, or if *value* is a type that is not
+            supported (e.g. a :class:`~datetime.date` object).
+    """
     return _normalize_temporal_input(value)
 
 
