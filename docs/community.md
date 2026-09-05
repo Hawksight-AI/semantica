@@ -9,10 +9,10 @@ Semantica is built in the open, with contributions from researchers, engineers, 
 
 ## Get Help
 
-- [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — File bug reports and feature requests with full context.
-- [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions) — Ask questions, share ideas, and discuss design decisions.
-- [Pull Requests](https://github.com/semantica-agi/semantica/pulls) — Browse open contributions and submit your own.
-- [Security Issues](https://github.com/semantica-agi/semantica/security/advisories/new) — Report vulnerabilities privately: never in public issues.
+- [GitHub Issues](https://github.com/semantica-agi/semantica/issues): file bug reports and feature requests with full context.
+- [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions): ask questions, share ideas, and discuss design decisions.
+- [Pull Requests](https://github.com/semantica-agi/semantica/pulls): browse open contributions and submit your own.
+- [Security Issues](https://github.com/semantica-agi/semantica/security/advisories/new): report vulnerabilities privately (never in public issues).
 
 
 ## Community Guidelines
@@ -68,7 +68,7 @@ See the [Contributing Guide](/contributing-guide) for the full development workf
 
 ## See Also
 
-- [Contributing Guide](/contributing-guide) — Step-by-step guide for submitting PRs and setting up your dev environment.
-- [Community Projects](/community-projects) — Projects and integrations built by the community.
-- [FAQ](/faq) — Common questions answered.
-- [Governance](/governance) — How the project is run and decisions are made.
+- [Contributing Guide](/contributing-guide): step-by-step guide for submitting PRs and setting up your dev environment.
+- [Community Projects](/community-projects): projects and integrations built by the community.
+- [FAQ](/faq): common questions answered.
+- [Governance](/governance): how the project is run and decisions are made.

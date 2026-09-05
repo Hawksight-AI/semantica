@@ -102,9 +102,8 @@ The `Decision` dataclass that backs this node has the following fields — these
 from semantica.context import Decision
 from datetime import datetime
 
-# Constructing a Decision explicitly (alternative to record_decision)
 d = Decision(
-    decision_id    = "dec_001",           # UUID — auto-generated if omitted via record_decision
+    decision_id    = None,                # required arg — None/"" auto-generates a UUID
     category       = "threat_classification",
     scenario       = "Unattributed C2 cluster",
     reasoning      = "Infrastructure overlaps APT29 ASN",
@@ -117,8 +116,28 @@ d = Decision(
     valid_until    = "2025-09-30T23:59:59",   # ISO datetime
     metadata       = {"source_feed": "isac_partner_b"},
 )
-graph.add_decision(d)
 ```
+
+To actually store a decision built this way, pass its fields to `ContextGraph.add_decision()` as keyword arguments — this is the alternative to `record_decision()` for cases where you want `valid_from`/`valid_until` or extra metadata fields alongside the required ones:
+
+```python
+decision_id = graph.add_decision(
+    category       = "threat_classification",
+    scenario       = "Unattributed C2 cluster",
+    reasoning      = "Infrastructure overlaps APT29 ASN",
+    outcome        = "classified_as_apt29_cluster",
+    confidence     = 0.88,               # float 0.0–1.0
+    decision_maker = "cti_pipeline_v2",
+    # optional fields:
+    valid_from     = "2025-07-01T00:00:00",   # ISO datetime
+    valid_until    = "2025-09-30T23:59:59",   # ISO datetime
+    source_feed    = "isac_partner_b",        # extra kwargs are stored as metadata
+)
+```
+
+<Warning>
+Only pass keyword arguments to `add_decision()`, not a pre-built `Decision` object. `add_decision(Decision(...))` stores the node directly and skips the indexing step that `record_decision()` performs, so the decision becomes invisible to `find_precedents()`, `get_causal_chain()`, and `get_decision_insights()`, and `trace_decision_causality()` raises `ValueError` if you call it on one. The keyword-argument form above does not have this problem — it delegates to `record_decision()` internally. Note that, like `record_decision()`, it always generates its own `decision_id` (returned from the call); there is no way to force a specific ID.
+</Warning>
 
 ## Searching Precedents Before Deciding
 
@@ -137,7 +156,7 @@ for p in precedents:
     print("  Similarity: {:.3f}".format(p.metadata.get("similarity_score", 0)))
 ```
 
-Hybrid search blends two signals: semantic similarity over the `scenario` and `reasoning` text (weight 0.7), and structural graph proximity via Node2Vec embeddings (weight 0.3). The result is a ranked list of `Decision` objects — the most similar past decisions float to the top regardless of how differently they were phrased.
+Hybrid search blends two signals: lexical overlap between the query and each decision's `scenario`, `reasoning`, and `entities` text (weight 0.7 — word-level Jaccard similarity, with a character-bigram fallback for CJK-style queries), and structural similarity based on how many other nodes each decision connects to in the graph (weight 0.3, only computed when the graph was built with `advanced_analytics=True`). The result is a ranked list of `Decision` objects, filtered to those scoring at least `similarity_threshold` (default 0.5) — because the match is lexical rather than embedding-based, precedents phrased very differently from the query may not surface even if they describe a similar scenario.
 
 ## Building a Causal Chain
 
@@ -262,8 +281,13 @@ d = Decision(
 )
 
 if engine.check_compliance(d, "cti_confidence_gate"):
-    graph.add_decision(d)
-    engine.record_policy_application(d.decision_id, "cti_confidence_gate", "1.0")
+    # Pass fields as kwargs, not the Decision object itself — see the
+    # warning above. add_decision() generates its own decision_id.
+    decision_id = graph.add_decision(
+        category=d.category, scenario=d.scenario, reasoning=d.reasoning,
+        outcome=d.outcome, confidence=d.confidence, decision_maker=d.decision_maker,
+    )
+    engine.record_policy_application(decision_id, "cti_confidence_gate", "1.0")
     print("Decision recorded — policy compliant.")
 else:
     print("Decision blocked — confidence 0.62 below policy minimum 0.80.")
@@ -590,7 +614,7 @@ if engine.check_compliance(d, "lending_policy_v3"):
         decision_maker=d.decision_maker,
     )
     graph.add_causal_relationship(stress_id, loan_id, "INFLUENCED")
-    engine.record_policy_application(d.decision_id, "lending_policy_v3", "3.0")
+    engine.record_policy_application(loan_id, "lending_policy_v3", "3.0")
     print("Loan decision recorded — policy compliant.")
 
     # SR 11-7 explainability report

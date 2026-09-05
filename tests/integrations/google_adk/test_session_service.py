@@ -1,0 +1,576 @@
+import asyncio
+
+import pytest
+
+
+import sys
+import importlib
+from unittest.mock import patch
+
+@pytest.fixture(autouse=True)
+def require_adk(request):
+    """Skip tests if ADK is missing, unless testing missing dependency behavior."""
+    if "missing_adk" not in request.node.name:
+        pytest.importorskip("google.adk")
+
+
+from integrations.google_adk.session_service import (
+    ADK_AVAILABLE,
+    SemanticaSessionService,
+)
+
+
+def test_adk_available():
+    assert ADK_AVAILABLE is True
+
+
+def test_create_session():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    assert session is not None
+    assert session.app_name == "test-app"
+    assert session.user_id == "test-user"
+    assert session.id
+    assert session.state == {}
+    assert session.events == []
+
+
+def test_create_session_with_state():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    state = {
+        "topic": "knowledge graphs",
+        "step": 1,
+    }
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+            state=state,
+        )
+    )
+
+    assert session.state == state
+
+
+def test_get_session():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    created = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+            state={"foo": "bar"},
+        )
+    )
+
+    loaded = asyncio.run(
+        service.get_session(
+            app_name="test-app",
+            user_id="test-user",
+            session_id=created.id,
+        )
+    )
+
+    assert loaded is not None
+    assert loaded.id == created.id
+    assert loaded.app_name == "test-app"
+    assert loaded.user_id == "test-user"
+    assert loaded.state == {"foo": "bar"}
+
+
+def test_get_session_honors_num_recent_events_config():
+    from google.adk.events import Event
+    from google.adk.sessions.base_session_service import GetSessionConfig
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(app_name="test-app", user_id="test-user")
+    )
+
+    for i in range(5):
+        asyncio.run(
+            service.append_event(
+                session,
+                Event(author="agent", invocation_id=f"inv-{i}"),
+            )
+        )
+
+    full = asyncio.run(
+        service.get_session(
+            app_name="test-app", user_id="test-user", session_id=session.id
+        )
+    )
+    assert len(full.events) == 5
+
+    bounded = asyncio.run(
+        service.get_session(
+            app_name="test-app",
+            user_id="test-user",
+            session_id=session.id,
+            config=GetSessionConfig(num_recent_events=2),
+        )
+    )
+    assert [e.invocation_id for e in bounded.events] == ["inv-3", "inv-4"]
+
+
+def test_get_missing_session():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.get_session(
+            app_name="test-app",
+            user_id="test-user",
+            session_id="does-not-exist",
+        )
+    )
+
+    assert session is None
+
+
+def test_create_duplicate_session_fails():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+            session_id="fixed-session",
+        )
+    )
+
+    with pytest.raises(ValueError):
+        asyncio.run(
+            service.create_session(
+                app_name="test-app",
+                user_id="test-user",
+                session_id="fixed-session",
+            )
+        )
+
+
+def test_colon_in_identity_does_not_collide_with_a_different_tenant():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    # app_name="tenant:A", user_id="alice" and app_name="tenant",
+    # user_id="A:alice" would join to the identical raw string
+    # "adk-session:tenant:A:alice:s1" if the components were not escaped
+    # before joining. Both must be creatable as distinct sessions.
+    session1 = asyncio.run(
+        service.create_session(
+            app_name="tenant:A",
+            user_id="alice",
+            session_id="s1",
+        )
+    )
+    session2 = asyncio.run(
+        service.create_session(
+            app_name="tenant",
+            user_id="A:alice",
+            session_id="s1",
+        )
+    )
+
+    fetched1 = asyncio.run(
+        service.get_session(app_name="tenant:A", user_id="alice", session_id="s1")
+    )
+    fetched2 = asyncio.run(
+        service.get_session(app_name="tenant", user_id="A:alice", session_id="s1")
+    )
+
+    assert fetched1 is not None
+    assert fetched2 is not None
+    assert fetched1.app_name == "tenant:A"
+    assert fetched1.user_id == "alice"
+    assert fetched2.app_name == "tenant"
+    assert fetched2.user_id == "A:alice"
+    assert session1.id == session2.id == "s1"
+
+
+def test_append_event():
+    from google.adk.events import Event
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    event = Event(
+        author="test-agent",
+        invocation_id="invocation-1",
+    )
+
+    returned = asyncio.run(
+        service.append_event(
+            session,
+            event,
+        )
+    )
+
+    assert returned is event
+
+
+def test_append_event_does_not_persist_partial_events():
+    """ADK's own base append_event is a no-op for partial/streaming events;
+    a graph-backed session must not persist them either."""
+    from google.adk.events import Event
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    partial_event = Event(author="test-agent", invocation_id="chunk-1", partial=True)
+    final_event = Event(author="test-agent", invocation_id="chunk-1", partial=False)
+
+    asyncio.run(service.append_event(session, partial_event))
+    asyncio.run(service.append_event(session, final_event))
+
+    fetched = asyncio.run(
+        service.get_session(
+            app_name="test-app",
+            user_id="test-user",
+            session_id=session.id,
+        )
+    )
+
+    assert len(fetched.events) == 1
+
+
+def test_append_event_persists():
+    from google.adk.events import Event
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    event = Event(
+        author="test-agent",
+        invocation_id="invocation-1",
+    )
+
+    asyncio.run(
+        service.append_event(
+            session,
+            event,
+        )
+    )
+
+    loaded = asyncio.run(
+        service.get_session(
+            app_name="test-app",
+            user_id="test-user",
+            session_id=session.id,
+        )
+    )
+
+    assert loaded is not None
+    assert len(loaded.events) == 1
+    assert loaded.events[0].author == "test-agent"
+    assert loaded.events[0].invocation_id == "invocation-1"
+
+
+def test_list_sessions():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session1 = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    session2 = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    asyncio.run(
+        service.create_session(
+            app_name="other-app",
+            user_id="test-user",
+        )
+    )
+
+    response = asyncio.run(
+        service.list_sessions(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    session_ids = {
+        session.id
+        for session in response.sessions
+    }
+
+    assert session1.id in session_ids
+    assert session2.id in session_ids
+    assert len(response.sessions) == 2
+
+
+def test_list_sessions_returns_list_sessions_response():
+    from google.adk.sessions.base_session_service import ListSessionsResponse
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    asyncio.run(service.create_session(app_name="test-app", user_id="test-user"))
+
+    response = asyncio.run(
+        service.list_sessions(app_name="test-app", user_id="test-user")
+    )
+
+    assert isinstance(response, ListSessionsResponse)
+    assert isinstance(response.sessions, list)
+
+
+def test_list_sessions_without_user_id_returns_all_users():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session1 = asyncio.run(
+        service.create_session(app_name="test-app", user_id="user-1")
+    )
+    session2 = asyncio.run(
+        service.create_session(app_name="test-app", user_id="user-2")
+    )
+    asyncio.run(service.create_session(app_name="other-app", user_id="user-1"))
+
+    response = asyncio.run(service.list_sessions(app_name="test-app"))
+
+    session_ids = {session.id for session in response.sessions}
+    assert session1.id in session_ids
+    assert session2.id in session_ids
+    assert len(response.sessions) == 2
+
+
+def test_session_state_is_persisted_in_graph():
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+            state={
+                "research_topic": "AI agents",
+            },
+        )
+    )
+
+    nodes = graph.find_nodes()
+
+    session_nodes = [
+        node
+        for node in nodes
+        if isinstance(node, dict)
+        and node.get("type") == "ADKSession"
+    ]
+
+    assert len(session_nodes) == 1
+
+    node = session_nodes[0]
+
+    # ContextGraph.find_nodes() stores custom node attributes in metadata.
+    assert node["metadata"]["session_id"] == session.id
+    assert node["metadata"]["app_name"] == "test-app"
+    assert node["metadata"]["user_id"] == "test-user"
+    assert node["metadata"]["state"] == {
+        "research_topic": "AI agents",
+    }
+
+
+def test_session_events_are_stored_as_graph_nodes():
+    from google.adk.events import Event
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    event = Event(
+        author="researcher",
+        invocation_id="invocation-123",
+    )
+
+    asyncio.run(
+        service.append_event(
+            session,
+            event,
+        )
+    )
+
+    nodes = graph.find_nodes()
+
+    event_nodes = [
+        node
+        for node in nodes
+        if isinstance(node, dict)
+        and node.get("type") == "ADKEvent"
+    ]
+
+    assert len(event_nodes) == 1
+
+    event_node = event_nodes[0]
+
+    # ContextGraph.find_nodes() stores custom node attributes in metadata.
+    assert event_node["metadata"]["session_id"] == session.id
+    assert event_node["metadata"]["author"] == "researcher"
+    assert event_node["metadata"]["invocation_id"] == "invocation-123"
+
+
+def test_session_and_event_are_connected():
+    from google.adk.events import Event
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    session = asyncio.run(
+        service.create_session(
+            app_name="test-app",
+            user_id="test-user",
+        )
+    )
+
+    event = Event(
+        author="researcher",
+        invocation_id="invocation-456",
+    )
+
+    asyncio.run(
+        service.append_event(
+            session,
+            event,
+        )
+    )
+
+    edges = graph.find_edges()
+
+    has_event_edges = [
+        edge
+        for edge in edges
+        if isinstance(edge, dict)
+        and edge.get("type") == "HAS_EVENT"
+    ]
+
+    assert len(has_event_edges) == 1
+
+    edge = has_event_edges[0]
+
+    assert edge["source"] == f"adk-session:{session.app_name}:{session.user_id}:{session.id}"
+
+
+def test_slow_graph_scan_does_not_block_the_event_loop():
+    """A synchronous, CPU-bound graph scan inside a session-service call
+    must not block other coroutines on the same event loop."""
+    import time
+    from semantica.context import ContextGraph
+
+    graph = ContextGraph()
+    service = SemanticaSessionService(graph)
+
+    original_find_nodes = graph.find_nodes
+
+    def _slow_find_nodes(*args, **kwargs):
+        time.sleep(0.3)
+        return original_find_nodes(*args, **kwargs)
+
+    graph.find_nodes = _slow_find_nodes
+
+    async def _run():
+        heartbeats = 0
+
+        async def _heartbeat():
+            nonlocal heartbeats
+            while True:
+                await asyncio.sleep(0.01)
+                heartbeats += 1
+
+        heartbeat_task = asyncio.create_task(_heartbeat())
+        await service.list_sessions(app_name="test-app")
+        heartbeat_task.cancel()
+        return heartbeats
+
+    heartbeats = asyncio.run(_run())
+
+    # If list_sessions blocked the event loop for the 0.3s sleep, the
+    # heartbeat coroutine would never have gotten a chance to run.
+    assert heartbeats > 0
+
+
+def test_missing_adk_graceful_failure(monkeypatch):
+    import pytest
+    import integrations.google_adk.session_service as session_module
+
+    # Safely mock the flag to False just for this test
+    monkeypatch.setattr(session_module, "ADK_AVAILABLE", False)
+
+    assert session_module.ADK_AVAILABLE is False
+    with pytest.raises(ImportError, match="Google ADK is required"):
+        session_module.SemanticaSessionService()
