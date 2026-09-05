@@ -2366,6 +2366,160 @@ class TestDoctorEmbeddingHintsAndEnv:
         assert "hash fallback" in st["note"], "padded/caps env value must enable deep mode"
 
 
+class TestDoctorTableLayout:
+    """#1428 + Qodo review: doctor table must keep Check labels and Hint text
+    readable at a normal 80-column terminal.
+
+    These tests render the *human-readable* (non-JSON) doctor table into a
+    captured 80-column Rich console so they cover the actual column-width
+    arithmetic, not just the JSON data.
+
+    Two regressions are protected:
+
+    A. #1428 — Hint (and Note) columns must not collapse into unreadable
+       single-character fragments or be silently truncated with a layout '…'.
+       overflow="fold" on both columns ensures content wraps across lines while
+       remaining fully present.
+
+    B. Qodo — Long Check labels such as "Embeddings (sentence-transformers)"
+       must not be truncated/ellipsized.  Assigning ratio=1 to the Check column
+       (as the original PR did) caused Rich to squeeze it below its min_width
+       at narrow terminals, so the fix removes ratio from the fixed-size columns.
+    """
+
+    def _render_doctor_at_80(self, runner, monkeypatch):
+        """Return the plain-text (ANSI-stripped) doctor table rendered at 80 cols."""
+        import io
+        import re
+        from rich.console import Console
+
+        # Unset LLM-provider env vars so the warn rows (with hints) are always present.
+        for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+
+        buf = io.StringIO()
+        narrow_console = Console(
+            file=buf, width=80, highlight=False, force_terminal=True, no_color=True
+        )
+        monkeypatch.setattr(cli_module, "console", narrow_console)
+
+        result = runner.invoke(cli_module.main, ["doctor"])
+        assert result.exit_code == 0, f"doctor exited non-zero: {result.output!r}"
+
+        return re.sub(r"\x1b\[[0-9;]*m", "", buf.getvalue())
+
+    def _hint_column_parts(self, output: str) -> "list[str]":
+        """Extract non-blank Hint-column segments from each rendered line.
+
+        Locates the Hint column start from the header row and slices that
+        suffix from every subsequent line, so the test is insensitive to the
+        exact widths of the other columns.
+        """
+        lines = output.splitlines()
+        # Line 0 is blank (console.print() blank line before table).
+        hdr = next((l for l in lines if "Hint" in l and "Check" in l), None)
+        assert hdr is not None, "Could not find table header in doctor output"
+        hint_start = hdr.index("Hint")
+
+        parts = []
+        for line in lines:
+            if len(line) > hint_start:
+                seg = line[hint_start:].rstrip()
+                if seg and seg != "Hint" and not set(seg).issubset({"─", " "}):
+                    parts.append(seg)
+        return parts
+
+    # ── B: Qodo regression ────────────────────────────────────────────────────
+
+    def test_long_check_label_not_truncated_at_80_cols(self, runner, monkeypatch):
+        """'Embeddings (sentence-transformers)' must appear verbatim at 80 cols.
+
+        Before the fix, ratio=1 on the Check column let Rich squeeze it below
+        its min_width, turning the label into 'Embedd…' or similar.
+        """
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        assert "Embeddings (sentence-transformers)" in output, (
+            "Check label 'Embeddings (sentence-transformers)' was truncated in "
+            "the 80-column doctor table — the ratio= constraint on the Check "
+            "column must be removed so min_width=34 is always honoured."
+        )
+
+    def test_all_check_labels_not_truncated_at_80_cols(self, runner, monkeypatch):
+        """Every standard Check label must appear verbatim at 80 cols."""
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        for label in (
+            "Python",
+            "semantica",
+            "rich",
+            "Graph store",
+            "Vector store",
+            "Embeddings (sentence-transformers)",
+            "Embeddings (fastembed)",
+            "OpenAI",
+            "Anthropic",
+            "Groq",
+            "Config file",
+            "Log directory",
+        ):
+            assert label in output, (
+                f"Check label {label!r} was truncated or missing in the "
+                "80-column doctor table."
+            )
+
+    # ── A: #1428 regression ───────────────────────────────────────────────────
+
+    def test_hint_content_fully_present_at_80_cols(self, runner, monkeypatch):
+        """The LLM-provider hints must be fully present (folded, not ellipsized).
+
+        With overflow='fold' the full hint text wraps across lines; no
+        characters are discarded.  Joining the Hint-column segments (stripping
+        whitespace) must reconstruct each complete hint string.
+        """
+        import re
+
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        parts = self._hint_column_parts(output)
+        hint_joined = re.sub(r"\s+", "", "".join(parts))
+
+        # Each LLM-provider hint must be fully recoverable from the folded lines.
+        for expected in (
+            "exportOPENAI_API_KEY=\u2026",       # export OPENAI_API_KEY=…
+            "exportANTHROPIC_API_KEY=\u2026",    # export ANTHROPIC_API_KEY=…
+            "exportGROQ_API_KEY=\u2026",         # export GROQ_API_KEY=…
+        ):
+            assert expected in hint_joined, (
+                f"Hint content {expected!r} is missing from the 80-column "
+                "doctor table — overflow='fold' must be set on the Hint column "
+                "so no content is silently discarded."
+            )
+
+    def test_hint_column_has_no_single_char_fragments_at_80_cols(
+        self, runner, monkeypatch
+    ):
+        """No Hint-column line must be a single alphabetic character.
+
+        The original #1428 bug produced outputs like:
+            export
+            O
+            P
+            E
+            N
+            A
+            I
+            ...
+        because Rich allocated the Hint column only 1–2 characters of content
+        width.  overflow='fold' on a properly-wide column eliminates this.
+        """
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        parts = self._hint_column_parts(output)
+        single_char_alpha = [p for p in parts if len(p.strip()) == 1 and p.strip().isalpha()]
+        assert not single_char_alpha, (
+            f"Hint column contains single-character lines {single_char_alpha!r} "
+            "at 80 columns — the Hint column is too narrow; check min_width and "
+            "ratio settings."
+        )
+
+
 class TestEmbedGenerateOutput:
     """#994: `embed generate --output` must write files `embed index` can read."""
 
