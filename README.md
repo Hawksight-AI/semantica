@@ -14,7 +14,7 @@
 
 ### Graph-Native Infrastructure for Context and Accountable AI Systems
 
-#### *The Open Source Palantir for AI Agents*
+#### *Developer-first, knowledge infrastructure for AI, alternative to expensive enterprise platforms.*
 
 > Ingest your enterprise data, extract what matters, build a Context Graph and knowledge graph (KG), and run graph analytics and causal reasoning over all of it, with full decision provenance baked in. Explainable, traceable, and trustworthy by design.
 
@@ -1461,6 +1461,22 @@ semantica-explorer --graph my_graph.json
 
 For contributor / dev-server setup: **[explorer/README.md: Local Setup Guide](explorer/README.md)**
 
+The CLI exposes the loaded `ContextGraph`. To also browse and edit an existing
+`AgentMemory`, create the ASGI app programmatically with both live objects:
+
+```python
+from semantica.context import AgentMemory, ContextGraph
+from semantica.explorer.app import create_app
+from semantica.explorer.session import GraphSession
+
+graph = ContextGraph()
+memory = AgentMemory()
+app = create_app(session=GraphSession(graph), agent_memory=memory)
+```
+
+The Memories workspace is shown only when `agent_memory` is provided. Apply
+updates the supplied runtime object; it does not add disk persistence.
+
 ---
 
 ## What's New in v0.6.7
@@ -1469,7 +1485,7 @@ For contributor / dev-server setup: **[explorer/README.md: Local Setup Guide](ex
 
 - **First-class LangChain integration** (`semantica[langchain]`): a `BaseRetriever` and `VectorStore` over `HybridSearch`, plus graph/decision-query tools
 - **SAP OData ingestor** (`semantica[ingest-sap]`): OAuth2/Basic-auth, SSRF-guarded ingestion for Business Partners and Sales Orders, following the existing Snowflake/Databricks connector pattern
-- **`ContextGraph` gains deterministic, human-editable Markdown round-trip persistence** alongside the existing JSON API, and the Explorer graph inspector gains a read-only Markdown content viewer
+- **`ContextGraph` gains deterministic, human-editable Markdown round-trip persistence** alongside the existing JSON API, and Explorer can validate and apply Markdown edits to individual graph nodes and AgentMemory items supplied by the hosting application
 - **`reasoning` gains a structured Action layer**: rule-driven `Assert`/`Retract`/`Call`/`EmitEvent` actions with optional provenance, turning the reasoner into a production-rule system
 - **`run_shacl_validation` is now a public, documented API**, and a dozen ontology/RDF export correctness fixes land: OWL property/class export, SHACL target-namespace resolution, one canonical confidence datatype across all four RDF formats, reachable OWL-Time reification, JSON-LD default-graph and content-derived document identity, and full metadata passthrough on every RDF serializer
 - **Security**: Agno's `AgnoKnowledgeGraph.load_urls()` and OpenClaw's MCP tool now route outbound requests through the shared SSRF guard
@@ -1527,7 +1543,7 @@ pip install semantica[watch]                # Directory file watcher
 pip install semantica[explorer]             # Knowledge Explorer dashboard
 ```
 
-For production deployments, use Docker or Kubernetes rather than a local `pip install`. Set `SEMANTICA_SECRET_KEY`, configure a persistent LPG graph store (Neo4j / FalkorDB / Apache AGE / AWS Neptune) and/or RDF triple store (Blazegraph / Apache Jena / Eclipse RDF4J), and point the vector store at a hosted backend (Qdrant / Pinecone). See [ARCHITECTURE.md](ARCHITECTURE.md) for the full deployment topology.
+For production deployments, use Docker or Kubernetes rather than a local `pip install`. Set `SEMANTICA_API_KEY`, configure a persistent LPG graph store (Neo4j / FalkorDB / Apache AGE / AWS Neptune) and/or RDF triple store (Blazegraph / Apache Jena / Eclipse RDF4J), and point the vector store at a hosted backend (Qdrant / Pinecone). See [ARCHITECTURE.md](ARCHITECTURE.md) for the full deployment topology.
 
 ```bash
 # From source

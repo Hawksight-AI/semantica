@@ -7,8 +7,8 @@ from __future__ import annotations
 import logging
 import os
 
-from mcp.schemas import ADD_ENTITY, ADD_RELATIONSHIP, EMPTY, GET_ANALYTICS, SEARCH_GRAPH
-from mcp.session import get_graph, is_persistence_safe
+from ..schemas import ADD_ENTITY, ADD_RELATIONSHIP, EMPTY, GET_ANALYTICS, SEARCH_GRAPH
+from ..session import get_graph, is_persistence_safe
 
 log = logging.getLogger("semantica.mcp.tools.graph")
 

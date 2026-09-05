@@ -1797,7 +1797,7 @@ class TestMCP:
 
     def test_list_tools_with_mock_shows_known_tools(self, runner, monkeypatch):
         fake_tools = _fake_module(__all__=["extract_entities", "query_graph"])
-        monkeypatch.setitem(__import__("sys").modules, "mcp.tools", fake_tools)
+        monkeypatch.setitem(__import__("sys").modules, "semantica_mcp.mcp.tools", fake_tools)
         result = runner.invoke(cli_module.main, ["mcp", "list-tools"])
         _ok(result)
         assert "extract_entities" in result.output

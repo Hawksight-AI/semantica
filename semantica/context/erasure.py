@@ -41,7 +41,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from ..utils.logging import get_logger
-from .context_graph import _normalize_temporal_input
+from .context_graph import normalize_temporal_input
 
 __all__ = [
     "ErasureCoordinator",
@@ -602,7 +602,7 @@ def _normalize_timestamp(at: Optional[Union[str, int, float, datetime]]) -> str:
     default path gets one timestamp for both records instead of two ``now()``
     calls separated by the length of the cascade.
     """
-    return _normalize_temporal_input(
+    return normalize_temporal_input(
         at if at is not None else datetime.now(timezone.utc)
     )
 

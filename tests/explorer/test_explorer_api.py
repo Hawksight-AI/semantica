@@ -247,6 +247,18 @@ class TestGraphNodes:
         assert payload["id"] == "python"
         assert payload["properties"]["content"] == "Python programming language"
 
+    def test_get_node_by_query_preserves_path_ids(self):
+        graph = ContextGraph(advanced_analytics=False)
+        graph.add_node("folder/node", node_type="note", content="Nested ID")
+        with TestClient(create_app(session=GraphSession(graph))) as test_client:
+            response = test_client.get(
+                "/api/graph/node",
+                params={"node_id": "folder/node"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["id"] == "folder/node"
+
     def test_get_neighbors(self, client):
         response = client.get("/api/graph/node/python/neighbors?depth=2")
         assert response.status_code == 200
@@ -756,7 +768,7 @@ class TestImportExport:
         
         Canary: if either alias table drifts such that an alias becomes unsupported,
         this test will catch it."""
-        from mcp.tools.export import _FORMAT_ALIASES as MCP_ALIASES
+        from semantica_mcp.mcp.tools.export import _FORMAT_ALIASES as MCP_ALIASES
         from semantica.explorer.routes.export_import import _RDF_FORMATS
         
         # Verify all MCP aliases are present in Explorer

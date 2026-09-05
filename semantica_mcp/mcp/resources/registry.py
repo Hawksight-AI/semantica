@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 import logging
 
-from mcp import __version__
-from mcp.session import get_graph
+from .. import __version__
+from ..session import get_graph
 
 log = logging.getLogger("semantica.mcp.resources")
 
