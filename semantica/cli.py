@@ -1155,6 +1155,57 @@ def _get_graph_store(cli_ctx: CLIContext) -> Any:
     return GraphStore(backend=backend, **graph_db)
 
 
+def _load_rule_definitions(path: str) -> List[str]:
+    """Load reasoning rule definitions from a YAML or plain-text rules file.
+
+    YAML files may hold a list of rule strings or a mapping with a ``rules``
+    list; anything else (e.g. Datalog) is read as one rule per non-comment
+    line. The strings are handed to ``Reasoner.add_rule()`` untouched.
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        data = None
+    if isinstance(data, dict):
+        rules_value = data.get("rules")
+        if rules_value is None and "rules" not in data:
+            raise click.ClickException(
+                f"Rules file '{path}' is a YAML mapping but has no 'rules' key. "
+                "Expected either a YAML list or a mapping with a 'rules' list."
+            )
+        data = rules_value
+    if isinstance(data, list):
+        return [str(item) for item in data]
+    return [line.strip() for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")]
+
+
+def _graph_store_facts(cli_ctx: CLIContext) -> List[str]:
+    """Read the configured graph store into Reasoner fact strings.
+
+    Follows the same conventions ``Reasoner.add_fact()`` applies to
+    KG-style dicts: nodes become ``Label(name)`` and relationships become
+    ``TYPE(source, target)``, with internal node ids resolved to names.
+    """
+    gs = _get_graph_store(cli_ctx)
+    nodes = gs.get_nodes(limit=sys.maxsize)
+    relationships = gs.get_relationships(limit=sys.maxsize)
+    names: Dict[Any, Any] = {}
+    facts: List[str] = []
+    for node in nodes:
+        props = node.get("properties") or {}
+        name = props.get("name") or props.get("id") or node.get("id")
+        names[node.get("id")] = name
+        for label in node.get("labels") or ["Entity"]:
+            facts.append(f"{label}({name})")
+    for rel in relationships:
+        source = names.get(rel.get("start_node_id"), rel.get("start_node_id"))
+        target = names.get(rel.get("end_node_id"), rel.get("end_node_id"))
+        facts.append(f"{rel.get('type', 'RELATED_TO')}({source}, {target})")
+    return facts
+
+
 # ─── Output helpers ──────────────────────────────────────────────────────────
 
 
@@ -2212,17 +2263,43 @@ def reason_run(cli_ctx: CLIContext, engine: str, rules: Optional[str],
     cli_ctx = _require_ctx(cli_ctx)
 
     def _action() -> None:
+        # Only the forward-chaining production-rule engines run through
+        # Reasoner.infer_facts(); the other engines take different inputs
+        # (SPARQL/Datalog queries, observations, premises) and are not wired
+        # to this command yet. Fail honestly instead of silently
+        # forward-chaining under another engine's name.
+        if engine not in ("rete", "forward-chain"):
+            hint = (" Use 'semantica reason query' for SPARQL/Datalog queries."
+                    if engine in ("sparql", "datalog") else "")
+            raise click.ClickException(
+                f"Engine '{engine}' is not wired to 'reason run' yet; "
+                f"supported engines: rete, forward-chain.{hint}")
         try:
             from .reasoning import Reasoner
+            # Reasoner has no run() method (#1354); dispatch to its real
+            # API: facts from the configured graph store + rules from the
+            # optional --rules file into infer_facts().
             r = Reasoner(engine=engine, config=cli_ctx.config.to_dict())
+            rule_defs = _load_rule_definitions(rules) if rules else None
+            facts = _graph_store_facts(cli_ctx)
+
+            def _infer() -> Dict[str, Any]:
+                inferred = r.infer_facts(facts, rule_defs)
+                return {
+                    "engine": engine,
+                    "facts": len(facts),
+                    "inferred_count": len(inferred),
+                    "inferred_facts": inferred,
+                }
+
             if cli_ctx.quiet or cli_ctx.json_output:
-                result = r.run(rules_file=rules)
+                result = _infer()
             else:
                 with console.status(
                     f"[{_DIM}]Running {engine} reasoning engine…[/{_DIM}]",
                     spinner="dots",
                 ):
-                    result = r.run(rules_file=rules)
+                    result = _infer()
         except ImportError as exc:
             raise click.ClickException(f"Reasoning module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
@@ -3713,14 +3790,17 @@ def store_connect(cli_ctx: CLIContext, backend: str, uri: Optional[str], local_j
 
     def _action() -> None:
         try:
-            from .graph_store import get_graph_store_method
-            store_cls = get_graph_store_method(backend)
+            # get_graph_store_method(task, method_name) is the method
+            # registry, not a backend factory (#1354); build the store
+            # through GraphStore, which resolves the backend by name.
+            from .graph_store import GraphStore
             cfg = dict(cli_ctx.config.to_dict().get("graph_db", {}))
+            cfg.pop("backend", None)
             if uri:
                 cfg["uri"] = uri
-            # Attempt instantiation as the minimal connectivity probe; backends
-            # that require a live connection will fail here if unreachable.
-            store_instance = store_cls(config=cfg)
+            # Instantiation only wires the backend; the probe below performs
+            # the live connectivity check and raises if unreachable.
+            store_instance = GraphStore(backend=backend, **cfg)
             for probe in ("health_check", "ping", "connect"):
                 fn = getattr(store_instance, probe, None)
                 if callable(fn):
