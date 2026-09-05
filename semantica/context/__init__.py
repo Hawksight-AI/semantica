@@ -111,6 +111,7 @@ from .context_graph import ContextEdge, ContextGraph, ContextNode
 from .context_retriever import ContextRetriever, RetrievedContext, TemporalGraphRetriever
 from .decision_context import DecisionContext
 from .entity_linker import EntityLink, EntityLinker, LinkedEntity
+from .erasure import ErasureCoordinator, ErasureReceipt
 
 # Decision tracking imports
 from .decision_models import (
@@ -145,6 +146,9 @@ __all__ = [
     "ContextRetriever",
     "RetrievedContext",
     "TemporalGraphRetriever",
+    # Cross-store erasure
+    "ErasureCoordinator",
+    "ErasureReceipt",
     # Decision tracking models
     "Decision",
     "DecisionContextModel", 

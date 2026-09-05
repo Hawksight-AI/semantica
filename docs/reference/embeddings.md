@@ -619,7 +619,7 @@ providers = check_available_providers()
 # → {"sentence_transformers": True, "fastembed": True, "openai": False}
 ```
 
-- [Vector Store](vector_store) — Store and search the generated embeddings.
-- [Split](split) — Chunk text before embedding for better retrieval quality.
-- [KG Module](kg) — Distance Intelligence uses graph embeddings for semantic neighbourhoods.
+- [Vector Store](/reference/vector_store) — Store and search the generated embeddings.
+- [Split](/reference/split) — Chunk text before embedding for better retrieval quality.
+- [KG Module](/reference/kg) — Distance Intelligence uses graph embeddings for semantic neighbourhoods.
 - [Deduplication](deduplication) — Semantic deduplication uses embedding distance for entity resolution.

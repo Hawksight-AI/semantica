@@ -874,8 +874,8 @@ kg:
       engine: allen                   # allen | point_in_time_only
 ```
 
-- [Knowledge Graph Module](kg) — Core graph construction, `GraphBuilder`, analytics.
-- [Context Module](context) — Decision temporal windows and `find_active_nodes()`.
+- [Knowledge Graph Module](/reference/kg) — Core graph construction, `GraphBuilder`, analytics.
+- [Context Module](/reference/context) — Decision temporal windows and `find_active_nodes()`.
 - [Provenance](provenance) — W3C PROV-O lineage stamped alongside temporal metadata.
 - [Export](export) — OWL, Turtle, JSON-LD, and Parquet export with temporal annotations.
 

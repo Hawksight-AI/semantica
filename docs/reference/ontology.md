@@ -22,6 +22,7 @@ icon: "sitemap"
 | `LLMOntologyGenerator` | LLM-powered ontology generation for complex domains |
 | `SHACLGenerator` | Generate SHACL shapes from an ontology or KG schema |
 | `OntologyValidator` | Validate any graph against SHACL shapes: returns `SHACLValidationReport` |
+| `OntologyQualityGate` | Run deterministic ontology/KG quality checks for CI |
 | `OWLGenerator` | Serialize ontologies to Turtle, RDF/XML, JSON-LD |
 | `NamespaceManager` | IRI generation, prefix management, and namespace binding |
 | `OntologyEvaluator` | Coverage, completeness, and granularity quality metrics |
@@ -81,8 +82,37 @@ engine.export_owl(ontology, "ontology.ttl", format="turtle")
 | :------ | :----------- |
 | `from_data(data)` | Run the 5-stage pipeline on entity/relationship data |
 | `validate_graph(kg, ontology=...)` | Check a knowledge graph against generated SHACL shapes |
+| `quality_check(ontology, graph_data=...)` | Return a deterministic quality report and CI-friendly pass/fail result |
 | `export_owl(ontology, path, format)` | Serialize to `"turtle"`, `"xml"`, or `"json-ld"` |
 | `evaluate(ontology, kg)` | Compute coverage, completeness, and granularity metrics |
+
+### Ontology Quality Gate
+
+Use the quality gate before export or deployment to catch structural issues
+without adding a runtime dependency:
+
+```python
+from semantica.ontology import ontology_quality_check
+
+report = ontology_quality_check(
+    ontology,
+    graph_data=kg,
+    thresholds={"min_coverage": 0.8},
+)
+
+if not report.passed:
+    for issue in report.issues:
+        print(issue.code, issue.message)
+```
+
+The report checks class/property coverage, orphan schema elements, domain and
+range references, and unresolved KG relationship endpoints. It includes
+machine-readable issue codes, severity, counts, metrics, and threshold
+failures. The first version reports findings only; it does not auto-fix data.
+
+### Thresholds
+
+`min_coverage` (default `0.0`) sets the minimum required `coverage` score, the average of class and property coverage from `0.0` to `1.0`; the gate fails below it. `max_errors` (default `0.0`) caps how many `error`/`critical` issues are allowed before the gate fails. `max_warnings` (default `None`) caps `warning` issues the same way, and `None` means warnings alone never fail the gate. `fail_on_warnings` is a separate parameter, not a `thresholds` key, passed to `OntologyQualityGate(...)` or `.check(...)` directly; when `True`, a single warning fails the gate regardless of `max_warnings`.
 
 ## OntologyGenerator (5-Stage Pipeline)
 
@@ -287,6 +317,6 @@ ontology_data = ingest_ontology("schema.jsonld")  # JSON-LD
 </Note>
 
 - [Reasoning](reasoning) — Apply inference rules over ontology axioms.
-- [Knowledge Graph](kg) — The graph being modeled by the ontology.
+- [Knowledge Graph](/reference/kg) — The graph being modeled by the ontology.
 - [Export](export) — Export ontologies as RDF, OWL, or JSON-LD.
-- [Conflicts](conflicts) — Detect ontology constraint violations.
+- [Conflicts](/reference/conflicts) — Detect ontology constraint violations.

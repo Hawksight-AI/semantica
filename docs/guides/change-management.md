@@ -496,8 +496,8 @@ print("Model v1.1 verified and approved for production.")
 
 ## Related Guides
 
-- [Context Graphs](context-graphs) — `ContextGraph.to_dict()` feeds `create_snapshot()`
+- [Context Graphs](/guides/context-graphs) — `ContextGraph.to_dict()` feeds `create_snapshot()`
 - [Ontology Management](ontology) — pair ontology versioning with graph versioning for a complete schema + data audit trail
-- [SHACL Validation](shacl-validation) — validate graph data at each version gate before snapshotting
+- [SHACL Validation](/guides/shacl-validation) — validate graph data at each version gate before snapshotting
 - [Provenance](provenance) — combine change management with W3C PROV-O lineage for a full audit trail
 - [Visualization](visualization) — `TemporalVisualizer.visualize_snapshot_comparison()` and `visualize_metrics_evolution()` render version diffs as interactive charts

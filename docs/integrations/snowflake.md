@@ -172,7 +172,7 @@ if not connector.test_connection():
 ## See Also
 
 - [Ingest Module](../reference/ingest) — Full SnowflakeIngestor and all other ingestors.
-- [Databricks Integration](databricks) — Companion connector for a Snowflake + Databricks hybrid estate.
+- [Databricks Integration](/integrations/databricks) — Companion connector for a Snowflake + Databricks hybrid estate.
 - [Pipeline](../reference/pipeline) — Use Snowflake ingestion as a pipeline step.
 - [Installation](../installation) — All optional dependency extras.
 - [Knowledge Graph](../reference/kg) — Build a KG from ingested Snowflake data.
