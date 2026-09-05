@@ -425,6 +425,95 @@ class TestReceipt(unittest.TestCase):
             receipt.stores["vectors"]["backend_result"]["status"], "completed"
         )
 
+    def test_to_dict_store_results_are_distinct_objects(self):
+        """The per-store dict and any nested dict in the payload must not be
+        the same objects as the ones in the live receipt.
+
+        A mutation test proves *isolation* only when the copy actually
+        happened; identity checks prove *that* a copy was made.
+        """
+        receipt = ErasureReceipt(
+            entity_id="customer-4471",
+            stores={
+                "vectors": {
+                    "status": STATUS_ERASED,
+                    "backend": "qdrant",
+                    # Realistic Qdrant-shaped backend_result with rendered enum
+                    "backend_result": {"status": "UpdateStatus.COMPLETED", "points": 1},
+                    "vector_ids": 2,
+                    "via": "delete_vectors",
+                },
+                "graph": {"status": STATUS_ERASED, "nodes": 1, "edges": 3},
+            },
+        )
+
+        payload = receipt.to_dict()
+
+        # The stores container itself is a new dict.
+        self.assertIsNot(payload["stores"], receipt.stores)
+
+        # Each per-store result dict is a new object.
+        self.assertIsNot(
+            payload["stores"]["vectors"], receipt.stores["vectors"]
+        )
+        self.assertIsNot(
+            payload["stores"]["graph"], receipt.stores["graph"]
+        )
+
+        # The nested backend_result dict is also a new object.
+        self.assertIsNot(
+            payload["stores"]["vectors"]["backend_result"],
+            receipt.stores["vectors"]["backend_result"],
+        )
+
+        # Values are equal (correct copy), not just distinct references.
+        self.assertEqual(
+            payload["stores"]["vectors"]["backend_result"],
+            {"status": "UpdateStatus.COMPLETED", "points": 1},
+        )
+        self.assertEqual(payload["stores"]["graph"], {"status": STATUS_ERASED, "nodes": 1, "edges": 3})
+
+    def test_to_dict_isolation_across_multiple_stores(self):
+        """Mutations to any store in the payload must not affect any other
+        store in either the payload or the live receipt.
+
+        This catches a hypothetical implementation that shares a single deep
+        copy across all stores rather than copying each independently.
+        """
+        receipt = ErasureReceipt(
+            entity_id="e1",
+            stores={
+                "vectors": {
+                    "status": STATUS_UNSUPPORTED,
+                    "backend": "faiss",
+                    "vector_ids": 1,
+                    "detail": "backend exposes no delete()",
+                },
+                "memory": {"status": STATUS_ERASED, "items": 4},
+                "graph": {
+                    "status": STATUS_ERASED,
+                    "nodes": 1,
+                    "edges": 2,
+                },
+            },
+        )
+
+        payload = receipt.to_dict()
+
+        # Mutate every store in the payload.
+        payload["stores"]["vectors"]["status"] = "tampered"
+        payload["stores"]["memory"]["items"] = 0
+        payload["stores"]["graph"]["nodes"] = 99
+
+        # None of the live receipt's stores are affected.
+        self.assertEqual(receipt.stores["vectors"]["status"], STATUS_UNSUPPORTED)
+        self.assertEqual(receipt.stores["memory"]["items"], 4)
+        self.assertEqual(receipt.stores["graph"]["nodes"], 1)
+
+        # The other stores in the payload are also unaffected (no aliasing).
+        self.assertEqual(payload["stores"]["memory"]["items"], 0)   # our mutation
+        self.assertEqual(receipt.stores["memory"]["items"], 4)       # unchanged
+
     def test_receipt_and_tombstone_agree_on_when_the_erasure_happened(self):
         graph = _graph()
         receipt = ErasureCoordinator(graph=graph).erase_entity(
