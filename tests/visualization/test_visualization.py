@@ -96,5 +96,19 @@ class TestVisualization(unittest.TestCase):
             ],
         )
 
+    def test_class_property_matrix_marks_every_domain_of_a_multi_domain_property(self):
+        viz = OntologyVisualizer()
+        ontology = {
+            "classes": [{"name": "Person"}, {"name": "Place"}],
+            "properties": [
+                {"name": "name", "domain": ["Person", "Place"]},
+                {"name": "label", "domain": "Person"},
+            ],
+        }
+
+        fig = viz.visualize_class_property_matrix(ontology)
+
+        self.assertEqual([list(row) for row in fig.data[0].z], [[1, 1], [1, 0]])
+
 if __name__ == '__main__':
     unittest.main()
