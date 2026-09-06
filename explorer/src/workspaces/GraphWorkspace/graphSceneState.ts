@@ -19,6 +19,7 @@ import {
   withAlpha,
   zoomTierAtLeast,
 } from "./graphTheme";
+import { getSemanticNodeColor } from "./graphColorLegend";
 import { classifyEntityShape } from "./graphEntityShape";
 import { computeGraphAnalyticsBase } from "./graphAnalytics";
 import type {
@@ -1013,9 +1014,8 @@ function resolveNodeColor(
   state: GraphNodeVisualState,
   attrs: NodeAttributes,
   cameraRatio: number,
-  fallbackColor?: string,
 ) {
-  const semanticColor = String(attrs.baseColor || fallbackColor || theme.palette.semantic[0]);
+  const semanticColor = getSemanticNodeColor(attrs, theme);
   const isCommunityGroup = Boolean(attrs.isCommunityGroup);
   const entityShapeConfig = theme.nodes.entityShapes[resolveEntityShape(attrs)];
   const overviewTint = state === "neighbor"
@@ -1062,9 +1062,8 @@ function resolveNodeShellColor(
   state: GraphNodeVisualState,
   attrs: NodeAttributes,
   cameraRatio: number,
-  fallbackColor?: string,
 ) {
-  const semanticColor = String(attrs.baseColor || fallbackColor || theme.palette.semantic[0]);
+  const semanticColor = getSemanticNodeColor(attrs, theme);
   const isCommunityGroup = Boolean(attrs.isCommunityGroup);
   const entityShapeConfig = theme.nodes.entityShapes[resolveEntityShape(attrs)];
   const presenceBoost = getOverviewPresenceBoost(cameraRatio);
@@ -1633,8 +1632,8 @@ export function resolveNodeElementStyle(
   const isCommunityGroup = Boolean(attrs.isCommunityGroup);
   const baseSize = Number(attrs.baseSize || attrs.size || 4);
   const labelPriority = Number(attrs.labelPriority ?? 0);
-  const color = resolveNodeColor(theme, zoomTier, state, attrs, cameraRatio, attrs.color);
-  const shellColor = resolveNodeShellColor(theme, zoomTier, state, attrs, cameraRatio, attrs.color);
+  const color = resolveNodeColor(theme, zoomTier, state, attrs, cameraRatio);
+  const shellColor = resolveNodeShellColor(theme, zoomTier, state, attrs, cameraRatio);
   const sizeMultiplier = (state === "default" ? tierConfig.nodeScale : stateConfig.sizeMultiplier)
     * variantConfig.sizeMultiplier
     * (isCommunityGroup ? theme.grouped.style.nodeSizeScale : 1);
