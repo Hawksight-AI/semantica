@@ -1992,6 +1992,9 @@ async def get_entity_detail(
 
     all_nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=999_999)
     instance_count = sum(1 for n in all_nodes if n.get("type") == entity_uri)
+    # Same set as _known_ontology_uris(), derived from the all_nodes scan this
+    # endpoint already performs rather than calling it — that helper re-walks the
+    # graph once per ontology type, so consolidating onto it would add a scan.
     known_ontology_uris = set(_get_registry(request)) | {
         str(n.get("id", ""))
         for n in all_nodes

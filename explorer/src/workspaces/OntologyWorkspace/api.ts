@@ -32,8 +32,7 @@ export type OntologyGraphResponse = {
 };
 
 export type OntologyEntityOwner = {
-  owning_ontology?: string | null;
-  source_ontology?: string;
+  owning_ontology: string | null;
 };
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -65,20 +64,15 @@ export async function loadOntologyGraph(uri: string, signal?: AbortSignal): Prom
 }
 
 // Three-state verdict: a string names the owner, null is the backend's
-// authoritative "no known ontology owns this entity", and undefined means no
-// verdict was available (request failed or the backend predates the field).
+// authoritative "no known ontology owns this entity", and undefined means the
+// request failed so there is no verdict to act on.
 export type OntologyOwnerVerdict = string | null | undefined;
 
 export async function loadOntologyEntityOwner(uri: string): Promise<OntologyOwnerVerdict> {
   const response = await fetch(`/api/ontology/entity/${encodeURIComponent(uri)}`);
   if (!response.ok) return undefined;
   const owner = await response.json() as OntologyEntityOwner;
-  if ("owning_ontology" in owner) {
-    return owner.owning_ontology ?? null;
-  }
-  // Legacy response without the resolved verdict: fall back to the raw
-  // scheme_uri property, which only covers explicitly annotated entities.
-  return owner.source_ontology;
+  return owner.owning_ontology ?? null;
 }
 
 export async function loadAlignments(uri?: string): Promise<OntologyAlignment[]> {
