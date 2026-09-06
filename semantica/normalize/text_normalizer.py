@@ -187,7 +187,7 @@ class TextNormalizer:
                 normalized = normalized.title()
 
             self.progress_tracker.stop_tracking(tracking_id, status="completed")
-            return normalized.strip()
+            return normalized
 
         except Exception as e:
             self.progress_tracker.stop_tracking(
@@ -492,16 +492,18 @@ class WhitespaceNormalizer:
         """
         Normalize whitespace in text.
 
-        This method normalizes whitespace by replacing tabs with spaces,
-        normalizing line breaks, and collapsing multiple spaces.  Content
-        inside fenced code blocks (delimited by ``` or ~~~) is preserved
-        exactly as-is so that indentation is not lost.
+        This method normalizes whitespace by collapsing multiple spaces and
+        excess blank lines in prose.  Content inside fenced code blocks
+        (delimited by ``` or ~~~) is preserved exactly as-is, including tabs,
+        so that indentation is not lost.  Line endings are normalized to LF
+        internally for processing and restored to their original form at the
+        end, so ``\\r\\n`` input is never mangled into ``\\r\\r\\n\\n``.
 
         Args:
             text: Input text with potentially irregular whitespace
             line_break_type: Line break type (default: "unix"):
-                - "unix": Unix-style line breaks (\n)
-                - "windows": Windows-style line breaks (\r\n)
+                - "unix": Unix-style line breaks (\\n)
+                - "windows": Windows-style line breaks (\\r\\n)
             **options: Additional normalization options (unused)
 
         Returns:
@@ -510,33 +512,40 @@ class WhitespaceNormalizer:
         if not text:
             return ""
 
-        # Normalize line breaks first (applies to all text including code blocks)
-        text = self.handle_line_breaks(text, line_break_type)
+        # Detect original line-endings so we can restore them at the end,
+        # avoiding regex mangling of \\r\\n into \\r\\r\\n\\n.
+        original_ending = "\n"
+        if "\r\n" in text:
+            original_ending = "\r\n"
+        elif "\r" in text and "\r\n" not in text:
+            original_ending = "\r"
 
-        # Replace tabs with spaces globally (safe for code blocks – converts
-        # tab indentation to space indentation while preserving structure)
-        text = text.replace("\t", " ")
+        # Normalise to LF internally for all processing.
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-        # Split into code / non-code segments
+        # Split into code / non-code segments BEFORE touching tabs.
         segments = self._split_code_blocks(text)
 
         result_parts: List[str] = []
-        for is_code, segment in segments:
+        for idx, (is_code, segment) in enumerate(segments):
             if is_code:
-                # Preserve code block content as-is (only tabs were replaced)
+                # Preserve code block content exactly (tabs included).
                 result_parts.append(segment)
             else:
-                # Collapse multiple spaces (applies to all whitespace in prose)
+                # Replace tabs with a single space (prose only).
+                segment = segment.replace("\t", " ")
+                # Collapse multiple spaces.
                 segment = re.sub(r" +", " ", segment)
-                # Normalize multiple blank lines
-                segment = re.sub(r"\n\s*\n", "\n\n", segment)
+                if idx > 0:
+                    # A prose chunk that follows a code block starts at a line
+                    # boundary; the code block already contributes the first
+                    # newline, so collapse any leading blank lines here to one.
+                    segment = re.sub(r"^\n+", "\n", segment)
+                # Collapse excess blank lines within this prose chunk only.
+                segment = re.sub(r"\n{3,}", "\n\n", segment)
                 result_parts.append(segment)
 
         result = "".join(result_parts)
-
-        # Collapse excess blank lines that span segment boundaries (e.g. a
-        # trailing \n from a code block followed by blank lines in prose).
-        result = re.sub(r"\n{3,}", "\n\n", result)
 
         # Only strip leading whitespace if the first segment is prose (non-code),
         # and only strip trailing whitespace if the last segment is prose (non-code).
@@ -546,6 +555,10 @@ class WhitespaceNormalizer:
                 result = result.lstrip()
             if not segments[-1][0]:  # last segment is prose
                 result = result.rstrip()
+
+        # Restore original line endings.
+        if original_ending != "\n":
+            result = result.replace("\n", original_ending)
 
         return result
 

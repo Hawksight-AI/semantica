@@ -443,18 +443,24 @@ class TestFencedCodeBlockPreservation(unittest.TestCase):
         result = self.normalizer.normalize_whitespace(text)
         self.assertIn("    x = 1", result)
 
-    def test_tab_to_space_conversion_in_code(self):
-        """Tabs inside code blocks are converted to spaces but not collapsed."""
+    def test_tab_to_space_conversion_only_in_prose(self):
+        """Tabs are replaced with spaces in prose but preserved in code blocks."""
         text = (
+            "Before\tcode\n"
             "```\n"
             "\tdef foo():\n"
             "\t\tpass\n"
-            "```"
+            "```\n"
+            "\tAfter code"
         )
         result = self.normalizer.normalize_whitespace(text)
-        # Tabs converted to single space each
-        self.assertIn(" def foo():", result)
-        self.assertIn("  pass", result)
+        # Prose tabs converted to single spaces
+        self.assertIn("Before code", result)
+        self.assertIn("After code", result)
+        # Code-block tabs preserved exactly
+        self.assertIn("\tdef foo():", result)
+        self.assertIn("\t\tpass", result)
+        self.assertNotIn(" def foo():", result)
 
     def test_empty_code_block(self):
         """Empty code blocks are handled."""
@@ -823,6 +829,99 @@ class TestFencedCodeBlockPreservation(unittest.TestCase):
         self.assertIn("line1", code_text)
         self.assertIn("line2", code_text)
 
+    def test_code_block_two_blank_lines_between_functions_preserved(self):
+        """Two blank lines between functions in a code block are preserved (PEP 8)."""
+        text = (
+            "text\n"
+            "```python\n"
+            "def first():\n"
+            "    pass\n"
+            "\n"
+            "\n"
+            "def second():\n"
+            "    pass\n"
+            "```\n"
+            "more text"
+        )
+        result = self.normalizer.normalize_whitespace(text)
+        # Both blank lines remain inside the code block.
+        self.assertIn("    pass\n\n\ndef second():", result)
+        self.assertNotEqual(result.count("\n\n\n"), 0)
+
+    def test_code_block_tabs_preserved(self):
+        """Tab characters inside code blocks (e.g. Makefiles) are preserved."""
+        text = (
+            "intro\n"
+            "```makefile\n"
+            "\tbuild:\n"
+            "\t\t$(CC) $(CFLAGS) -o app main.c\n"
+            "```\n"
+            "outro"
+        )
+        result = self.normalizer.normalize_whitespace(text)
+        self.assertIn("\tbuild:", result)
+        self.assertIn("\t\t$(CC) $(CFLAGS) -o app main.c", result)
+        self.assertNotIn(" $(CC)", result)
+
+    def test_tab_indented_python_code_block_preserved(self):
+        """Tab-indented Python code inside a code block keeps its tabs."""
+        text = (
+            "Before\n"
+            "```python\n"
+            "if True:\n"
+            "\tresult = 1\n"
+            "\tif result:\n"
+            "\t\tpass\n"
+            "```\n"
+            "After"
+        )
+        result = self.normalizer.normalize_whitespace(text)
+        self.assertIn("\tresult = 1", result)
+        self.assertIn("\tif result:", result)
+        self.assertIn("\t\tpass", result)
+
+    def test_document_starting_with_indented_code_block(self):
+        """A document starting with an indented code block keeps leading indentation."""
+        text = "    ```python\n    def foo():\n        return 1\n    ```"
+        result = self.normalizer.normalize_whitespace(text)
+        self.assertTrue(result.startswith("    ```python"), repr(result))
+        self.assertIn("    def foo():", result)
+        self.assertIn("        return 1", result)
+
+    def test_crlf_line_endings_not_mangled(self):
+        """CRLF input is not mangled into \\r\\r\\n\\n during processing."""
+        text = (
+            "Before\r\n"
+            "\r\n"
+            "```\r\n"
+            "    code\r\n"
+            "```\r\n"
+            "After"
+        )
+        result = self.normalizer.normalize_whitespace(text)
+        self.assertNotIn("\r\r\n\n", result)
+        self.assertNotIn("\r\r", result)
+        self.assertIn("Before\r\n\r\n```", result)
+        self.assertIn("    code", result)
+
+    def test_crlf_two_blank_lines_in_code_block_preserved(self):
+        """Two blank lines inside a CRLF code block are preserved after restoration."""
+        text = (
+            "intro\r\n"
+            "```python\r\n"
+            "def first():\r\n"
+            "    pass\r\n"
+            "\r\n"
+            "\r\n"
+            "def second():\r\n"
+            "    pass\r\n"
+            "```\r\n"
+            "outro"
+        )
+        result = self.normalizer.normalize_whitespace(text)
+        self.assertIn("pass\r\n\r\n\r\ndef second", result)
+        self.assertNotIn("\r\r\n\n", result)
+
 
 class TestTextNormalizerFencedCodeIntegration(unittest.TestCase):
     """
@@ -894,6 +993,68 @@ class TestTextNormalizerFencedCodeIntegration(unittest.TestCase):
         self.assertIn('"quoted" text', result)
         self.assertIn("    code    here", result)
         self.assertIn('"more"', result)
+
+    def test_normalize_text_document_starting_with_indented_code_block(self):
+        """A document starting with an indented code block retains leading indentation."""
+        text = (
+            "    ```python\n"
+            "    def foo():\n"
+            "        return 1\n"
+            "    ```"
+        )
+        result = self.normalizer.normalize_text(text)
+        self.assertTrue(result.startswith("    ```python"), repr(result))
+        self.assertIn("    def foo():", result)
+        self.assertIn("        return 1", result)
+
+    def test_normalize_text_preserves_two_blank_lines_in_code_block(self):
+        """normalize_text does not collapse blank lines inside fenced code blocks."""
+        text = (
+            "Intro\n"
+            "```python\n"
+            "def first():\n"
+            "    pass\n"
+            "\n"
+            "\n"
+            "def second():\n"
+            "    pass\n"
+            "```"
+        )
+        result = self.normalizer.normalize_text(text)
+        self.assertIn("    pass\n\n\ndef second():", result)
+
+    def test_normalize_text_preserves_tabs_in_code_block(self):
+        """normalize_text keeps tabs inside fenced code blocks intact."""
+        text = (
+            "Intro\n"
+            "```makefile\n"
+            "\tbuild:\n"
+            "\t\tcommand\n"
+            "```"
+        )
+        result = self.normalizer.normalize_text(text)
+        self.assertIn("\tbuild:", result)
+        self.assertIn("\t\tcommand", result)
+
+    def test_normalize_text_crlf_not_mangled(self):
+        """Full pipeline does not mangle \\r\\n into \\r\\r\\n\\n."""
+        text = (
+            "Intro\r\n"
+            "\r\n"
+            "```python\r\n"
+            "def first():\r\n"
+            "    pass\r\n"
+            "\r\n"
+            "\r\n"
+            "def second():\r\n"
+            "    pass\r\n"
+            "```\r\n"
+            "Outro"
+        )
+        result = self.normalizer.normalize_text(text)
+        self.assertNotIn("\r\r\n\n", result)
+        self.assertIn("pass\r\n\r\n\r\ndef second", result)
+        self.assertIn("Intro\r\n\r\n```python", result)
 
 
 if __name__ == "__main__":
