@@ -72,6 +72,7 @@ Production Use Cases:
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
+import json
 import uuid
 
 from ..embeddings import EmbeddingGenerator
@@ -515,7 +516,7 @@ class DecisionRecorder:
             "decision_maker": decision.decision_maker,
             "reasoning_embedding": decision.reasoning_embedding,
             "node2vec_embedding": decision.node2vec_embedding,
-            "metadata": decision.metadata
+            "metadata": json.dumps(decision.metadata or {})
         })
     
     def _store_exception_node(self, exception: PolicyException) -> None:
