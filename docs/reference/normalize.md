@@ -440,7 +440,19 @@ utf8_text = handle_encoding(raw_bytes, operation="convert")
     ```
 
     <Note>
-      `detect()` requires at least 10 characters for reliable detection. On shorter text it returns the `default_language` (default: `"en"`).
+      `detect()` skips detection on text shorter than `min_text_length` (default: 10 stripped characters) and returns the `default_language` instead. That fallback is `"unknown"` — the detector reports that it did not look rather than guessing a language. Both are configurable, per instance or per call:
+
+      ```python
+      # Lower the threshold for CJK, where 10 characters is far more than needed
+      detector = LanguageDetector(min_text_length=4)
+      detector.detect("短いテキスト")            # → "ja"
+
+      # Per-call override
+      LanguageDetector().detect("短いテキスト", min_text_length=4)   # → "ja"
+
+      # Opt back into assuming a language on text too short to examine
+      LanguageDetector(default_language="en").detect("Hi")          # → "en"
+      ```
     </Note>
 
     <Warning>
