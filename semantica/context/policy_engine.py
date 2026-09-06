@@ -72,6 +72,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
 from ..graph_store import GraphStore
+from ..utils.exceptions import ProcessingError
 from ..utils.logging import get_logger
 from .decision_models import Decision, Policy, PolicyException
 
@@ -384,7 +385,17 @@ class PolicyEngine:
             policy_id: Policy ID to check against
             
         Returns:
-            True if compliant, False otherwise
+            True if the decision complies with the policy, False otherwise.
+
+        Raises:
+            ValueError: If the policy cannot be found.
+            ProcessingError: If the compliance check itself fails to execute
+                (e.g. malformed rules or metadata). This is deliberately
+                distinct from returning ``False``: a returned ``False`` means
+                "evaluated and found non-compliant", whereas a raised error
+                means "could not determine compliance". Conflating the two
+                would let evaluation bugs masquerade as policy violations,
+                which is unacceptable in an audit/compliance context.
         """
         try:
             policy = self.get_policy(policy_id)
@@ -395,7 +406,9 @@ class PolicyEngine:
             raise
         except Exception as e:
             self.logger.exception("Failed to check compliance")
-            return False
+            raise ProcessingError(
+                f"Compliance check failed for policy '{policy_id}': {e}"
+            ) from e
     
     def record_policy_application(
         self,
@@ -1004,24 +1017,29 @@ class PolicyEngine:
         decision_data: Dict[str, Any],
         rules: Dict[str, Any]
     ) -> bool:
-        """Check compliance with given rules."""
-        try:
-            if "min_confidence" in rules:
-                if decision_data.get("confidence", 0) < rules["min_confidence"]:
-                    return False
-            
-            if "allowed_outcomes" in rules:
-                if decision_data.get("outcome", "") not in rules["allowed_outcomes"]:
-                    return False
-            
-            if "required_categories" in rules:
-                if decision_data.get("category", "") not in rules["required_categories"]:
-                    return False
-            
-            return True
-            
-        except Exception:
-            return False
+        """Check compliance with given rules.
+
+        Note:
+            Evaluation failures (e.g. malformed rule values such as a
+            non-numeric ``min_confidence``) are intentionally *not* caught
+            here. They propagate to :meth:`check_compliance`, which converts
+            them into a :class:`ProcessingError`, so that an execution failure
+            is never conflated with a legitimate non-compliant (``False``)
+            result.
+        """
+        if "min_confidence" in rules:
+            if decision_data.get("confidence", 0) < rules["min_confidence"]:
+                return False
+
+        if "allowed_outcomes" in rules:
+            if decision_data.get("outcome", "") not in rules["allowed_outcomes"]:
+                return False
+
+        if "required_categories" in rules:
+            if decision_data.get("category", "") not in rules["required_categories"]:
+                return False
+
+        return True
     
     def _dict_to_policy(self, data: Dict[str, Any]) -> Policy:
         """Convert dictionary to Policy object."""
