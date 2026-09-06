@@ -6,6 +6,7 @@ import {
   compactNodeType,
   inferOntologyUri,
   isEditableEntityType,
+  resolveEditorOntology,
   ONTOLOGY_MINIMAP_THEME,
 } from "../src/workspaces/OntologyWorkspace/ontologyEditorModel";
 
@@ -63,4 +64,21 @@ test("node types classify identically in compact and full IRI form", () => {
 test("compactNodeType leaves unknown namespaces untouched", () => {
   assert.equal(compactNodeType("https://example.org/custom#Thing"), "https://example.org/custom#Thing");
   assert.equal(compactNodeType("owl:Class"), "owl:Class");
+});
+
+test("an authoritative no-owner verdict suppresses the namespace guess", () => {
+  // Without suppression the prefix guess would pick the registered parent
+  // for an unregistered nested entity — the deep link must not do that.
+  const nested = "https://example.test/foo/unregistered#Term";
+  assert.equal(resolveEditorOntology(registry, nested, null), undefined);
+  // An unavailable verdict may still fall back to inference
+  assert.equal(
+    resolveEditorOntology(registry, "https://example.test/foo#Class", undefined),
+    "https://example.test/foo",
+  );
+  // A named owner wins outright when it is registered
+  assert.equal(
+    resolveEditorOntology(registry, nested, "https://example.test/foo/nested"),
+    "https://example.test/foo/nested",
+  );
 });

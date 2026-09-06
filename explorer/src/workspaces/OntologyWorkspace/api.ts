@@ -32,7 +32,7 @@ export type OntologyGraphResponse = {
 };
 
 export type OntologyEntityOwner = {
-  source_ontology?: string;
+  owning_ontology: string | null;
 };
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -63,10 +63,16 @@ export async function loadOntologyGraph(uri: string, signal?: AbortSignal): Prom
   );
 }
 
-export async function loadOntologyEntityOwner(uri: string): Promise<string | undefined> {
+// Three-state verdict: a string names the owner, null is the backend's
+// authoritative "no known ontology owns this entity", and undefined means the
+// request failed so there is no verdict to act on.
+export type OntologyOwnerVerdict = string | null | undefined;
+
+export async function loadOntologyEntityOwner(uri: string): Promise<OntologyOwnerVerdict> {
   const response = await fetch(`/api/ontology/entity/${encodeURIComponent(uri)}`);
   if (!response.ok) return undefined;
-  return (await response.json() as OntologyEntityOwner).source_ontology;
+  const owner = await response.json() as OntologyEntityOwner;
+  return owner.owning_ontology ?? null;
 }
 
 export async function loadAlignments(uri?: string): Promise<OntologyAlignment[]> {

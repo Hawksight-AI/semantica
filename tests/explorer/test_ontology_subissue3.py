@@ -259,6 +259,41 @@ def test_node_belongs_to_ontology_nested_namespace_matrix():
     assert _node_belongs_to_ontology(node(f"{child}/Term"), child, {parent, child})
 
 
+def test_entity_detail_reports_explicit_owner(client):
+    response = client.get(
+        f"/api/ontology/entity/{quote('http://example.org/onto-a#Person', safe='')}"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_ontology"] == "http://example.org/onto-a"
+    assert payload["owning_ontology"] == "http://example.org/onto-a"
+
+
+def test_entity_detail_reports_namespace_owner_without_explicit_scheme(client):
+    graph = client.app.state.session.graph
+    minted_directly = "http://example.org/onto-a#Address"
+    graph.add_node(minted_directly, node_type="owl:Class", content="Address")
+
+    response = client.get(f"/api/ontology/entity/{quote(minted_directly, safe='')}")
+
+    assert response.status_code == 200
+    assert response.json()["owning_ontology"] == "http://example.org/onto-a"
+
+
+def test_entity_detail_reports_no_owner_for_unregistered_nested_namespace(client):
+    graph = client.app.state.session.graph
+    nested_term = "http://example.org/onto-a/nested#Term"
+    graph.add_node(nested_term, node_type="owl:Class", content="Nested Term")
+
+    response = client.get(f"/api/ontology/entity/{quote(nested_term, safe='')}")
+
+    assert response.status_code == 200
+    # onto-a must not claim a nested vocabulary its own /graph response
+    # excludes, or a deep link selects onto-a and then finds nothing to select.
+    assert response.json()["owning_ontology"] is None
+
+
 def test_load_fallback_import_without_declaration_is_editable(client):
     turtle = """
 @prefix ex: <http://data.example.org/people#> .

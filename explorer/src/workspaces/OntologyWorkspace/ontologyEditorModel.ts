@@ -45,6 +45,10 @@ export function classifyNodeType(rawType: string): EditorEntityType {
   return "external";
 }
 
+// Last-resort guess, reached only when the backend gave no verdict: it has no
+// notion of nested vocabularies, so it can name a parent that does not contain
+// the entity. Authority is owning_ontology from /api/ontology/entity
+// (_resolve_owning_ontology in semantica/explorer/routes/ontology.py).
 function ownsByNamespace(entityUri: string, ontologyUri: string): boolean {
   const stem = ontologyUri.replace(/[/#]+$/, "");
   return entityUri === ontologyUri
@@ -52,6 +56,25 @@ function ownsByNamespace(entityUri: string, ontologyUri: string): boolean {
     || entityUri.startsWith(`${stem}/`);
 }
 
+// Picks the registered ontology to open for a deep-linked entity. A null
+// verdict is the backend's authoritative "nothing owns this entity": the
+// namespace guess must stay suppressed, or an unregistered nested namespace
+// would select its registered parent again — the exact bug the backend
+// verdict exists to prevent. Only an unavailable verdict (undefined) may
+// fall back to inference.
+export function resolveEditorOntology(
+  entries: RegistryEntry[],
+  entityUri: string,
+  ownerVerdict: string | null | undefined,
+): string | undefined {
+  if (ownerVerdict === null) {
+    return undefined;
+  }
+  return inferOntologyUri(entries, entityUri, ownerVerdict);
+}
+
+// Picks the registered ontology to open for an entity: the backend-resolved
+// explicitOwner wins outright, the namespace guess is only the fallback.
 export function inferOntologyUri(
   entries: RegistryEntry[],
   entityUri: string,
