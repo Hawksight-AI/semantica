@@ -226,6 +226,8 @@ class TestMilvusSearchSchema(unittest.TestCase):
         mock_hit = MagicMock()
         mock_hit.id = 42
         mock_hit.distance = 0.15
+        # entity.get("metadata") returns None so the `or {}` fallback yields {}
+        mock_hit.entity.get.return_value = None
 
         mock_collection.search.return_value = [[mock_hit]]
 
