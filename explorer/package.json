@@ -51,7 +51,7 @@
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.4.0",
+    "globals": "^17.12.0",
     "jsdom": "^26.1.0",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
