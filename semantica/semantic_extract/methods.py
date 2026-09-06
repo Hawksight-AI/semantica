@@ -2316,7 +2316,7 @@ def extract_triplets_rules(
 
 
 def extract_triplets_huggingface(
-    text: str, model: str, device: Optional[str] = None, **kwargs
+    text: str, model: str, device: Optional[str] = None, entities: Optional[List[Entity]] = None, **kwargs
 ) -> List[Triplet]:
     """HuggingFace triplet extraction."""
     loader = HuggingFaceModelLoader(device=device)
@@ -2348,12 +2348,12 @@ def extract_triplets_huggingface(
                 tail = match.group("tail").strip()
                 
                 if head and relation and tail:
-                    # Head/tail are raw decoded strings from the model; tag any
-                    # that match no extracted entity so the GraphBuilder can
-                    # promote them instead of leaving a dangling edge (#1463).
-                    # `entities` is not a declared param on this path, so read
-                    # it defensively from kwargs (it is absent, nothing matches).
-                    hf_entities = kwargs.get("entities") or []
+                    # Head/tail are raw decoded strings from the model. Tag any
+                    # that match no known entity so the GraphBuilder promotes
+                    # them instead of leaving a dangling edge (#1463).
+                    # TripletExtractor dispatches with entities=..., so this is
+                    # the real NER list here, not a dead comparison.
+                    hf_entities = entities or []
                     synthetic_endpoints = [
                         endpoint_text
                         for endpoint_text in (head, tail)
