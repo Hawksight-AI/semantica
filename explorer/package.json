@@ -9,9 +9,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:graph-store": "node --test tests/graphStore.multi-edge.test.mjs",
-    "test:graph-workspace": "node --import tsx --test tests/markdownContentViewer.test.ts tests/markdownEditorInteraction.test.tsx tests/markdownEditorState.test.ts tests/nodeMarkdownSync.test.ts tests/graphSceneState.display.test.ts tests/temporalLifecycle.test.ts tests/deterministicExplorerRendering.test.ts tests/explorerCapabilities.test.tsx tests/smallGraphLayout.test.ts tests/realtimeGraphAttributes.test.ts",
-    "test:graph-workspace": "node --import tsx --test tests/markdownContentViewer.test.ts tests/graphSceneState.display.test.ts tests/temporalLifecycle.test.ts tests/deterministicExplorerRendering.test.ts tests/smallGraphLayout.test.ts tests/realtimeGraphAttributes.test.ts tests/ontologyEditorModel.test.ts",
+    "test:graph-workspace": "node --import tsx --test tests/markdownContentViewer.test.ts tests/markdownEditorInteraction.test.tsx tests/markdownEditorState.test.ts tests/nodeMarkdownSync.test.ts tests/graphSceneState.display.test.ts tests/temporalLifecycle.test.ts tests/deterministicExplorerRendering.test.ts tests/explorerCapabilities.test.tsx tests/smallGraphLayout.test.ts tests/realtimeGraphAttributes.test.ts tests/ontologyEditorModel.test.ts tests/graphColorLegend.test.ts",
     "test:deterministic-e2e": "node --import tsx --test tests/deterministicExplorerRendering.e2e.ts",
+    "test:graph-legend-e2e": "node --import tsx --test tests/graphColorLegend.e2e.ts",
     "test:plugin-registry": "node --import tsx --test tests/pluginRegistry.temporal.test.mjs"
   },
   "dependencies": {
