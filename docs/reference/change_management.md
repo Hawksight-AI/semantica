@@ -4,7 +4,7 @@ description: "Version control, SHA-256 checksums, diff analysis, rollback, and a
 icon: "clock-rotate-left"
 ---
 
-**`semantica.change_management`** provides **enterprise-grade versioning and audit trails** for knowledge graphs and ontologies:
+**`semantica.change_management`** provides versioning and audit trails for knowledge graphs and ontologies:
 
 - SHA-256 checksums on every snapshot: tamper detection without external infrastructure
 - Structural diff between any two versions: nodes added, removed, or modified
@@ -30,12 +30,12 @@ icon: "clock-rotate-left"
 
 ## What You Get
 
-- **TemporalVersionManager** — Snapshot, diff, rollback, and per-entity audit trail for knowledge graphs.
-- **OntologyVersionManager** — Version control for OWL ontologies with diff and schema migration support.
-- **VersionStorage** — Pluggable backends: `InMemoryVersionStorage` for tests, `SQLiteVersionStorage` for production.
-- **Integrity Verification** — SHA-256 checksums on every snapshot to detect any unauthorised modification.
-- **ChangeLogEntry** — Internal metadata validated on every snapshot: ISO 8601 timestamp, email author, and description (max 500 chars).
-- **Version History** — Full tamper-evident version history via `list_versions()` and `diff()` for regulatory review.
+- **TemporalVersionManager**: snapshot, diff, rollback, and per-entity audit trail for knowledge graphs.
+- **OntologyVersionManager**: version control for OWL ontologies with diff and schema migration support.
+- **VersionStorage**: pluggable backends with `InMemoryVersionStorage` for tests and `SQLiteVersionStorage` for production.
+- **Integrity Verification**: SHA-256 checksums on every snapshot to detect any unauthorised modification.
+- **ChangeLogEntry**: internal snapshot metadata with ISO 8601 timestamp, email author, and description validation (max 500 chars).
+- **Version History**: full tamper-evident version history via `list_versions()` and `diff()` for regulatory review.
 
 ## Typical Workflow
 
@@ -127,7 +127,7 @@ snapshot = manager.get_version("v1.0")
 
 ## Diff Analysis
 
-Compare any two snapshots to see exactly what changed: useful for code review, incident investigation, and regulatory audit:
+Compare any two snapshots to see exactly what changed. Use the result for code review, incident investigation, and regulatory audit:
 
 ```python
 diff = manager.diff("v1.0", "v2.0")
@@ -180,7 +180,7 @@ for item in diff["entities_modified"]:
 
 ## OntologyVersionManager
 
-Version control for ontologies: save, diff, and track schema changes:
+Version control for ontologies supports save, diff, and schema-change tracking:
 
 ```python
 from semantica.change_management import OntologyVersionManager
@@ -350,7 +350,7 @@ for record in history:
   </Accordion>
 </AccordionGroup>
 
-- [Provenance](provenance) — W3C PROV-O lineage tracking.
-- [Knowledge Graph](/reference/kg) — The graph being versioned.
-- [Export](export) — Export versioned snapshots.
-- [Conflicts](/reference/conflicts) — Detect conflicts introduced between versions.
+- [Provenance](/reference/provenance): W3C PROV-O lineage tracking.
+- [Knowledge Graph](/reference/kg): the graph being versioned.
+- [Export](/reference/export): export versioned snapshots.
+- [Conflicts](/reference/conflicts): detect conflicts introduced between versions.
