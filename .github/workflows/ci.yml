@@ -93,6 +93,7 @@ jobs:
           npm run test:graph-workspace
           npm run test:plugin-registry
           npm run test:deterministic-e2e
+          npm run test:graph-legend-e2e
       - name: Build Explorer frontend
         working-directory: explorer
         run: npm run build

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { chromium, type Page } from "playwright";
@@ -52,7 +53,11 @@ test("visible legend follows loaded data, reloads, focused views, and distance m
     await delay(100);
   }
   assert.ok(ready, "Vite must start");
-  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined });
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath:
+      process.env.CHROMIUM_PATH || (existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined),
+  });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.setDefaultTimeout(10_000);
