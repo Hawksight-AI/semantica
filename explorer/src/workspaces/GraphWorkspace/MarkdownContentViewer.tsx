@@ -124,15 +124,6 @@ export function MarkdownContentViewer({
   const previewTabRef = useRef<HTMLButtonElement>(null);
   const sourceTabRef = useRef<HTMLButtonElement>(null);
 
-  // When the resource changes, the render-phase setActiveMode(defaultMode) above
-  // resets activeMode but cannot update focusedModeRef (refs are not part of
-  // React state and we cannot call selectMode before it is declared). Reset the
-  // ref here, at the same render boundary, so useLayoutEffect and focusTab both
-  // see the correct focused-mode on the very next render after a resource switch.
-  if (activeResourceKey !== resourceKey) {
-    focusedModeRef.current = defaultMode;
-  }
-
   const focusTab = (mode: "preview" | "source") => {
     focusedModeRef.current = mode;
     // Imperatively update tabIndex on both buttons so the roving tabindex
@@ -166,6 +157,17 @@ export function MarkdownContentViewer({
       clearTimeout(copyTimeoutRef.current);
     };
   }, []);
+
+  // When the viewed resource/node changes, reset focusedModeRef to match the
+  // incoming defaultMode. The render-phase setActiveMode(defaultMode) above
+  // resets React state, but refs are not state and must be updated separately.
+  // useLayoutEffect fires synchronously before paint so the ref is correct before
+  // the no-deps tabIndex-correction effect (declared next) reads it.
+  // Using resourceKey as the dep means this runs exactly once per resource change,
+  // immediately after the render that detected the change.
+  useLayoutEffect(() => {
+    focusedModeRef.current = defaultMode;
+  }, [resourceKey, defaultMode]);
 
   // After every render, restore the DOM tabIndex to match focusedModeRef.current.
   // This is necessary because the JSX tabIndex props derive from activeMode, which
