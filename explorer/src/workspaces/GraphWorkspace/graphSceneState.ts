@@ -2569,6 +2569,7 @@ export function createFocusedGraph(
     color: selectedState.color,
     size: Math.max(selectedState.size, 22),
     baseColor: selectedState.color,
+    semanticBaseColor: getSemanticNodeColor(selectedAttrs),
     baseSize: Math.max(selectedState.size, 22),
     label: selectedState.label,
   });
@@ -2608,6 +2609,7 @@ export function createFocusedGraph(
       color: style.color,
       size: Math.max(style.size, 8.5),
       baseColor: style.color,
+      semanticBaseColor: getSemanticNodeColor(baseAttrs),
       baseSize: Math.max(style.size, 8.5),
       label: style.label,
     });

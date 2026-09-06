@@ -24,7 +24,8 @@ export function buildGraphColorLegend(graph: Graph, theme: GraphTheme = GRAPH_TH
   graph.forEachNode((_id, attrs) => {
     if (attrs.hidden) return;
     const group = String(attrs.semanticGroup || attrs.nodeType || "entity");
-    const color = getSemanticNodeColor(attrs as NodeAttributes, theme);
+    // Focused clones bake interaction colors into baseColor; keep those out of the semantic key.
+    const color = String(attrs.semanticBaseColor || getSemanticNodeColor(attrs as NodeAttributes, theme));
     // A synthetic display node can share a semantic label with a different color.
     const id = JSON.stringify([group, color]);
     const current = entries.get(id);

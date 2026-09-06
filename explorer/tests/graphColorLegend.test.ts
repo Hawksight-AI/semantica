@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import Graph from "graphology";
 
-import type { NodeAttributes } from "../src/store/graphStore.ts";
+import { clearGraph, graph as sourceGraph, type NodeAttributes } from "../src/store/graphStore.ts";
 import { buildGraphColorLegend } from "../src/workspaces/GraphWorkspace/graphColorLegend.ts";
-import { resolveNodeElementStyle } from "../src/workspaces/GraphWorkspace/graphSceneState.ts";
+import { resolveDisplayGraph, resolveNodeElementStyle } from "../src/workspaces/GraphWorkspace/graphSceneState.ts";
 import { GRAPH_THEME, withAlpha } from "../src/workspaces/GraphWorkspace/graphTheme.ts";
 
 function attributes(overrides: Partial<NodeAttributes> = {}): NodeAttributes {
@@ -72,4 +72,32 @@ test("fallback labels and ordering are stable and no groups are silently dropped
   const reverse = new Graph();
   graph.nodes().reverse().forEach((id) => reverse.addNode(id, graph.getNodeAttributes(id)));
   assert.deepEqual(items, buildGraphColorLegend(reverse));
+});
+
+
+test("focused legend keeps semantic colors for selected, path, and neighbor clones", (t) => {
+  clearGraph();
+  t.after(clearGraph);
+  for (const id of ["selected", "path", "neighbor", "outside"]) {
+    sourceGraph.addNode(id, attributes({ label: id, baseColor: "#abcdef" }));
+  }
+  sourceGraph.addDirectedEdgeWithKey("path-edge", "selected", "path", { weight: 1 });
+  sourceGraph.addDirectedEdgeWithKey("neighbor-edge", "selected", "neighbor", { weight: 1 });
+  const focused = resolveDisplayGraph("selected", ["selected", "path"], ["path-edge"], "focused").graph;
+
+  // Verify the fixture exercises baked interaction colors, not ordinary clones.
+  assert.equal(focused.getNodeAttribute("selected", "baseColor"), GRAPH_THEME.palette.accent.selected);
+  assert.equal(focused.getNodeAttribute("path", "baseColor"), GRAPH_THEME.palette.accent.path);
+  assert.notEqual(focused.getNodeAttribute("neighbor", "baseColor"), "#abcdef");
+  assert.ok(!focused.hasNode("outside"));
+  assert.deepEqual(buildGraphColorLegend(focused).map(({ group, color, count }) => ({ group, color, count })), [
+    { group: "Person", color: "#abcdef", count: 3 },
+  ]);
+  assert.equal(sourceGraph.getNodeAttribute("selected", "baseColor"), "#abcdef");
+
+  // Changing focus retains the semantic swatch while following the displayed subset.
+  const nextFocus = resolveDisplayGraph("neighbor", [], [], "focused").graph;
+  assert.deepEqual(buildGraphColorLegend(nextFocus).map(({ color, count }) => ({ color, count })), [
+    { color: "#abcdef", count: 2 },
+  ]);
 });

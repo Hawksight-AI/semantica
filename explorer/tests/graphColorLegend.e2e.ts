@@ -21,12 +21,13 @@ const edges = [
   id: `edge_${i}`, familyId: `edge_${i}`, source, target, type, weight: 1, properties: {},
 }));
 
-async function assertLegendMatchesGraph(page: Page) {
-  const result = await page.evaluate(async () => {
+async function assertLegendMatchesGraph(page: Page, nodeIds?: string[]) {
+  const result = await page.evaluate(async (includedNodeIds) => {
     const storePath = "/src/store/graphStore.ts";
     const { graph } = await import(storePath);
     const colors: Record<string, string> = {};
-    graph.forEachNode((_id: string, attrs: { semanticGroup: string; baseColor: string }) => {
+    graph.forEachNode((id: string, attrs: { semanticGroup: string; baseColor: string }) => {
+      if (includedNodeIds && !includedNodeIds.includes(id)) return;
       const hex = attrs.baseColor.replace("#", "");
       colors[attrs.semanticGroup] = `rgb(${[0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
     });
@@ -35,14 +36,14 @@ async function assertLegendMatchesGraph(page: Page) {
       color: getComputedStyle(item.querySelector(".explore-color-legend-mark")!).backgroundColor,
     }));
     return { colors, items };
-  });
+  }, nodeIds);
   assert.equal(result.items.length, Object.keys(result.colors).length);
   for (const item of result.items) {
     assert.equal(item.color, result.colors[item.group!], `Swatch for ${item.group} must match the loaded canvas color`);
   }
 }
 
-test("visible legend follows loaded data, reloads, and distance mode", async (t) => {
+test("visible legend follows loaded data, reloads, focused views, and distance mode", async (t) => {
   const server = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", "4175", "--strictPort"], { stdio: "ignore" });
   t.after(() => { server.kill(); });
   let ready = false;
@@ -94,6 +95,13 @@ test("visible legend follows loaded data, reloads, and distance mode", async (t)
   await legend.waitFor({ state: "hidden" });
   await heatmap.click();
   await legend.waitFor();
+  await assertLegendMatchesGraph(page);
+  await page.getByRole("button", { name: "Focused", exact: true }).click();
+  await legend.getByText("Document", { exact: true }).waitFor({ state: "hidden" });
+  await assertLegendMatchesGraph(page, ["alice", "acme", "research"]);
+  assert.equal(await legend.getByText("Researcher", { exact: true }).count(), 1);
+  await page.getByRole("button", { name: "Full Graph", exact: true }).click();
+  await legend.getByText("Document", { exact: true }).waitFor();
   await assertLegendMatchesGraph(page);
   assert.deepEqual(errors, []);
 });
