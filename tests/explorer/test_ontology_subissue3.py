@@ -219,7 +219,9 @@ def test_graph_and_entity_endpoints_agree_on_entity_type(client):
     }
 
     for uri in ("http://example.org/onto-a#Person", unrecognized_external):
-        detail = client.get(f"/api/ontology/entity/{uri}")
+        # The fragment has to survive the request or the path resolves to the
+        # parent ontology and the comparison silently passes on the wrong node.
+        detail = client.get(f"/api/ontology/entity/{quote(uri, safe='')}")
         assert detail.status_code == 200
         assert from_graph[uri] == detail.json()["entity_type"]
 
