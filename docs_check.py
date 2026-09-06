@@ -246,9 +246,12 @@ def _() -> list[str]:
         combined = (result.stdout or "") + (result.stderr or "")
 
         if result.returncode != 0:
-            # On Windows, npm cleanup raises EPERM on temp dirs — not a real
-            # export failure. Treat as a skip rather than a hard failure.
-            if sys.platform == "win32" and "EPERM" in combined and \
+            # On Windows, npm post-command cleanup can fail with EPERM/EBUSY on
+            # temp dirs — not a real export failure. Treat as a skip rather
+            # than a hard failure, unless a real Mintlify error signature is
+            # present.
+            if sys.platform == "win32" and \
+                    ("EPERM" in combined or "EBUSY" in combined) and \
                     "could not be generated" not in combined:
                 return []  # Windows temp-cleanup noise; real CI runs on Linux
 
