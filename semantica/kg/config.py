@@ -50,7 +50,14 @@ class KGConfig:
         """Initialize configuration manager."""
         self.logger = get_logger("kg_config")
         self._configs: Dict[str, Any] = {}
-        self._method_configs: Dict[str, Dict] = {}
+        self._method_configs: Dict[str, Dict] = {
+            "build": {
+                # How GraphBuilder treats a relationship endpoint that points at
+                # an entity absent from the extracted set: "include" promotes a
+                # synthetic UNKNOWN entity (default), "reject" drops the edge.
+                "unknown_relation_endpoint": "include",
+            },
+        }
         self._load_config_file(config_file)
         self._load_env_vars()
 

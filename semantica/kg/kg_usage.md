@@ -132,6 +132,25 @@ kg1 = builder.build(initial_sources)
 kg2 = builder.build(additional_sources)
 ```
 
+### Unknown relation endpoints
+
+When a relationship endpoint names an entity that is absent from the extracted
+entity set (for example an LLM/HuggingFace extraction that synthesizes an
+endpoint), `GraphBuilder` promotes a synthetic `UNKNOWN` entity so the edge is
+not left dangling. This is the default (`"include"`). To drop such
+relationships instead, set `unknown_relation_endpoint="reject"`:
+
+```python
+builder = GraphBuilder(
+    unknown_relation_endpoint="reject",
+)
+kg = builder.build(sources)  # edges with unknown endpoints are dropped
+```
+
+The option can also be set at runtime via the per-module build configuration
+(`kg_methods.build.unknown_relation_endpoint`), which is the documented home
+for it.
+
 ## Graph Algorithms
 
 The knowledge graph module provides advanced algorithms for node embeddings, similarity calculations, path finding, link prediction, centrality measures, and community detection.
