@@ -4791,14 +4791,18 @@ class ContextGraph:
 
                 # Find potential causes (decisions that influenced this one) via
                 # shared entities/timestamps - additive heuristic, skipping anything
-                # already covered by an explicit relationship above.
-                potential_causes = []
+                # already covered by an explicit relationship above. Deduplicate by
+                # decision id (dict preserves insertion order): a decision sharing
+                # several entities with the current one is one potential cause,
+                # not one per shared entity, otherwise the trace reports the same
+                # "influences" chain once per overlapping entity.
+                potential_causes = {}
                 for entity in current_decision["entities"]:
                     for other_decision_id in self._entity_index.get(entity, set()):
                         if other_decision_id != current_id and other_decision_id not in explicit_cause_ids:
                             other_decision = self._decisions[other_decision_id]
                             if other_decision["timestamp"] < current_decision["timestamp"]:
-                                potential_causes.append(other_decision_id)
+                                potential_causes[other_decision_id] = None
 
                 for cause_id in potential_causes:
                     cause_dec = self._decisions.get(cause_id, {})
