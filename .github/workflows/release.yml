@@ -67,6 +67,12 @@ jobs:
         run: |
           pip install -r .github/requirements/twine.txt --require-hashes
           twine check dist/*
+      # pypi-publish uploads everything under packages-dir (default: dist/) with
+      # no glob/include filter, so it must run before anything else writes a
+      # non-distribution file into dist/ - the Sigstore step below does exactly
+      # that (dist/*.sigstore.json), and pypi-publish fails on it with
+      # "InvalidDistribution: Unknown distribution format" if it runs after.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
@@ -75,7 +81,7 @@ jobs:
       # OpenSSF Scorecard's Signed-Releases check does not inspect - it looks for
       # signature files attached as release assets. Sign here too so
       # `dist/*.sigstore.json` bundles ship alongside the wheel/sdist on the
-      # GitHub Release itself.
+      # GitHub Release itself. This must run after pypi-publish (see above).
       - name: Sign artifacts with Sigstore
         uses: sigstore/gh-action-sigstore-python@790bc6befb9d733738f18d8f895854b453640ec9 # v3.5.0
         with:
@@ -88,4 +94,3 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
             dist/*.sigstore.json
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1

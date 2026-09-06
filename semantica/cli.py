@@ -917,11 +917,11 @@ def doctor(cli_ctx: CLIContext, local_json: bool, deep_embeddings: bool) -> None
                     for lbl, st, note, hint in checks])
             return
 
-        tbl = Table(box=_TABLE_BOX, show_edge=False, padding=(0, 2))
-        tbl.add_column("Check",  style=_KEY, no_wrap=True, min_width=16)
-        tbl.add_column("Status", no_wrap=True, min_width=6)
-        tbl.add_column("Note",   style=_DIM)
-        tbl.add_column("Hint",   style=_DIM)
+        tbl = Table(box=_TABLE_BOX, show_edge=False, padding=(0, 2), expand=True)
+        tbl.add_column("Check",  style=_KEY, no_wrap=True, min_width=34)
+        tbl.add_column("Status", no_wrap=True, min_width=4)
+        tbl.add_column("Note",   style=_DIM, min_width=15, ratio=2, overflow="fold")
+        tbl.add_column("Hint",   style=_DIM, min_width=20, ratio=3, overflow="fold")
 
         icons = {"ok": f"[{_SUCCESS}] ✓[/{_SUCCESS}]",
                  "warn": f"[{_WARN_STY}] ⚠[/{_WARN_STY}]",
@@ -1153,6 +1153,57 @@ def _get_graph_store(cli_ctx: CLIContext) -> Any:
     graph_db = dict(cfg.get("graph_db", {}))
     backend = cli_ctx.store_backend or graph_db.pop("backend", "neo4j")
     return GraphStore(backend=backend, **graph_db)
+
+
+def _load_rule_definitions(path: str) -> List[str]:
+    """Load reasoning rule definitions from a YAML or plain-text rules file.
+
+    YAML files may hold a list of rule strings or a mapping with a ``rules``
+    list; anything else (e.g. Datalog) is read as one rule per non-comment
+    line. The strings are handed to ``Reasoner.add_rule()`` untouched.
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        data = None
+    if isinstance(data, dict):
+        rules_value = data.get("rules")
+        if rules_value is None and "rules" not in data:
+            raise click.ClickException(
+                f"Rules file '{path}' is a YAML mapping but has no 'rules' key. "
+                "Expected either a YAML list or a mapping with a 'rules' list."
+            )
+        data = rules_value
+    if isinstance(data, list):
+        return [str(item) for item in data]
+    return [line.strip() for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")]
+
+
+def _graph_store_facts(cli_ctx: CLIContext) -> List[str]:
+    """Read the configured graph store into Reasoner fact strings.
+
+    Follows the same conventions ``Reasoner.add_fact()`` applies to
+    KG-style dicts: nodes become ``Label(name)`` and relationships become
+    ``TYPE(source, target)``, with internal node ids resolved to names.
+    """
+    gs = _get_graph_store(cli_ctx)
+    nodes = gs.get_nodes(limit=sys.maxsize)
+    relationships = gs.get_relationships(limit=sys.maxsize)
+    names: Dict[Any, Any] = {}
+    facts: List[str] = []
+    for node in nodes:
+        props = node.get("properties") or {}
+        name = props.get("name") or props.get("id") or node.get("id")
+        names[node.get("id")] = name
+        for label in node.get("labels") or ["Entity"]:
+            facts.append(f"{label}({name})")
+    for rel in relationships:
+        source = names.get(rel.get("start_node_id"), rel.get("start_node_id"))
+        target = names.get(rel.get("end_node_id"), rel.get("end_node_id"))
+        facts.append(f"{rel.get('type', 'RELATED_TO')}({source}, {target})")
+    return facts
 
 
 # ─── Output helpers ──────────────────────────────────────────────────────────
@@ -1415,6 +1466,31 @@ _INGEST_TYPES = [
 ]
 
 _INGEST_FORMATS = ["pdf", "docx", "csv", "excel", "html", "json", "parquet", "xml", "rdf"]
+_GRAPH_STORE_ENV_BACKEND_HINTS = {
+    "GRAPH_STORE_NEO4J_URI": "neo4j",
+    "GRAPH_STORE_FALKORDB_HOST": "falkordb",
+    "GRAPH_STORE_NEPTUNE_ENDPOINT": "neptune",
+    "GRAPH_STORE_AGE_CONNECTION_STRING": "age",
+}
+
+
+def _configured_ingest_graph_backend(
+    cli_ctx: CLIContext, store_override: Optional[str]
+) -> Optional[str]:
+    graph_db = dict(cli_ctx.config.to_dict().get("graph_db", {}))
+    backend = store_override or cli_ctx.store_backend or graph_db.get("backend")
+    if backend:
+        return str(backend)
+
+    env_backend = os.environ.get("GRAPH_STORE_DEFAULT_BACKEND")
+    if env_backend:
+        return env_backend
+
+    for env_var, hinted_backend in _GRAPH_STORE_ENV_BACKEND_HINTS.items():
+        if os.environ.get(env_var):
+            return hinted_backend
+
+    return None
 
 
 @main.command()
@@ -1427,8 +1503,13 @@ _INGEST_FORMATS = ["pdf", "docx", "csv", "excel", "html", "json", "parquet", "xm
 @click.option("--watch", is_flag=True, default=False, help="Re-ingest on file changes.")
 @click.option("--batch-size", default=500, type=int, show_default=True)
 @click.option("--store", "store_override", default=None,
-              help="Target graph backend: neo4j falkordb age neptune")
-@click.option("--output", default=None, type=click.Path(), help="Write to file instead of graph store.")
+              help="Target graph backend: neo4j falkordb age neptune. "
+                   "Not yet implemented — ingest cannot persist to a graph "
+                   "store, so this only determines whether the command "
+                   "refuses to report false success; use --output instead.")
+@click.option("--output", default=None, type=click.Path(),
+              help="Write ingested content to a .json/.jsonl/.csv file "
+                   "instead of the (unimplemented) graph store.")
 @click.option("--dry-run", "local_dry", is_flag=True, default=False)
 @click.option("--json", "local_json", is_flag=True, default=False)
 @click.pass_obj
@@ -1452,6 +1533,19 @@ def ingest(
             _dry(cli_ctx, "ingest", json_out=_is_json(cli_ctx, local_json),
                  source=source, type=ingestor_type, format=fmt)
             return
+        graph_backend = _configured_ingest_graph_backend(cli_ctx, store_override)
+        if graph_backend and graph_backend.lower() != "memory" and not output:
+            raise click.ClickException(
+                f"A graph backend is configured ({graph_backend}), but "
+                "semantica ingest does not write to graph stores yet — no CLI "
+                "command currently does (tracked in issues #1351, #1352). "
+                "Pass --output <file>.json to save the ingested content "
+                "instead, or build a GraphStore/GraphBuilder directly in "
+                "Python."
+            )
+        # NOTE: --store/GRAPH_STORE_DEFAULT_BACKEND are read only to decide
+        # whether to raise the error above — nothing downstream of this point
+        # writes to a graph store, so neither is forwarded as an ingest kwarg.
         kwargs: Dict[str, Any] = {"batch_size": batch_size}
         if ingestor_type:
             kwargs["source_type"] = ingestor_type
@@ -1461,10 +1555,6 @@ def ingest(
             kwargs["recursive"] = True
         if watch:
             kwargs["watch"] = True
-        if store_override or cli_ctx.store_backend:
-            kwargs["store"] = store_override or cli_ctx.store_backend
-        if output:
-            kwargs["output"] = output
         try:
             from .ingest import ingest as _ingest
             label = Path(source).name if Path(source).exists() else source
@@ -1478,7 +1568,10 @@ def ingest(
                     result = _ingest(source, **kwargs)
         except ImportError as exc:
             raise click.ClickException(f"Ingest module not available: {exc}") from exc
-        if _is_json(cli_ctx, local_json):
+        if output:
+            _write_result_output(Path(output), result)
+            _ok(cli_ctx, f"Wrote {output}")
+        elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"status": "ok"})
         else:
             _ok(cli_ctx, f"Ingested: {source}")
@@ -1735,9 +1828,19 @@ def embed(ctx: click.Context) -> None:
 def _json_default(obj) -> object:
     """JSON serialiser that converts NumPy scalars/arrays to native Python types.
 
+    Also expands dataclasses (e.g. ``FileObject`` from ``ingest``) to plain
+    dicts and decodes ``bytes`` as UTF-8 text where possible, so a domain
+    object round-trips through ``--output`` as data instead of a repr string.
     Falls back to ``str()`` for everything else so the writer never crashes on
-    unexpected types (e.g. ``datetime``, custom domain objects).
+    unexpected types (e.g. ``datetime``).
     """
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return asdict(obj)
+    if isinstance(obj, bytes):
+        try:
+            return obj.decode("utf-8")
+        except UnicodeDecodeError:
+            return obj.hex()
     try:
         import numpy as np  # local import — only needed when result contains numpy
         if isinstance(obj, np.ndarray):
@@ -2160,17 +2263,43 @@ def reason_run(cli_ctx: CLIContext, engine: str, rules: Optional[str],
     cli_ctx = _require_ctx(cli_ctx)
 
     def _action() -> None:
+        # Only the forward-chaining production-rule engines run through
+        # Reasoner.infer_facts(); the other engines take different inputs
+        # (SPARQL/Datalog queries, observations, premises) and are not wired
+        # to this command yet. Fail honestly instead of silently
+        # forward-chaining under another engine's name.
+        if engine not in ("rete", "forward-chain"):
+            hint = (" Use 'semantica reason query' for SPARQL/Datalog queries."
+                    if engine in ("sparql", "datalog") else "")
+            raise click.ClickException(
+                f"Engine '{engine}' is not wired to 'reason run' yet; "
+                f"supported engines: rete, forward-chain.{hint}")
         try:
             from .reasoning import Reasoner
+            # Reasoner has no run() method (#1354); dispatch to its real
+            # API: facts from the configured graph store + rules from the
+            # optional --rules file into infer_facts().
             r = Reasoner(engine=engine, config=cli_ctx.config.to_dict())
+            rule_defs = _load_rule_definitions(rules) if rules else None
+            facts = _graph_store_facts(cli_ctx)
+
+            def _infer() -> Dict[str, Any]:
+                inferred = r.infer_facts(facts, rule_defs)
+                return {
+                    "engine": engine,
+                    "facts": len(facts),
+                    "inferred_count": len(inferred),
+                    "inferred_facts": inferred,
+                }
+
             if cli_ctx.quiet or cli_ctx.json_output:
-                result = r.run(rules_file=rules)
+                result = _infer()
             else:
                 with console.status(
                     f"[{_DIM}]Running {engine} reasoning engine…[/{_DIM}]",
                     spinner="dots",
                 ):
-                    result = r.run(rules_file=rules)
+                    result = _infer()
         except ImportError as exc:
             raise click.ClickException(f"Reasoning module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
@@ -3661,14 +3790,17 @@ def store_connect(cli_ctx: CLIContext, backend: str, uri: Optional[str], local_j
 
     def _action() -> None:
         try:
-            from .graph_store import get_graph_store_method
-            store_cls = get_graph_store_method(backend)
+            # get_graph_store_method(task, method_name) is the method
+            # registry, not a backend factory (#1354); build the store
+            # through GraphStore, which resolves the backend by name.
+            from .graph_store import GraphStore
             cfg = dict(cli_ctx.config.to_dict().get("graph_db", {}))
+            cfg.pop("backend", None)
             if uri:
                 cfg["uri"] = uri
-            # Attempt instantiation as the minimal connectivity probe; backends
-            # that require a live connection will fail here if unreachable.
-            store_instance = store_cls(config=cfg)
+            # Instantiation only wires the backend; the probe below performs
+            # the live connectivity check and raises if unreachable.
+            store_instance = GraphStore(backend=backend, **cfg)
             for probe in ("health_check", "ping", "connect"):
                 fn = getattr(store_instance, probe, None)
                 if callable(fn):
