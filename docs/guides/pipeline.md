@@ -127,7 +127,7 @@ engine = ExecutionEngine(max_workers=4, retry_on_failure=True)
 result = engine.execute_pipeline(pipeline)
 
 print(f"Success:  {result.success}")
-print(f"Output:   {result.output}")   # {"node_count": 312, "edge_count": 847}
+print(f"Output:   {result.output}")   # the final step's return value, e.g. {"node_count": ..., "edge_count": ...}
 print(f"Duration: {result.metrics['execution_time']:.2f}s")
 print(f"Steps completed: {result.metrics['steps_executed']}")
 ```
@@ -197,7 +197,9 @@ engine = ExecutionEngine(
     max_workers      = 4,
     retry_on_failure = True,
 )
-# The engine uses handler.get_retry_policy(step.step_type) when a step fails
+# ExecutionEngine builds its own FailureHandler; replace it with the configured one
+engine.failure_handler = handler
+# The engine now calls engine.failure_handler.get_retry_policy(step.step_type) on failure
 ```
 
 `handler.classify_error()` distinguishes `ValidationError` (low severity, usually don't retry), `ProcessingError` (high severity), and timeout/connection errors (medium severity, always retry). You can inspect the classification:
@@ -222,10 +224,10 @@ builder.register_step_handler("ner_extract",     run_ner)
 builder.register_step_handler("triplet_extract", run_triplets)
 builder.register_step_handler("kg_merge",        merge_into_graph)
 
-builder.add_step("ingest",   "file_ingest",     handler=ingest_stix_bundles, path="./stix_bundles/")
-builder.add_step("ner",      "ner_extract",     handler=run_ner,             confidence_threshold=0.75)
-builder.add_step("triplets", "triplet_extract", handler=run_triplets,        include_temporal=True)
-builder.add_step("store",    "kg_merge",        handler=merge_into_graph,    output_path="./cti_output/")
+builder.add_step("ingest",   "file_ingest",     path="./stix_bundles/")
+builder.add_step("ner",      "ner_extract",     confidence_threshold=0.75)
+builder.add_step("triplets", "triplet_extract", include_temporal=True)
+builder.add_step("store",    "kg_merge",        output_path="./cti_output/")
 
 # ingest feeds both ner and triplets in parallel
 builder.connect_steps("ingest",   "ner")
@@ -241,7 +243,18 @@ engine   = ExecutionEngine(max_workers=2, retry_on_failure=True)
 result   = engine.execute_pipeline(pipeline)
 ```
 
-`set_parallelism(n)` tells the engine how many steps it may run simultaneously. The topological sort guarantees that only steps whose dependencies are all completed are eligible for concurrent execution — you cannot accidentally run a step before its inputs are ready.
+`set_parallelism(n)` tells the engine how many steps it may run simultaneously; `n` must be a positive integer. The topological sort guarantees that only steps whose dependencies are all completed are eligible for concurrent execution — you cannot accidentally run a step before its inputs are ready. The effective concurrency is capped at `min(n, max_workers)`, so the engine's `max_workers` setting remains a hard resource ceiling.
+
+Concurrency is opt-in per step. A dependency layer only runs in parallel when every step in that layer is marked `parallel_safe`, the layer has more than one step, and the data flowing into the layer is a dict:
+
+```python
+builder.add_step("ner",      "ner_extract",     parallel_safe=True, confidence_threshold=0.75)
+builder.add_step("triplets", "triplet_extract", parallel_safe=True, include_temporal=True)
+```
+
+If any step in a layer is not marked `parallel_safe`, or if a step runs in delta mode, the entire layer falls back to sequential execution — parallelism never silently bypasses a step that was not declared safe. `parallel_safe` is a control field: like `dependencies`, it is consumed by the builder and never reaches your handler's config.
+
+Parallel-safe handlers must return a dict. Each step in a parallel layer receives an isolated deep copy of the layer's input, so steps cannot see each other's mutations. The per-step results are merged key by key in step declaration order: a key written by one step is added to the merged output, a key written by several steps with equal values is kept, and two steps writing different values for the same key fail the pipeline with a `ProcessingError` naming the conflicting key and both steps. Handlers that touch shared mutable resources — database connections, in-memory stores, global caches — should not be marked `parallel_safe`.
 
 ## Common Pitfalls
 
@@ -706,6 +719,6 @@ print(f"Compliance delta update: {result.output}")
 ## Related Guides
 
 - [Ingest](ingest) — all source types for the ingest step: PDFs, APIs, databases, RSS feeds, STIX directories, and streams
-- [Semantic Extraction](semantic-extraction) — NER, relation extraction, triplet extraction, and event detection for the extract step
-- [Context Graphs](context-graphs) — building and querying the `ContextGraph` that the store step populates
+- [Semantic Extraction](/guides/semantic-extraction) — NER, relation extraction, triplet extraction, and event detection for the extract step
+- [Context Graphs](/guides/context-graphs) — building and querying the `ContextGraph` that the store step populates
 - [Provenance](provenance) — tracking the origin document, confidence score, and pipeline run ID for every extracted entity

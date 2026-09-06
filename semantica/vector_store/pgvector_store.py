@@ -656,6 +656,52 @@ class PgVectorStore:
             self.logger.warning(f"Failed to get metadata for {vector_id}: {e}")
             return None
 
+    def scan_vectors(self, offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Page through stored vectors ordered by id.
+
+        Args:
+            offset: Number of rows to skip
+            limit: Maximum number of rows to return
+
+        Returns:
+            List of result dicts with 'id', 'metadata', and 'vector'
+        """
+        if not PSYCOPG3_AVAILABLE and not PSYCOPG2_AVAILABLE:
+            raise ProcessingError(
+                "Neither psycopg3 nor psycopg2 is available. "
+                "Install with: pip install psycopg[binary] or psycopg2-binary"
+            )
+
+        if limit <= 0:
+            return []
+
+        scan_sql = psycopg_sql.SQL("""
+            SELECT id, vector, metadata
+            FROM {}
+            ORDER BY id
+            LIMIT %s OFFSET %s
+        """).format(psycopg_sql.Identifier(self.table_name))
+
+        with self._get_connection() as conn:
+            try:
+                cur = conn.cursor()
+                cur.execute(scan_sql, (limit, offset))
+                rows = cur.fetchall()
+                cur.close()
+
+                results = []
+                for row in rows:
+                    vec_id, vec, meta = row
+                    results.append({
+                        "id": vec_id,
+                        "metadata": meta if isinstance(meta, dict) else json.loads(meta) if meta else {},
+                        "vector": np.array(vec) if vec is not None else None,
+                    })
+                return results
+            except Exception as e:
+                raise ProcessingError(f"Failed to scan vectors: {str(e)}") from e
+
     def filter_by_metadata(
         self, filters: Dict[str, Any], limit: int = 10
     ) -> List[Dict[str, Any]]:

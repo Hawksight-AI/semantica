@@ -662,9 +662,9 @@ print("Policy updated to v2.4.0")
 
 ## Related Guides
 
-- [Decision Intelligence](decision-intelligence) — `record_decision()`, causal chains, and precedent search — the decisions that `check_compliance()` evaluates
+- [Decision Intelligence](/guides/decision-intelligence) — `record_decision()`, causal chains, and precedent search — the decisions that `check_compliance()` evaluates
 - [Reasoning & Rules](reasoning) — complement policy rules with formal inference for logical conflict detection
-- [SHACL Validation](shacl-validation) — enforce structural constraints on policy nodes themselves
-- [Change Management](change-management) — version-snapshot the policy graph alongside the knowledge graph
+- [SHACL Validation](/guides/shacl-validation) — enforce structural constraints on policy nodes themselves
+- [Change Management](/guides/change-management) — version-snapshot the policy graph alongside the knowledge graph
 - [Provenance](provenance) — W3C PROV-O lineage for every policy decision and exception
-- [MCP Server](mcp-server) — expose `record_decision` and `find_precedents` as MCP tools for AI agents
+- [MCP Server](/guides/mcp-server) — expose `record_decision` and `find_precedents` as MCP tools for AI agents

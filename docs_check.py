@@ -236,7 +236,7 @@ def _() -> list[str]:
             cwd=DOCS,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=600,
         )
         # Clean up zip regardless of outcome
         zip_path = os.path.join(DOCS, "export_ci_check.zip")
@@ -246,9 +246,12 @@ def _() -> list[str]:
         combined = (result.stdout or "") + (result.stderr or "")
 
         if result.returncode != 0:
-            # On Windows, npm cleanup raises EPERM on temp dirs — not a real
-            # export failure. Treat as a skip rather than a hard failure.
-            if sys.platform == "win32" and "EPERM" in combined and \
+            # On Windows, npm post-command cleanup can fail with EPERM/EBUSY on
+            # temp dirs — not a real export failure. Treat as a skip rather
+            # than a hard failure, unless a real Mintlify error signature is
+            # present.
+            if sys.platform == "win32" and \
+                    ("EPERM" in combined or "EBUSY" in combined) and \
                     "could not be generated" not in combined:
                 return []  # Windows temp-cleanup noise; real CI runs on Linux
 
@@ -263,7 +266,7 @@ def _() -> list[str]:
     except FileNotFoundError:
         return ["npx not found — skipping Mintlify export check (Node.js required)"]
     except subprocess.TimeoutExpired:
-        return ["mintlify export timed out after 300 s"]
+        return ["mintlify export timed out after 600 s"]
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────

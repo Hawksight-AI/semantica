@@ -43,7 +43,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, TextIO, Tuple, Union
 
 from .logging import get_logger
 
@@ -144,14 +144,37 @@ class ProgressDisplay(ABC):
 class ConsoleProgressDisplay(ProgressDisplay):
     """Console progress display with real-time updates."""
 
-    def __init__(self, use_emoji: bool = True, update_interval: float = 0.1):
+    def __init__(
+        self,
+        use_emoji: bool = True,
+        update_interval: float = 0.1,
+        stream: Optional[TextIO] = None,
+    ):
+        """Initialize the console display.
+
+        Args:
+            use_emoji: Whether to decorate output with emoji.
+            update_interval: Minimum seconds between redraws.
+            stream: Where progress is written. Defaults to ``sys.stderr``.
+
+                Progress is diagnostic output, so stderr is the correct stream
+                for it, and stdout must stay clean for programs that carry a
+                machine-readable protocol on it — the stdio MCP servers put
+                newline-delimited JSON-RPC there, and a progress bar on stdout
+                corrupts that stream.
+
+                Left as ``None``, the stream is resolved on each write rather
+                than captured here, so a later rebinding of ``sys.stderr``
+                (pytest capture, for instance) is honoured.
+        """
         self.use_emoji = use_emoji
-        
-        # Check if stdout supports emojis (especially on Windows)
+        self._stream = stream
+
+        # Check if the target stream supports emojis (especially on Windows)
         if self.use_emoji:
             try:
-                # Try encoding a test emoji with stdout's encoding
-                encoding = getattr(sys.stdout, "encoding", None)
+                # Try encoding a test emoji with the stream's encoding
+                encoding = getattr(self.stream, "encoding", None)
                 if encoding:
                     "🧠".encode(encoding)
             except (UnicodeEncodeError, LookupError, AttributeError):
@@ -161,6 +184,11 @@ class ConsoleProgressDisplay(ProgressDisplay):
         self.last_update = 0.0
         self.current_lines: Dict[str, str] = {}
         self.lock = threading.Lock()
+
+    @property
+    def stream(self) -> TextIO:
+        """The stream progress is written to; ``sys.stderr`` unless overridden."""
+        return self._stream if self._stream is not None else sys.stderr
 
     def _should_update(self) -> bool:
         """Check if enough time has passed for update."""
@@ -259,15 +287,16 @@ class ConsoleProgressDisplay(ProgressDisplay):
         return f"{base_msg}: {message}"
 
     def _safe_write(self, text: str) -> None:
-        """Safely write text to stdout handling encoding errors."""
+        """Safely write text to the progress stream handling encoding errors."""
+        stream = self.stream
         try:
-            sys.stdout.write(text)
+            stream.write(text)
         except UnicodeEncodeError:
             # Fallback: encode with replacement and write decoded
             # Use ascii as safe fallback if encoding is unknown or caused error
-            encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+            encoding = getattr(stream, "encoding", None) or "ascii"
             safe_text = text.encode(encoding, errors="replace").decode(encoding)
-            sys.stdout.write(safe_text)
+            stream.write(safe_text)
 
     def update(self, item: ProgressItem) -> None:
         """Update console progress display."""
@@ -302,11 +331,11 @@ class ConsoleProgressDisplay(ProgressDisplay):
                     self._display_item_line(pipeline_item)
                     self._safe_write("\n")
                 
-                sys.stdout.flush()
+                self.stream.flush()
             else:
                 # Original single-item display
                 self._display_item_line(item)
-                sys.stdout.flush()
+                self.stream.flush()
     
     def _display_item_line(self, item: ProgressItem) -> None:
         """Display a single progress item line."""
@@ -468,13 +497,13 @@ class ConsoleProgressDisplay(ProgressDisplay):
                     f"Completed: {completed} | Failed: {failed} | Total Time: {total_time:.2f}s\n"
                 )
             self._safe_write("=" * 80 + "\n")
-            sys.stdout.flush()
+            self.stream.flush()
 
     def clear(self) -> None:
         """Clear console display."""
         with self.lock:
             self._safe_write("\r" + " " * 100 + "\r")
-            sys.stdout.flush()
+            self.stream.flush()
             self.current_lines.clear()
 
 

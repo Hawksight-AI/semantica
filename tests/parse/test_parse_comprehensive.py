@@ -4,6 +4,7 @@ import tempfile
 import os
 import json
 import csv
+import sys
 from pathlib import Path
 
 import pytest
@@ -137,29 +138,32 @@ class TestParseComprehensive(unittest.TestCase):
 
     # --- Document Parser Tests ---
     
-    @patch('semantica.parse.pdf_parser.pdfplumber')
-    def test_pdf_parser(self, mock_pdfplumber):
+    def test_pdf_parser(self):
         parser = PDFParser()
+        # pdfplumber is imported inside PDFParser.parse, so inject a fake
+        # module into sys.modules instead of patching a module attribute
+        mock_pdfplumber = MagicMock()
         mock_pdf = MagicMock()
         mock_page = MagicMock()
         mock_page.extract_text.return_value = "Page text"
         mock_pdf.pages = [mock_page]
         # Ensure metadata is a dict, not a property object if that's an issue
         mock_pdf.metadata = {"Title": "Test PDF"}
-        
+
         # Setup the context manager
         mock_context_manager = MagicMock()
         mock_context_manager.__enter__.return_value = mock_pdf
         mock_context_manager.__exit__.return_value = None
         mock_pdfplumber.open.return_value = mock_context_manager
-        
+
         # We don't need a real file if we mock open, but the parser likely checks file existence
         with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pdf') as tmp:
             tmp.write(b"dummy pdf content")
             tmp_path = tmp.name
-            
+
         try:
-            result = parser.parse(tmp_path)
+            with patch.dict(sys.modules, {"pdfplumber": mock_pdfplumber}):
+                result = parser.parse(tmp_path)
             # Returns dict with full_text
             self.assertIn("Page text", result["full_text"])
             self.assertEqual(result["metadata"].get("title"), "Test PDF")

@@ -13,16 +13,15 @@ browsers can't set custom headers on a WebSocket handshake.
 import pytest
 
 from semantica.context.context_graph import ContextGraph
-from semantica.explorer.app import create_app
-from semantica.explorer.session import GraphSession
+# fastapi ships in the optional `explorer` extra, not in `dev`, so this module
+# must skip rather than fail collection when it is absent. The guard has to sit
+# above the import below, which pulls fastapi in transitively.
+pytest.importorskip("fastapi")
 
-try:
-    from starlette.testclient import TestClient
-except ImportError:
-    pytest.skip(
-        "starlette TestClient is required for explorer tests. Install semantica[explorer].",
-        allow_module_level=True,
-    )
+from semantica.explorer.app import create_app  # noqa: E402
+from semantica.explorer.session import GraphSession  # noqa: E402
+
+from starlette.testclient import TestClient  # noqa: E402
 
 
 def _build_sample_graph() -> ContextGraph:
@@ -59,6 +58,22 @@ def test_write_route_also_refuses_when_auth_not_configured(client, monkeypatch):
     resp = client.post("/api/export", json={"format": "json"})
 
     assert resp.status_code == 503
+
+
+def test_markdown_write_route_requires_api_key(client, monkeypatch):
+    monkeypatch.delenv("SEMANTICA_ALLOW_ANONYMOUS", raising=False)
+    monkeypatch.setenv("SEMANTICA_API_KEY", "correct-key")
+
+    response = client.put(
+        "/api/markdown/context-node/python",
+        headers={"X-API-Key": "wrong-key"},
+        json={
+            "markdown": "---\nid: python\ntype: language\n---\n\nChanged",
+            "expected_revision": "sha256:" + ("0" * 64),
+        },
+    )
+
+    assert response.status_code == 401
 
 
 # ---------------------------------------------------------------------------

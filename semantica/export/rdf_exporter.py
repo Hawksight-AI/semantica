@@ -193,6 +193,25 @@ def _escape_literal(value: str) -> str:
     )
 
 
+def _escape_temporal_literal(value: Any) -> str:
+    """Escape a temporal bound for a Turtle ``dateTimeStamp`` literal.
+
+    Bounds are normally strings, but callers may hand us a ``datetime`` or
+    ``None``. ``_escape_literal`` is str-only, so stringify non-str values
+    first instead of calling ``.replace()`` on them; ``None`` yields an empty
+    bound rather than crashing. Datetimes must use ISO 8601 so the
+    ``xsd:dateTimeStamp`` ``T`` separator is preserved — ``str()`` yields a
+    space ("00:00:00+00:00"), which is a lexically invalid timestamp.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return _escape_literal(value)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 #: Turtle/N-Triples IRIREF grammar excludes these unescaped between `<` and
 #: `>`: control characters, space, and <>"{}|^`\. An IRI-valued metadata
 #: value (currently only sem:sourceUri, from the caller-controlled "uri"
@@ -623,6 +642,37 @@ class RDFSerializer:
 
         self.logger.debug("RDF serializer initialized")
 
+    @staticmethod
+    def _local_name_from_id(identifier: str) -> str:
+        """Derive a human-readable local name from an entity identifier.
+
+        Handles HTTP(S)/IRI identifiers (path segments and fragments, tolerating
+        trailing slashes) as well as compact/CURIE and URN-style identifiers.
+        """
+        raw = str(identifier).strip()
+        if not raw:
+            return ""
+
+        # Prefer a fragment if present (e.g. http://ex.org/onto#acme -> acme).
+        if "#" in raw:
+            candidate = raw.rsplit("#", 1)[-1]
+            if candidate:
+                return candidate
+
+        # For IRIs/paths, take the last non-empty path segment.
+        if "/" in raw:
+            segment = raw.rstrip("/").rsplit("/", 1)[-1]
+            if segment:
+                return segment
+
+        # Fall back to the tail of a CURIE/URN (e.g. urn:x:acme, semantica:acme).
+        if ":" in raw:
+            candidate = raw.rsplit(":", 1)[-1]
+            if candidate:
+                return candidate
+
+        return raw
+
     def convert_kg_to_rdf(self, knowledge_graph: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert knowledge graph to RDF data structure.
@@ -662,8 +712,11 @@ class RDFSerializer:
                 if "name" in norm_entity:
                     norm_entity["label"] = norm_entity["name"]
                 elif "id" in norm_entity:
-                    # Use ID part as label if no name/text
-                    norm_entity["label"] = str(norm_entity["id"]).split(":")[-1]
+                    # Derive a readable label from the identifier's local name
+                    # (fragment/last path segment/CURIE tail). See #1097.
+                    local_name = self._local_name_from_id(norm_entity["id"])
+                    if local_name:
+                        norm_entity["label"] = local_name
 
             rdf_data["entities"].append(norm_entity)
 
@@ -807,7 +860,7 @@ class RDFSerializer:
 
             clauses = [
                 f"a <{self._as_turtle_iri(entity_type, merged_namespaces)}>",
-                f'semantica:text "{text}"',
+                f'semantica:text "{_escape_literal(text)}"',
             ]
             if confidence is None:
                 self.logger.warning(
@@ -999,7 +1052,7 @@ class RDFSerializer:
                 lines.append(f"    time:hasEnd <{end_id}> .")
                 lines.append(f"<{end_id}> a time:Instant ;")
                 lines.append(
-                    f'    time:inXSDDateTimeStamp "{until_val}"^^xsd:dateTimeStamp .'
+                    f'    time:inXSDDateTimeStamp "{_escape_temporal_literal(until_val)}"^^xsd:dateTimeStamp .'
                 )
             else:
                 lines[-1] = (
@@ -1008,7 +1061,7 @@ class RDFSerializer:
 
             lines.append(f"<{begin_id}> a time:Instant ;")
             lines.append(
-                f'    time:inXSDDateTimeStamp "{from_val}"^^xsd:dateTimeStamp .'
+                f'    time:inXSDDateTimeStamp "{_escape_temporal_literal(from_val)}"^^xsd:dateTimeStamp .'
             )
             lines.append("")
 
@@ -1063,8 +1116,9 @@ class RDFSerializer:
 
             # RDF/XML syntax: rdf:Description with rdf:about
             # Attribute values are delimited by quotes, and both of these
-            # are caller input. Element text is left alone deliberately: that
-            # is #1098, and it is being fixed on its own path.
+            # are caller input. Element text (semantica:text) is caller input
+            # too, so it needs the same escaping to avoid injecting markup
+            # or breaking out of the element (#1097 / #1113).
             entity_iri = xml_escape(
                 self._as_turtle_iri(entity_id, namespaces), quote=True
             )
@@ -1073,7 +1127,9 @@ class RDFSerializer:
             )
             lines.append(f'  <rdf:Description rdf:about="{entity_iri}">')
             lines.append(f'    <rdf:type rdf:resource="{entity_type_iri}"/>')
-            lines.append(f"    <semantica:text>{text}</semantica:text>")
+            lines.append(
+                f"    <semantica:text>{xml_escape(text)}</semantica:text>"
+            )
             if confidence is None:
                 self.logger.warning(
                     f"Entity {entity_id} has a confidence that is not a number "
@@ -1170,11 +1226,14 @@ class RDFSerializer:
         metadata_terms = _resolve_metadata_terms(options.pop("metadata_terms", None))
         graph_uri: Optional[str] = options.pop("graph_uri", None)
 
-        # Initialize JSON-LD structure with context
+        # Initialize JSON-LD structure with context. No @vocab: it applied to
+        # every bare term in caller data, so an extracted type like "ORG"
+        # became ns#ORG and a metadata key like "source" collided with the
+        # real sem:source object property (#1146). Only explicit semantica:
+        # terms resolve now.
         jsonld = {
             "@context": {
-                "@vocab": "https://semantica.dev/vocab/",
-                "semantica": "https://semantica.dev/ns#",
+                "semantica": SEMANTICA_NS,
                 "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
                 "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
             },
@@ -1196,11 +1255,20 @@ class RDFSerializer:
             # and was dropped in full by a JSON-LD parser, silently.
             entity_id = entity.get("id") or mint_entity_iri(entity.get("text", ""))
 
+            # The caller's type label is data, not a class we define: minting
+            # it into @type expanded it through @vocab into ns#ORG and
+            # friends, terms that look official but do not exist (#1146).
+            # The node is always a semantica:Entity and the label travels as
+            # semantica:type, matching the relationship node below and
+            # JSONExporter._entity_to_jsonld.
             node = {
                 "@id": entity_id,
-                "@type": entity.get("type", "semantica:Entity"),
+                "@type": "semantica:Entity",
                 "semantica:text": entity.get("text") or entity.get("label", ""),
             }
+            entity_type = entity.get("type")
+            if entity_type:
+                node["semantica:type"] = entity_type
             confidence = normalize_confidence(entity.get("confidence", 1.0))
             if confidence is None:
                 self.logger.warning(
@@ -1305,7 +1373,7 @@ class RDFSerializer:
             # Text property
             text = entity.get("text") or entity.get("label", "")
             if text:
-                safe_text = text.replace('"', '\\"').replace("\n", "\\n")
+                safe_text = _escape_literal(text)
                 lines.append(
                     f'{subject} {expand_uri("semantica:text")} "{safe_text}" .'
                 )
@@ -1694,6 +1762,12 @@ class RDFExporter:
                 )
 
             self.logger.debug(f"Exporting to RDF format: {format}")
+
+            # Normalize the graph before serialization so every format benefits
+            # from field normalization (e.g. mapping 'name' -> 'label'/'text').
+            # Without this, graphs produced by GraphBuilder (which emit 'name')
+            # export with an empty semantica:text on all RDF paths. See #1097.
+            data = self.serializer.convert_kg_to_rdf(data)
 
             self.progress_tracker.update_tracking(
                 tracking_id, message="Validating RDF data..."

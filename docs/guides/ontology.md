@@ -297,7 +297,7 @@ export_rdf(ontology, "cyber_threat.jsonld", format="jsonld")
 export_rdf(ontology, "cyber_threat.nt", format="ntriples")
 ```
 
-The exported Turtle file is the input to Semantica's SHACL validation pipeline. See the [SHACL Validation](shacl-validation) guide for how to generate constraint shapes from this ontology and run them against live graph data.
+The exported Turtle file is the input to Semantica's SHACL validation pipeline. See the [SHACL Validation](/guides/shacl-validation) guide for how to generate constraint shapes from this ontology and run them against live graph data.
 
 ---
 
@@ -477,7 +477,7 @@ regs = [
 ]
 
 # Use an LLM to extract the conceptual model from regulatory prose
-llm_gen  = LLMOntologyGenerator(provider="anthropic", model="claude-sonnet-4-20250514")
+llm_gen  = LLMOntologyGenerator(provider="anthropic", model="claude-sonnet-5")
 ontology = llm_gen.generate_ontology_from_text(
     "\n\n".join(r.text[:8000] for r in regs)  # token-safe excerpt per document
 )
@@ -503,8 +503,8 @@ else:
 
 ## Related Guides
 
-- [SHACL Validation](shacl-validation) — generate W3C SHACL constraint shapes from your ontology and validate live graph data against them
+- [SHACL Validation](/guides/shacl-validation) — generate W3C SHACL constraint shapes from your ontology and validate live graph data against them
 - [Reasoning & Rules](reasoning) — apply forward/backward-chaining rules over your ontology to derive new facts
 - [Export & Serialization](export) — export graphs to RDF, GraphML, CSV, and Neo4j Cypher
-- [Semantic Extraction](semantic-extraction) — extract entities and relationships that feed ontology generation
-- [Context Graphs](context-graphs) — the knowledge graph that ontology generation reads from
+- [Semantic Extraction](/guides/semantic-extraction) — extract entities and relationships that feed ontology generation
+- [Context Graphs](/guides/context-graphs) — the knowledge graph that ontology generation reads from

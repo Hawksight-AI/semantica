@@ -69,6 +69,19 @@ def _json_output(result) -> Any:
     return json.loads(result.output.strip())
 
 
+def _flatten(output: str) -> str:
+    """Undo Rich panel wrapping for substring assertions on error text.
+
+    Rich wraps long messages across multiple bordered lines (each with its
+    own leading/trailing "│"), so a naive whitespace join still leaves those
+    border characters between words that were split across lines. Strip the
+    box-drawing characters first, then collapse whitespace.
+    """
+    for ch in "┌┐└┘│─":
+        output = output.replace(ch, " ")
+    return " ".join(output.split())
+
+
 # ─── Global flags ─────────────────────────────────────────────────────────────
 
 
@@ -335,6 +348,79 @@ class TestIngest:
         assert data["files"] == [{"path": "README.md"}]
         assert captured["sources"] == "README.md"
         assert captured["kwargs"]["method"] == "file"
+
+    def test_configured_graph_backend_does_not_report_false_success(
+        self, runner, monkeypatch
+    ):
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+
+        result = runner.invoke(cli_module.main, ["ingest", "README.md"])
+        output = _flatten(result.output)
+
+        assert result.exit_code != 0
+        assert "does not write to graph stores" in output
+        assert "Ingested:" not in output
+
+    def test_configured_graph_backend_error_does_not_recommend_broken_kg_build(
+        self, runner, monkeypatch
+    ):
+        # kg build also does not persist to a configured graph store
+        # (tracked separately as #1352), so the error must not send users to
+        # a command that will silently no-op the same way.
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+
+        result = runner.invoke(cli_module.main, ["ingest", "README.md"])
+        output = _flatten(result.output)
+
+        assert result.exit_code != 0
+        assert "kg build" not in output
+
+    def test_output_flag_writes_real_content_and_bypasses_graph_error(
+        self, runner, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+        out_path = tmp_path / "out.json"
+
+        result = runner.invoke(
+            cli_module.main, ["ingest", "README.md", "--output", str(out_path)]
+        )
+
+        _ok(result, substr="Wrote")
+        written = json.loads(out_path.read_text(encoding="utf-8"))
+        assert written == {"files": [{"path": "README.md"}]}
+
+    def test_store_and_output_are_not_forwarded_to_ingest_backend(
+        self, runner, monkeypatch, tmp_path
+    ):
+        captured = {}
+
+        def fake_ingest_file(sources, **kwargs):
+            captured["kwargs"] = kwargs
+            return [{"path": sources}]
+
+        monkeypatch.setattr("semantica.ingest.methods.ingest_file", fake_ingest_file)
+        out_path = tmp_path / "out.json"
+
+        result = runner.invoke(
+            cli_module.main,
+            ["ingest", "README.md", "--store", "neo4j", "--output", str(out_path)],
+        )
+
+        _ok(result)
+        assert "store" not in captured["kwargs"]
+        assert "output" not in captured["kwargs"]
 
     def test_import_error_is_clean(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "__import__", _import_side_effect, raising=False)
@@ -769,6 +855,156 @@ class TestReason:
         )):
             result = runner.invoke(cli_module.main, ["reason", "run"])
         assert result.exit_code != 0
+        assert "Traceback" not in result.output
+
+    def test_run_infers_from_graph_store_facts(self, runner, monkeypatch, tmp_path):
+        # reason run used to call Reasoner.run(), which does not exist
+        # (#1354); it must feed graph store facts + --rules into
+        # Reasoner.infer_facts().
+        pytest.importorskip("numpy", reason="semantica.reasoning needs numpy")
+        rules_file = tmp_path / "rules.yaml"
+        rules_file.write_text(
+            '- IF Person(?x) THEN Human(?x)\n'
+            '- IF MANAGES(?x, ?y) THEN Manager(?x)\n'
+            '- IF Employee(?x) THEN Staff(?x)\n',
+            encoding="utf-8")
+
+        class _FakeStore:
+            # Same dict schema as the real backends: nodes carry
+            # labels/properties, relationships carry start_node_id/end_node_id.
+            def get_nodes(self, limit=None):
+                return [{"id": 1, "labels": ["Person"],
+                         "properties": {"name": "Alice"}},
+                        {"id": 2, "labels": ["Person", "Employee"],
+                         "properties": {"name": "Bob"}}]
+
+            def get_relationships(self, limit=None):
+                return [{"id": 9, "type": "MANAGES",
+                         "start_node_id": 1, "end_node_id": 2}]
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", lambda ctx: _FakeStore())
+        result = runner.invoke(
+            cli_module.main,
+            ["--json", "reason", "run", "--rules", str(rules_file)],
+        )
+        _ok(result)
+        data = json.loads(result.output.strip())
+        # Person(Alice), Person(Bob), Employee(Bob), MANAGES(Alice, Bob)
+        assert data["facts"] == 4
+        assert "Human(Alice)" in data["inferred_facts"]
+        # Relationship endpoints resolve node ids to names.
+        assert "Manager(Alice)" in data["inferred_facts"]
+        # Secondary labels also become facts.
+        assert "Staff(Bob)" in data["inferred_facts"]
+        assert data["inferred_count"] == len(data["inferred_facts"])
+
+    def test_run_rejects_unwired_engine(self, runner):
+        result = runner.invoke(cli_module.main,
+                               ["reason", "run", "--engine", "sparql"])
+        assert result.exit_code != 0
+        assert "not wired" in result.output
+        assert "reason query" in result.output
+        assert "Traceback" not in result.output
+
+    def test_load_rule_definitions_formats(self, tmp_path):
+        yaml_list = tmp_path / "list.yaml"
+        yaml_list.write_text('- IF A(?x) THEN B(?x)\n- IF B(?x) THEN C(?x)\n',
+                             encoding="utf-8")
+        assert cli_module._load_rule_definitions(str(yaml_list)) == [
+            "IF A(?x) THEN B(?x)", "IF B(?x) THEN C(?x)"]
+
+        yaml_map = tmp_path / "map.yaml"
+        yaml_map.write_text('rules:\n  - IF A(?x) THEN B(?x)\n', encoding="utf-8")
+        assert cli_module._load_rule_definitions(str(yaml_map)) == [
+            "IF A(?x) THEN B(?x)"]
+
+        plain = tmp_path / "rules.dl"
+        plain.write_text('# comment\nIF A(?x) THEN B(?x)\n\n', encoding="utf-8")
+        assert cli_module._load_rule_definitions(str(plain)) == [
+            "IF A(?x) THEN B(?x)"]
+
+    def test_run_empty_graph_returns_zero_facts(self, runner, monkeypatch):
+        """reason run with an empty graph store should not crash and report 0 facts."""
+        pytest.importorskip("numpy", reason="semantica.reasoning needs numpy")
+
+        class _EmptyStore:
+            def get_nodes(self, limit=None): return []
+            def get_relationships(self, limit=None): return []
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", lambda ctx: _EmptyStore())
+        result = runner.invoke(cli_module.main, ["--json", "reason", "run"])
+        _ok(result)
+        data = json.loads(result.output.strip())
+        assert data["facts"] == 0
+        assert data["inferred_count"] == 0
+        assert data["inferred_facts"] == []
+
+    def test_run_graph_store_error_surfaces_cleanly(self, runner, monkeypatch):
+        """A graph-store connectivity error must surface as a clean error, not a Traceback."""
+
+        def _bad_store(ctx):
+            raise RuntimeError("connection refused")
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", _bad_store)
+        result = runner.invoke(cli_module.main, ["reason", "run"])
+        assert result.exit_code != 0
+        assert "Traceback" not in result.output
+        assert "connection refused" in result.output
+
+    def test_run_no_rules_uses_empty_ruleset(self, runner, monkeypatch):
+        """reason run without --rules should still succeed (zero rules -> zero inferences)."""
+        pytest.importorskip("numpy", reason="semantica.reasoning needs numpy")
+
+        class _FakeStore:
+            def get_nodes(self, limit=None):
+                return [{"id": 1, "labels": ["Person"], "properties": {"name": "Alice"}}]
+
+            def get_relationships(self, limit=None):
+                return []
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", lambda ctx: _FakeStore())
+        result = runner.invoke(cli_module.main, ["--json", "reason", "run"])
+        _ok(result)
+        data = json.loads(result.output.strip())
+        assert data["facts"] == 1
+        assert data["inferred_count"] == 0
+
+    def test_load_rule_definitions_yaml_mapping_without_rules_key_raises(self, tmp_path):
+        """A YAML mapping with no 'rules' key must raise ClickException, not silently
+        pass the raw YAML lines as rules."""
+        bad = tmp_path / "bad.yaml"
+        bad.write_text("some_key: some_value\nother_key: other_value\n", encoding="utf-8")
+        import click as _click
+        with pytest.raises(_click.ClickException, match="no 'rules' key"):
+            cli_module._load_rule_definitions(str(bad))
+
+    def test_load_rule_definitions_empty_file_returns_empty_list(self, tmp_path):
+        empty = tmp_path / "empty.yaml"
+        empty.write_text("", encoding="utf-8")
+        assert cli_module._load_rule_definitions(str(empty)) == []
+
+    def test_load_rule_definitions_yaml_rules_null_falls_to_plaintext(self, tmp_path):
+        """rules: null is valid YAML with the key present; the null value is
+        not a list, so the function falls through to plain-text parsing and
+        returns the literal line (one no-op rule).  This documents the edge
+        case rather than asserting a specific useful behaviour."""
+        f = tmp_path / "null_rules.yaml"
+        f.write_text("rules: null\n", encoding="utf-8")
+        result = cli_module._load_rule_definitions(str(f))
+        # Plain-text fallback: the non-comment, non-blank line becomes a rule.
+        assert result == ["rules: null"]
+
+    def test_run_rejects_deductive_engine(self, runner, monkeypatch):
+        """Engines other than rete/forward-chain must be rejected with a helpful message."""
+
+        class _EmptyStore:
+            def get_nodes(self, limit=None): return []
+            def get_relationships(self, limit=None): return []
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", lambda ctx: _EmptyStore())
+        result = runner.invoke(cli_module.main, ["reason", "run", "--engine", "deductive"])
+        assert result.exit_code != 0
+        assert "not wired" in result.output
         assert "Traceback" not in result.output
 
     def test_explain_requires_conclusion(self, runner):
@@ -1350,6 +1586,65 @@ class TestStore:
         result = runner.invoke(cli_module.main, ["store", "connect", "--backend", "neo4j"])
         _ok(result)
 
+    def test_connect_dispatches_through_graph_store(self, runner, monkeypatch):
+        # store connect used to call get_graph_store_method(backend) — the
+        # method registry, which needs (task, method_name) — so it raised a
+        # TypeError before any connection attempt (#1354).
+        calls = {}
+
+        class _FakeGraphStore:
+            def __init__(self, backend=None, **cfg):
+                calls["backend"] = backend
+                calls["cfg"] = cfg
+
+            def connect(self):
+                calls["connected"] = True
+                return True
+
+        import semantica.graph_store as gs_mod
+        monkeypatch.setattr(gs_mod, "GraphStore", _FakeGraphStore)
+        result = runner.invoke(cli_module.main, [
+            "store", "connect", "--backend", "neo4j",
+            "--uri", "bolt://example:7687", "--json"])
+        _ok(result)
+        data = _json_output(result)
+        assert data == {"backend": "neo4j", "connected": True}
+        assert calls["backend"] == "neo4j"
+        assert calls["cfg"].get("uri") == "bolt://example:7687"
+        assert calls.get("connected") is True
+
+    def test_connect_invalid_backend_reports_error_not_dispatch_error(self, runner):
+        """An unknown backend name must produce a meaningful backend error, not a
+        Python TypeError from the old get_graph_store_method() dispatch (#1354)."""
+        result = runner.invoke(cli_module.main,
+                               ["store", "connect", "--backend", "does-not-exist"])
+        # Exit 0 because store_connect always catches and reports errors gracefully.
+        _ok(result)
+        # The output must mention the backend, not a Python internal error.
+        assert "does-not-exist" in result.output
+        assert "TypeError" not in result.output
+        assert "Traceback" not in result.output
+
+    def test_connect_backend_error_surfaces_in_json(self, runner, monkeypatch):
+        """A connect() failure must appear in JSON output as connected=False with an error field."""
+
+        class _FailingStore:
+            def __init__(self, backend=None, **cfg):
+                pass
+
+            def connect(self):
+                raise RuntimeError("auth failed")
+
+        import semantica.graph_store as gs_mod
+        monkeypatch.setattr(gs_mod, "GraphStore", _FailingStore)
+        result = runner.invoke(cli_module.main, [
+            "store", "connect", "--backend", "neo4j", "--json"])
+        _ok(result)
+        data = _json_output(result)
+        assert data["connected"] is False
+        assert "auth failed" in data.get("error", "")
+        assert data["backend"] == "neo4j"
+
     def test_migrate_dry_run(self, runner):
         result = runner.invoke(cli_module.main, ["store", "migrate",
                                       "--from", "faiss", "--to", "qdrant", "--dry-run"])
@@ -1358,6 +1653,101 @@ class TestStore:
     def test_migrate_requires_from_and_to(self, runner):
         result = runner.invoke(cli_module.main, ["store", "migrate", "--from", "faiss"])
         assert result.exit_code != 0
+
+    def test_migrate_refuses_unsupported_backend_pair(self, runner):
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "faiss", "--to", "qdrant"])
+        assert result.exit_code != 0
+        assert "faiss, pgvector, sqlite" in result.output
+
+    def _fake_migrate_store_module(self, source_items, stored, dest_configs=None):
+        class _FakeBackendStore:
+            def __init__(self, dimension=None):
+                self.dimension = dimension
+
+        class _FakeStore:
+            def __init__(self, backend, config=None, **kw):
+                self.backend = backend
+                self._config = config or {}
+                dim = self._config.get("dimension")
+                self._backend_store = _FakeBackendStore(dimension=dim)
+                if dest_configs is not None:
+                    dest_configs[backend] = dict(self._config)
+
+            def iter_vectors(self, batch_size=500):
+                if self.backend == "sqlite":
+                    yield from source_items
+                    return
+                return
+                yield  # pragma: no cover - makes this a generator for other backends
+
+            def store_vectors(self, vectors, metadata, ids=None):
+                for vec_id, meta in zip(ids, metadata):
+                    stored[vec_id] = meta
+
+        return _fake_module(VectorStore=_FakeStore)
+
+    def test_migrate_runs_between_supported_backends(self, runner, monkeypatch):
+        source_items = [
+            {"id": "a", "vector": [0.1, 0.2], "metadata": {"tag": "x"}},
+            {"id": "b", "vector": [0.3, 0.4], "metadata": {}},
+        ]
+        stored = {}
+        fake_vs = self._fake_migrate_store_module(source_items, stored)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "sqlite", "--to", "pgvector",
+                                      "--namespace", "prod", "--json"])
+        _ok(result)
+        data = _json_output(result)
+        assert data == {"from": "sqlite", "to": "pgvector", "migrated": 2}
+        assert stored == {"a": {"tag": "x", "namespace": "prod"}, "b": {"namespace": "prod"}}
+
+    def test_migrate_reports_zero_for_empty_source(self, runner, monkeypatch):
+        stored = {}
+        fake_vs = self._fake_migrate_store_module([], stored)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "sqlite", "--to", "pgvector", "--json"])
+        _ok(result)
+        assert _json_output(result)["migrated"] == 0
+        assert stored == {}
+
+    def test_migrate_inherits_source_dimension_into_dest(self, runner, monkeypatch):
+        source_items = [{"id": "a", "vector": [0.1, 0.2, 0.3], "metadata": {}}]
+        stored = {}
+        dest_configs: dict = {}
+        fake_vs = self._fake_migrate_store_module(source_items, stored, dest_configs)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+        monkeypatch.setattr(
+            cli_module.Config, "to_dict",
+            lambda self: {"vector_store": {"sqlite": {"dimension": 3}, "pgvector": {}}},
+        )
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "sqlite", "--to", "pgvector", "--json"])
+        _ok(result)
+        assert dest_configs["pgvector"].get("dimension") == 3
+
+    def test_migrate_faiss_source_requires_index_path(self, runner, monkeypatch):
+        fake_vs = _fake_module(VectorStore=lambda **kw: MagicMock())
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "faiss", "--to", "sqlite"])
+        assert result.exit_code != 0
+        assert "index_path" in result.output
+
+    def test_migrate_faiss_dest_requires_index_path(self, runner, monkeypatch):
+        fake_vs = _fake_module(VectorStore=lambda **kw: MagicMock())
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+
+        result = runner.invoke(cli_module.main, ["store", "migrate",
+                                      "--from", "sqlite", "--to", "faiss"])
+        assert result.exit_code != 0
+        assert "index_path" in result.output
 
     def test_flush_requires_confirm(self, runner):
         result = runner.invoke(cli_module.main, ["store", "flush"])
@@ -1702,7 +2092,7 @@ class TestMCP:
 
     def test_list_tools_with_mock_shows_known_tools(self, runner, monkeypatch):
         fake_tools = _fake_module(__all__=["extract_entities", "query_graph"])
-        monkeypatch.setitem(__import__("sys").modules, "mcp.tools", fake_tools)
+        monkeypatch.setitem(__import__("sys").modules, "semantica_mcp.mcp.tools", fake_tools)
         result = runner.invoke(cli_module.main, ["mcp", "list-tools"])
         _ok(result)
         assert "extract_entities" in result.output
@@ -1974,3 +2364,553 @@ class TestDoctorEmbeddingHintsAndEnv:
         st = checks["Embeddings (sentence-transformers)"]
         assert st["status"] == "fail"
         assert "hash fallback" in st["note"], "padded/caps env value must enable deep mode"
+
+
+class TestDoctorTableLayout:
+    """#1428 + Qodo review: doctor table must keep Check labels and Hint text
+    readable at a normal 80-column terminal.
+
+    These tests render the *human-readable* (non-JSON) doctor table into a
+    captured 80-column Rich console so they cover the actual column-width
+    arithmetic, not just the JSON data.
+
+    Two regressions are protected:
+
+    A. #1428 — Hint (and Note) columns must not collapse into unreadable
+       single-character fragments or be silently truncated with a layout '…'.
+       overflow="fold" on both columns ensures content wraps across lines while
+       remaining fully present.
+
+    B. Qodo — Long Check labels such as "Embeddings (sentence-transformers)"
+       must not be truncated/ellipsized.  Assigning ratio=1 to the Check column
+       (as the original PR did) caused Rich to squeeze it below its min_width
+       at narrow terminals, so the fix removes ratio from the fixed-size columns.
+    """
+
+    def _render_doctor_at_80(self, runner, monkeypatch):
+        """Return the plain-text (ANSI-stripped) doctor table rendered at 80 cols."""
+        import io
+        import re
+        from rich.console import Console
+
+        # Unset LLM-provider env vars so the warn rows (with hints) are always present.
+        for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+
+        buf = io.StringIO()
+        narrow_console = Console(
+            file=buf, width=80, highlight=False, force_terminal=True, no_color=True
+        )
+        monkeypatch.setattr(cli_module, "console", narrow_console)
+
+        result = runner.invoke(cli_module.main, ["doctor"])
+        assert result.exit_code == 0, f"doctor exited non-zero: {result.output!r}"
+
+        return re.sub(r"\x1b\[[0-9;]*m", "", buf.getvalue())
+
+    def _hint_column_parts(self, output: str) -> "list[str]":
+        """Extract non-blank Hint-column segments from each rendered line.
+
+        Locates the Hint column start from the header row and slices that
+        suffix from every subsequent line, so the test is insensitive to the
+        exact widths of the other columns.
+        """
+        lines = output.splitlines()
+        # Line 0 is blank (console.print() blank line before table).
+        hdr = next((l for l in lines if "Hint" in l and "Check" in l), None)
+        assert hdr is not None, "Could not find table header in doctor output"
+        hint_start = hdr.index("Hint")
+
+        parts = []
+        for line in lines:
+            if len(line) > hint_start:
+                seg = line[hint_start:].rstrip()
+                if seg and seg != "Hint" and not set(seg).issubset({"─", " "}):
+                    parts.append(seg)
+        return parts
+
+    # ── B: Qodo regression ────────────────────────────────────────────────────
+
+    def test_long_check_label_not_truncated_at_80_cols(self, runner, monkeypatch):
+        """'Embeddings (sentence-transformers)' must appear verbatim at 80 cols.
+
+        Before the fix, ratio=1 on the Check column let Rich squeeze it below
+        its min_width, turning the label into 'Embedd…' or similar.
+        """
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        assert "Embeddings (sentence-transformers)" in output, (
+            "Check label 'Embeddings (sentence-transformers)' was truncated in "
+            "the 80-column doctor table — the ratio= constraint on the Check "
+            "column must be removed so min_width=34 is always honoured."
+        )
+
+    def test_all_check_labels_not_truncated_at_80_cols(self, runner, monkeypatch):
+        """Every standard Check label must appear verbatim at 80 cols."""
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        for label in (
+            "Python",
+            "semantica",
+            "rich",
+            "Graph store",
+            "Vector store",
+            "Embeddings (sentence-transformers)",
+            "Embeddings (fastembed)",
+            "OpenAI",
+            "Anthropic",
+            "Groq",
+            "Config file",
+            "Log directory",
+        ):
+            assert label in output, (
+                f"Check label {label!r} was truncated or missing in the "
+                "80-column doctor table."
+            )
+
+    # ── A: #1428 regression ───────────────────────────────────────────────────
+
+    def test_hint_content_fully_present_at_80_cols(self, runner, monkeypatch):
+        """The LLM-provider hints must be fully present (folded, not ellipsized).
+
+        With overflow='fold' the full hint text wraps across lines; no
+        characters are discarded.  Joining the Hint-column segments (stripping
+        whitespace) must reconstruct each complete hint string.
+        """
+        import re
+
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        parts = self._hint_column_parts(output)
+        hint_joined = re.sub(r"\s+", "", "".join(parts))
+
+        # Each LLM-provider hint must be fully recoverable from the folded lines.
+        for expected in (
+            "exportOPENAI_API_KEY=\u2026",       # export OPENAI_API_KEY=…
+            "exportANTHROPIC_API_KEY=\u2026",    # export ANTHROPIC_API_KEY=…
+            "exportGROQ_API_KEY=\u2026",         # export GROQ_API_KEY=…
+        ):
+            assert expected in hint_joined, (
+                f"Hint content {expected!r} is missing from the 80-column "
+                "doctor table — overflow='fold' must be set on the Hint column "
+                "so no content is silently discarded."
+            )
+
+    def test_hint_column_has_no_single_char_fragments_at_80_cols(
+        self, runner, monkeypatch
+    ):
+        """No Hint-column line must be a single alphabetic character.
+
+        The original #1428 bug produced outputs like:
+            export
+            O
+            P
+            E
+            N
+            A
+            I
+            ...
+        because Rich allocated the Hint column only 1–2 characters of content
+        width.  overflow='fold' on a properly-wide column eliminates this.
+        """
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        parts = self._hint_column_parts(output)
+        single_char_alpha = [p for p in parts if len(p.strip()) == 1 and p.strip().isalpha()]
+        assert not single_char_alpha, (
+            f"Hint column contains single-character lines {single_char_alpha!r} "
+            "at 80 columns — the Hint column is too narrow; check min_width and "
+            "ratio settings."
+        )
+
+
+class TestEmbedGenerateOutput:
+    """#994: `embed generate --output` must write files `embed index` can read."""
+
+    def _patch_generate(self, monkeypatch, retval):
+        import numpy as np
+        fake_emb = _fake_module(generate_embeddings=lambda *a, **k: np.asarray(retval))
+        monkeypatch.setitem(__import__("sys").modules, "semantica.embeddings", fake_emb)
+
+    def test_writes_valid_parquet(self, runner, monkeypatch, tmp_path):
+        pytest.importorskip("pyarrow", reason="parquet writer regression needs pyarrow")
+        import numpy as np
+        import pandas as pd
+        self._patch_generate(monkeypatch, [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+        out = tmp_path / "embeddings.parquet"
+        result = runner.invoke(cli_module.main, ["embed", "generate", "in.json", "--output", str(out)])
+        _ok(result)
+        df = pd.read_parquet(out)
+        assert "embedding" in df.columns
+        assert len(df) == 2
+        # Use allclose: the writer may store float32 or float64 depending on
+        # the model backend; exact == fails for float32-precision values.
+        assert np.allclose(df["embedding"].iloc[0], [0.1, 0.2, 0.3], atol=1e-6)
+
+    def test_writes_1d_result_as_single_row_parquet(self, runner, monkeypatch, tmp_path):
+        pytest.importorskip("pyarrow", reason="parquet writer regression needs pyarrow")
+        import numpy as np
+        import pandas as pd
+        self._patch_generate(monkeypatch, [0.1, 0.2, 0.3])
+        out = tmp_path / "embeddings.parquet"
+        result = runner.invoke(cli_module.main, ["embed", "generate", "in.json", "--output", str(out)])
+        _ok(result)
+        df = pd.read_parquet(out)
+        assert len(df) == 1
+        assert np.allclose(df["embedding"].iloc[0], [0.1, 0.2, 0.3], atol=1e-6)
+
+    def test_writes_json_records_not_repr_strings(self, runner, monkeypatch, tmp_path):
+        import json as _json
+        import numpy as np
+        import pandas as pd
+        self._patch_generate(monkeypatch, [[0.1, 0.2], [0.3, 0.4]])
+        out = tmp_path / "embeddings.json"
+        result = runner.invoke(cli_module.main, ["embed", "generate", "in.json", "--output", str(out)])
+        _ok(result)
+        records = _json.loads(out.read_text(encoding="utf-8"))
+        assert records == [{"embedding": [0.1, 0.2]}, {"embedding": [0.3, 0.4]}]
+        # Verify embed index can read the file back (round-trip contract).
+        df = pd.read_json(out, orient="records")
+        vector_col = next(
+            (c for c in df.columns if isinstance(df[c].iloc[0], (list, np.ndarray))),
+            None,
+        )
+        assert vector_col == "embedding", (
+            f"embed index would not find a vector column; got columns {list(df.columns)}"
+        )
+
+    def test_rejects_unsupported_output_format(self, runner, monkeypatch, tmp_path):
+        self._patch_generate(monkeypatch, [[0.1, 0.2]])
+        out = tmp_path / "embeddings.txt"
+        result = runner.invoke(cli_module.main, ["embed", "generate", "in.json", "--output", str(out)])
+        assert result.exit_code != 0
+        assert "Unsupported output format" in result.output
+        assert not out.exists()
+
+
+class TestWriteResultOutput:
+    """Unit-level regression tests for _write_result_output().
+
+    Covers every branch: JSON, JSONL, CSV, unsupported extension, no-extension,
+    dict+JSONL, empty list, NumPy scalar/array values, and round-trip readback.
+    """
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+
+    def _write(self, tmp_path, filename, result):
+        """Call _write_result_output and return the output Path."""
+        from semantica.cli import _write_result_output
+        out = tmp_path / filename
+        _write_result_output(out, result)
+        return out
+
+    # ── JSON ─────────────────────────────────────────────────────────────────
+
+    def test_json_dict_produces_valid_json(self, tmp_path):
+        import json
+        out = self._write(tmp_path, "r.json", {"pairs": 3, "score": 0.9})
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data == {"pairs": 3, "score": 0.9}
+
+    def test_json_list_produces_valid_json(self, tmp_path):
+        import json
+        out = self._write(tmp_path, "r.json", [{"a": 1}, {"a": 2}])
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data == [{"a": 1}, {"a": 2}]
+
+    def test_json_numpy_scalar_serialises_as_number_not_repr(self, tmp_path):
+        """np.float32 values must round-trip as JSON numbers, not repr strings."""
+        import json
+        import numpy as np
+        out = self._write(tmp_path, "r.json", {"score": np.float32(0.95)})
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert isinstance(data["score"], float), (
+            f"expected float, got {type(data['score'])}: {data['score']!r}"
+        )
+        assert abs(data["score"] - 0.95) < 1e-4
+
+    def test_json_numpy_array_serialises_as_list_not_repr(self, tmp_path):
+        """np.ndarray values must round-trip as JSON arrays, not '[0.1 0.2]' repr."""
+        import json
+        import numpy as np
+        out = self._write(tmp_path, "r.json", {"vec": np.array([0.1, 0.2, 0.3])})
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert isinstance(data["vec"], list), (
+            f"expected list, got {type(data['vec'])}: {data['vec']!r}"
+        )
+        assert len(data["vec"]) == 3
+
+    # ── JSONL ────────────────────────────────────────────────────────────────
+
+    def test_jsonl_list_writes_one_object_per_line(self, tmp_path):
+        """Each item in a list result must occupy exactly one JSONL line."""
+        import json
+        records = [{"id": "a", "score": 0.9}, {"id": "b", "score": 0.7}]
+        out = self._write(tmp_path, "r.jsonl", records)
+        lines = [l for l in out.read_text(encoding="utf-8").splitlines() if l.strip()]
+        assert len(lines) == 2
+        assert json.loads(lines[0]) == {"id": "a", "score": 0.9}
+        assert json.loads(lines[1]) == {"id": "b", "score": 0.7}
+
+    def test_jsonl_dict_writes_exactly_one_line(self, tmp_path):
+        """A dict result (e.g. ontology_align) must write one JSON object on one line,
+        not a pretty-printed multi-line block that pd.read_json(lines=True) cannot parse."""
+        import json
+        import pandas as pd
+        result = {"total_entities": 10, "duplicate_pairs": 3}
+        out = self._write(tmp_path, "r.jsonl", result)
+        raw = out.read_text(encoding="utf-8")
+        lines = [l for l in raw.splitlines() if l.strip()]
+        # Exactly one line
+        assert len(lines) == 1, (
+            f"Expected 1 JSONL line for dict result, got {len(lines)}:\n{raw!r}"
+        )
+        # That line parses as valid JSON
+        parsed = json.loads(lines[0])
+        assert parsed == result
+        # pd.read_json(lines=True) can read it back
+        df = pd.read_json(out, lines=True)
+        assert list(df.columns) == ["total_entities", "duplicate_pairs"]
+
+    def test_jsonl_numpy_values_are_not_repr_strings(self, tmp_path):
+        """NumPy values inside JSONL lines must be proper JSON, not repr()."""
+        import json
+        import numpy as np
+        records = [{"score": np.float32(0.8), "tag": "x"}]
+        out = self._write(tmp_path, "r.jsonl", records)
+        line = out.read_text(encoding="utf-8").strip()
+        parsed = json.loads(line)
+        assert isinstance(parsed["score"], float)
+
+    # ── CSV ──────────────────────────────────────────────────────────────────
+
+    def test_csv_list_of_dicts_produces_readable_csv(self, tmp_path):
+        import pandas as pd
+        rows = [{"entity_1": "Alice", "entity_2": "Bob", "similarity": 0.87},
+                {"entity_1": "Carol", "entity_2": "Dave", "similarity": 0.72}]
+        out = self._write(tmp_path, "r.csv", rows)
+        df = pd.read_csv(out)
+        assert list(df.columns) == ["entity_1", "entity_2", "similarity"]
+        assert len(df) == 2
+        assert abs(df["similarity"].iloc[0] - 0.87) < 1e-6
+
+    def test_csv_numpy_scalar_becomes_number_not_repr(self, tmp_path):
+        """np.float32 in a result row must not become a repr string in the CSV."""
+        import numpy as np
+        import pandas as pd
+        rows = [{"label": "x", "score": np.float32(0.95)}]
+        out = self._write(tmp_path, "r.csv", rows)
+        df = pd.read_csv(out)
+        # The cell must be a numeric type, not a string like 'np.float32(0.95)'
+        assert df["score"].dtype.kind in ("f", "i"), (
+            f"Expected numeric dtype, got {df['score'].dtype}: {df['score'].iloc[0]!r}"
+        )
+
+    def test_csv_empty_list_raises_clickexception(self, tmp_path):
+        """An empty result list must raise rather than create a headerless newline."""
+        import click
+        from semantica.cli import _write_result_output
+        out = tmp_path / "empty.csv"
+        with pytest.raises(click.ClickException, match="No results to write"):
+            _write_result_output(out, [])
+        assert not out.exists()
+
+    def test_csv_single_dict_written_as_one_row(self, tmp_path):
+        import pandas as pd
+        out = self._write(tmp_path, "r.csv", {"total": 5, "merged": 2})
+        df = pd.read_csv(out)
+        assert len(df) == 1
+        assert df["total"].iloc[0] == 5
+
+    # ── unsupported / no-extension ────────────────────────────────────────────
+
+    def test_unsupported_extension_raises_clickexception(self, tmp_path):
+        import click
+        from semantica.cli import _write_result_output
+        out = tmp_path / "report.txt"
+        with pytest.raises(click.ClickException, match="Unsupported output format"):
+            _write_result_output(out, {"k": "v"})
+        assert not out.exists()
+
+    def test_no_extension_raises_clickexception(self, tmp_path):
+        """No-extension paths must be rejected — not silently renamed to .json —
+        so the path reported to the user always matches the file created."""
+        import click
+        from semantica.cli import _write_result_output
+        out = tmp_path / "report"
+        with pytest.raises(click.ClickException, match="Unsupported output format"):
+            _write_result_output(out, {"k": "v"})
+        assert not out.exists()
+        assert not (tmp_path / "report.json").exists()
+
+    def test_txt_extension_raises_clickexception(self, tmp_path):
+        """.txt is not a documented format and must be rejected, consistent with
+        _write_embeddings_output which also rejects it."""
+        import click
+        from semantica.cli import _write_result_output
+        out = tmp_path / "r.txt"
+        with pytest.raises(click.ClickException, match="Unsupported output format"):
+            _write_result_output(out, {"k": "v"})
+        assert not out.exists()
+
+    def test_uppercase_extension_accepted(self, tmp_path):
+        """Extension matching must be case-insensitive (.CSV == .csv)."""
+        import pandas as pd
+        out = self._write(tmp_path, "r.CSV", [{"a": 1}])
+        df = pd.read_csv(out)
+        assert len(df) == 1
+
+
+class TestDeduplicateOutput:
+    """CLI-level regression tests for deduplicate --output integration.
+
+    Uses the same monkeypatching pattern as TestDeduplicate.test_detect_runtime_path:
+    patch _get_store and get_nodes at the graph_store.methods level, then patch
+    the deduplication module so no real model or DB is needed.
+    """
+
+    _ENTITIES = [
+        {"id": "e1", "name": "Alice", "type": "Person"},
+        {"id": "e2", "name": "Alice", "type": "Person"},
+    ]
+    _DETECT_RESULT = [
+        {"entity_1": "e1", "entity_2": "e2", "similarity": 0.9}
+    ]
+
+    def _patch_dedup(self, monkeypatch):
+        """Wire graph store + deduplication mocks for the detect action."""
+        entities = self._ENTITIES
+        detect_result = self._DETECT_RESULT
+
+        class FakeStore:
+            def get_nodes(self, labels=None, properties=None, limit=100, **opts):
+                return entities
+
+        monkeypatch.setattr(
+            "semantica.graph_store.methods._get_store", lambda: FakeStore()
+        )
+        monkeypatch.setattr(
+            "semantica.graph_store.methods.get_nodes", lambda **kw: entities
+        )
+        monkeypatch.setattr(
+            "semantica.deduplication.methods.detect_duplicates",
+            lambda *a, **k: detect_result,
+            raising=False,
+        )
+        # The CLI imports from .deduplication directly; patch that too.
+        import types
+        fake_dedup = _fake_module(detect_duplicates=lambda *a, **k: detect_result)
+        fake_merger_inst = types.SimpleNamespace(
+            merge_duplicates=lambda *a, **k: detect_result
+        )
+        fake_dedup.entity_merger = types.SimpleNamespace(
+            EntityMerger=lambda: fake_merger_inst
+        )
+        monkeypatch.setitem(
+            __import__("sys").modules, "semantica.deduplication", fake_dedup
+        )
+        monkeypatch.setitem(
+            __import__("sys").modules,
+            "semantica.deduplication.entity_merger",
+            fake_dedup.entity_merger,
+        )
+
+    def test_deduplicate_output_json_is_valid(self, runner, monkeypatch, tmp_path):
+        """deduplicate --output report.json must produce parseable JSON, not a repr."""
+        import json
+        self._patch_dedup(monkeypatch)
+        out = tmp_path / "report.json"
+        result = runner.invoke(
+            cli_module.main,
+            ["deduplicate", "--action", "detect", "--output", str(out)],
+        )
+        _ok(result)
+        assert out.exists(), f"output file not created; output: {result.output!r}"
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert isinstance(data, (list, dict))
+
+    def test_deduplicate_output_csv_is_readable(self, runner, monkeypatch, tmp_path):
+        """deduplicate --output report.csv (documented format) must produce valid CSV."""
+        import pandas as pd
+        self._patch_dedup(monkeypatch)
+        out = tmp_path / "report.csv"
+        result = runner.invoke(
+            cli_module.main,
+            ["deduplicate", "--action", "detect", "--output", str(out)],
+        )
+        _ok(result)
+        assert out.exists(), f"CSV file not created; output: {result.output!r}"
+        df = pd.read_csv(out)
+        assert len(df) >= 1
+
+
+class TestOntologyAlignOutput:
+    """CLI-level regression tests for ontology align --output integration.
+
+    Uses runner.isolated_filesystem() so Click's exists=True source/target
+    validation passes, then patches semantica.ontology at the sys.modules level
+    before the import inside _action() fires — same pattern as
+    TestOntology.test_align_import_error_is_clean.
+    """
+
+    _ALIGN_RESULT = {
+        "alignments": [{"source": "A", "target": "B", "score": 0.8}],
+        "total": 1,
+    }
+
+    def _patch_align(self, monkeypatch, align_result=None):
+        result = align_result if align_result is not None else self._ALIGN_RESULT
+        import types
+        fake_gen = types.SimpleNamespace(align=lambda *a, **k: result)
+        fake_ontology = _fake_module(
+            OntologyGenerator=lambda **k: fake_gen,
+        )
+        monkeypatch.setitem(
+            __import__("sys").modules, "semantica.ontology", fake_ontology
+        )
+
+    def test_ontology_align_output_json_is_valid(self, runner, monkeypatch, tmp_path):
+        """ontology align --output alignments.json must produce parseable JSON."""
+        import json
+        self._patch_align(monkeypatch)
+        out = tmp_path / "alignments.json"
+        with runner.isolated_filesystem():
+            open("s.ttl", "w").close()
+            open("t.ttl", "w").close()
+            result = runner.invoke(
+                cli_module.main,
+                ["ontology", "align",
+                 "--source", "s.ttl", "--target", "t.ttl",
+                 "--output", str(out)],
+            )
+        _ok(result)
+        assert out.exists(), f"output file not created; output: {result.output!r}"
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert isinstance(data, dict)
+        assert "alignments" in data
+
+    def test_ontology_align_output_jsonl_is_readable_by_pandas(
+        self, runner, monkeypatch, tmp_path
+    ):
+        """ontology align --output alignments.jsonl must produce valid JSONL:
+        exactly one JSON object per line, readable by pd.read_json(lines=True).
+        Regression for F2: dict result must NOT be pretty-printed across multiple
+        lines into a .jsonl file."""
+        import pandas as pd
+        self._patch_align(monkeypatch)
+        out = tmp_path / "alignments.jsonl"
+        with runner.isolated_filesystem():
+            open("s.ttl", "w").close()
+            open("t.ttl", "w").close()
+            result = runner.invoke(
+                cli_module.main,
+                ["ontology", "align",
+                 "--source", "s.ttl", "--target", "t.ttl",
+                 "--output", str(out)],
+            )
+        _ok(result)
+        assert out.exists(), f"JSONL file not created; output: {result.output!r}"
+        raw = out.read_text(encoding="utf-8")
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
+        assert len(lines) == 1, (
+            f"Expected exactly 1 JSONL line for a dict result, got {len(lines)}:\n{raw!r}"
+        )
+        # pd.read_json(lines=True) must succeed — this is what the F2 bug broke.
+        df = pd.read_json(out, lines=True)
+        assert "alignments" in df.columns

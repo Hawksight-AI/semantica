@@ -28,6 +28,7 @@ icon: "database"
 | `DBIngestor` | SQL databases via SQLAlchemy: tables, views, and custom queries |
 | `SnowflakeIngestor` | Snowflake data warehouse queries and table exports |
 | `DatabricksIngestor` | Databricks Unity Catalog metadata, Delta table queries, and lineage |
+| `SAPIngestor` | SAP OData services (S/4HANA Cloud, SuccessFactors, NetWeaver Gateway): entity-set discovery and ingestion with v2/v4 pagination |
 | `ParquetIngestor` | Apache Parquet files and partitioned datasets with column selection |
 | `ArrowIngestor` | Apache Arrow IPC and Feather file processing |
 | `XMLIngestor` | XXE-safe XML parsing with optional XSD schema validation |
@@ -645,7 +646,7 @@ from semantica.ingest import ingest_file
 result = ingest_file("source_path", method="my_format")
 ```
 
-- [Parse](parse) — Parse raw sources into structured text and tables.
+- [Parse](/reference/parse) — Parse raw sources into structured text and tables.
 - [Pipeline](pipeline) — Orchestrate ingest as the first pipeline step.
 - [Snowflake Integration](../integrations/snowflake) — Snowflake-specific setup and authentication guide.
 - [Databricks Integration](../integrations/databricks) — Databricks Unity Catalog setup, authentication, and lineage guide.

@@ -557,8 +557,8 @@ for chain in chains:
 
 ## Related Guides
 
-- [Context Graphs](context-graphs) — `ContextGraph` node and edge model; `add_edge(weight=...)` feeds confidence decay
-- [Graph Analytics](graph-analytics) — centrality, community detection, Node2Vec embeddings, link prediction
-- [Agent Memory](agent-memory) — proximity-blended retrieval (`proximity_weight`) integrates distance intelligence into memory search
-- [Decision Intelligence](decision-intelligence) — `trace_decision_causality()` for causal chains with distance annotations
+- [Context Graphs](/guides/context-graphs) — `ContextGraph` node and edge model; `add_edge(weight=...)` feeds confidence decay
+- [Graph Analytics](/guides/graph-analytics) — centrality, community detection, Node2Vec embeddings, link prediction
+- [Agent Memory](/guides/agent-memory) — proximity-blended retrieval (`proximity_weight`) integrates distance intelligence into memory search
+- [Decision Intelligence](/guides/decision-intelligence) — `trace_decision_causality()` for causal chains with distance annotations
 - [Reasoning & Rules](reasoning) — `TemporalReasoningEngine` for Allen interval algebra over time-bounded graph nodes

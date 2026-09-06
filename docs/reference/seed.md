@@ -322,6 +322,6 @@ export SEMANTICA_SEED_MERGE_STRATEGY=seed_first
 </Tip>
 
 - [Ingest](ingest) — Load unstructured data alongside seed data.
-- [Knowledge Graph](kg) — The target graph that seed data populates.
+- [Knowledge Graph](/reference/kg) — The target graph that seed data populates.
 - [Deduplication](deduplication) — Handle duplicates during seed-extracted merge.
 - [Pipeline](pipeline) — Incorporate seed loading as a named pipeline step.

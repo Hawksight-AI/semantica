@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Semantica: Graph-Native Infrastructure for Context and Accountable AI Systems"
+type: software
+authors:
+  - name: "Semantica"
+repository-code: "https://github.com/semantica-agi/semantica"
+url: "https://getsemantica.ai"
+license: MIT
+version: 0.6.8
+date-released: 2026-09-05
+keywords:
+  - knowledge-graph
+  - context-graph
+  - ai-agents
+  - llm
+  - decision-intelligence
+  - provenance
+  - explainability
+  - graph-rag

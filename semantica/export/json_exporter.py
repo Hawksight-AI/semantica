@@ -306,10 +306,10 @@ class JSONExporter:
 
         self.logger.debug(f"Exporting {len(entities)} entity(ies) to JSON")
 
-        # Build JSON data with JSON-LD context
+        # Build JSON data with JSON-LD context. No @vocab: it would expand
+        # every bare key in the caller's entity dicts into ns# (#1146).
         json_data = {
             "@context": {
-                "@vocab": "https://semantica.dev/vocab/",
                 "semantica": SEMANTICA_NS,
                 "entities": {"@id": "semantica:entities", "@container": "@list"},
             },
@@ -339,7 +339,6 @@ class JSONExporter:
         """
         json_data = {
             "@context": {
-                "@vocab": "https://semantica.dev/vocab/",
                 "semantica": SEMANTICA_NS,
                 "relationships": {
                     "@id": "semantica:relationships",
@@ -434,11 +433,14 @@ class JSONExporter:
         Returns:
             Dictionary in JSON-LD format with @context, @graph/@value, and metadata
         """
-        # Initialize JSON-LD structure with context
+        # Initialize JSON-LD structure with context. No @vocab: for a generic
+        # payload it turned whatever bare keys the caller happened to use into
+        # ns# terms (#1146). Undeclared terms now simply expand to nothing,
+        # which is standard JSON-LD behaviour for a context that does not
+        # know them; the raw payload is still in the document.
         jsonld = {
             "@context": {
-                "@vocab": "https://semantica.dev/vocab/",
-                "semantica": "https://semantica.dev/ns#",
+                "semantica": SEMANTICA_NS,
             }
         }
 
@@ -598,13 +600,21 @@ class JSONExporter:
         Returns:
             Dictionary in JSON-LD format with @context, @id, @type, and graph data
         """
-        # Initialize JSON-LD structure with RDF context
+        # Initialize JSON-LD structure with RDF context. No @vocab: it applied
+        # to every bare term in caller data, so an extracted type like "ORG"
+        # became ns#ORG and a metadata key like "source" collided with the
+        # real sem:source object property (#1146). Only explicit semantica:
+        # terms resolve now, and the caller's metadata dict is typed @json so
+        # it survives as one rdf:JSON literal instead of expanding its keys.
         jsonld = {
             "@context": {
-                "@vocab": "https://semantica.dev/vocab/",
-                "semantica": "https://semantica.dev/ns#",
+                "semantica": SEMANTICA_NS,
                 "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
                 "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+                "semantica:metadata": {
+                    "@id": "semantica:metadata",
+                    "@type": "@json",
+                },
             },
             # Minted from the graph's own content rather than the wall clock
             # (#1147): re-exporting an unchanged graph must produce the same
@@ -664,14 +674,23 @@ class JSONExporter:
         entity_text = entity.get("text") or entity.get("label", "unknown")
         entity_id = entity.get("id") or mint_entity_iri(entity_text)
 
+        # The caller's type label is data, not a class we define: minting it
+        # into @type expanded it through @vocab into ns#ORG and friends, terms
+        # that look official but do not exist (#1146). The node is always a
+        # semantica:Entity and the label travels as semantica:type, exactly
+        # how _relationship_to_jsonld has always carried the relationship type.
         jsonld = {
             "@id": entity_id,
-            "@type": entity.get("type") or "semantica:Entity",
+            "@type": "semantica:Entity",
             "semantica:text": entity.get("text") or entity.get("label", ""),
             "semantica:confidence": entity.get("confidence", 1.0),
         }
+        entity_type = entity.get("type")
+        if entity_type:
+            jsonld["semantica:type"] = entity_type
 
-        # Add metadata if present
+        # Add metadata if present. The @json term definition on
+        # semantica:metadata keeps the whole dict one rdf:JSON literal.
         if "metadata" in entity:
             jsonld["semantica:metadata"] = entity["metadata"]
 

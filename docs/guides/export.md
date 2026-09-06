@@ -443,8 +443,8 @@ For semantic reasoning and ontology work, OWL/XML is the format — it is the on
 
 ## Related Guides
 
-- [Context Graphs](context-graphs) — the `ContextGraph` object whose `to_dict()` feeds all exports
+- [Context Graphs](/guides/context-graphs) — the `ContextGraph` object whose `to_dict()` feeds all exports
 - [Ontology Management](ontology) — export OWL ontologies generated from your graph
 - [Reasoning & Rules](reasoning) — reasoning results can be exported as RDF triples
-- [Change Management](change-management) — snapshot a graph before exporting to prove the export was made from a verified state
+- [Change Management](/guides/change-management) — snapshot a graph before exporting to prove the export was made from a verified state
 - [Pipeline](pipeline) — chain ingest, extract, and export in a single `PipelineBuilder`

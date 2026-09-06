@@ -7,12 +7,15 @@ supported by the Semantica framework. It serves as a facade for different reason
 
 import re
 import uuid
+from collections.abc import Mapping, Sequence, Set as AbstractSet
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
 
 class RuleType(Enum):
     """Rule types."""
@@ -20,6 +23,306 @@ class RuleType(Enum):
     EQUIVALENCE = "equivalence"
     CONSTRAINT = "constraint"
     TRANSFORMATION = "transformation"
+
+
+def _substitute_variables(template: str, bindings: Dict[str, str]) -> str:
+    """Substitute ``?var`` placeholders with their bound values, token-aware.
+
+    A naive ``str.replace(f"?{var}", value)`` corrupts placeholders that share
+    a prefix -- e.g. binding ``?x`` would also rewrite the ``?x`` inside ``?xy``.
+    We replace every ``?word`` token in a single regex pass so that only whole
+    variable names are matched (``\\w+`` never partially matches a longer name),
+    leaving unbound placeholders untouched.
+    """
+    if not bindings:
+        return template
+
+    def _replace(match: "re.Match") -> str:
+        var_name = match.group(1)
+        # Preserve unbound placeholders verbatim.
+        return str(bindings[var_name]) if var_name in bindings else match.group(0)
+
+    return re.sub(r"\?(\w+)", _replace, template)
+
+
+def _canonicalize_activation_value(
+    value: Any, active_containers: Optional[Dict[int, int]] = None
+) -> Tuple[Any, ...]:
+    """Convert nested activation data into a deterministic, hashable value."""
+    if active_containers is None:
+        active_containers = {}
+
+    value_type = (type(value).__module__, type(value).__qualname__)
+    is_mapping = isinstance(value, Mapping)
+    is_sequence = isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    )
+    is_set = isinstance(value, AbstractSet) and not isinstance(
+        value, (str, bytes, bytearray)
+    )
+    if not (is_mapping or is_sequence or is_set):
+        return ("scalar", value_type, repr(value))
+
+    object_id = id(value)
+    if object_id in active_containers:
+        return ("reference", active_containers[object_id])
+    active_containers[object_id] = len(active_containers)
+
+    try:
+        if is_mapping:
+            keyed_items = [
+                (
+                    _canonicalize_activation_value(key, active_containers),
+                    item,
+                )
+                for key, item in value.items()
+            ]
+            keyed_items.sort(key=lambda entry: repr(entry[0]))
+            entries = tuple(
+                (
+                    key,
+                    _canonicalize_activation_value(item, active_containers),
+                )
+                for key, item in keyed_items
+            )
+            return ("mapping", value_type, entries)
+        if is_sequence:
+            return (
+                "sequence",
+                value_type,
+                tuple(
+                    _canonicalize_activation_value(item, active_containers)
+                    for item in value
+                ),
+            )
+        items = tuple(
+            sorted(
+                (
+                    _canonicalize_activation_value(item, active_containers)
+                    for item in value
+                ),
+                key=repr,
+            )
+        )
+        return ("set", value_type, items)
+    finally:
+        del active_containers[object_id]
+
+
+def _make_activation_key(
+    rule_id: str, bindings: Dict[str, Any], fact_tokens: List[Any]
+) -> Tuple[Any, ...]:
+    """Return a stable identity for one concrete rule activation."""
+    canonical_bindings = tuple(
+        sorted(
+            (str(name), _canonicalize_activation_value(value))
+            for name, value in bindings.items()
+        )
+    )
+    return (
+        rule_id,
+        canonical_bindings,
+        tuple(
+            sorted(
+                (_canonicalize_activation_value(token) for token in fact_tokens),
+                key=repr,
+            )
+        ),
+    )
+
+
+def _parse_fact(fact: str) -> Optional[Tuple[str, List[str]]]:
+    """Parse a ``Predicate(arg1, arg2, ...)`` fact string.
+
+    Returns ``(predicate, [args])`` or ``None`` when the fact is not in the
+    canonical predicate form (e.g. a bare atom). Whitespace around args is
+    stripped and empty arg lists are supported (``Foo()`` -> ``("Foo", [])``).
+    """
+    match = re.match(r"^\s*([^()\s]+)\s*\((.*)\)\s*$", fact)
+    if not match:
+        return None
+    predicate = match.group(1)
+    inner = match.group(2).strip()
+    if not inner:
+        return predicate, []
+    args = [arg.strip() for arg in inner.split(",")]
+    return predicate, args
+
+
+def _write_fact_to_graph(graph: Any, fact: str, *, retract: bool = False) -> None:
+    """Persist (or remove) a fact against a knowledge-graph-like target.
+
+    Write-back follows an explicit, ordered protocol so that
+    ``AssertAction(write_back=True)`` never silently no-ops:
+
+    1. If the target exposes an explicit fact API (``add_fact`` / ``assert_fact``
+       for asserts, ``remove_fact`` / ``retract_fact`` / ``discard_fact`` for
+       retracts), that is used verbatim.
+    2. Otherwise, if the target looks like the canonical
+       :class:`~semantica.kg.knowledge_graph.KnowledgeGraph` (has ``entities``
+       and ``relationships`` lists), the fact is translated into a node
+       (single-arg predicate) or relationship (two-arg predicate) and
+       added/removed accordingly.
+    3. Any other target, or a fact that cannot be translated, raises
+       :class:`ValueError` so the failure surfaces instead of being swallowed.
+    """
+    if retract:
+        for method_name in ("retract_fact", "remove_fact", "discard_fact"):
+            method = getattr(graph, method_name, None)
+            if callable(method):
+                method(fact)
+                return
+    else:
+        for method_name in ("add_fact", "assert_fact"):
+            method = getattr(graph, method_name, None)
+            if callable(method):
+                method(fact)
+                return
+
+    entities = getattr(graph, "entities", None)
+    relationships = getattr(graph, "relationships", None)
+    if isinstance(entities, list) and isinstance(relationships, list):
+        parsed = _parse_fact(fact)
+        if parsed is None:
+            raise ValueError(
+                f"Cannot translate fact {fact!r} into graph node/relationship: "
+                "expected canonical Predicate(args) form."
+            )
+        predicate, args = parsed
+        if len(args) == 1:
+            node = {"id": args[0], "type": predicate}
+            if retract:
+                _remove_matching(
+                    entities,
+                    lambda e: e.get("id") == args[0] and e.get("type") == predicate,
+                )
+            elif node not in entities:
+                entities.append(node)
+            return
+        if len(args) == 2:
+            rel = {"source": args[0], "target": args[1], "type": predicate}
+            if retract:
+                _remove_matching(
+                    relationships,
+                    lambda r: r.get("source") == args[0]
+                    and r.get("target") == args[1]
+                    and r.get("type") == predicate,
+                )
+            elif rel not in relationships:
+                relationships.append(rel)
+            return
+        raise ValueError(
+            f"Cannot write fact {fact!r} to graph: only unary (node) and binary "
+            "(relationship) predicates are supported by the default adapter."
+        )
+
+    raise ValueError(
+        f"knowledge_graph target {type(graph).__name__!r} does not expose a "
+        "supported write-back API (add_fact/assert_fact or entities/relationships)."
+    )
+
+
+def _remove_matching(items: List[Dict[str, Any]], predicate: Callable[[Dict[str, Any]], bool]) -> None:
+    """Remove in place every dict in ``items`` for which ``predicate`` is True."""
+    items[:] = [item for item in items if not predicate(item)]
+
+class Action:
+    """Base class for an action fired when a rule matches.
+
+    Actions turn the reasoner from a pure inference engine into a
+    production-rule system: when a rule's conditions match, its actions run
+    with the match's variable bindings, allowing side effects (asserting or
+    retracting facts, calling external tools, emitting events) rather than
+    only deriving a new fact.
+
+    Subclasses implement :meth:`execute`, which receives the substituted
+    ``bindings`` and the owning ``reasoner`` and returns an optional
+    description of what happened (used for provenance / explanation).
+    """
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        raise NotImplementedError
+
+    @staticmethod
+    def _substitute(template: str, bindings: Dict[str, str]) -> str:
+        return _substitute_variables(template, bindings)
+
+
+@dataclass
+class AssertAction(Action):
+    """Assert a new fact when the rule fires.
+
+    ``fact`` may contain ``?var`` placeholders that are substituted with the
+    match bindings. If ``write_back`` is set and the reasoner exposes a
+    knowledge graph, the fact is also written there.
+    """
+
+    fact: str
+    write_back: bool = False
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        concrete = self._substitute(self.fact, bindings)
+        reasoner.facts.add(concrete)
+        if self.write_back and getattr(reasoner, "knowledge_graph", None) is not None:
+            _write_fact_to_graph(reasoner.knowledge_graph, concrete)
+        return f"assert {concrete}"
+
+
+@dataclass
+class RetractAction(Action):
+    """Retract a fact when the rule fires (basic truth maintenance).
+
+    If ``write_back`` is set and the reasoner exposes a knowledge graph, the
+    fact is also removed there using the graph's delete semantics (mirroring
+    :class:`AssertAction`'s write-back).
+    """
+
+    fact: str
+    write_back: bool = False
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        concrete = self._substitute(self.fact, bindings)
+        reasoner.facts.discard(concrete)
+        if self.write_back and getattr(reasoner, "knowledge_graph", None) is not None:
+            _write_fact_to_graph(reasoner.knowledge_graph, concrete, retract=True)
+        return f"retract {concrete}"
+
+
+@dataclass
+class CallAction(Action):
+    """Call an external function/tool when the rule fires.
+
+    Wraps an arbitrary callable, which is invoked as ``func(bindings,
+    reasoner)``. This is the structured replacement for the previously
+    unused ``Rule.handler`` callback.
+    """
+
+    func: Callable
+    name: str = "call"
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        self.func(bindings, reasoner)
+        return f"call {self.name}"
+
+
+@dataclass
+class EmitEventAction(Action):
+    """Emit an event to the reasoner's registered event sink when fired.
+
+    The event name may contain ``?var`` placeholders. Events are delivered to
+    any callable registered via :meth:`Reasoner.on_event`.
+    """
+
+    event: str
+    payload: Dict[str, Any] = field(default_factory=dict)
+
+    def execute(self, bindings: Dict[str, str], reasoner: "Reasoner") -> Optional[str]:
+        concrete = self._substitute(self.event, bindings)
+        sink = getattr(reasoner, "_event_sink", None)
+        if callable(sink):
+            sink(concrete, {**self.payload, "bindings": dict(bindings)})
+        return f"emit {concrete}"
+
 
 @dataclass
 class Rule:
@@ -32,6 +335,7 @@ class Rule:
     confidence: float = 1.0
     priority: int = 0
     handler: Optional[Callable] = None
+    actions: List[Action] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
@@ -79,7 +383,70 @@ class Reasoner:
         self.rules: List[Rule] = []
         self.facts: Set[str] = set()
         self.rule_counter = 0
-            
+        self._fired_activations: Set[Tuple[Any, ...]] = set()
+
+        # Optional knowledge graph for AssertAction(write_back=True) targets.
+        self.knowledge_graph = kwargs.get("knowledge_graph")
+        # Optional event sink for EmitEventAction; register via on_event().
+        self._event_sink: Optional[Callable] = None
+        # When True, action-induced fact changes are recorded for provenance
+        # via _record_action() -> self.action_log.
+        self.provenance: bool = bool(kwargs.get("provenance", False))
+        self.action_log: List[Dict[str, Any]] = []
+
+    def on_event(self, sink: Callable) -> None:
+        """Register a callable ``sink(event_name, payload)`` for EmitEventAction."""
+        self._event_sink = sink
+
+    def _record_action(
+        self, rule: "Rule", action: "Action", description: Optional[str], bindings: Dict[str, str]
+    ) -> None:
+        """Record a fired action for provenance / explanation when enabled.
+
+        Each entry is a structured dict carrying an ISO-8601 ``timestamp`` and a
+        parsed ``operation``/``fact`` split (when the description follows the
+        ``"<op> <fact>"`` convention used by the built-in actions) so that
+        downstream consumers such as :class:`ExplanationGenerator` and the
+        provenance layer can reason about *what changed* without re-parsing the
+        free-text description.
+        """
+        if not self.provenance or description is None:
+            return
+        operation, _, subject = description.partition(" ")
+        self.action_log.append(
+            {
+                "action_id": uuid.uuid4().hex[:8],
+                "rule_id": rule.rule_id,
+                "action": type(action).__name__,
+                "operation": operation or None,
+                "fact": subject or None,
+                "description": description,
+                "bindings": dict(bindings),
+                "confidence": rule.confidence,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    def _fire_actions(self, rule: "Rule", bindings: Dict[str, str]) -> None:
+        """Run a fired rule's actions (and legacy handler) with match bindings.
+
+        Backward compatible: a rule with an old-style ``handler`` but no
+        ``actions`` still has its handler invoked, so pre-existing rules keep
+        working while new rules use the structured Action layer.
+        """
+        actions = list(rule.actions)
+        if rule.handler is not None:
+            actions.append(CallAction(rule.handler, name=f"handler:{rule.rule_id}"))
+        for action in actions:
+            try:
+                description = action.execute(bindings, self)
+                self._record_action(rule, action, description, bindings)
+            except Exception as exc:  # noqa: BLE001
+                self.logger.error(
+                    f"Error executing action {type(action).__name__} "
+                    f"for rule '{rule.rule_id}': {exc}"
+                )
+
     def add_rule(self, rule_def: Union[str, Rule]) -> Rule:
         """Add a rule to the reasoner.
 
@@ -161,6 +528,20 @@ class Reasoner:
         Returns:
             List of inferred facts (conclusions)
         """
+        return [result.conclusion for result in self.infer_with_results(facts, rules)]
+
+    def infer_with_results(
+        self,
+        facts: Union[List[Any], Dict[str, Any]],
+        rules: Optional[List[Union[str, Rule]]] = None,
+    ) -> List[InferenceResult]:
+        """Infer new facts and return the full :class:`InferenceResult` objects.
+
+        Unlike :meth:`infer_facts` (which returns only conclusion strings for
+        backward compatibility), this preserves each result's ``rule_used``,
+        ``premises`` and ``confidence`` so callers such as the provenance
+        wrapper can record real confidence values instead of ``None``.
+        """
         tracking_id = self.progress_tracker.start_tracking(
             module="reasoning",
             submodule="Reasoner",
@@ -180,17 +561,14 @@ class Reasoner:
             
             # Perform inference
             results = self.forward_chain()
-                
-            # Extract conclusions from results
-            inferred_facts = [result.conclusion for result in results]
             
             self.progress_tracker.stop_tracking(
                 tracking_id,
                 status="completed",
-                message=f"Inferred {len(inferred_facts)} new facts"
+                message=f"Inferred {len(results)} new facts"
             )
             
-            return inferred_facts
+            return results
             
         except Exception as e:
             self.progress_tracker.stop_tracking(
@@ -213,7 +591,15 @@ class Reasoner:
         new_facts_added = True
         max_iterations = self.config.get("max_iterations", 50)
         iteration = 0
-        
+        # Activations (rule + concrete bindings + matched facts) whose actions
+        # have already fired. Actions are side-effecting and must
+        # fire exactly once per distinct match, decoupled from whether the
+        # rule's *conclusion* is new. This fixes two failure modes:
+        #   * A valid binding whose conclusion is already known (or duplicated
+        #     within a pass) previously never fired its actions.
+        #   * A RetractAction that removes a premise of its own rule previously
+        #     re-fired every pass, iterating to max_iterations. Recording the
+        #     activation means it fires once and stops driving iterations.
         while new_facts_added and iteration < max_iterations:
             new_facts_added = False
             iteration += 1
@@ -236,7 +622,21 @@ class Reasoner:
             pass_results: Dict[str, InferenceResult] = {}
             
             for rule in self.rules:
-                for conclusion, matched_facts in self._match_rule(rule):
+                for conclusion, matched_facts, bindings in self._match_rule(rule):
+                    # Fire this activation's actions exactly once, independent
+                    # of the conclusion-dedup below. Keyed by rule id + the
+                    # concrete bindings so distinct matches each fire, but a
+                    # repeated match (same bindings across passes) does not.
+                    if rule.actions or rule.handler is not None:
+                        activation_key = _make_activation_key(
+                            rule.rule_id,
+                            bindings,
+                            matched_facts,
+                        )
+                        if activation_key not in self._fired_activations:
+                            self._fired_activations.add(activation_key)
+                            self._fire_actions(rule, bindings)
+
                     if conclusion in pass_results:
                         # Another derivation of a conclusion already produced
                         # earlier in this same pass: merge premises, dedup.
@@ -372,14 +772,17 @@ class Reasoner:
             conclusion=conclusion_str.strip()
         )
         
-    def _match_rule(self, rule: Rule) -> List[Tuple[str, List[str]]]:
+    def _match_rule(self, rule: Rule) -> List[Tuple[str, List[str], Dict[str, str]]]:
         """
         Match rule conditions against facts and return instantiated conclusions
-        paired with the facts that satisfied each condition.
+        paired with the facts that satisfied each condition and the variable
+        bindings that produced them.
 
         Returns:
-            List of (conclusion, matched_facts) tuples, where matched_facts is
-            the ordered list of facts bound to this rule's conditions.
+            List of (conclusion, matched_facts, bindings) tuples, where
+            matched_facts is the ordered list of facts bound to this rule's
+            conditions and bindings maps variable name -> matched value (used
+            to fire the rule's actions).
         """
         if not rule.conditions:
             return []
@@ -410,7 +813,7 @@ class Reasoner:
         results = []
         for bindings, matched_facts in bindings_list:
             instantiated_conclusion = self._substitute(rule.conclusion, bindings)
-            results.append((instantiated_conclusion, matched_facts))
+            results.append((instantiated_conclusion, matched_facts, bindings))
             
         return results
         
@@ -456,16 +859,18 @@ class Reasoner:
         
     def _substitute(self, pattern: str, bindings: Dict[str, str]) -> str:
         """Substitute variables in a pattern with bound values."""
-        result = pattern
-        for var, value in bindings.items():
-            result = result.replace(f"?{var}", value)
-        return result
+        return _substitute_variables(pattern, bindings)
         
+    def reset_action_history(self) -> None:
+        """Allow previously fired rule activations to execute their actions again."""
+        self._fired_activations.clear()
+
     def clear(self) -> None:
-        """Clear facts and rules."""
+        """Clear facts, rules, and action activation history."""
         self.facts.clear()
         self.rules.clear()
         self.rule_counter = 0
+        self.reset_action_history()
 
     def reset(self) -> None:
         """Alias for clear()."""

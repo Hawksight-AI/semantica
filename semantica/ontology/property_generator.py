@@ -34,6 +34,30 @@ from ..utils.exceptions import ProcessingError, ValidationError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .naming_conventions import NamingConventions
+from .relationship_utils import build_entity_aliases, resolve_relationship_endpoint_type
+
+
+# Top-level entity keys that describe structure or provenance rather than
+# business attributes. GraphBuilder and EntityMerger attach these to entity
+# dicts (relationships list, nested properties/metadata maps, merge history),
+# so they must not be inferred as datatype properties. Each key mirrors what
+# the framework actually writes to a merged entity top level
+# (see MergeStrategyManager._merge_entities merged_entity dict and GraphBuilder).
+_CONTROL_FIELDS = frozenset(
+    {
+        "id",
+        "type",
+        "entity_type",
+        "text",
+        "label",
+        "confidence",
+        "properties",
+        "relationships",
+        "metadata",
+        "merged_from",
+        "merge_strategy",
+    }
+)
 
 
 class PropertyGenerator:
@@ -106,7 +130,7 @@ class PropertyGenerator:
                 tracking_id, message="Inferring object properties from relationships..."
             )
             object_properties = self._infer_object_properties(
-                relationships, classes, **options
+                relationships, classes, entities=entities, **options
             )
             properties.extend(object_properties)
 
@@ -116,6 +140,8 @@ class PropertyGenerator:
             )
             data_properties = self._infer_data_properties(entities, classes, **options)
             properties.extend(data_properties)
+
+            properties = self._coalesce_normalized_properties(properties)
 
             self.progress_tracker.stop_tracking(
                 tracking_id,
@@ -134,6 +160,7 @@ class PropertyGenerator:
         self,
         relationships: List[Dict[str, Any]],
         classes: List[Dict[str, Any]],
+        entities: Optional[List[Dict[str, Any]]] = None,
         **options,
     ) -> List[Dict[str, Any]]:
         """Infer object properties from relationships."""
@@ -145,6 +172,7 @@ class PropertyGenerator:
 
         # Create class map
         class_map = {cls["name"]: cls for cls in classes}
+        entity_aliases = build_entity_aliases(entities or [])
 
         properties = []
         for rel_type, rels in rel_types.items():
@@ -154,12 +182,12 @@ class PropertyGenerator:
                 ranges = set()
 
                 for rel in rels:
-                    source_type = rel.get(
-                        "source_type"
-                    ) or self._infer_class_from_entity(rel.get("source_id"), classes)
-                    target_type = rel.get(
-                        "target_type"
-                    ) or self._infer_class_from_entity(rel.get("target_id"), classes)
+                    source_type = resolve_relationship_endpoint_type(
+                        rel, "source", entity_aliases
+                    )
+                    target_type = resolve_relationship_endpoint_type(
+                        rel, "target", entity_aliases
+                    )
 
                     if source_type:
                         domains.add(source_type)
@@ -193,27 +221,87 @@ class PropertyGenerator:
 
         return properties
 
+    def _coalesce_normalized_properties(
+        self, properties: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Merge same-kind properties that normalize to the same name."""
+        property_kinds = defaultdict(set)
+        for prop in properties:
+            property_kinds[prop["name"]].add(prop.get("type"))
+
+        collisions = {
+            name: sorted(kind for kind in kinds if kind is not None)
+            for name, kinds in property_kinds.items()
+            if len({kind for kind in kinds if kind is not None}) > 1
+        }
+        if collisions:
+            raise ValidationError(
+                "Normalized property names cannot be shared by object and "
+                "data properties.",
+                validation_context={"property_kind_collisions": collisions},
+            )
+
+        merged: Dict[tuple, Dict[str, Any]] = {}
+        result = []
+        for prop in properties:
+            key = (prop.get("type"), prop["name"])
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = prop
+                result.append(prop)
+                continue
+
+            existing["domain"] = self._merge_property_values(
+                existing.get("domain", []), prop.get("domain", [])
+            )
+            if prop.get("type") == "object":
+                existing["range"] = self._merge_property_values(
+                    existing.get("range", []), prop.get("range", [])
+                )
+                existing_metadata = existing.setdefault("metadata", {})
+                existing_metadata["occurrence_count"] = (
+                    existing_metadata.get("occurrence_count", 0)
+                    + prop.get("metadata", {}).get("occurrence_count", 0)
+                )
+            elif existing.get("range") != prop.get("range"):
+                existing["range"] = self._get_more_general_type(
+                    existing["range"], prop["range"]
+                )
+
+        return result
+
+    @staticmethod
+    def _merge_property_values(current: Any, incoming: Any) -> List[Any]:
+        """Merge scalar-or-list property values while preserving input order."""
+        values = list(current) if isinstance(current, list) else [current]
+        incoming_values = (
+            incoming if isinstance(incoming, list) else [incoming]
+        )
+        for value in incoming_values:
+            if value not in values:
+                values.append(value)
+        return [value for value in values if value is not None]
+
     def _infer_data_properties(
         self, entities: List[Dict[str, Any]], classes: List[Dict[str, Any]], **options
     ) -> List[Dict[str, Any]]:
         """Infer data properties from entity attributes."""
-        # Group entities by type
-        entity_types = defaultdict(list)
+        # Group entities by their inferred class so normalized class names remain
+        # aligned with the class definitions emitted by ClassInferrer.
+        class_entities = defaultdict(list)
+        class_lookup = self._build_class_type_lookup(classes)
         for entity in entities:
             entity_type = entity.get("type") or entity.get("entity_type", "Entity")
-            entity_types[entity_type].append(entity)
+            class_def = self._find_class_for_entity_type(entity_type, class_lookup)
+            if not class_def:
+                continue
+            class_name = class_def["name"]
+            class_entities[class_name].append(entity)
 
         # Extract data properties for each class
         properties = []
 
-        for entity_type, type_entities in entity_types.items():
-            # Find corresponding class
-            class_def = next(
-                (cls for cls in classes if cls["name"] == entity_type), None
-            )
-            if not class_def:
-                continue
-
+        for class_name, type_entities in class_entities.items():
             # Extract data properties
             data_props = self._extract_data_properties(type_entities)
 
@@ -233,7 +321,7 @@ class PropertyGenerator:
                     else None,
                     "label": normalized_name,
                     "comment": f"Data property for {prop_name}",
-                    "domain": [entity_type],
+                    "domain": [class_name],
                     "range": prop_type,
                     "metadata": {"inferred_from": prop_name},
                 }
@@ -241,6 +329,38 @@ class PropertyGenerator:
                 properties.append(property_def)
 
         return properties
+
+    def _build_class_type_lookup(
+        self, classes: List[Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build a lookup for raw, normalized, and recorded source type names."""
+        lookup: Dict[str, Dict[str, Any]] = {}
+        for class_def in classes:
+            class_name = class_def.get("name")
+            if class_name:
+                lookup.setdefault(str(class_name), class_def)
+                lookup.setdefault(
+                    self.naming_conventions.normalize_class_name(str(class_name)),
+                    class_def,
+                )
+
+            inferred_from = class_def.get("metadata", {}).get("inferred_from")
+            if inferred_from is not None:
+                lookup.setdefault(str(inferred_from), class_def)
+                lookup.setdefault(
+                    self.naming_conventions.normalize_class_name(str(inferred_from)),
+                    class_def,
+                )
+
+        return lookup
+
+    def _find_class_for_entity_type(
+        self, entity_type: Any, class_lookup: Dict[str, Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Find a class using the precomputed type lookup."""
+        raw_type = str(entity_type)
+        normalized_type = self.naming_conventions.normalize_class_name(raw_type)
+        return class_lookup.get(raw_type) or class_lookup.get(normalized_type)
 
     def _extract_data_properties(
         self, entities: List[Dict[str, Any]]
@@ -250,7 +370,7 @@ class PropertyGenerator:
 
         for entity in entities:
             for key, value in entity.items():
-                if key in ["id", "type", "entity_type", "text", "label", "confidence"]:
+                if key in _CONTROL_FIELDS:
                     continue
 
                 # Infer type

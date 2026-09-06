@@ -815,6 +815,8 @@ class DBIngestor:
         engine = connector.connect(connection_string)
 
         try:
+            from sqlalchemy import text
+
             with engine.connect() as conn:
                 # Execute query with parameters (parameterized queries for safety)
                 result = conn.execute(text(query), params)
