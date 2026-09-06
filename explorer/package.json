@@ -26,7 +26,7 @@
     "graphology-metrics": "^2.4.0",
     "graphology-shortest-path": "^2.1.0",
     "lucide-react": "^1.7.0",
-    "playwright": "^1.59.1",
+    "playwright": "^1.62.1",
     "react": "^19.2.4",
     "react-arborist": "^3.4.3",
     "react-dom": "^19.2.4",
