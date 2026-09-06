@@ -1,10 +1,10 @@
-"""Regression tests for the standalone mcp/ package export_graph tool.
+"""Regression tests for the standalone semantica_mcp/mcp package export_graph tool.
 
-The mcp/ server (python -m mcp / python -m mcp.server) had two failures on
-every RDF export format:
+The standalone MCP server (python -m semantica_mcp.mcp / python -m
+semantica_mcp.mcp.server) had two failures on every RDF export format:
 
   1. AttributeError: 'ContextGraph' object has no attribute 'get'
-     handle_export_graph() in mcp/tools/export.py called
+     handle_export_graph() in semantica_mcp/mcp/tools/export.py called
      RDFExporter().export_to_rdf(graph, ...) passing the raw ContextGraph
      object instead of the canonical kg dict expected by the exporter.
 
@@ -15,8 +15,8 @@ every RDF export format:
      so this interleaved non-JSON bytes corrupted framing for every client.
 
 Fixes applied:
-  - mcp/tools/export.py: convert with graph.to_kg_dict() before export_to_rdf()
-  - mcp/__init__.py: os.environ["SEMANTICA_DISABLE_PROGRESS"] = "1" at
+  - semantica_mcp/mcp/tools/export.py: convert with graph.to_kg_dict() before export_to_rdf()
+  - semantica_mcp/mcp/__init__.py: os.environ["SEMANTICA_DISABLE_PROGRESS"] = "1" at
     package initialisation, before any tool handler can instantiate
     RDFExporter and therefore before the tracker singleton is created.
 """
@@ -62,18 +62,18 @@ class TestMCPPackageExportGraphRDF(unittest.TestCase):
     supported RDF format, not an error dict."""
 
     def setUp(self):
-        # Inject a known graph into the mcp/ session so handlers don't try to
+        # Inject a known graph into the semantica_mcp.mcp session so handlers don't try to
         # build a full ContextGraph (which requires heavy ML dependencies).
-        import mcp.session as _session
+        import semantica_mcp.mcp.session as _session
         self._orig_graph = _session._graph
         _session._graph = _make_graph()
 
     def tearDown(self):
-        import mcp.session as _session
+        import semantica_mcp.mcp.session as _session
         _session._graph = self._orig_graph
 
     def test_turtle_returns_non_empty_string(self):
-        from mcp.tools.export import handle_export_graph
+        from semantica_mcp.mcp.tools.export import handle_export_graph
         result = handle_export_graph({"format": "turtle"})
         self.assertNotIn("error", result, result)
         self.assertIsInstance(result["data"], str)
@@ -82,35 +82,35 @@ class TestMCPPackageExportGraphRDF(unittest.TestCase):
         self.assertIn("@prefix", result["data"])
 
     def test_ttl_alias_returns_non_empty_string(self):
-        from mcp.tools.export import handle_export_graph
+        from semantica_mcp.mcp.tools.export import handle_export_graph
         result = handle_export_graph({"format": "ttl"})
         self.assertNotIn("error", result, result)
         self.assertIsInstance(result["data"], str)
         self.assertGreater(len(result["data"]), 0)
 
     def test_nt_returns_non_empty_string(self):
-        from mcp.tools.export import handle_export_graph
+        from semantica_mcp.mcp.tools.export import handle_export_graph
         result = handle_export_graph({"format": "nt"})
         self.assertNotIn("error", result, result)
         self.assertIsInstance(result["data"], str)
         self.assertGreater(len(result["data"]), 0)
 
     def test_xml_returns_non_empty_string(self):
-        from mcp.tools.export import handle_export_graph
+        from semantica_mcp.mcp.tools.export import handle_export_graph
         result = handle_export_graph({"format": "xml"})
         self.assertNotIn("error", result, result)
         self.assertIsInstance(result["data"], str)
         self.assertGreater(len(result["data"]), 0)
 
     def test_jsonld_returns_non_empty_string(self):
-        from mcp.tools.export import handle_export_graph
+        from semantica_mcp.mcp.tools.export import handle_export_graph
         result = handle_export_graph({"format": "json-ld"})
         self.assertNotIn("error", result, result)
         self.assertIsInstance(result["data"], str)
         self.assertGreater(len(result["data"]), 0)
 
     def test_all_rdf_formats_succeed(self):
-        from mcp.tools.export import handle_export_graph
+        from semantica_mcp.mcp.tools.export import handle_export_graph
         for fmt in ("turtle", "ttl", "nt", "xml", "json-ld"):
             with self.subTest(fmt=fmt):
                 result = handle_export_graph({"format": fmt})
@@ -122,7 +122,7 @@ class TestMCPPackageExportGraphRDF(unittest.TestCase):
         """The pre-fix code passed ContextGraph directly to export_to_rdf(),
         causing AttributeError: 'ContextGraph' object has no attribute 'get'.
         Verify that error does not appear in the result."""
-        from mcp.tools.export import handle_export_graph
+        from semantica_mcp.mcp.tools.export import handle_export_graph
         result = handle_export_graph({"format": "turtle"})
         if "error" in result:
             self.assertNotIn("'ContextGraph' object has no attribute 'get'",
@@ -134,12 +134,12 @@ class TestMCPPackageExportGraphRDF(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestMCPPackageStdoutProtection(unittest.TestCase):
-    """The standalone mcp/ server must not write any progress bytes to stdout.
+    """The standalone semantica_mcp.mcp server must not write any progress bytes to stdout.
     stdout is the MCP JSON-RPC transport channel.
 
     These tests use a subprocess to get a clean process state where
     SEMANTICA_DISABLE_PROGRESS has not yet been set, so we can verify that
-    importing mcp and running an export produces no progress bytes on stdout.
+    importing semantica_mcp.mcp and running an export produces no progress bytes on stdout.
     """
 
     def _run_in_subprocess(self, code: str, timeout: int = 30) -> subprocess.CompletedProcess:
@@ -163,11 +163,11 @@ class TestMCPPackageStdoutProtection(unittest.TestCase):
         )
 
     def test_importing_mcp_sets_disable_progress(self):
-        """Importing the mcp package must set SEMANTICA_DISABLE_PROGRESS=1
+        """Importing the semantica_mcp.mcp package must set SEMANTICA_DISABLE_PROGRESS=1
         before any tool handler runs."""
         code = (
             "import os; "
-            "import mcp; "  # triggers mcp/__init__.py
+            "import semantica_mcp.mcp; "  # triggers semantica_mcp/mcp/__init__.py
             "print(os.environ.get('SEMANTICA_DISABLE_PROGRESS', 'NOT SET'))"
         )
         result = self._run_in_subprocess(code)
@@ -183,8 +183,8 @@ import os, sys
 # Ensure clean state
 os.environ.pop("SEMANTICA_DISABLE_PROGRESS", None)
 
-import mcp  # sets SEMANTICA_DISABLE_PROGRESS=1
-import mcp.session as session
+import semantica_mcp.mcp  # sets SEMANTICA_DISABLE_PROGRESS=1
+import semantica_mcp.mcp.session as session
 from semantica.context.context_graph import ContextGraph
 
 g = ContextGraph()
@@ -201,7 +201,7 @@ def _capture(s):
     return _orig(s)
 sys.stdout.write = _capture
 
-from mcp.tools.export import handle_export_graph
+from semantica_mcp.mcp.tools.export import handle_export_graph
 result = handle_export_graph({"format": "turtle"})
 
 sys.stdout.write = _orig

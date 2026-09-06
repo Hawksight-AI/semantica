@@ -5,7 +5,7 @@ icon: "rocket"
 ---
 
 <Info>
-  **v0.6.7** — first-class LangChain integration, SAP OData ingestor, human-editable Markdown persistence for `ContextGraph`, and a structured Action layer for the reasoning engine. <a href="https://github.com/semantica-agi/semantica/releases" style={{color:"#10B981",fontWeight:600,textDecoration:"none"}}>What's new →</a>
+  **v0.6.8**: cryptographically signed releases (SLSA provenance + Sigstore), real vector-store enumeration across FAISS/Qdrant/Weaviate/Milvus, and first-class Anthropic/Gemini/Ollama/DeepSeek/Novita LLM provider wrappers. <a href="https://github.com/semantica-agi/semantica/releases" style={{color:"#10B981",fontWeight:600,textDecoration:"none"}}>What's new →</a>
 </Info>
 
 This guide walks you through the end-to-end pipeline for building your first knowledge graph. Start here after installation. An LLM API key is optional: pattern-based extraction works out of the box.
@@ -35,7 +35,7 @@ Verify:
 
 ```bash
 python -c "import semantica; print(semantica.__version__)"
-# 0.6.7
+# 0.6.8
 ```
 
 
@@ -454,7 +454,7 @@ pip install --upgrade semantica
 
 ## Next Steps
 
-- [Core Concepts](/concepts) — Knowledge graphs, ontologies, reasoning engines: the mental model behind Semantica.
-- [Module Reference](/modules) — Every module explained with key classes and common chains.
-- [API Reference](/reference/context) — Complete documentation for every module, class, and parameter.
-- [Cookbook](/cookbook) — 40+ interactive Jupyter notebooks with real-world datasets.
+- [Core Concepts](/concepts): knowledge graphs, ontologies, and reasoning engines (the mental model behind Semantica).
+- [Module Reference](/modules): every module explained with key classes and common chains.
+- [API Reference](/reference/context): complete documentation for every module, class, and parameter.
+- [Cookbook](/cookbook): 40+ interactive Jupyter notebooks with real-world datasets.

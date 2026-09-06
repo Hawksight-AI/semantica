@@ -13,6 +13,7 @@ pytest.importorskip("fastapi")
 
 from semantica.explorer.app import create_app  # noqa: E402
 from semantica.explorer.routes.ontology import (  # noqa: E402
+    _MAX_ANALYSIS_NODES,
     OntologyEntry,
     _convert_ontology_to_graph,
     _node_belongs_to_ontology,
@@ -308,6 +309,66 @@ def test_ontology_graph_ignores_unrelated_data_when_enforcing_size_limit(client)
     assert "http://example.org/onto-a#Person" in {
         node["id"] for node in response.json()["nodes"]
     }
+
+
+def test_ontology_graph_rejects_oversized_core_and_stops_scanning(client, monkeypatch):
+    graph = client.app.state.session.graph
+    for index in range(5_001):
+        graph.add_node(
+            f"http://example.org/onto-a#Bulk{index:05d}",
+            node_type="owl:Class",
+            content="Bulk",
+            scheme_uri="http://example.org/onto-a",
+        )
+    for index in range(3_000):
+        graph.add_node(
+            f"urn:unrelated:{index}",
+            node_type="owl:Class",
+            content="Unrelated",
+            scheme_uri="http://example.org/onto-b",
+        )
+
+    streamed = 0
+    original_iter_nodes = GraphSession.iter_nodes
+
+    def counting_iter_nodes(self, node_type=None):
+        nonlocal streamed
+        for node in original_iter_nodes(self, node_type=node_type):
+            streamed += 1
+            yield node
+
+    monkeypatch.setattr(GraphSession, "iter_nodes", counting_iter_nodes)
+
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 413
+    assert str(_MAX_ANALYSIS_NODES) in response.json()["detail"]
+    # The graph holds 8,001 owl:Class nodes and onto-a's own sort first, so a
+    # scan that abandons at the cap sees far fewer than the whole type.
+    assert streamed < 6_000
+
+
+def test_ontology_graph_hydrates_external_edge_targets_in_sorted_order(client):
+    graph = client.app.state.session.graph
+    external = "http://external.example/Thing"
+    also_external = "http://external.example/Aardvark"
+    graph.add_node(external, node_type="owl:Class", content="External Thing")
+    graph.add_node(also_external, node_type="owl:Class", content="External Aardvark")
+    graph.add_edge("http://example.org/onto-a#name", external, edge_type="rdfs:range")
+    graph.add_edge("http://example.org/onto-a#name", also_external, edge_type="rdfs:range")
+
+    response = client.get(
+        "/api/ontology/graph",
+        params={"uri": "http://example.org/onto-a"},
+    )
+
+    assert response.status_code == 200
+    node_ids = [node["id"] for node in response.json()["nodes"]]
+    assert {external, also_external} <= set(node_ids)
+    assert node_ids == sorted(node_ids)
 
 
 def test_shacl_generate_and_shapes(client):
@@ -735,6 +796,7 @@ onto:PersonShape a sh:NodeShape ;
         payload = response.json()
         assert payload["status"] == "error"
         assert "exceeds maximum allowed size" in payload["message"]
+        assert "SEMANTICA_MAX_SHACL_TURTLE_BYTES" in payload["message"]
 
 
 def test_validate_shacl_rejects_too_many_triples(client):
@@ -757,6 +819,7 @@ onto:PersonShape a sh:NodeShape ;
         payload = response.json()
         assert payload["status"] == "error"
         assert "exceeds maximum allowed limit" in payload["message"]
+        assert "SEMANTICA_MAX_SHACL_TRIPLES" in payload["message"]
 
 
 def test_validate_shacl_handles_timeout(client):
@@ -786,6 +849,7 @@ onto:PersonShape a sh:NodeShape ;
         payload = response.json()
         assert payload["status"] == "error"
         assert "timed out" in payload["message"]
+        assert "SEMANTICA_MAX_SHACL_TIMEOUT" in payload["message"]
 
 
 def test_validate_shacl_returns_unavailable_for_truncated_graph(client):

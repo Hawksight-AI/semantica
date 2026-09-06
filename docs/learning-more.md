@@ -9,9 +9,9 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
 ## Learning Paths
 
-- **Beginner (1–2 hrs)** — New to Semantica and knowledge graphs. [Start with Installation →](/installation)
-- **Intermediate (4–6 hrs)** — Comfortable with basics, building real applications. [Start with Modules →](/modules)
-- **Advanced (8+ hrs)** — Enterprise deployments, customization, and extension. [Start with Architecture →](/architecture)
+- **Beginner (1–2 hrs)**: new to Semantica and knowledge graphs. [Start with Installation →](/installation)
+- **Intermediate (4–6 hrs)**: comfortable with basics, building real applications. [Start with Modules →](/modules)
+- **Advanced (8+ hrs)**: enterprise deployments, customization, and extension. [Start with Architecture →](/architecture)
 
 <Tabs>
   <Tab title="Beginner (1–2 hrs)">
@@ -116,7 +116,7 @@ pip install "semantica[gpu]"          # GPU acceleration
 
 <Accordion title="AuthenticationError" icon="lock">
 
-Set your API key as an environment variable — never hardcode keys in source files:
+Set your API key as an environment variable (never hardcode keys in source files):
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -236,6 +236,6 @@ The `blocking_v2`, `hybrid_v2`, and `semantic_v2` strategies reduce O(n²) compa
 - **Graph exports**: encrypt sensitive exports at rest; use the v0.5.0 SSRF-safe `base_url` validation when configuring custom LLM gateways
 - **XML ingestion**: always use `XMLIngestor` (v0.5.0), which uses the XXE-safe lxml backend; never parse untrusted XML with the standard library parser
 
-- [Cookbook](/cookbook) — Interactive Jupyter notebooks from beginner to advanced.
-- [FAQ](/faq) — Common questions answered.
-- [API Reference](/reference/core) — Complete technical documentation.
+- [Cookbook](/cookbook): interactive Jupyter notebooks from beginner to advanced.
+- [FAQ](/faq): common questions answered.
+- [API Reference](/reference/core): complete technical documentation.
