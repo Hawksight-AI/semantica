@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -528,6 +529,92 @@ class TestConflictsModule(unittest.TestCase):
         self.assertEqual(len(trends), 1)
         self.assertEqual(trends[0]["trend"], "insufficient_data")
         self.assertEqual(trends[0]["conflict_count"], 1)
+
+    def test_resolve_by_voting_with_unhashable_values(self):
+        """Voting must handle unhashable values (dict/list) without crashing."""
+        resolver = ConflictResolver()
+
+        val_a = {"city": "New York", "zip": "10001"}
+        val_b = {"city": "Boston", "zip": "02101"}
+        conflict = Conflict(
+            conflict_id="c_unhashable_vote",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="address",
+            conflicting_values=[val_a, val_a, val_b],
+            sources=[
+                {"document": "doc1", "confidence": 0.9},
+                {"document": "doc2", "confidence": 0.8},
+                {"document": "doc3", "confidence": 0.7},
+            ],
+        )
+
+        result = resolver.resolve_conflict(conflict, strategy="voting")
+        self.assertTrue(result.resolved)
+        # The majority value (val_a appears twice) must win and be returned
+        # as the original dict, not a stringified key.
+        self.assertEqual(result.resolved_value, val_a)
+        self.assertIsInstance(result.resolved_value, dict)
+
+    def test_resolve_by_credibility_with_unhashable_values(self):
+        """Credibility-weighted resolution must handle unhashable values."""
+        resolver = ConflictResolver()
+        resolver.source_tracker.set_source_credibility("doc_trusted", 1.0)
+        resolver.source_tracker.set_source_credibility("doc_flaky", 0.1)
+
+        val_a = ["tag1", "tag2"]
+        val_b = ["tag3"]
+        conflict = Conflict(
+            conflict_id="c_unhashable_cred",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="tags",
+            conflicting_values=[val_a, val_a, val_b],
+            sources=[
+                {"document": "doc_flaky", "confidence": 0.9},
+                {"document": "doc_flaky", "confidence": 0.9},
+                {"document": "doc_trusted", "confidence": 0.9},
+            ],
+        )
+
+        result = resolver.resolve_conflict(conflict, strategy="credibility_weighted")
+        self.assertTrue(result.resolved)
+        # doc_trusted has far higher credibility, so val_b should win and be
+        # returned as the original list.
+        self.assertEqual(result.resolved_value, val_b)
+        self.assertIsInstance(result.resolved_value, list)
+
+    def test_voting_does_not_alias_struct_with_its_json_text(self):
+        """A dict and a string equal to its JSON text must not be merged.
+
+        Regression for PR #1208 review: type-tagged keys must keep a
+        serialized structure distinct from a scalar string that happens to
+        equal that serialization, so the majority string wins instead of the
+        single dict.
+        """
+        resolver = ConflictResolver()
+
+        struct = {"a": 1}
+        json_text = json.dumps(struct, sort_keys=True)  # '{"a": 1}'
+        conflict = Conflict(
+            conflict_id="c_alias_vote",
+            conflict_type=ConflictType.VALUE_CONFLICT,
+            entity_id="e1",
+            property_name="payload",
+            conflicting_values=[struct, json_text, json_text],
+            sources=[
+                {"document": "doc1", "confidence": 0.9},
+                {"document": "doc2", "confidence": 0.8},
+                {"document": "doc3", "confidence": 0.7},
+            ],
+        )
+
+        result = resolver.resolve_conflict(conflict, strategy="voting")
+        self.assertTrue(result.resolved)
+        # The two identical json_text strings are the true majority; they must
+        # not be aliased with the dict.
+        self.assertEqual(result.resolved_value, json_text)
+        self.assertIsInstance(result.resolved_value, str)
 
 
 if __name__ == "__main__":

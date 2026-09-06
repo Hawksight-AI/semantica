@@ -56,6 +56,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import json
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
@@ -65,6 +66,30 @@ from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from .conflict_detector import Conflict
 from .source_tracker import SourceTracker
+
+
+def _hashable_key(value: Any) -> Any:
+    """Return a stable, hashable key for a conflicting value.
+
+    Conflicting values may be unhashable (e.g. ``dict`` or ``list``), which
+    breaks :class:`collections.Counter` and dict-key based aggregation used by
+    the voting and credibility-weighted strategies.
+
+    The key is *type-tagged* so that a serialized structure can never alias a
+    scalar value: e.g. the dict ``{"a": 1}`` and the string ``'{"a": 1}'`` map
+    to distinct keys instead of colliding. Hashable values keep their original
+    identity within the ``"h"`` tag (so equal scalars still aggregate together);
+    unhashable values are serialized to a stable JSON string under the ``"j"``
+    tag, falling back to ``repr()`` under the ``"r"`` tag when JSON fails.
+    """
+    try:
+        hash(value)
+        return ("h", type(value).__name__, value)
+    except TypeError:
+        try:
+            return ("j", json.dumps(value, sort_keys=True, default=str))
+        except (TypeError, ValueError):
+            return ("r", repr(value))
 
 
 class ResolutionStrategy(str, Enum):
@@ -361,9 +386,18 @@ class ConflictResolver:
                 resolution_notes="No conflicting values to resolve",
             )
 
-        # Count value occurrences
-        value_counts = Counter(conflict.conflicting_values)
-        most_common_value, count = value_counts.most_common(1)[0]
+        # Count value occurrences (using stable hashable keys so that
+        # unhashable values such as dict/list do not break Counter)
+        key_to_value: Dict[Any, Any] = {}
+        keys: List[Any] = []
+        for value in conflict.conflicting_values:
+            key = _hashable_key(value)
+            key_to_value.setdefault(key, value)
+            keys.append(key)
+
+        value_counts = Counter(keys)
+        most_common_key, count = value_counts.most_common(1)[0]
+        most_common_value = key_to_value[most_common_key]
 
         # Calculate confidence based on vote ratio
         total_votes = len(conflict.conflicting_values)
@@ -391,8 +425,10 @@ class ConflictResolver:
                 resolution_notes="Insufficient data for credibility-based resolution",
             )
 
-        # Weight values by source credibility
+        # Weight values by source credibility (keyed by stable hashable keys so
+        # that unhashable values such as dict/list can be used as map keys)
         value_weights: Dict[Any, float] = {}
+        key_to_value: Dict[Any, Any] = {}
 
         for i, value in enumerate(conflict.conflicting_values):
             source = conflict.sources[i] if i < len(conflict.sources) else {}
@@ -402,9 +438,11 @@ class ConflictResolver:
 
             weight = source_confidence * credibility
 
-            if value not in value_weights:
-                value_weights[value] = 0.0
-            value_weights[value] += weight
+            key = _hashable_key(value)
+            key_to_value.setdefault(key, value)
+            if key not in value_weights:
+                value_weights[key] = 0.0
+            value_weights[key] += weight
 
         # Get value with highest weight
         if not value_weights:
@@ -414,10 +452,11 @@ class ConflictResolver:
                 resolution_notes="Could not calculate credibility weights",
             )
 
-        resolved_value = max(value_weights.items(), key=lambda x: x[1])[0]
+        resolved_key = max(value_weights.items(), key=lambda x: x[1])[0]
+        resolved_value = key_to_value[resolved_key]
         total_weight = sum(value_weights.values())
         confidence = (
-            value_weights[resolved_value] / total_weight if total_weight > 0 else 0.0
+            value_weights[resolved_key] / total_weight if total_weight > 0 else 0.0
         )
 
         sources_used = [s.get("document", "unknown") for s in conflict.sources]
@@ -430,7 +469,7 @@ class ConflictResolver:
             sources_used=sources_used,
             resolution_notes=(
                 "Resolved by credibility-weighted voting "
-                f"(weight: {value_weights[resolved_value]:.2f})"
+                f"(weight: {value_weights[resolved_key]:.2f})"
             ),
         )
 
