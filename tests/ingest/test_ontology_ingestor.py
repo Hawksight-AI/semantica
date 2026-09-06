@@ -44,6 +44,54 @@ class TestOntologyIngestor:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
+    def test_ingest_preserves_multiple_property_domains_and_ranges(self):
+        ttl_content = """
+        @prefix : <http://example.org/ontology/> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+        <http://example.org/ontology/> a owl:Ontology .
+        :Person a owl:Class .
+        :Place a owl:Class .
+        :name a owl:DatatypeProperty ;
+            rdfs:domain :Person, :Place ;
+            rdfs:range xsd:normalizedString, xsd:string .
+        :label a owl:DatatypeProperty ;
+            rdfs:domain :Person, :Place ;
+            rdfs:range xsd:string .
+        """
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ttl", mode="w") as tmp:
+            tmp.write(ttl_content)
+            tmp_path = tmp.name
+
+        try:
+            result = OntologyIngestor().ingest_ontology(tmp_path)
+            name_property = next(
+                prop for prop in result.data["properties"] if prop["name"] == "name"
+            )
+            assert name_property["domain"] == [
+                "http://example.org/ontology/Person",
+                "http://example.org/ontology/Place",
+            ]
+            assert name_property["range"] == [
+                "http://www.w3.org/2001/XMLSchema#normalizedString",
+                "http://www.w3.org/2001/XMLSchema#string",
+            ]
+            label_property = next(
+                prop for prop in result.data["properties"] if prop["name"] == "label"
+            )
+            assert label_property["domain"] == [
+                "http://example.org/ontology/Person",
+                "http://example.org/ontology/Place",
+            ]
+            assert label_property["range"] == (
+                "http://www.w3.org/2001/XMLSchema#string"
+            )
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
     def test_ingest_directory(self, sample_ttl_content):
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create two ontology files

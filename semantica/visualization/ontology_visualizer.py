@@ -424,7 +424,10 @@ class OntologyVisualizer:
                 prop_name = prop.get("name") or prop.get("uri", "")
                 # Check if property belongs to class (via domain or direct property list)
                 domain = prop.get("domain")
-                has_prop = prop_name in cls_props or domain == cls.get("name")
+                domains = (
+                    domain if isinstance(domain, list) else [domain] if domain else []
+                )
+                has_prop = prop_name in cls_props or cls.get("name") in domains
                 row.append(1 if has_prop else 0)
             matrix.append(row)
 
@@ -945,12 +948,18 @@ class OntologyVisualizer:
 
             domain = prop.get("domain")
             if domain:
-                edges.append({"source": prop_name, "target": domain, "type": "domain"})
+                domains = domain if isinstance(domain, list) else [domain]
+                edges.extend(
+                    {"source": prop_name, "target": value, "type": "domain"}
+                    for value in domains
+                )
 
             range_val = prop.get("range")
             if range_val:
-                edges.append(
-                    {"source": prop_name, "target": range_val, "type": "range"}
+                ranges = range_val if isinstance(range_val, list) else [range_val]
+                edges.extend(
+                    {"source": prop_name, "target": value, "type": "range"}
+                    for value in ranges
                 )
 
         # Use similar approach as KG visualizer

@@ -63,5 +63,52 @@ class TestVisualization(unittest.TestCase):
         self.assertTrue(hasattr(viz, 'visualize_hierarchy'))
         # visualize_properties, visualize_structure, visualize_class_property_matrix, visualize_metrics, visualize_semantic_model
 
+    @patch(
+        'semantica.visualization.kg_visualizer.KGVisualizer._visualize_network_plotly'
+    )
+    def test_ontology_property_visualization_expands_multi_value_edges(
+        self, mock_visualize
+    ):
+        viz = OntologyVisualizer()
+        properties = [
+            {
+                "name": "name",
+                "domain": ["Person", "Organization"],
+                "range": ["string", "normalizedString"],
+            }
+        ]
+
+        viz._visualize_properties_plotly(properties, [], "interactive", None)
+
+        nodes, edges = mock_visualize.call_args.args[:2]
+        self.assertEqual(nodes, [{"id": "name", "label": "name", "type": "property"}])
+        self.assertEqual(
+            edges,
+            [
+                {"source": "name", "target": "Person", "type": "domain"},
+                {"source": "name", "target": "Organization", "type": "domain"},
+                {"source": "name", "target": "string", "type": "range"},
+                {
+                    "source": "name",
+                    "target": "normalizedString",
+                    "type": "range",
+                },
+            ],
+        )
+
+    def test_class_property_matrix_marks_every_domain_of_a_multi_domain_property(self):
+        viz = OntologyVisualizer()
+        ontology = {
+            "classes": [{"name": "Person"}, {"name": "Place"}],
+            "properties": [
+                {"name": "name", "domain": ["Person", "Place"]},
+                {"name": "label", "domain": "Person"},
+            ],
+        }
+
+        fig = viz.visualize_class_property_matrix(ontology)
+
+        self.assertEqual([list(row) for row in fig.data[0].z], [[1, 1], [1, 0]])
+
 if __name__ == '__main__':
     unittest.main()
