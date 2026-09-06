@@ -20,7 +20,7 @@ RUN mkdir -p /app/semantica && npm run build
 # .github/dependabot.yml opens a PR bumping the digest pin above. Also: this
 # image only serves plain HTTP via uvicorn and never opens a QUIC listener,
 # so the bug isn't reachable here regardless.
-FROM python:3.13-slim@sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f AS runtime
+FROM python:3.14-slim@sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5606e0530619a5 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
