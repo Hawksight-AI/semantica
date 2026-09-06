@@ -70,15 +70,21 @@ The unified interface means you can prototype with Groq for speed, validate accu
 
 ## The Shared Interface
 
-Every provider exposes the same two methods:
+Every provider exposes the same interface:
 
 ```python
-provider.generate(prompt: str, **kwargs) -> str
-provider.generate_structured(prompt: str, **kwargs) -> dict
-provider.is_available() -> bool
+from typing import Protocol
+
+from semantica.llms import JSONValue
+
+
+class LLMProvider(Protocol):
+    def generate(self, prompt: str, **kwargs) -> str: ...
+    def generate_structured(self, prompt: str, **kwargs) -> JSONValue: ...
+    def is_available(self) -> bool: ...
 ```
 
-`generate()` returns a plain string. `generate_structured()` instructs the model to respond in JSON and returns a parsed `dict`. `is_available()` lets you health-check the provider before committing to a call — useful in retry logic and warm-up checks.
+`generate()` returns a plain string. `generate_structured()` instructs the model to respond in JSON and returns any valid JSON value: an object, array, string, number, boolean, or `None` for JSON `null`. `is_available()` lets you health-check the provider before committing to a call. This is useful in retry logic and warm-up checks.
 
 This means every place in Semantica that accepts an LLM — `query_with_reasoning()`, semantic extraction, custom reasoning loops — accepts any of these providers interchangeably.
 
@@ -107,7 +113,7 @@ verdict = groq.generate(
 print(verdict)
 # "True positive — volume and speed are consistent with T1087.002 domain enumeration."
 
-# Structured extraction — returns a parsed dict
+# Structured extraction
 entities = groq.generate_structured(
     "Extract threat actors and CVEs from: "
     "APT29 exploited CVE-2024-3400 in PAN-OS GlobalProtect."
@@ -711,7 +717,7 @@ for src in best["sources"]:
 
 **Using LLMs for deterministic pattern matching that regex can handle.** If your task is extracting email addresses, phone numbers, or other pattern-based entities, regular expressions are faster, cheaper, and more reliable than LLM extraction. Use LLMs when context, ambiguity, or domain knowledge matter for correct interpretation.
 
-**Not validating structured outputs.** The `generate_structured()` method returns parsed JSON, but LLMs can still produce malformed or incomplete structures. Always validate the returned dictionary against your expected schema before using the data downstream.
+**Not validating structured outputs.** The `generate_structured()` method returns parsed JSON, but LLMs can still produce malformed or incomplete structures. Always validate the returned value against your expected schema before using the data downstream.
 
 **Switching providers without testing prompt behavior.** Different models respond differently to the same prompt. A prompt optimized for GPT-4 may produce poor results with Llama or Claude. When switching providers, test your prompts and adjust temperature, instructions, or examples as needed.
 

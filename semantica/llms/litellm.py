@@ -5,10 +5,11 @@ Wrapper for LiteLLM library that provides unified access to 100+ LLM providers.
 Supports OpenAI, Anthropic, Groq, Azure, Bedrock, Vertex AI, and many more.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from ..utils.exceptions import ProcessingError
 from ..utils.logging import get_logger
+from .types import JSONValue
 
 logger = get_logger("llms.litellm")
 
@@ -123,7 +124,7 @@ class LiteLLM:
             logger.error(f"LiteLLM generation failed: {e}")
             raise ProcessingError(f"LiteLLM generation failed: {e}")
 
-    def generate_structured(self, prompt: str, **kwargs) -> Dict[str, Any]:
+    def generate_structured(self, prompt: str, **kwargs) -> JSONValue:
         """
         Generate structured JSON output.
 
@@ -132,7 +133,8 @@ class LiteLLM:
             **kwargs: Generation options
 
         Returns:
-            Parsed JSON response as dictionary
+            Parsed JSON response as an object, array, string, number, boolean,
+            or None.
 
         Raises:
             ProcessingError: If provider is not available or parsing fails
@@ -188,4 +190,3 @@ class LiteLLM:
         except Exception as e:
             logger.error(f"LiteLLM structured generation failed: {e}")
             raise ProcessingError(f"LiteLLM structured generation failed: {e}")
-

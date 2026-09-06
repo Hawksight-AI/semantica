@@ -4,11 +4,12 @@ Groq LLM Provider
 Wrapper for Groq API provider with clean interface.
 """
 
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from ..semantic_extract.providers import GroqProvider
 from ..utils.exceptions import ProcessingError
 from ..utils.logging import get_logger
+from .types import JSONValue
 
 logger = get_logger("llms.groq")
 
@@ -67,7 +68,7 @@ class Groq:
             )
         return self.provider.generate(prompt, **kwargs)
 
-    def generate_structured(self, prompt: str, **kwargs) -> Dict[str, Any]:
+    def generate_structured(self, prompt: str, **kwargs) -> JSONValue:
         """
         Generate structured JSON output.
 
@@ -76,7 +77,8 @@ class Groq:
             **kwargs: Generation options
 
         Returns:
-            Parsed JSON response as dictionary
+            Parsed JSON response as an object, array, string, number, boolean,
+            or None.
 
         Raises:
             ProcessingError: If provider is not available or parsing fails
@@ -86,4 +88,3 @@ class Groq:
                 "Groq provider not available. Set GROQ_API_KEY or pass api_key."
             )
         return self.provider.generate_structured(prompt, **kwargs)
-
