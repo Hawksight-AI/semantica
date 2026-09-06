@@ -89,7 +89,29 @@ class GraphBuilder:
         self.track_history = track_history
         self.version_snapshots = version_snapshots
         self.graph_store = graph_store
-        self.config = kwargs  # Store additional config for extractors
+        # The orchestrator builds with GraphBuilder(config=self.config.get("kg", {})).
+        # That lands as a nested "config" keyword, so fold it into the option
+        # mapping once here: every option ({entity_resolution,
+        # conflict_detection, unknown_relation_endpoint, ...}) is then read the
+        # same way whether it was given top-level or via the orchestrator path.
+        kwargs = dict(kwargs)
+        _nested = kwargs.pop("config", None)
+        if isinstance(_nested, dict):
+            for _key, _value in _nested.items():
+                kwargs.setdefault(_key, _value)
+        self.config = kwargs
+        # unknown_relation_endpoint lives in the per-module build config
+        # (semantica/kg/config.py); fall back to it so the option has a single
+        # documented home. Popped out of kwargs so it is not forwarded to
+        # extractors as an unused **config key.
+        from .config import kg_config
+
+        self.unknown_relation_endpoint = kwargs.pop(
+            "unknown_relation_endpoint",
+            kg_config.get_method_config("build").get(
+                "unknown_relation_endpoint", "include"
+            ),
+        )
         # Extractors are reused across texts: NERExtractor loads its spaCy model
         # eagerly in __init__, so constructing one per text would reload the
         # model on every source in a multi-document build.
@@ -186,52 +208,53 @@ class GraphBuilder:
                     synthetic_endpoints.append(endpoint)
                 elif isinstance(endpoint, str) and endpoint in triplet_synthetic:
                     synthetic_endpoints.append(endpoint)
-            cfg = self.config
-            nested_cfg = cfg.get("config")
-            if isinstance(nested_cfg, dict):
-                cfg = nested_cfg
-            endpoint_policy = cfg.get("unknown_relation_endpoint", "include")
-            if endpoint_policy == "reject" and synthetic_endpoints:
-                self.logger.info(
-                    "Dropping relationship %r->%r (%s): endpoint is synthetic and "
-                    "unknown_relation_endpoint='reject'",
-                    subj,
-                    obj,
-                    item.predicate,
-                )
-                return
-            existing_ids: Set[Any] = set()
-            for _ent in all_entities:
-                if not isinstance(_ent, dict):
-                    continue
-                for _key in ("id", "entity_id"):
-                    _cid = _ent.get(_key)
-                    if _cid is None:
+            if synthetic_endpoints:
+                endpoint_policy = self.unknown_relation_endpoint
+                if endpoint_policy == "reject":
+                    self.logger.info(
+                        "Dropping relationship %r->%r (%s): endpoint is synthetic and "
+                        "unknown_relation_endpoint='reject'",
+                        subj,
+                        obj,
+                        item.predicate,
+                    )
+                    return
+                # The promoted set is rebuilt only for relationships that actually
+                # carry a synthetic endpoint. Ordinary relationships (the common
+                # case) must not pay an O(all_entities) scan per item, which made
+                # build() quadratic on dense relation inputs.
+                existing_ids: Set[Any] = set()
+                for _ent in all_entities:
+                    if not isinstance(_ent, dict):
                         continue
-                    try:
-                        existing_ids.add(_cid)
-                    except TypeError:
-                        # Invalid/unhashable IDs are left for graph validation.
+                    for _key in ("id", "entity_id"):
+                        _cid = _ent.get(_key)
+                        if _cid is None:
+                            continue
+                        try:
+                            existing_ids.add(_cid)
+                        except TypeError:
+                            # Invalid/unhashable IDs are left for graph validation.
+                            continue
+                for endpoint in synthetic_endpoints:
+                    if isinstance(endpoint, str):
+                        endpoint_id = endpoint
+                        endpoint_text = endpoint
+                    else:
+                        endpoint_id = endpoint.id if hasattr(endpoint, "id") else endpoint.text
+                        endpoint_text = endpoint.text
+                    if endpoint_id in existing_ids:
                         continue
-            for endpoint in synthetic_endpoints:
-                if isinstance(endpoint, str):
-                    endpoint_id = endpoint
-                    endpoint_text = endpoint
-                else:
-                    endpoint_id = endpoint.id if hasattr(endpoint, "id") else endpoint.text
-                    endpoint_text = endpoint.text
-                if endpoint_id in existing_ids:
-                    continue
-                all_entities.append(
-                    {
-                        "id": endpoint_id,
-                        "name": endpoint_text,
-                        "type": "UNKNOWN",
-                        "confidence": 0.8,
-                        "metadata": {"synthetic": True},
-                    }
-                )
-                existing_ids.add(endpoint_id)
+                    all_entities.append(
+                        {
+                            "id": endpoint_id,
+                            "name": endpoint_text,
+                            "type": "UNKNOWN",
+                            "confidence": 0.8,
+                            "metadata": {"synthetic": True},
+                        }
+                    )
+                    existing_ids.add(endpoint_id)
             subj_id = getattr(subj, "id", getattr(subj, "text", str(subj))) if not isinstance(subj, str) else subj
             obj_id = getattr(obj, "id", getattr(obj, "text", str(obj))) if not isinstance(obj, str) else obj
             rel_dict = {
@@ -859,7 +882,10 @@ class GraphBuilder:
             # lower-confidence duplicate.
             _real_ids: Set[Any] = set()
             for _entity in resolved_entities:
-                if isinstance(_entity, dict) and not _entity.get("metadata", {}).get("synthetic"):
+                if (
+                    isinstance(_entity, dict)
+                    and not (_entity.get("metadata") or {}).get("synthetic")
+                ):
                     for _cid in (_entity.get("id"), _entity.get("entity_id")):
                         if _cid is None:
                             continue
@@ -874,7 +900,7 @@ class GraphBuilder:
                 for _entity in resolved_entities:
                     if (
                         isinstance(_entity, dict)
-                        and _entity.get("metadata", {}).get("synthetic")
+                        and (_entity.get("metadata") or {}).get("synthetic")
                     ):
                         _eid = _entity.get("id")
                         if _eid in _real_ids:

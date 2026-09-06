@@ -235,3 +235,41 @@ def test_dict_relationship_unknown_endpoint_untouched_by_design():
     ids = {e["id"] for e in graph["entities"]}
     assert "Known" in ids
     assert "Absent" not in ids
+
+
+def test_entity_with_none_metadata_does_not_crash_build():
+    # An entity carrying an explicit metadata=None must not raise in the
+    # synthetic-reconcile pass; .get("metadata", {}) returns None, not {}.
+    src = {
+        "entities": [
+            {"id": "a", "name": "a", "metadata": None},
+            {"id": "b", "name": "b"},
+        ],
+        "relationships": [{"source": "a", "target": "b", "type": "rel"}],
+    }
+    graph = GraphBuilder(resolve_conflicts=False).build(src, extract=False)
+
+    ids = {e["id"] for e in graph["entities"]}
+    assert {"a", "b"} <= ids
+    assert graph["relationships"][0]["type"] == "rel"
+
+
+def test_reject_policy_via_orchestrator_shaped_config_fold():
+    # The orchestrator builds with GraphBuilder(config=self.config.get("kg", {})),
+    # so config= carries flat kg options. Folding that dict into the option
+    # mapping must make reject effective and leave the nested
+    # entity_resolution/conflict_detection options readable too.
+    builder = GraphBuilder(
+        config={
+            "unknown_relation_endpoint": "reject",
+            "entity_resolution": {"enabled": False},
+            "conflict_detection": {"enabled": False},
+        },
+    )
+    graph = builder.build(
+        [_rel(_known(), "related_to", _synthetic("Synthetic Entity"))],
+        extract=False,
+    )
+
+    assert graph["relationships"] == []
+    assert "Synthetic Entity" not in {e["id"] for e in graph["entities"]}
