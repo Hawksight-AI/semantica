@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`LanguageDetector`'s fallback is now `"unknown"` instead of `"en"`, and its minimum text length is configurable** (closes #1281) by @taoche
+  - **Breaking for anyone reading the fallback value.** `detect()`, `detect_with_confidence()`, `detect_multiple()`, `detect_batch()` and the `detect_language()` wrapper previously returned `"en"` whenever no detection was actually performed — text below the length threshold, empty text, `langdetect` not installed — or when detection raised. `"en"` is a valid ISO code, so a fabricated fallback was indistinguishable from a real English detection. They now return `UNKNOWN_LANGUAGE` (`"unknown"`), which is distinct from every ISO code. Nothing errors on this path, so callers relying on the old value get a different string silently: pass `LanguageDetector(default_language="en")` (or `detect_language(text, default_language="en")`) to restore the previous behavior
+  - `UNKNOWN_LANGUAGE` is exported from `semantica.normalize`. The out-of-band string is deliberate rather than the `Optional` treatment given to missing entity confidence in #1285: language codes flow into dict keys, filenames and `get_language_name()` lookups, so `None` here would trade an ambiguity for a crash surface
+  - **New `min_text_length` option** (default unchanged at 10 stripped characters), settable per instance via `LanguageDetector(min_text_length=...)`, per call via `**options` on every detection API, and through `detect_language()`. Ten characters is reasonable for Latin scripts and far too many for CJK — a 9-character Chinese string never reached `langdetect` at all
+  - `detect()` and `detect_with_confidence()` now delegate to `detect_multiple()`, so the length guard, the fallback and the error handling exist once rather than in three copies that can drift
+  - Invalid `min_text_length` values (`None`, non-numeric strings, negatives) degrade to the fallback with a warning instead of raising `TypeError` from the length comparison, which sits outside the detection exception handlers
+  - Unrecognized per-call option names (e.g. `min_text_len`) now warn once per name per instance instead of being silently absorbed by `**options`
+  - `detect_language()` copies the stored method config before merging per-call kwargs, so a one-call override no longer leaks into the shared `normalize_config`
+  - Docs: `docs/reference/normalize.md` and `semantica/normalize/normalize_usage.md`
+
 ## [0.6.8] - 2026-09-05
 
 ### Added

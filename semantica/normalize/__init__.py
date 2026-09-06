@@ -143,7 +143,7 @@ from .entity_normalizer import (
     EntityNormalizer,
     NameVariantHandler,
 )
-from .language_detector import LanguageDetector
+from .language_detector import UNKNOWN_LANGUAGE, LanguageDetector
 from .methods import (
     clean_data,
     clean_text,
@@ -208,6 +208,7 @@ __all__ = [
     "TextCleaner",
     # Language detection
     "LanguageDetector",
+    "UNKNOWN_LANGUAGE",
     # Encoding handling
     "EncodingHandler",
     # Registry and Methods

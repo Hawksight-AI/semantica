@@ -11,6 +11,7 @@ Key Features:
     - Batch processing
     - Top N language detection
     - Language code to name mapping
+    - Configurable minimum text length with an "unknown" fallback
 
 Main Classes:
     - LanguageDetector: Language detection coordinator
@@ -29,7 +30,7 @@ License: MIT
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
-    from langdetect import detect, detect_langs
+    from langdetect import detect_langs
     from langdetect.lang_detect_exception import LangDetectException
 
     LANGDETECT_AVAILABLE = True
@@ -40,6 +41,27 @@ except (ImportError, OSError):
 from ..utils.exceptions import ProcessingError
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+
+# Returned when no detection was performed (text too short, langdetect
+# unavailable) or detection failed. Distinct from every ISO language code,
+# so callers can never mistake a fallback for a detected language.
+#
+# Design note: unlike entity confidence (see semantic_extract.types, where
+# missing measurements are represented as None), the unknown language is an
+# out-of-band *string* rather than None. Language codes flow into dict keys,
+# file names and other string operations throughout the pipeline, so None
+# would trade one ambiguity for a crash surface; "unknown" stays inside the
+# str domain while remaining impossible to confuse with a real code. For
+# confidence there is no out-of-band float — every number is a plausible
+# score — hence None is the only honest representation there.
+UNKNOWN_LANGUAGE = "unknown"
+
+DEFAULT_MIN_TEXT_LENGTH = 10
+
+# Per-call options accepted by the detection APIs. Anything else is almost
+# certainly a typo (e.g. min_text_len) and is reported instead of being
+# silently ignored.
+KNOWN_DETECTION_OPTIONS = frozenset({"min_text_length"})
 
 
 class LanguageDetector:
@@ -55,6 +77,7 @@ class LanguageDetector:
         - Batch processing
         - Top N language detection
         - Language code to name mapping
+        - Configurable minimum text length with an "unknown" fallback
 
     Example Usage:
         >>> detector = LanguageDetector()
@@ -67,17 +90,31 @@ class LanguageDetector:
         """
         Initialize language detector.
 
-        Sets up the detector with default language and minimum confidence threshold.
+        Sets up the fallback language, the confidence threshold and the
+        minimum text length required to run detection.
 
         Args:
             **config: Configuration options:
-                - default_language: Default language code (default: "en")
+                - default_language: Language code returned when no detection
+                  was performed or detection failed (default:
+                  ``UNKNOWN_LANGUAGE``, i.e. ``"unknown"``). Set to a language
+                  code such as ``"en"`` to assume that language instead.
                 - min_confidence: Minimum confidence threshold (default: 0.5)
+                - min_text_length: Minimum stripped-text length required to run
+                  detection (default: 10). Inputs shorter than this return the
+                  fallback (``default_language``) instead of a detected
+                  language. Lower this for language mixes where short inputs
+                  carry enough signal (e.g. CJK text).
         """
         self.logger = get_logger("language_detector")
         self.config = config
-        self.default_language = config.get("default_language", "en")
+        self.default_language = config.get("default_language", UNKNOWN_LANGUAGE)
         self.min_confidence = config.get("min_confidence", 0.5)
+        self.min_text_length = self._normalize_min_text_length(
+            config.get("min_text_length", DEFAULT_MIN_TEXT_LENGTH),
+            DEFAULT_MIN_TEXT_LENGTH,
+        )
+        self._warned_options = set()
 
         if not LANGDETECT_AVAILABLE:
             self.logger.warning(
@@ -94,41 +131,79 @@ class LanguageDetector:
             f"Language detector initialized (default={self.default_language})"
         )
 
+    def _normalize_min_text_length(self, value: Any, fallback: int) -> int:
+        """Coerce a min_text_length value to a non-negative int.
+
+        Invalid values (None, non-numeric strings, ...) must degrade to the
+        fallback instead of raising during the length comparison, where no
+        detection exception handler protects the caller.
+        """
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            self.logger.warning(
+                f"Invalid min_text_length {value!r}, using {fallback}"
+            )
+            return fallback
+
+    def _resolve_min_text_length(self, options: Dict[str, Any]) -> int:
+        """Resolve the minimum text length, allowing per-call override."""
+        if "min_text_length" not in options:
+            return self.min_text_length
+        return self._normalize_min_text_length(
+            options["min_text_length"], self.min_text_length
+        )
+
+    def _cannot_detect(self, text: str, options: Dict[str, Any]) -> bool:
+        """True when detection cannot run for this input.
+
+        Detection is skipped when the stripped text is shorter than
+        ``min_text_length`` or when the langdetect library is unavailable;
+        callers must return the ``default_language`` fallback in that case.
+        """
+        if not text or len(text.strip()) < self._resolve_min_text_length(options):
+            return True
+        return not LANGDETECT_AVAILABLE
+
+    def _warn_unknown_options(self, options: Dict[str, Any]) -> None:
+        """Report option names that no detection API understands.
+
+        **options would otherwise swallow typos silently (e.g. min_text_len),
+        making the caller believe an override took effect when nothing
+        happened. Warns once per unknown name per detector instance so batch
+        calls do not flood the log.
+        """
+        unknown = set(options) - KNOWN_DETECTION_OPTIONS - self._warned_options
+        if unknown:
+            self._warned_options |= unknown
+            self.logger.warning(
+                f"Ignoring unknown detection option(s) {sorted(unknown)}; "
+                f"supported options: {sorted(KNOWN_DETECTION_OPTIONS)}"
+            )
+
     def detect(self, text: str, **options) -> str:
         """
         Detect language of text.
 
-        This method detects the language of input text using langdetect.
-        Returns the default language if detection fails or text is too short.
+        Returns the most likely language code regardless of confidence; use
+        detect_with_confidence() to apply the min_confidence threshold.
 
         Args:
             text: Input text to analyze
-            **options: Detection options (unused)
+            **options: Detection options:
+                - min_text_length: Override the instance-level minimum text
+                  length for this call
 
         Returns:
             str: Detected language code (e.g., "en", "fr", "de")
 
         Note:
-            Requires minimum text length of 10 characters for reliable detection.
-            Returns default_language if text is too short or detection fails.
+            Inputs whose stripped length is below ``min_text_length``
+            (default: 10) never reach the underlying detector; the configured
+            ``default_language`` (``"unknown"`` unless overridden) is returned
+            as a fallback. The same fallback is returned if detection fails.
         """
-        if not text or len(text.strip()) < 10:
-            return self.default_language
-
-        if not LANGDETECT_AVAILABLE:
-            return self.default_language
-
-        try:
-            language = detect(text)
-            return language
-        except LangDetectException:
-            self.logger.warning(
-                f"Failed to detect language, using default: {self.default_language}"
-            )
-            return self.default_language
-        except Exception as e:
-            self.logger.error(f"Language detection error: {e}")
-            return self.default_language
+        return self.detect_multiple(text, top_n=1, **options)[0][0]
 
     def detect_with_confidence(self, text: str, **options) -> Tuple[str, float]:
         """
@@ -136,41 +211,29 @@ class LanguageDetector:
 
         This method detects the language of text and returns both the language
         code and confidence score. Only returns detected language if confidence
-        meets the minimum threshold.
+        meets the minimum threshold; otherwise the configured
+        ``default_language`` is returned with the observed confidence.
 
         Args:
             text: Input text to analyze
-            **options: Detection options (unused)
+            **options: Detection options:
+                - min_text_length: Override the instance-level minimum text
+                  length for this call
 
         Returns:
             tuple: (language_code, confidence_score) where:
                 - language_code: Detected language code
                 - confidence_score: Confidence score between 0.0 and 1.0
+
+        Note:
+            Inputs whose stripped length is below ``min_text_length`` return
+            ``(default_language, 0.0)`` as a fallback; the 0.0 confidence
+            signals that no detection was performed.
         """
-        if not text or len(text.strip()) < 10:
-            return (self.default_language, 0.0)
-
-        if not LANGDETECT_AVAILABLE:
-            return (self.default_language, 0.0)
-
-        try:
-            languages = detect_langs(text)
-            if languages:
-                top_language = languages[0]
-                if top_language.prob >= self.min_confidence:
-                    return (top_language.lang, top_language.prob)
-                else:
-                    return (self.default_language, top_language.prob)
-            else:
-                return (self.default_language, 0.0)
-        except LangDetectException:
-            self.logger.warning(
-                f"Failed to detect language, using default: {self.default_language}"
-            )
-            return (self.default_language, 0.0)
-        except Exception as e:
-            self.logger.error(f"Language detection error: {e}")
-            return (self.default_language, 0.0)
+        language, confidence = self.detect_multiple(text, top_n=1, **options)[0]
+        if confidence >= self.min_confidence:
+            return (language, confidence)
+        return (self.default_language, confidence)
 
     def detect_multiple(
         self, text: str, top_n: int = 3, **options
@@ -178,22 +241,29 @@ class LanguageDetector:
         """
         Detect top N languages with confidence scores.
 
-        This method detects multiple candidate languages for text, returning
-        the top N languages sorted by confidence.
+        This is the single detection core: detect() and
+        detect_with_confidence() delegate here, so guard, fallback and
+        error-handling semantics live in exactly one place.
 
         Args:
             text: Input text to analyze
             top_n: Number of top languages to return (default: 3)
-            **options: Detection options (unused)
+            **options: Detection options:
+                - min_text_length: Override the instance-level minimum text
+                  length for this call
 
         Returns:
             list: List of (language_code, confidence_score) tuples, sorted by
                   confidence (highest first)
-        """
-        if not text or len(text.strip()) < 10:
-            return [(self.default_language, 0.0)]
 
-        if not LANGDETECT_AVAILABLE:
+        Note:
+            Inputs whose stripped length is below ``min_text_length`` return
+            ``[(default_language, 0.0)]`` as a fallback; the 0.0 confidence
+            signals that no detection was performed.
+        """
+        self._warn_unknown_options(options)
+
+        if self._cannot_detect(text, options):
             return [(self.default_language, 0.0)]
 
         try:
@@ -289,6 +359,7 @@ class LanguageDetector:
                  Returns uppercase code if name not found.
         """
         language_names = {
+            UNKNOWN_LANGUAGE: "Unknown",
             "en": "English",
             "fr": "French",
             "de": "German",

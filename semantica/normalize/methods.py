@@ -707,15 +707,19 @@ def detect_language(
             return result
 
     try:
-        config = normalize_config.get_method_config("language")
+        # Copy before merging: get_method_config() returns the stored dict by
+        # reference, and per-call kwargs must not leak into the global config
+        config = dict(normalize_config.get_method_config("language"))
         config.update(kwargs)
 
         detector = LanguageDetector(**config)
 
+        # kwargs were already consumed by the constructor above; forwarding
+        # them again would trip the detector's unknown-option warning
         if method == "confidence":
-            return detector.detect_with_confidence(text, **kwargs)
+            return detector.detect_with_confidence(text)
         else:
-            return detector.detect(text, **kwargs)
+            return detector.detect(text)
 
     except Exception as e:
         logger.error(f"Failed to detect language: {e}")
