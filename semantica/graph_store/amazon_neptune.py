@@ -295,9 +295,12 @@ class NeptuneAuthTokenManager(_AuthManagerBase):
             # Sign the request
             SigV4Auth(creds, self.SERVICE_NAME, self.aws_region).add_auth(request)
 
-            # Create auth info JSON from signed headers
+            # Create auth info JSON from signed headers.
+            # Never log auth_info_json: it contains the signed Authorization
+            # header and X-Amz-Security-Token, which together form a live,
+            # replayable AWS credential.
             auth_info_json = self._get_auth_info_json(request)
-            _auth_logger.info(f"Auth info JSON: {auth_info_json}")
+            _auth_logger.debug("SigV4 auth info generated (contents redacted)")
 
             # Return basic auth token with dummy username and signed headers as password
             return basic_auth(self.DUMMY_USERNAME, auth_info_json)

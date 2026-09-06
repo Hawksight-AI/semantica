@@ -396,6 +396,9 @@ class MockSigV4Auth:
         request.headers["Host"] = host
         request.headers["X-Amz-Date"] = amz_date
         request.headers["Authorization"] = authorization
+        # Real SigV4Auth adds the session token header for temporary credentials
+        if self.credentials.token:
+            request.headers["X-Amz-Security-Token"] = self.credentials.token
 
 
 def mock_host_from_url(url):
@@ -680,6 +683,50 @@ class TestAmazonNeptuneStoreIAMAuth(unittest.TestCase):
             self.assertEqual(store._auth_manager.aws_region, "us-east-1")
 
             store.close()
+
+    def test_signed_auth_headers_not_logged(self):
+        """Signed SigV4 headers (Authorization, security token) must never be logged (#1365)."""
+        with patch.dict(
+            "sys.modules",
+            {
+                "neo4j": mock_neo4j,
+                "neo4j.auth_management": mock_neo4j.auth_management,
+                "neo4j.api": mock_neo4j.api,
+                "neo4j.exceptions": mock_neo4j.exceptions,
+                "boto3": mock_boto3,
+                "botocore": mock_botocore,
+                "botocore.auth": mock_botocore_auth,
+                "botocore.awsrequest": mock_botocore_awsrequest,
+            },
+        ):
+            from importlib import reload
+
+            from semantica.graph_store import amazon_neptune
+
+            reload(amazon_neptune)
+
+            manager = amazon_neptune.NeptuneAuthTokenManager(
+                neptune_endpoint="bolt://test-cluster.us-east-1.neptune.amazonaws.com:8182",
+                aws_region="us-east-1",
+            )
+
+            # Use temporary credentials so the signer emits X-Amz-Security-Token
+            with patch.object(
+                mock_credentials, "token", "mocksessiontoken987654321"
+            ):
+                with self.assertLogs(
+                    "semantica.neptune_auth_token_manager", level="DEBUG"
+                ) as captured:
+                    auth = manager.get_auth()
+
+            self.assertIsNotNone(auth)
+            logged = "\n".join(captured.output)
+            # The signed Authorization header (containing the SigV4 signature)
+            # and the STS session token are live, replayable credentials and
+            # must not appear in logs at any level.
+            self.assertNotIn("mocksignature123456789", logged)
+            self.assertNotIn("Authorization", logged)
+            self.assertNotIn("mocksessiontoken987654321", logged)
 
     def test_refresh_auth_token(self):
         """Test manual token refresh."""
