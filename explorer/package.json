@@ -28,7 +28,7 @@
     "lucide-react": "^1.7.0",
     "playwright": "^1.59.1",
     "react": "^19.2.4",
-    "react-arborist": "^3.4.3",
+    "react-arborist": "^3.16.0",
     "react-dom": "^19.2.4",
     "react-dropzone": "^15.0.0",
     "react-markdown": "^10.1.0",
