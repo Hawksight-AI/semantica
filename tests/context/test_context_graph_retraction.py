@@ -15,20 +15,300 @@ than a mock callback, since the behaviour under test is precisely that these
 operations reach the existing mutation-recording path.
 """
 
+import ast
+import inspect
 import json
 import os
 import tempfile
 import threading
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from semantica.change_management import TemporalVersionManager
 from semantica.context import ContextEdge, ContextGraph
+from semantica.context.context_graph import normalize_temporal_input
 
 BEFORE = "2025-06-01T00:00:00Z"
 BETWEEN = "2025-09-01T00:00:00Z"
 CUTOFF = "2026-01-01T00:00:00Z"
 AFTER = "2026-06-01T00:00:00Z"
+
+
+class TestTemporalNormalization(unittest.TestCase):
+    """Regression tests for the public normalize_temporal_input API (issue #1377).
+
+    The private ``_normalize_temporal_input`` was previously imported directly
+    by ``erasure.py``, creating fragile cross-module coupling.  The public
+    wrapper must behave identically for every supported input type so that
+    context-graph timestamps and erasure-receipt timestamps always agree.
+    """
+
+    # ------------------------------------------------------------------
+    # Basic output contract
+    # ------------------------------------------------------------------
+
+    def test_none_returns_none(self):
+        self.assertIsNone(normalize_temporal_input(None))
+
+    def test_naive_datetime(self):
+        """Naive datetime is serialized directly without tz conversion."""
+        self.assertEqual(
+            normalize_temporal_input(datetime(2026, 1, 1, 12, 0, 0)),
+            "2026-01-01T12:00:00",
+        )
+
+    def test_aware_datetime_utc_strips_timezone(self):
+        """UTC-aware datetime is stripped of tzinfo before serialization."""
+        value = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        self.assertEqual(normalize_temporal_input(value), "2026-01-01T12:00:00")
+
+    def test_aware_datetime_positive_offset_converted_to_utc(self):
+        """+05:00 aware datetime is shifted to UTC before serializing."""
+        value = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone(timedelta(hours=5)))
+        self.assertEqual(normalize_temporal_input(value), "2026-01-01T07:00:00")
+
+    def test_aware_datetime_negative_offset_converted_to_utc(self):
+        """-08:00 aware datetime is shifted forward to UTC."""
+        value = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone(timedelta(hours=-8)))
+        self.assertEqual(normalize_temporal_input(value), "2026-01-01T08:00:00")
+
+    def test_epoch_int_zero(self):
+        """Integer 0 maps to the Unix epoch in UTC."""
+        self.assertEqual(normalize_temporal_input(0), "1970-01-01T00:00:00")
+
+    def test_epoch_int_positive(self):
+        """A known epoch value round-trips correctly."""
+        # 2026-01-01T00:00:00 UTC = 1767225600
+        self.assertEqual(normalize_temporal_input(1767225600), "2026-01-01T00:00:00")
+
+    def test_epoch_float_preserves_sub_second(self):
+        """Float epoch retains sub-second precision in the ISO string."""
+        result = normalize_temporal_input(0.5)
+        self.assertTrue(result.startswith("1970-01-01T00:00:00"))
+        self.assertIn("5", result)  # sub-second component present
+
+    def test_iso_string_with_z_suffix(self):
+        """'Z' suffix is treated as UTC and the result is tz-naive."""
+        self.assertEqual(
+            normalize_temporal_input("2026-01-01T12:00:00Z"),
+            "2026-01-01T12:00:00",
+        )
+
+    def test_iso_string_with_positive_offset(self):
+        """'+05:00' offset string is converted to UTC."""
+        self.assertEqual(
+            normalize_temporal_input("2026-01-01T12:00:00+05:00"),
+            "2026-01-01T07:00:00",
+        )
+
+    def test_iso_string_naive(self):
+        """Naive ISO string is returned unchanged (treated as UTC)."""
+        self.assertEqual(
+            normalize_temporal_input("2026-01-01T12:00:00"),
+            "2026-01-01T12:00:00",
+        )
+
+    def test_year_only_string(self):
+        """Year-only shorthand expands to Jan 1 midnight."""
+        self.assertEqual(normalize_temporal_input("2026"), "2026-01-01T00:00:00")
+
+    def test_date_only_string(self):
+        """Date-only string expands to midnight of that date."""
+        self.assertEqual(
+            normalize_temporal_input("2026-03-15"),
+            "2026-03-15T00:00:00",
+        )
+
+    # ------------------------------------------------------------------
+    # Error cases
+    # ------------------------------------------------------------------
+
+    def test_invalid_string_raises_value_error(self):
+        """An unparseable string must raise ValueError, not silently produce None."""
+        with self.assertRaises(ValueError):
+            normalize_temporal_input("not-a-date")
+
+    def test_unsupported_type_raises_value_error(self):
+        """A date object (not datetime) is not a supported type."""
+        from datetime import date
+
+        with self.assertRaises(ValueError):
+            normalize_temporal_input(date(2026, 1, 1))  # type: ignore[arg-type]
+
+    def test_error_message_contains_the_bad_value(self):
+        """The ValueError for an invalid string names the bad input."""
+        with self.assertRaises(ValueError, msg="not-a-timestamp") as ctx:
+            normalize_temporal_input("not-a-timestamp")
+        self.assertIn("not-a-timestamp", str(ctx.exception))
+
+    # ------------------------------------------------------------------
+    # Return-type contract
+    # ------------------------------------------------------------------
+
+    def test_always_returns_str_or_none(self):
+        """Every non-None input must produce a str, never another type."""
+        inputs = [
+            datetime(2026, 1, 1),
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            0,
+            1767225600,
+            0.5,
+            "2026-01-01T00:00:00Z",
+            "2026",
+        ]
+        for value in inputs:
+            with self.subTest(value=value):
+                result = normalize_temporal_input(value)
+                self.assertIsInstance(result, str)
+
+    def test_output_is_always_tz_naive(self):
+        """The returned ISO string must never carry a UTC offset or 'Z'."""
+        aware_inputs = [
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 1, tzinfo=timezone(timedelta(hours=3))),
+            "2026-01-01T00:00:00Z",
+            "2026-01-01T00:00:00+05:00",
+        ]
+        for value in aware_inputs:
+            with self.subTest(value=value):
+                result = normalize_temporal_input(value)
+                self.assertNotIn("Z", result)
+                self.assertNotIn("+", result)
+                self.assertNotIn("-0", result[-6:])  # no trailing UTC offset
+
+
+class TestTemporalNormalizationImportGuard(unittest.TestCase):
+    """Structural regression tests that pin the fix for issue #1377.
+
+    The *point* of #1377 is that ``erasure.py`` must not import
+    ``_normalize_temporal_input`` directly from ``context_graph``.  These
+    tests catch a future reversion without relying on behavioral differences
+    (there are none — the wrapper is transparent).
+    """
+
+    def test_erasure_does_not_import_private_normalizer(self):
+        """``erasure.py`` source must not contain ``_normalize_temporal_input``
+        as a name in any import statement.
+
+        This test parses the AST rather than inspecting the live module so
+        that it catches the import even if the name is shadowed at runtime.
+        """
+        import semantica.context.erasure as _erasure_module
+
+        src = inspect.getsource(_erasure_module)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    self.assertNotEqual(
+                        alias.name,
+                        "_normalize_temporal_input",
+                        "erasure.py imports the private _normalize_temporal_input; "
+                        "it must use the public normalize_temporal_input instead "
+                        "(issue #1377)",
+                    )
+
+    def test_erasure_imports_public_normalizer(self):
+        """``erasure.py`` must explicitly import ``normalize_temporal_input``."""
+        import semantica.context.erasure as _erasure_module
+
+        src = inspect.getsource(_erasure_module)
+        tree = ast.parse(src)
+        imported_names = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    imported_names.append(alias.name)
+        self.assertIn(
+            "normalize_temporal_input",
+            imported_names,
+            "erasure.py does not import normalize_temporal_input from context_graph",
+        )
+
+    def test_normalize_temporal_input_is_importable_as_public_api(self):
+        """``normalize_temporal_input`` must be importable without underscore prefix."""
+        # Would raise ImportError if the name were removed or renamed.
+        from semantica.context.context_graph import normalize_temporal_input as fn
+
+        self.assertTrue(callable(fn))
+
+    def test_private_normalizer_not_leaked_into_erasure_namespace(self):
+        """The private ``_normalize_temporal_input`` must not be reachable
+        through the ``erasure`` module's namespace."""
+        import semantica.context.erasure as _erasure_module
+
+        self.assertFalse(
+            hasattr(_erasure_module, "_normalize_temporal_input"),
+            "erasure module exposes _normalize_temporal_input in its namespace; "
+            "it should only hold normalize_temporal_input",
+        )
+
+
+class TestTemporalNormalizationCrossModuleConsistency(unittest.TestCase):
+    """Verify that erasure.py and context_graph.py normalize identically.
+
+    This is the core correctness requirement of issue #1377: the receipt's
+    ``erased_at`` and the graph tombstone's ``purged_at`` must always carry
+    the same string because they are produced by the same normalization path.
+    If the two modules ever diverged (e.g. because erasure reimplemented
+    normalization independently), these tests would catch it.
+    """
+
+    def _graph(self):
+        g = ContextGraph(advanced_analytics=False)
+        g.add_node("alice", "person")
+        return g
+
+    def _assert_receipt_and_tombstone_agree(self, at_value, label=""):
+        from semantica.context.erasure import ErasureCoordinator
+
+        g = self._graph()
+        receipt = ErasureCoordinator(graph=g).erase_entity("alice", at=at_value)
+        tombstone = g.get_tombstone("alice", "node")
+        self.assertEqual(
+            receipt.erased_at,
+            tombstone["purged_at"],
+            f"receipt.erased_at != tombstone.purged_at for input {label!r}",
+        )
+        # Also verify both agree with what normalize_temporal_input produces
+        # directly, so the public function is the single source of truth.
+        expected = normalize_temporal_input(at_value)
+        self.assertEqual(receipt.erased_at, expected)
+
+    def test_iso_z_string_receipt_and_tombstone_agree(self):
+        self._assert_receipt_and_tombstone_agree(
+            "2026-01-01T12:00:00Z", "ISO-Z string"
+        )
+
+    def test_iso_offset_string_receipt_and_tombstone_agree(self):
+        self._assert_receipt_and_tombstone_agree(
+            "2026-01-01T12:00:00+05:00", "ISO +05:00 string"
+        )
+
+    def test_iso_naive_string_receipt_and_tombstone_agree(self):
+        self._assert_receipt_and_tombstone_agree(
+            "2026-01-01T12:00:00", "ISO naive string"
+        )
+
+    def test_epoch_int_receipt_and_tombstone_agree(self):
+        self._assert_receipt_and_tombstone_agree(1767225600, "epoch int")
+
+    def test_aware_utc_datetime_receipt_and_tombstone_agree(self):
+        self._assert_receipt_and_tombstone_agree(
+            datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+            "aware UTC datetime",
+        )
+
+    def test_aware_offset_datetime_receipt_and_tombstone_agree(self):
+        self._assert_receipt_and_tombstone_agree(
+            datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone(timedelta(hours=5))),
+            "aware +5h datetime",
+        )
+
+    def test_naive_datetime_receipt_and_tombstone_agree(self):
+        self._assert_receipt_and_tombstone_agree(
+            datetime(2026, 1, 1, 12, 0, 0), "naive datetime"
+        )
 
 
 def _graph():

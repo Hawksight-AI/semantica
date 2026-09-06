@@ -249,6 +249,42 @@ def _normalize_temporal_input(value: Optional[Union[str, int, float, datetime]])
     raise ValueError("Temporal values must be datetime, epoch seconds, ISO strings, or None")
 
 
+def normalize_temporal_input(
+    value: Optional[Union[str, int, float, datetime]]
+) -> Optional[str]:
+    """Normalize a temporal value to a tz-naive UTC ISO-8601 string.
+
+    This is the public surface of the normalization logic used throughout
+    :class:`ContextGraph` for retraction, purge, and decision timestamps.
+    Exposing it lets sibling modules (e.g. :mod:`erasure`) share the same
+    normalization without importing the private ``_normalize_temporal_input``.
+
+    Args:
+        value: Any of the following:
+
+            * ``None`` — returned as-is (no timestamp).
+            * :class:`~datetime.datetime` — converted to UTC if tz-aware,
+              then serialized as a tz-naive ISO string
+              (e.g. ``"2026-01-01T07:00:00"``).
+            * :class:`int` or :class:`float` — interpreted as a POSIX epoch
+              seconds value, converted to UTC, serialized as above.
+            * :class:`str` — must be a valid ISO-8601 datetime string;
+              offset-aware values (including ``Z``) are converted to UTC
+              before serialization.  Year-only (``"2026"``) and date-only
+              (``"2026-01-15"``) shorthand forms are also accepted.
+
+    Returns:
+        A tz-naive UTC ISO-8601 string (e.g. ``"2026-01-01T12:00:00"``),
+        or ``None`` when *value* is ``None``.
+
+    Raises:
+        ValueError: If *value* is a string that cannot be parsed as an
+            ISO-8601 datetime, or if *value* is a type that is not
+            supported (e.g. a :class:`~datetime.date` object).
+    """
+    return _normalize_temporal_input(value)
+
+
 def _closing_valid_until(current: Optional[str], at_iso: str) -> str:
     """Return the earlier of an existing end bound and a retraction time.
 
@@ -4755,14 +4791,18 @@ class ContextGraph:
 
                 # Find potential causes (decisions that influenced this one) via
                 # shared entities/timestamps - additive heuristic, skipping anything
-                # already covered by an explicit relationship above.
-                potential_causes = []
+                # already covered by an explicit relationship above. Deduplicate by
+                # decision id (dict preserves insertion order): a decision sharing
+                # several entities with the current one is one potential cause,
+                # not one per shared entity, otherwise the trace reports the same
+                # "influences" chain once per overlapping entity.
+                potential_causes = {}
                 for entity in current_decision["entities"]:
                     for other_decision_id in self._entity_index.get(entity, set()):
                         if other_decision_id != current_id and other_decision_id not in explicit_cause_ids:
                             other_decision = self._decisions[other_decision_id]
                             if other_decision["timestamp"] < current_decision["timestamp"]:
-                                potential_causes.append(other_decision_id)
+                                potential_causes[other_decision_id] = None
 
                 for cause_id in potential_causes:
                     cause_dec = self._decisions.get(cause_id, {})

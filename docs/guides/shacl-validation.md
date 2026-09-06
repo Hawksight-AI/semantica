@@ -707,6 +707,22 @@ report_dict = report.to_dict()
 
 ---
 
+## Resource limits
+
+Live SHACL validation in the Explorer enforces four resource limits, all configurable
+through environment variables. When a limit trips, the error message names the
+variable that controls it.
+
+| Environment variable | Default | What it bounds |
+| --- | --- | --- |
+| `SEMANTICA_MAX_SHACL_TURTLE_BYTES` | `262144` (256 KB) | Size of the submitted SHACL Turtle |
+| `SEMANTICA_MAX_SHACL_TRIPLES` | `1000` | Triple count of the parsed shapes graph |
+| `SEMANTICA_MAX_SHACL_TIMEOUT` | `15.0` | Validation timeout in seconds |
+| `SEMANTICA_MAX_SHACL_CONCURRENCY` | `4` | Concurrent validations per process |
+
+The first three are surfaced in the validation error message when exceeded; the
+concurrency limit applies as a semaphore and does not appear in responses.
+
 ## Using SHACL validation as a CI/CD gate
 
 Call this function as a pre-publish gate; exit code 1 blocks the pipeline.

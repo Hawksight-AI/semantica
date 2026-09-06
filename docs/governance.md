@@ -9,9 +9,9 @@ icon: "scale-balanced"
 
 ## Roles
 
-- **Maintainers** — Semantica team: review and merge PRs, manage releases and code quality, set project direction and community standards.
-- **Contributors** — Submit code, documentation, and bug reports. Help with issues and reviews. Recognized in [CONTRIBUTORS.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTORS.md).
-- **Community Members** — Use Semantica, provide feedback, share use cases, and participate in GitHub Discussions and Discord.
+- **Maintainers**: Semantica team. Review and merge PRs, manage releases and code quality, set project direction and community standards.
+- **Contributors**: submit code, documentation, and bug reports. Help with issues and reviews. Recognized in [CONTRIBUTORS.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTORS.md).
+- **Community Members**: use Semantica, provide feedback, share use cases, and participate in GitHub Discussions and Discord.
 
 
 ## Decision Process
@@ -65,11 +65,11 @@ Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 ## Project Goals
 
-- **Usability** — Easy to use and understand: sensible defaults, clear documentation, minimal ceremony.
-- **Reliability** — Production-ready quality: tested across Python versions, platforms, and real-world workloads.
-- **Performance** — Efficient and scalable: from single-machine notebooks to enterprise graph databases.
-- **Extensibility** — Easy to extend with plugins and custom modules via the `PluginRegistry` pattern.
-- **Community** — Welcoming and inclusive: all backgrounds and experience levels contribute and are recognized.
+- **Usability**: easy to use and understand with sensible defaults, clear documentation, and minimal ceremony.
+- **Reliability**: production-ready quality tested across Python versions, platforms, and real-world workloads.
+- **Performance**: efficient and scalable from single-machine notebooks to enterprise graph databases.
+- **Extensibility**: easy to extend with plugins and custom modules via the `PluginRegistry` pattern.
+- **Community**: welcoming and inclusive. All backgrounds and experience levels contribute and are recognized.
 
 
 ## License
@@ -79,5 +79,5 @@ MIT License: see [LICENSE](https://github.com/semantica-agi/semantica/blob/main/
 
 ## See Also
 
-- [Contributing](/contributing-guide) — How to submit changes.
-- [Community](/community) — Community guidelines and channels.
+- [Contributing](/contributing-guide): how to submit changes.
+- [Community](/community): community guidelines and channels.

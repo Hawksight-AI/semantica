@@ -452,3 +452,42 @@ def test_find_precedents_sees_lowercase_precedent_edge():
     precedents = graph.find_precedents(later)
 
     assert [d.decision_id for d in precedents] == [precedent]
+
+
+def test_heuristic_cause_reported_once_per_shared_entity_pair():
+    """A potential cause found through the shared-entity heuristic must be
+    reported once, not once per shared entity.
+
+    ``trace_decision_causality()`` collects ``potential_causes`` by looping
+    over every entity of the current decision, so a decision sharing two
+    entities with an earlier one (e.g. the same customer and the same
+    property) used to be appended twice and produced two identical
+    "influences" chains.
+    """
+    graph = ContextGraph(advanced_analytics=True)
+    cause = graph.record_decision(
+        category="lending", scenario="earlier review", reasoning="r",
+        outcome="approved", confidence=0.9,
+        entities=["customer_123", "property_456"],
+    )
+    effect = graph.record_decision(
+        category="risk", scenario="later review", reasoning="r",
+        outcome="flagged", confidence=0.9,
+        entities=["customer_123", "property_456"],
+    )
+    # Pin timestamps so the earlier/later ordering is deterministic.
+    graph._decisions[cause]["timestamp"] = 100.0
+    graph._decisions[effect]["timestamp"] = 200.0
+
+    chains = graph.trace_decision_chain(effect)
+
+    influence_hops = [
+        (hop["from"], hop["to"])
+        for chain in chains
+        for hop in chain["hops"]
+        if hop["type"] == "influences"
+    ]
+    assert influence_hops, "shared-entity heuristic must find the earlier decision"
+    assert influence_hops.count((cause, effect)) == 1, (
+        "the same (cause, effect) pair must be reported once, not once per shared entity"
+    )

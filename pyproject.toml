@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "semantica"
-version = "0.6.7"
+version = "0.6.8"
 description = "Graph-Native Infrastructure for Context and Accountable AI Systems: context graphs, decision intelligence, full provenance tracking, and explainable reasoning engines — every AI decision traceable, every output auditable."
 readme = "README.md"
 license = { text = "MIT" }
