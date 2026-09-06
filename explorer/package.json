@@ -35,7 +35,7 @@
     "remark-gfm": "^4.0.1",
     "sigma": "^3.0.2",
     "vis-data": "^8.0.3",
-    "vis-timeline": "^8.5.0"
+    "vis-timeline": "^8.5.4"
   },
   "devDependencies": {
     "@babel/core": "^7.29.6",
