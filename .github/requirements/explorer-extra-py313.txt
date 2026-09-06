@@ -600,7 +600,7 @@ cuda-pathfinder==1.6.0 \
     # via
     #   -c requirements-ci.txt
     #   cuda-bindings
-cuda-toolkit==13.0.3.0 \
+cuda-toolkit==13.0.3 \
     --hash=sha256:d693caaa261214ddd7dbb60d68e71cbed884e68c2be7509778f3051da0b91c3f
     # via
     #   -c requirements-ci.txt

@@ -21,7 +21,6 @@ import type Graph from "graphology";
 import { batchMergeEdges, batchMergeNodes, graph } from "../../store/graphStore";
 import { logEvent } from "../../store/registryStore";
 import type { EdgeAttributes, NodeAttributes } from "../../store/graphStore";
-import { curveGroupForPair } from "../../store/edgePairKeys.js";
 import { InspectorPanel, MetricChip, SurfaceCard } from "../../ui/primitives";
 import { lazy, Suspense } from "react";
 import { SigmaSceneAdapter } from "./SigmaSceneAdapter";
@@ -42,7 +41,15 @@ import {
 import { explorationEffectsShouldLoad, neighborhoodPanelShouldLoad, temporalOverlayShouldLoad } from "./pluginRegistryPredicates";
 import { shouldFetchTemporalBounds, shouldFetchTemporalSnapshot } from "./temporalLifecyclePredicates";
 import { createTemporalSnapshotGuards, type TemporalSnapshotResponse } from "./temporalSnapshotGuards";
+import { SMALL_GRAPH_MAX_NODES } from "./smallGraphLayout";
+import { buildRealtimeEdgeAttributes } from "./realtimeGraphAttributes";
 import type { LinkPrediction, PathResponse } from "./GraphInspectorPanel";
+import type { MarkdownApplyResult } from "./markdownResourceClient";
+import {
+  NodeMarkdownRefreshGuard,
+  buildNodeMarkdownAttributeUpdate,
+  readNodeMarkdownAttributeUpdate,
+} from "./nodeMarkdownSync";
 import type { GraphSceneHandle, GraphSceneRuntime } from "./scene";
 import type {
   GraphAnalyticsSnapshot,
@@ -1056,46 +1063,10 @@ function buildRealtimeNodeAttributes(payload: {
   };
 }
 
-function buildRealtimeEdgeAttributes(payload: {
-  id: string;
-  familyId?: string;
-  source_id: string;
-  target_id: string;
-  type?: string;
-  weight?: number;
-  properties?: Record<string, unknown>;
-}): EdgeAttributes {
-  const properties = payload.properties || {};
-  const isInferred = Boolean(properties.inferred);
-  const isBidirectional = graph.hasDirectedEdge(payload.target_id, payload.source_id);
-  const baseColor = isInferred ? GRAPH_THEME.palette.accent.path : GRAPH_THEME.palette.muted.edgeStructure;
-
-  return {
-    edgeId: payload.id,
-    familyId: payload.familyId || payload.id,
-    sourceId: payload.source_id,
-    targetId: payload.target_id,
-    weight: Number(payload.weight ?? 1),
-    edgeType: payload.type || "related_to",
-    properties,
-    size: 1,
-    baseSize: 1,
-    color: baseColor,
-    baseColor,
-    mutedColor: GRAPH_THEME.palette.muted.edgeOverview,
-    visualPriority: isInferred ? 0.95 : 0.5,
-    isBidirectional,
-    edgeFamily: isInferred ? "path" : isBidirectional ? "bidirectional" : "line",
-    curveGroup: isBidirectional ? curveGroupForPair(payload.source_id, payload.target_id) : null,
-    type: "line",
-    edgeVariant: isInferred ? "pathSignal" : isBidirectional ? "bidirectionalCurve" : "directional",
-    arrowVisibilityPolicy: isInferred ? "always" : "contextual",
-    relationshipStrength: isInferred ? 0.95 : 0.52,
-    isParallelPair: false,
-    parallelIndex: 0,
-    parallelCount: 1,
-    familySize: 1,
-  };
+function synchronizeRealtimeSmallGraphEdges(isSmallGraph: boolean): void {
+  graph.forEachEdge((edgeId) => {
+    graph.setEdgeAttribute(edgeId, "isSmallGraph", isSmallGraph);
+  });
 }
 
 function buildSelectedNodeState(
@@ -1276,9 +1247,10 @@ function collectPluginOverlays(
 interface GraphWorkspaceProps {
   externalFocusNodeId?: string;
   externalFocusToken?: number;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: GraphWorkspaceProps = {}) {
+export function GraphWorkspace({ externalFocusNodeId, externalFocusToken, onDirtyChange }: GraphWorkspaceProps = {}) {
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [focusedNodeId, setFocusedNodeId] = useState("");
   const [lastGroupedSelectedNodeId, setLastGroupedSelectedNodeId] = useState("");
@@ -1286,6 +1258,12 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
   const [isLayoutRunning, setIsLayoutRunning] = useState(false);
   const [graphReady, setGraphReady] = useState(false);
   const [graphVersion, setGraphVersion] = useState(0);
+  const [markdownDraftDirty, setMarkdownDraftDirty] = useState(false);
+  const markdownRefreshGuard = useMemo(() => new NodeMarkdownRefreshGuard(), []);
+  const handleMarkdownDirtyChange = useCallback((dirty: boolean) => {
+    setMarkdownDraftDirty(dirty);
+    onDirtyChange?.(dirty);
+  }, [onDirtyChange]);
   const [viewMode, setViewMode] = useState<GraphViewMode>("full");
   const [aggregationEnabled] = useState(true);
   const [collapsedNeighborhoodNodeIds, setCollapsedNeighborhoodNodeIds] = useState<string[]>([]);
@@ -1355,6 +1333,7 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
   const lastExternalFocusTokenRef = useRef<number | undefined>(undefined);
   const pluginRuntimeRef = useRef<GraphSceneRuntime | null>(null);
   const appliedGraphSummarySignatureRef = useRef<string | null>(null);
+  const smallGraphModeRef = useRef(false);
   const pluginInteractionStateRef = useRef<GraphInteractionState>({
     hoveredNodeId: null,
     selectedNodeId: "",
@@ -1382,6 +1361,12 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     }
 
     appliedGraphSummarySignatureRef.current = signature;
+    smallGraphModeRef.current = Boolean(
+      graphSummary.layoutReady
+      && !graphSummary.hasCoordinates
+      && graphSummary.nodeCount > 0
+      && graphSummary.nodeCount <= SMALL_GRAPH_MAX_NODES,
+    );
     setGraphReady(true);
     setGraphVersion((current) => current + 1);
     setIsLayoutRunning(!graphSummary.layoutReady);
@@ -1656,8 +1641,17 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
       : null,
     [viewMode, aggregationEnabled, collapsedNeighborhoodNodeIds, graphVersion],
   );
+  const confirmDiscardMarkdownDraft = useCallback(() => {
+    if (!markdownDraftDirty) return true;
+    const discard = window.confirm(
+      "Discard the unapplied Markdown draft and leave this node?",
+    );
+    return discard;
+  }, [markdownDraftDirty]);
+
 
   const requestViewMode = useCallback((nextViewMode: GraphViewMode) => {
+    if (nextViewMode !== viewMode && !confirmDiscardMarkdownDraft()) return;
     if (nextViewMode === "focused") {
       const resolution = resolveNodeIdForFocusedMode(selectedNodeId, pluginRuntimeRef.current?.displayGraph);
       if (!resolution.resolvedNodeId) {
@@ -1710,6 +1704,7 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     ));
     setViewMode("full");
   }, [
+    confirmDiscardMarkdownDraft,
     aggregationEnabled,
     collapsedNeighborhoodNodeIds,
     focusedNodeId,
@@ -1720,9 +1715,11 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     lastGroupedSelectedNodeId,
     resolveNodeIdForFocusedMode,
     selectedNodeId,
+    viewMode,
   ]);
 
   const focusNode = useCallback((nodeId: string) => {
+    if (nodeId !== selectedNodeId && !confirmDiscardMarkdownDraft()) return;
     if (!nodeId) {
       setSelectedNodeId("");
       setSelectedEdgeId("");
@@ -1748,14 +1745,18 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
       setFocusedNodeId(nextSelectedNodeId);
       setIsLayoutRunning(false);
     }
-  }, [viewMode]);  // Note: ego/heatmap/distanceMode effects re-run automatically when selectedNodeId changes
+  }, [confirmDiscardMarkdownDraft, selectedNodeId, viewMode]);  // Note: ego/heatmap/distanceMode effects re-run automatically when selectedNodeId changes
 
   useEffect(() => {
     if (!externalFocusNodeId || externalFocusToken == null) return;
     if (lastExternalFocusTokenRef.current === externalFocusToken) return;
     if (!graphReady || !graph.hasNode(externalFocusNodeId)) return;
-
+    if (
+      externalFocusNodeId !== selectedNodeId
+      && !confirmDiscardMarkdownDraft()
+    ) return;
     lastExternalFocusTokenRef.current = externalFocusToken;
+
     // Set state directly instead of going through focusNode(), which captures
     // a stale viewMode in its closure. setViewMode is called first so the node
     // is visible in the full graph before the scene pans to it.
@@ -1765,7 +1766,13 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     window.setTimeout(() => {
       sceneRef.current?.focusNode(externalFocusNodeId);
     }, 0);
-  }, [externalFocusNodeId, externalFocusToken, graphReady]);
+  }, [
+    confirmDiscardMarkdownDraft,
+    externalFocusNodeId,
+    externalFocusToken,
+    graphReady,
+    selectedNodeId,
+  ]);
 
   const handleEdgeSelect = useCallback((edgeId: string) => {
     setSelectedEdgeId(edgeId);
@@ -1871,6 +1878,37 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     document.body.removeChild(anchor);
   }, [inspectableNodeId]);
 
+  const handleMarkdownApplied = useCallback((result: MarkdownApplyResult) => {
+    if (result.resource.kind !== "context-node") return;
+    if (!graph.hasNode(result.resource.id)) return;
+    const syncGeneration = markdownRefreshGuard.begin(result.resource.id);
+    const attributes = graph.getNodeAttributes(result.resource.id) as NodeAttributes;
+    graph.mergeNodeAttributes(
+      result.resource.id,
+      buildNodeMarkdownAttributeUpdate(
+        result.resource.id,
+        result.body,
+        attributes.properties ?? {},
+      ),
+    );
+    setGraphVersion((current) => current + 1);
+    sceneRef.current?.getRuntime()?.requestRender();
+
+    void readNodeMarkdownAttributeUpdate(result.resource.id)
+      .then((savedAttributes) => {
+        if (
+          !markdownRefreshGuard.isCurrent(result.resource.id, syncGeneration)
+          || !graph.hasNode(result.resource.id)
+        ) return;
+        graph.mergeNodeAttributes(result.resource.id, savedAttributes);
+        setGraphVersion((current) => current + 1);
+        sceneRef.current?.getRuntime()?.requestRender();
+      })
+      .catch((syncError) => {
+        console.error("[GraphWorkspace] applied node refresh failed", syncError);
+      });
+  }, [markdownRefreshGuard]);
+
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${window.location.host}/ws/graph-updates`);
@@ -1893,18 +1931,45 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
               attributes: buildRealtimeNodeAttributes(payload),
             },
           ]);
+          if (graph.order > SMALL_GRAPH_MAX_NODES) {
+            smallGraphModeRef.current = false;
+          }
+          synchronizeRealtimeSmallGraphEdges(smallGraphModeRef.current);
           logEvent("add-node", `Added node ${payload.label ?? payload.id}${payload.nodeType ? ` (${payload.nodeType})` : ""} via realtime ws`, { nodeId: payload.id, nodeType: payload.nodeType });
           setGraphVersion((current) => current + 1);
           sceneRef.current?.getRuntime()?.requestRender();
         }
+        if (eventType === "UPDATE_NODE" && payload?.id && graph.hasNode(payload.id)) {
+          markdownRefreshGuard.invalidate(payload.id);
+          const properties = payload.properties ?? {};
+          const current = graph.getNodeAttributes(payload.id) as NodeAttributes;
+          const content = typeof properties.content === "string" ? properties.content : "";
+          graph.mergeNodeAttributes(payload.id, {
+            ...buildNodeMarkdownAttributeUpdate(payload.id, content, properties),
+            nodeType: payload.type ?? current.nodeType,
+            valid_from: properties.valid_from ?? null,
+            valid_until: properties.valid_until ?? null,
+          });
+          logEvent(
+            "update-node",
+            `Updated node ${payload.id} via realtime ws`,
+            { nodeId: payload.id, nodeType: payload.type },
+          );
+          setGraphVersion((version) => version + 1);
+          sceneRef.current?.getRuntime()?.requestRender();
+        }
         if (eventType === "ADD_EDGE") {
+          const isSmallGraph = smallGraphModeRef.current;
           batchMergeEdges([
             {
               id: String(payload.id),
               familyId: payload.familyId ? String(payload.familyId) : String(payload.id),
               source: payload.source_id,
               target: payload.target_id,
-              attributes: buildRealtimeEdgeAttributes(payload),
+              attributes: buildRealtimeEdgeAttributes(payload, {
+                isBidirectional: graph.hasDirectedEdge(payload.target_id, payload.source_id),
+                isSmallGraph,
+              }),
             },
           ]);
           logEvent("add-edge", `Added edge ${payload.edgeType ?? payload.id} (${payload.source_id} → ${payload.target_id}) via realtime ws`, { edgeId: payload.id, edgeType: payload.edgeType, source: payload.source_id, target: payload.target_id });
@@ -1919,7 +1984,7 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     return () => {
       socket.close();
     };
-  }, []);
+  }, [markdownRefreshGuard]);
 
   useEffect(() => {
     setCollapsedNeighborhoodNodeIds([]);
@@ -2192,28 +2257,29 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
   }, [collapsedNeighborhoodNodeIds, focusedNodeId, selectedNodeId, viewMode]);
   const structuralActivePath = structuralSelectedNodeId ? activePath : EMPTY_PATH;
   const structuralActivePathEdgeIds = structuralSelectedNodeId ? activePathEdgeIds : EMPTY_PATH;
-  const displayResult = useMemo(
-    () => (
-      viewMode === "grouped"
-        ? (groupedDisplayCandidate ?? resolveDisplayGraph("", EMPTY_PATH, EMPTY_PATH, "grouped", {
-            aggregationEnabled,
-            collapsedNeighborhoodNodeIds,
-          }))
-        : resolveDisplayGraph(structuralSelectedNodeId, structuralActivePath, structuralActivePathEdgeIds, viewMode, {
-            aggregationEnabled,
-            collapsedNeighborhoodNodeIds,
-          })
-    ),
-    [
-      aggregationEnabled,
-      collapsedNeighborhoodNodeIds,
-      groupedDisplayCandidate,
-      structuralActivePath,
-      structuralActivePathEdgeIds,
-      structuralSelectedNodeId,
-      viewMode,
-    ],
-  );
+  const displayResult = useMemo(() => {
+    // The displayed graph is an aggregated clone. Rebuild it after domain
+    // mutations so applied Markdown labels do not remain stale on the canvas.
+    void graphVersion;
+    return viewMode === "grouped"
+      ? (groupedDisplayCandidate ?? resolveDisplayGraph("", EMPTY_PATH, EMPTY_PATH, "grouped", {
+          aggregationEnabled,
+          collapsedNeighborhoodNodeIds,
+        }))
+      : resolveDisplayGraph(structuralSelectedNodeId, structuralActivePath, structuralActivePathEdgeIds, viewMode, {
+          aggregationEnabled,
+          collapsedNeighborhoodNodeIds,
+        });
+  }, [
+    aggregationEnabled,
+    collapsedNeighborhoodNodeIds,
+    graphVersion,
+    groupedDisplayCandidate,
+    structuralActivePath,
+    structuralActivePathEdgeIds,
+    structuralSelectedNodeId,
+    viewMode,
+  ]);
   const displayState = useMemo(
     () => (
       viewMode === "grouped"
@@ -3315,6 +3381,8 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
                       pathResult={pathResult}
                       onDownloadProvenance={(format) => void handleDownloadProvenance(format)}
                       onFocusNode={focusNode}
+                      onMarkdownApplied={handleMarkdownApplied}
+                      onMarkdownDirtyChange={handleMarkdownDirtyChange}
                     />
                   </Suspense>
                 </div>

@@ -9,9 +9,9 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
 ## Learning Paths
 
-- **Beginner (1–2 hrs)** — New to Semantica and knowledge graphs. [Start with Installation →](installation)
-- **Intermediate (4–6 hrs)** — Comfortable with basics, building real applications. [Start with Modules →](modules)
-- **Advanced (8+ hrs)** — Enterprise deployments, customization, and extension. [Start with Architecture →](architecture)
+- **Beginner (1–2 hrs)**: new to Semantica and knowledge graphs. [Start with Installation →](/installation)
+- **Intermediate (4–6 hrs)**: comfortable with basics, building real applications. [Start with Modules →](/modules)
+- **Advanced (8+ hrs)**: enterprise deployments, customization, and extension. [Start with Architecture →](/architecture)
 
 <Tabs>
   <Tab title="Beginner (1–2 hrs)">
@@ -19,16 +19,16 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
     <Steps>
       <Step title="Set up your environment">
-        [Installation Guide](installation): virtual environments, optional extras, platform-specific fixes.
+        [Installation Guide](/installation): virtual environments, optional extras, platform-specific fixes.
       </Step>
       <Step title="Understand the core ideas">
-        [Core Concepts](concepts): what knowledge graphs are, how embeddings work, what extraction does.
+        [Core Concepts](/concepts): what knowledge graphs are, how embeddings work, what extraction does.
       </Step>
       <Step title="Run your first example">
-        [Getting Started](getting-started): 5-minute code walkthrough with pattern-based extraction (no API key needed).
+        [Getting Started](/getting-started): 5-minute code walkthrough with pattern-based extraction (no API key needed).
       </Step>
       <Step title="Build your first knowledge graph">
-        [Quickstart Tutorial](quickstart): full 6-step pipeline from ingestion to visualization.
+        [Quickstart Tutorial](/quickstart): full 6-step pipeline from ingestion to visualization.
       </Step>
       <Step title="Explore interactively">
         [Welcome to Semantica notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/01_Welcome_to_Semantica.ipynb): Jupyter walkthrough of every module.
@@ -40,13 +40,13 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
     <Steps>
       <Step title="Learn every module">
-        [Modules Guide](modules): all 27 modules with code examples and common pipeline chains.
+        [Modules Guide](/modules): all 27 modules with code examples and common pipeline chains.
       </Step>
       <Step title="Build production knowledge graphs">
         [Building Knowledge Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb): multi-source, deduplication, conflict resolution.
       </Step>
       <Step title="Add semantic search">
-        [Embeddings notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb): providers, pooling strategies, vector stores.
+        [Embedding Generation notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/12_Embedding_Generation.ipynb): generating embeddings, provider and model switching, dimensions. Then [Vector Store notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/13_Vector_Store.ipynb): storing and searching vectors for retrieval.
       </Step>
       <Step title="Multi-source integration">
         [Multi-Source Data Integration notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb) for multi-source patterns.
@@ -58,7 +58,7 @@ Whether you're running your first pipeline or deploying Semantica in production,
 
     <Steps>
       <Step title="Understand the architecture">
-        [Architecture Guide](architecture): four-layer design, extension points, and design decisions.
+        [Architecture Guide](/architecture): four-layer design, extension points, and design decisions.
       </Step>
       <Step title="Temporal intelligence">
         [Temporal Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/10_Temporal_Knowledge_Graphs.ipynb): `valid_from`/`valid_until`, Allen interval algebra, point-in-time queries.
@@ -116,7 +116,7 @@ pip install "semantica[gpu]"          # GPU acceleration
 
 <Accordion title="AuthenticationError" icon="lock">
 
-Set your API key as an environment variable — never hardcode keys in source files:
+Set your API key as an environment variable (never hardcode keys in source files):
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -236,6 +236,6 @@ The `blocking_v2`, `hybrid_v2`, and `semantic_v2` strategies reduce O(n²) compa
 - **Graph exports**: encrypt sensitive exports at rest; use the v0.5.0 SSRF-safe `base_url` validation when configuring custom LLM gateways
 - **XML ingestion**: always use `XMLIngestor` (v0.5.0), which uses the XXE-safe lxml backend; never parse untrusted XML with the standard library parser
 
-- [Cookbook](cookbook) — Interactive Jupyter notebooks from beginner to advanced.
-- [FAQ](faq) — Common questions answered.
-- [API Reference](reference/core) — Complete technical documentation.
+- [Cookbook](/cookbook): interactive Jupyter notebooks from beginner to advanced.
+- [FAQ](/faq): common questions answered.
+- [API Reference](/reference/core): complete technical documentation.

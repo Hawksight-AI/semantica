@@ -503,7 +503,7 @@ stats = store.get_stats()
   </Tab>
 </Tabs>
 
-- [KG Module](kg) — Build the graph before persisting it.
-- [Triplet Store](triplet_store) — RDF triple store for semantic web and SPARQL queries.
+- [KG Module](/reference/kg) — Build the graph before persisting it.
+- [Triplet Store](/reference/triplet_store) — RDF triple store for semantic web and SPARQL queries.
 - [Visualization](visualization) — Visualize graphs stored in any backend.
-- [Context](context) — AgentContext uses GraphStore for memory retrieval.
+- [Context](/reference/context) — AgentContext uses GraphStore for memory retrieval.

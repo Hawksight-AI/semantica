@@ -497,7 +497,7 @@ result   = engine.execute_pipeline(
 
 ## SPARQL CONSTRUCT Template Steps
 
-Use the `"construct_template"` step type to render and execute a [SPARQL CONSTRUCT template](triplet_store#sparql-construct-templates) as part of a pipeline. `store_backend` and `construct_template_registry` are execution-time resources, not step config — pass them to `execute_pipeline()`, the same way `delta_mode` steps receive `version_manager` and `triplet_store`:
+Use the `"construct_template"` step type to render and execute a [SPARQL CONSTRUCT template](/reference/triplet_store#sparql-construct-templates) as part of a pipeline. `store_backend` and `construct_template_registry` are execution-time resources, not step config — pass them to `execute_pipeline()`, the same way `delta_mode` steps receive `version_manager` and `triplet_store`:
 
 ```python
 from semantica.pipeline import PipelineBuilder, ExecutionEngine
@@ -589,6 +589,6 @@ StepStatus.SKIPPED    # Skipped due to FailureHandler "skip" strategy
 </AccordionGroup>
 
 - [Ingest](ingest) — First step in most pipelines.
-- [Semantic Extract](semantic_extract) — Core extraction step.
-- [Knowledge Graph](kg) — Graph construction step.
+- [Semantic Extract](/reference/semantic_extract) — Core extraction step.
+- [Knowledge Graph](/reference/kg) — Graph construction step.
 - [Export](export) — Final output step.

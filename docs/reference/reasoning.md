@@ -323,7 +323,7 @@ all_facts = datalog.derive_all()
 
 # Query with variable pattern: variables start with uppercase or ?
 results = datalog.query("ancestor(alice, ?Z)")
-# → [{"Z": "bob"}, {"Z": "charlie"}, {"Z": "dave"}]
+# → a list of binding dicts: [{"Z": "bob"}, {"Z": "charlie"}, {"Z": "dave"}] (order not guaranteed)
 
 # Clear and start over
 datalog.clear()
@@ -482,7 +482,7 @@ step.confidence     # float
   `GraphReasoner` requires a configured LLM provider. If the provider fails to initialize, `reason()` returns an error string instead of raising. Check `reasoner.provider is not None` before calling if you need to surface failures explicitly.
 </Warning>
 
-- [Knowledge Graph](kg) — The knowledge graph being reasoned over.
+- [Knowledge Graph](/reference/kg) — The knowledge graph being reasoned over.
 - [Ontology](ontology) — Ontology axioms and SHACL constraints for logical reasoning.
-- [Triplet Store](triplet_store) — RDF backend for SPARQL-based reasoning.
-- [Context](context) — Reasoning integrated into agent decision intelligence.
+- [Triplet Store](/reference/triplet_store) — RDF backend for SPARQL-based reasoning.
+- [Context](/reference/context) — Reasoning integrated into agent decision intelligence.

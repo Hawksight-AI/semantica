@@ -162,6 +162,13 @@ from .ontology_validator import (
     run_shacl_validation,
     validate_ontology,
 )
+from .quality_gate import (
+    OntologyQualityGate,
+    OntologyQualityReport,
+    QualityIssue,
+    QualitySeverity,
+    ontology_quality_check,
+)
 from .owl_generator import OWLGenerator
 from .property_generator import PropertyGenerator
 from .registry import MethodRegistry, method_registry
@@ -194,6 +201,11 @@ __all__ = [
     "SHACLValidationReport",
     "SHACLViolation",
     "run_shacl_validation",
+    "OntologyQualityGate",
+    "OntologyQualityReport",
+    "QualityIssue",
+    "QualitySeverity",
+    "ontology_quality_check",
     # OWL/RDF generation
     "OWLGenerator",
     # Requirements and competency questions

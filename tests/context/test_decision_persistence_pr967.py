@@ -1037,5 +1037,195 @@ class TestClearResetsDecisionIndexes(unittest.TestCase):
         self.assertEqual(g._decisions[did]["category"], "new")
 
 
+# ---------------------------------------------------------------------------
+# Part 15: semantica.mcp_server mutation persistence (#1134)
+# ---------------------------------------------------------------------------
+
+class TestMCPServerMutationPersistence(unittest.TestCase):
+    """_tool_record_decision, _tool_add_entity, and _tool_add_relationship must
+    each call save_to_file when SEMANTICA_KG_PATH is configured so mutations
+    survive server restarts.
+
+    Mirrors update_node / delete_node which already had this behaviour from
+    PR #967.  These tests extend coverage to the three previously missing tools.
+    """
+
+    # ---- helpers --------------------------------------------------------
+
+    def _isolated_mcp_graph(self):
+        """Return a fresh ContextGraph injected as the mcp_server singleton."""
+        import semantica.mcp_server as mcp_mod
+        g = ContextGraph(advanced_analytics=False)
+        self._original_graph = mcp_mod._graph
+        mcp_mod._graph = g
+        return g
+
+    def _restore_mcp_graph(self):
+        import semantica.mcp_server as mcp_mod
+        mcp_mod._graph = self._original_graph
+
+    # ---- record_decision ------------------------------------------------
+
+    def test_record_decision_persists_to_kg_path(self):
+        """_tool_record_decision must write the graph to SEMANTICA_KG_PATH."""
+        from semantica.mcp_server import _tool_record_decision
+
+        g = self._isolated_mcp_graph()
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+                path = f.name
+            try:
+                with patch.dict(os.environ, {"SEMANTICA_KG_PATH": path}):
+                    result = _tool_record_decision({
+                        "category": "mcp_server_persist",
+                        "scenario": "Testing packaged server persistence",
+                        "reasoning": "save_to_file must be called on mutation",
+                        "outcome": "verified",
+                        "confidence": 0.99,
+                    })
+
+                self.assertNotIn("error", result, result)
+                self.assertIn("decision_id", result)
+
+                # File must have been written.
+                self.assertGreater(os.path.getsize(path), 0,
+                                   "save_to_file must have written to the KG_PATH file")
+
+                # Simulate restart: reload into a fresh graph.
+                g2 = ContextGraph(advanced_analytics=False)
+                g2.load_from_file(path)
+                decisions = list(g2.find_nodes(node_type="decision"))
+                self.assertGreater(len(decisions), 0,
+                                   "Decision must be present after save → load")
+                cats = [d.get("category") or (d.get("metadata") or {}).get("category")
+                        for d in decisions]
+                self.assertIn("mcp_server_persist", cats)
+            finally:
+                os.unlink(path)
+        finally:
+            self._restore_mcp_graph()
+
+    def test_record_decision_works_without_kg_path(self):
+        """_tool_record_decision must succeed when SEMANTICA_KG_PATH is unset."""
+        from semantica.mcp_server import _tool_record_decision
+
+        g = self._isolated_mcp_graph()
+        try:
+            env = {k: v for k, v in os.environ.items() if k != "SEMANTICA_KG_PATH"}
+            with patch.dict(os.environ, env, clear=True):
+                result = _tool_record_decision({
+                    "category": "no_path",
+                    "scenario": "no kg path",
+                    "reasoning": "in-memory only",
+                    "outcome": "ok",
+                    "confidence": 0.5,
+                })
+            self.assertNotIn("error", result, result)
+            self.assertIn("decision_id", result)
+        finally:
+            self._restore_mcp_graph()
+
+    # ---- add_entity -----------------------------------------------------
+
+    def test_add_entity_persists_to_kg_path(self):
+        """_tool_add_entity must write the graph to SEMANTICA_KG_PATH."""
+        from semantica.mcp_server import _tool_add_entity
+
+        g = self._isolated_mcp_graph()
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+                path = f.name
+            try:
+                with patch.dict(os.environ, {"SEMANTICA_KG_PATH": path}):
+                    result = _tool_add_entity({
+                        "id": "mcp_server_entity_test",
+                        "label": "Persistence Entity",
+                        "type": "TestEntity",
+                    })
+
+                self.assertNotIn("error", result, result)
+                self.assertEqual(result.get("status"), "added")
+
+                self.assertGreater(os.path.getsize(path), 0)
+
+                g2 = ContextGraph(advanced_analytics=False)
+                g2.load_from_file(path)
+                self.assertTrue(g2.has_node("mcp_server_entity_test"),
+                                "Entity must be present after save → load")
+            finally:
+                os.unlink(path)
+        finally:
+            self._restore_mcp_graph()
+
+    def test_add_entity_works_without_kg_path(self):
+        """_tool_add_entity must succeed when SEMANTICA_KG_PATH is unset."""
+        from semantica.mcp_server import _tool_add_entity
+
+        g = self._isolated_mcp_graph()
+        try:
+            env = {k: v for k, v in os.environ.items() if k != "SEMANTICA_KG_PATH"}
+            with patch.dict(os.environ, env, clear=True):
+                result = _tool_add_entity({"id": "ephemeral_ent", "label": "E"})
+            self.assertNotIn("error", result, result)
+            self.assertEqual(result.get("status"), "added")
+        finally:
+            self._restore_mcp_graph()
+
+    # ---- add_relationship -----------------------------------------------
+
+    def test_add_relationship_persists_to_kg_path(self):
+        """_tool_add_relationship must write the graph to SEMANTICA_KG_PATH."""
+        from semantica.mcp_server import _tool_add_entity, _tool_add_relationship
+
+        g = self._isolated_mcp_graph()
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+                path = f.name
+            try:
+                with patch.dict(os.environ, {"SEMANTICA_KG_PATH": path}):
+                    _tool_add_entity({"id": "rel_src_mcp", "label": "Source"})
+                    _tool_add_entity({"id": "rel_tgt_mcp", "label": "Target"})
+                    result = _tool_add_relationship({
+                        "source": "rel_src_mcp",
+                        "target": "rel_tgt_mcp",
+                        "type": "PROVEN_BY",
+                    })
+
+                self.assertNotIn("error", result, result)
+                self.assertEqual(result.get("status"), "added")
+
+                self.assertGreater(os.path.getsize(path), 0)
+
+                g2 = ContextGraph(advanced_analytics=False)
+                g2.load_from_file(path)
+                edges = list(g2.find_edges())
+                self.assertTrue(any(e.get("type") == "PROVEN_BY" for e in edges),
+                                "PROVEN_BY edge must be present after save → load")
+            finally:
+                os.unlink(path)
+        finally:
+            self._restore_mcp_graph()
+
+    def test_add_relationship_works_without_kg_path(self):
+        """_tool_add_relationship must succeed when SEMANTICA_KG_PATH is unset."""
+        from semantica.mcp_server import _tool_add_entity, _tool_add_relationship
+
+        g = self._isolated_mcp_graph()
+        try:
+            env = {k: v for k, v in os.environ.items() if k != "SEMANTICA_KG_PATH"}
+            with patch.dict(os.environ, env, clear=True):
+                _tool_add_entity({"id": "src_no_p", "label": "S"})
+                _tool_add_entity({"id": "tgt_no_p", "label": "T"})
+                result = _tool_add_relationship({
+                    "source": "src_no_p",
+                    "target": "tgt_no_p",
+                    "type": "RELATED_TO",
+                })
+            self.assertNotIn("error", result, result)
+            self.assertEqual(result.get("status"), "added")
+        finally:
+            self._restore_mcp_graph()
+
+
 if __name__ == "__main__":
     unittest.main()

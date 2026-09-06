@@ -9,6 +9,7 @@ from .property_generator import PropertyGenerator
 from .owl_generator import OWLGenerator
 from .ontology_evaluator import OntologyEvaluator
 from .ontology_validator import OntologyValidator
+from .quality_gate import OntologyQualityGate, OntologyQualityReport
 from .llm_generator import LLMOntologyGenerator
 from ..semantic_extract.triplet_extractor import Triplet
 
@@ -25,6 +26,9 @@ class OntologyEngine:
         self.owl = OWLGenerator(**config)
         self.evaluator = OntologyEvaluator(**config)
         self.validator = OntologyValidator(**config)
+        self.quality_gate = OntologyQualityGate(
+            validator=self.validator, evaluator=self.evaluator
+        )
         self.llm = LLMOntologyGenerator(**config)
         self.store = config.get("store")
 
@@ -592,6 +596,15 @@ class OntologyEngine:
 
     def validate(self, ontology: Dict[str, Any], **options):
         return self.validator.validate(ontology, **options)
+
+    def quality_check(
+        self,
+        ontology: Dict[str, Any],
+        graph_data: Optional[Dict[str, Any]] = None,
+        **options,
+    ) -> OntologyQualityReport:
+        """Run deterministic ontology quality checks suitable for CI."""
+        return self.quality_gate.check(ontology, graph_data=graph_data, **options)
 
     def to_owl(self, ontology: Dict[str, Any], format: str = "turtle", **options):
         return self.owl.generate_owl(ontology, format=format, **options)

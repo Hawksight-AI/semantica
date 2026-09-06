@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 from ..context.context_graph import ContextGraph, _resolve_edge_identity
 from .search_index import GraphSearchIndex
@@ -374,6 +374,52 @@ class GraphSession:
             limit=limit,
         )
         return page, total
+
+    def iter_nodes(self, node_type: Optional[str] = None) -> Iterator[Dict[str, Any]]:
+        """Yield matching nodes one at a time, in the same order as ``paginate_nodes``.
+
+        ``paginate_nodes`` normalizes and holds the entire matching set before it
+        slices out a page, so a caller that filters the result down itself cannot
+        bound its cost by asking for smaller pages — it would re-pay that full
+        cost per page. Streaming lets such a caller retain only what it selects
+        and stop scanning as soon as it has enough.
+
+        Only the id list is snapshotted under the lock; nodes are read one at a
+        time, so a concurrent mutation can be observed mid-iteration and ids that
+        disappear are skipped. ``paginate_nodes`` is the atomic alternative.
+        """
+        with self._lock:
+            source_ids = (
+                self.graph.node_type_index.get(node_type, set())
+                if node_type
+                else self.graph.nodes.keys()
+            )
+            node_ids = sorted(
+                (node_id for node_id in source_ids if node_id is not None),
+                key=lambda value: str(value),
+            )
+        for node_id in node_ids:
+            with self._lock:
+                raw = self.graph.find_node(node_id)
+            if raw is None:
+                continue
+            yield self.normalize_node(raw)
+
+    def iter_edges(self, edge_type: Optional[str] = None) -> Iterator[Dict[str, Any]]:
+        """Yield matching edges one at a time, in raw graph order.
+
+        Same rationale as ``iter_nodes``. Edge normalization derives an identity
+        hash per edge, which ``paginate_edges`` pays for every matching edge (and
+        then sorts) before paging; a filtering caller only needs it for the edges
+        it keeps. Callers that need a stable order sort the subset they select.
+        """
+        with self._lock:
+            raw_edges = self.graph.find_edges(edge_type=edge_type)
+        for edge in raw_edges:
+            normalized = self.normalize_edge(edge)
+            if not normalized["source"] or not normalized["target"]:
+                continue
+            yield normalized
 
     def get_raw_counts(self) -> tuple[int, int]:
         """O(1) node/edge counts from the raw collections, with no per-item

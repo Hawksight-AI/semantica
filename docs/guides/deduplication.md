@@ -612,7 +612,7 @@ The similarity threshold controls sensitivity. Start at 0.7 and examine false po
 ## Related Guides
 
 - [Ingest Anything](ingest) — multi-source ingestion creates the duplicates this module resolves
-- [Context Graphs](context-graphs) — store deduplicated entities directly in the knowledge graph
-- [Conflict Resolution](conflict-resolution) — after merging, reconcile disagreeing property values on the canonical entity
+- [Context Graphs](/guides/context-graphs) — store deduplicated entities directly in the knowledge graph
+- [Conflict Resolution](/guides/conflict-resolution) — after merging, reconcile disagreeing property values on the canonical entity
 - [Provenance](provenance) — track merge lineage so every canonical entity traces back to its original sources
 - [Pipeline](pipeline) — chain ingest, deduplicate, and store as a `PipelineBuilder` workflow

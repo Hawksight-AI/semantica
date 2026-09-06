@@ -38,6 +38,7 @@ function readTabParam(): OntologyHubTab {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get(TAB_PARAM);
     if (raw && TABS.some((t) => t.id === raw)) return raw as OntologyHubTab;
+    if (params.get("ontologyEntity")) return "editor";
   } catch {
     // ignore
   }
@@ -116,4 +117,3 @@ export function OntologyWorkspace({ onJumpToGraphNode }: OntologyWorkspaceProps)
     </div>
   );
 }
-
