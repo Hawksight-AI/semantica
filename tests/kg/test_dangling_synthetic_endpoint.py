@@ -6,6 +6,8 @@ the endpoint string. The resulting graph then failed ``GraphValidator`` with
 ``DANGLING_EDGE``. See issue #1463.
 """
 
+import pytest
+
 from semantica.kg import GraphBuilder, GraphValidator
 from semantica.semantic_extract import Entity, Relation, Triplet
 
@@ -273,3 +275,96 @@ def test_reject_policy_via_orchestrator_shaped_config_fold():
 
     assert graph["relationships"] == []
     assert "Synthetic Entity" not in {e["id"] for e in graph["entities"]}
+
+
+def test_real_entity_with_entity_id_only_wins_over_prior_synthetic():
+    # A real entity that carries its canonical id under ``entity_id`` (no ``id``
+    # field) must win the real-entity-wins dedup pass in build().
+    # The dedup collects real ids via both ``id`` and ``entity_id``, so a
+    # synthetic entity promoted with id='Shared' must be dropped when a real
+    # dict entity with entity_id='Shared' (no 'id') arrives.
+    graph = GraphBuilder(resolve_conflicts=False).build(
+        [
+            _rel(_synthetic("Shared"), "related_to", _known("Other")),
+            _known("Other"),
+            # real entity uses entity_id only — no 'id' key
+            {"entity_id": "Shared", "name": "Shared Real"},
+        ],
+        extract=False,
+    )
+
+    shared = [
+        e for e in graph["entities"]
+        if e.get("id") == "Shared" or e.get("entity_id") == "Shared"
+    ]
+    assert len(shared) == 1
+    # The real dict entity (entity_id-only) must survive, not the synthetic one.
+    assert shared[0].get("entity_id") == "Shared"
+    assert not (shared[0].get("metadata") or {}).get("synthetic")
+
+
+def test_llm_relation_synthetic_endpoints_promoted():
+    # _parse_relation_result marks unmatched relation endpoints as synthetic
+    # Entity objects (label=UNKNOWN, metadata={'synthetic': True}).
+    # GraphBuilder must promote those entities and produce a clean graph.
+    from semantica.semantic_extract.methods import _parse_relation_result
+    from semantica.semantic_extract import Entity as SEEntity
+
+    known_ent = SEEntity(text="Apple", label="ORG", start_char=0, end_char=5)
+    parsed = {
+        "relations": [
+            {
+                "subject": "Apple",
+                "predicate": "founded_by",
+                "object": "Steve Jobs",
+                "confidence": 0.95,
+            }
+        ]
+    }
+    relations = _parse_relation_result(
+        parsed,
+        [known_ent],
+        "Apple was founded by Steve Jobs.",
+        "openai",
+        "gpt-4",
+    )
+    assert len(relations) == 1
+    assert relations[0].object.metadata.get("synthetic") is True
+
+    graph = GraphBuilder(resolve_conflicts=False).build(
+        [known_ent, relations[0]],
+        extract=False,
+    )
+
+    entity_ids = {e["id"] for e in graph["entities"]}
+    assert "Steve Jobs" in entity_ids
+    assert not [i for i in _issues(graph) if i.get("code") == "DANGLING_EDGE"]
+
+
+def test_reject_policy_emits_warning_when_all_rels_dropped(caplog):
+    # When reject drops every relationship from a dict-style source, the
+    # build() 'all relationships dropped' warning must still fire (the
+    # input_relationships_count accounts for the dict source's list length
+    # before processing, so it sees the original count > 0).
+    import logging
+
+    builder = GraphBuilder(
+        resolve_conflicts=False,
+        unknown_relation_endpoint="reject",
+    )
+    rel = _rel(_known(), "related_to", _synthetic("S"))
+
+    with caplog.at_level(logging.WARNING, logger="graph_builder"):
+        graph = builder.build(
+            {
+                "entities": [{"id": "Known Entity", "name": "Known Entity"}],
+                "relationships": [rel],
+            },
+            extract=False,
+        )
+
+    assert graph["relationships"] == []
+    assert any(
+        "All relationships were dropped" in record.message
+        for record in caplog.records
+    )

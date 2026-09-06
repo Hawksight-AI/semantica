@@ -147,9 +147,23 @@ builder = GraphBuilder(
 kg = builder.build(sources)  # edges with unknown endpoints are dropped
 ```
 
-The option can also be set at runtime via the per-module build configuration
-(`kg_methods.build.unknown_relation_endpoint`), which is the documented home
-for it.
+The option can also be set process-wide via the module's build configuration,
+which is the documented home for it:
+
+```python
+from semantica.kg.config import kg_config
+
+kg_config.set_method_config("build", unknown_relation_endpoint="reject")
+# All subsequent GraphBuilder instances use "reject" as the default.
+```
+
+In a YAML/JSON/TOML config file, place it under the `kg_methods.build` key:
+
+```yaml
+kg_methods:
+  build:
+    unknown_relation_endpoint: reject
+```
 
 ## Graph Algorithms
 
