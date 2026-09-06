@@ -19,6 +19,7 @@ Author: Semantica Contributors
 License: MIT
 """
 
+import copy
 import time
 import hashlib
 import json
@@ -28,10 +29,31 @@ from threading import Lock
 
 from ..utils.logging import get_logger
 
+# Sentinel distinguishing "no entry under this key" from a stored None.
+_MISSING = object()
+
+
 class CacheItem:
-    """Container for cached data."""
+    """Container for cached data.
+
+    Holds a private snapshot: callers own what get() hands them, and the
+    stored value is immune to later mutation of the list the caller passed
+    to set(). Without the snapshot, extraction results were handed out by
+    reference and post-processing (weighted-confidence reblending, boundary
+    correction) rewrote the CACHED entities in place — every later cache hit
+    returned already-mutated objects, and a non-idempotent transform like
+    calculate_weighted_confidence compounded on each hit.
+
+    A value that cannot be deep-copied is stored as-is: the writer's result
+    still caches (the common values — dataclasses of primitives — always
+    copy), and get() treats an uncopyable entry as a miss rather than
+    failing the extraction over cached data.
+    """
     def __init__(self, value: Any, ttl: Optional[int] = None):
-        self.value = value
+        try:
+            self.value = copy.deepcopy(value)
+        except Exception:
+            self.value = value
         self.timestamp = time.time()
         self.ttl = ttl
 
@@ -110,6 +132,7 @@ class ExtractionCache:
 
         key = self._generate_key(text, **params)
         
+        item_value = _MISSING
         with self._locks[namespace]:
             cache = self._caches[namespace]
             if key in cache:
@@ -122,9 +145,27 @@ class ExtractionCache:
                 
                 # Move to end (mark as recently used)
                 cache.move_to_end(key)
-                return item.value
-        
-        return None
+                # Capture the snapshot reference under the lock; the deep
+                # copy happens after release so lock hold time stays flat
+                # regardless of result size.
+                item_value = item.value
+
+        if item_value is _MISSING:
+            return None
+        # A copy, not the stored snapshot: the caller owns what comes back
+        # and may post-process it in place, and that must never reach the
+        # next reader of this entry. A value that cannot be copied is a
+        # corrupt entry — treat it as a miss and evict rather than fail the
+        # extraction over cached data.
+        try:
+            return copy.deepcopy(item_value)
+        except Exception:
+            self.logger.warning(
+                "Cached value could not be copied; treating as a miss"
+            )
+            with self._locks[namespace]:
+                self._caches[namespace].pop(key, None)
+            return None
 
     def set(self, namespace: str, text: str, value: Any, **params) -> None:
         """
