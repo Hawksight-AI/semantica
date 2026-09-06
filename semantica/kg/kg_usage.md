@@ -147,6 +147,20 @@ builder = GraphBuilder(
 kg = builder.build(sources)  # edges with unknown endpoints are dropped
 ```
 
+Rejected relationships are observable at two levels:
+
+- A **`WARNING`-level log** is emitted for every dropped edge, including the
+  source/target and predicate, so it is visible without debug logging enabled.
+- `graph["metadata"]["rejected_relationships"]` holds the count of edges
+  dropped in that build call, giving callers a machine-readable signal:
+
+```python
+kg = builder.build(sources)
+if kg["metadata"]["rejected_relationships"]:
+    print(f"{kg['metadata']['rejected_relationships']} edge(s) were rejected "
+          f"because of unknown endpoints.")
+```
+
 The option can also be set process-wide via the module's build configuration,
 which is the documented home for it:
 

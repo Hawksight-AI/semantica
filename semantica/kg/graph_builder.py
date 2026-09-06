@@ -124,6 +124,8 @@ class GraphBuilder:
             "extracted_relations": 0,
             "extracted_triplets": 0,
         }
+        # Counts relationships dropped by the reject policy per build() call.
+        self._rejected_relationships: int = 0
 
         # Initialize logging
         from ..utils.logging import get_logger
@@ -211,13 +213,14 @@ class GraphBuilder:
             if synthetic_endpoints:
                 endpoint_policy = self.unknown_relation_endpoint
                 if endpoint_policy == "reject":
-                    self.logger.info(
+                    self.logger.warning(
                         "Dropping relationship %r->%r (%s): endpoint is synthetic and "
                         "unknown_relation_endpoint='reject'",
                         subj,
                         obj,
                         item.predicate,
                     )
+                    self._rejected_relationships += 1
                     return
                 # The promoted set is rebuilt only for relationships that actually
                 # carry a synthetic endpoint. Ordinary relationships (the common
@@ -636,6 +639,8 @@ class GraphBuilder:
             "extracted_relations": 0,
             "extracted_triplets": 0
         }
+        # Reset per-run rejection counter.
+        self._rejected_relationships = 0
         
         tracking_id = self.progress_tracker.start_tracking(
             module="kg",
@@ -927,6 +932,7 @@ class GraphBuilder:
                     "temporal_enabled": self.enable_temporal,
                     "timestamp": self._get_timestamp(),
                     "entity_resolution_applied": resolver_to_use is not None,
+                    "rejected_relationships": self._rejected_relationships,
                 },
             }
             structure_time = time.time() - structure_start

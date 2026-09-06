@@ -368,3 +368,93 @@ def test_reject_policy_emits_warning_when_all_rels_dropped(caplog):
         "All relationships were dropped" in record.message
         for record in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# Observability of the reject policy (Qodo finding: "reject silently drops")
+# ---------------------------------------------------------------------------
+
+def test_reject_policy_count_in_metadata():
+    # graph["metadata"]["rejected_relationships"] must equal the number of
+    # relationships dropped by the reject policy so callers can observe the
+    # outcome without parsing logs.
+    builder = GraphBuilder(
+        resolve_conflicts=False,
+        unknown_relation_endpoint="reject",
+    )
+    graph = builder.build(
+        [
+            _known("A"),
+            _known("B"),
+            _rel(_known("A"), "clean", _known("B")),          # kept
+            _rel(_known("A"), "dirty1", _synthetic("S1")),    # rejected
+            _rel(_synthetic("S2"), "dirty2", _known("B")),    # rejected
+        ],
+        extract=False,
+    )
+
+    assert graph["metadata"]["rejected_relationships"] == 2
+    assert len(graph["relationships"]) == 1
+    assert graph["relationships"][0]["type"] == "clean"
+
+
+def test_include_policy_rejected_count_is_zero():
+    # With the default include policy the rejected count must be 0.
+    graph = GraphBuilder(resolve_conflicts=False).build(
+        [_known(), _rel(_known(), "r", _synthetic("S"))],
+        extract=False,
+    )
+    assert graph["metadata"]["rejected_relationships"] == 0
+
+
+def test_reject_policy_emits_warning_log_per_dropped_edge(caplog):
+    # Each dropped edge must produce a WARNING-level log entry (not just INFO).
+    # This makes the rejection visible to callers who configure standard
+    # WARNING-level logging without enabling DEBUG.
+    import logging
+
+    builder = GraphBuilder(
+        resolve_conflicts=False,
+        unknown_relation_endpoint="reject",
+    )
+
+    with caplog.at_level(logging.WARNING, logger="semantica.graph_builder"):
+        graph = builder.build(
+            [
+                _known(),
+                _rel(_known(), "dirty1", _synthetic("S1")),
+                _rel(_known(), "dirty2", _synthetic("S2")),
+            ],
+            extract=False,
+        )
+
+    assert graph["relationships"] == []
+    drop_records = [
+        r for r in caplog.records
+        if "Dropping relationship" in r.message and r.levelno == logging.WARNING
+    ]
+    assert len(drop_records) == 2, (
+        f"Expected 2 WARNING drop records, got {len(drop_records)}: {[r.message for r in caplog.records]}"
+    )
+
+
+def test_rejected_count_resets_between_build_calls():
+    # _rejected_relationships must be reset at the start of each build() call
+    # so successive builds on the same instance report independent counts.
+    builder = GraphBuilder(
+        resolve_conflicts=False,
+        unknown_relation_endpoint="reject",
+    )
+
+    g1 = builder.build(
+        [_known(), _rel(_known(), "r", _synthetic("S"))],
+        extract=False,
+    )
+    assert g1["metadata"]["rejected_relationships"] == 1
+
+    # Second build has no synthetic endpoints — count must be 0, not accumulated.
+    g2 = builder.build(
+        [_known("A"), _known("B"), _rel(_known("A"), "clean", _known("B"))],
+        extract=False,
+    )
+    assert g2["metadata"]["rejected_relationships"] == 0
