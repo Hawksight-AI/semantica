@@ -17,7 +17,7 @@ icon: "circle-question"
 | API key required? | Optional: pattern extraction works with no keys |
 | Works with LangChain / LlamaIndex? | Yes: Semantica is a layer on top, not a replacement |
 | Production-ready? | Yes: 1,000+ tests, security fixes shipped in every release (see [CHANGELOG](https://github.com/semantica-agi/semantica/blob/main/CHANGELOG.md)) |
-| Latest version? | **v0.6.7** (August 2026) |
+| Latest version? | **v0.6.8** (September 2026) |
 | Local LLMs? | Yes: Ollama via LiteLLM, HuggingFaceLLM for air-gapped |
 
 
@@ -27,7 +27,7 @@ icon: "circle-question"
 
 <Accordion title="What is Semantica?" icon="info-circle">
 
-Semantica is an open-source framework for building context graphs and decision intelligence layers for AI. It transforms unstructured data: documents, APIs, databases: into structured knowledge graphs with full provenance tracking, making AI systems explainable and auditable.
+Semantica is an open-source framework for building context graphs and decision intelligence layers for AI. It transforms unstructured data (documents, APIs, databases) into structured knowledge graphs with full provenance tracking, making AI systems explainable and auditable.
 
 It's not a replacement for LangChain or LlamaIndex. It's the **accountability layer** that goes on top: recording decisions, tracing facts to sources, and making reasoning transparent.
 
@@ -46,7 +46,7 @@ It's not a replacement for LangChain or LlamaIndex. It's the **accountability la
 
 <Accordion title="What makes Semantica different from LangChain or LlamaIndex?" icon="scale-balanced">
 
-Most frameworks stop at retrieval or generation. Semantica adds an **accountability layer**: every decision is recorded, every fact links to a source, and every reasoning step is explainable. It's designed for environments where you need to audit *why* an AI reached a conclusion: not just what it said.
+Most frameworks stop at retrieval or generation. Semantica adds an **accountability layer**: every decision is recorded, every fact links to a source, and every reasoning step is explainable. It's designed for environments where you need to audit *why* an AI reached a conclusion, not just what it said.
 
 Semantica works alongside these frameworks, not against them.
 
@@ -54,11 +54,11 @@ Semantica works alongside these frameworks, not against them.
 
 <Accordion title="Does Semantica explain an LLM's internal reasoning or chain-of-thought?" icon="triangle-exclamation">
 
-No. This is **system-level explainability, not foundation-model explainability**. Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model — its internal reasoning or chain-of-thought stays opaque, as it does for any external system.
+No. This is **system-level explainability, not foundation-model explainability**. Semantica does not expose, reconstruct, or explain what happens *inside* the LLM/foundation model. Its internal reasoning or chain-of-thought stays opaque, as it does for any external system.
 
 What Semantica explains is *outside* the model: what context and data were used, what decision was produced, the provenance behind it, the relevant relationships, the policies applied, and the resulting decision trail.
 
-In short: Semantica explains and audits *what the AI system did* — not the foundation model's private internal reasoning.
+In short, Semantica explains and audits *what the AI system did*, not the foundation model's private internal reasoning.
 
 </Accordion>
 
@@ -70,9 +70,9 @@ Yes: MIT licensed, no vendor lock-in, no paywalled features. Some capabilities r
 
 <Accordion title="What's the latest version?" icon="star">
 
-**v0.6.7**: released August 2026.
+**v0.6.8**: released September 2026.
 
-Highlights: first-class LangChain integration, SAP OData ingestor, human-editable Markdown round-trip persistence for `ContextGraph`, a structured Action layer for the reasoning engine, and a public `run_shacl_validation` entry point. The 0.6.x line also added first-class CrewAI support and the Semantica RDF vocabulary with deterministic IRIs. See the [CHANGELOG](https://github.com/semantica-agi/semantica/blob/main/CHANGELOG.md) for the full history.
+Highlights: every release is now cryptographically signed (SLSA build provenance + Sigstore, closing the OpenSSF Scorecard Signed-Releases gap), real vector-store enumeration (`scan_vectors()`/`iter_vectors()`) across FAISS/SQLiteVec/PgVector/Qdrant/Weaviate/Milvus making `store migrate` functional, first-class Anthropic/Gemini/Ollama/DeepSeek/Novita LLM provider wrappers, a CI-friendly ontology quality gate, and 35 correctness fixes. The 0.6.x line also added first-class LangChain and CrewAI support and the Semantica RDF vocabulary with deterministic IRIs. See the [CHANGELOG](https://github.com/semantica-agi/semantica/blob/main/CHANGELOG.md) for the full history.
 
 ```bash
 pip install --upgrade semantica
@@ -348,6 +348,6 @@ set PYTHONIOENCODING=utf-8
 
 ## Support
 
-- [Discord](https://discord.gg/sV34vps5hH) — Community chat and live support.
-- [GitHub Issues](https://github.com/semantica-agi/semantica/issues) — Bug reports and feature requests.
-- [Contributing](/contributing-guide) — Help improve Semantica.
+- [Discord](https://discord.gg/sV34vps5hH): community chat and live support.
+- [GitHub Issues](https://github.com/semantica-agi/semantica/issues): bug reports and feature requests.
+- [Contributing](/contributing-guide): help improve Semantica.

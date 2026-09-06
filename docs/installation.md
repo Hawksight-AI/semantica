@@ -183,6 +183,6 @@ Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/
 
 ## Next Steps
 
-- [Getting Started](/getting-started) — Understand what Semantica does before you build.
-- [Build the Pipeline](/quickstart) — Follow the end-to-end workflow with code.
-- [Browse Examples](/cookbook) — See notebook examples organized by use case.
+- [Getting Started](/getting-started): understand what Semantica does before you build.
+- [Build the Pipeline](/quickstart): follow the end-to-end workflow with code.
+- [Browse Examples](/cookbook): see notebook examples organized by use case.

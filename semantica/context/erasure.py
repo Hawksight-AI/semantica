@@ -34,13 +34,14 @@ Example:
     'unsupported'
 """
 
+import copy
 import inspect
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from ..utils.logging import get_logger
-from .context_graph import _normalize_temporal_input
+from .context_graph import normalize_temporal_input
 
 __all__ = [
     "ErasureCoordinator",
@@ -117,13 +118,21 @@ class ErasureReceipt:
         ]
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize the receipt, deep-copying the per-store results."""
+        """Serialize the receipt, deep-copying the per-store results.
+
+        Each store result is copied recursively so the returned payload shares
+        no mutable objects with the live receipt: mutating
+        ``payload["stores"][name][...]`` (including nested dicts such as a
+        vector backend's ``backend_result``) cannot corrupt the audit record.
+        """
         return {
             "entity_id": self.entity_id,
             "reason": self.reason,
             "erased_at": self.erased_at,
             "complete": self.complete,
-            "stores": {name: dict(result) for name, result in self.stores.items()},
+            "stores": {
+                name: copy.deepcopy(result) for name, result in self.stores.items()
+            },
         }
 
 
@@ -593,7 +602,7 @@ def _normalize_timestamp(at: Optional[Union[str, int, float, datetime]]) -> str:
     default path gets one timestamp for both records instead of two ``now()``
     calls separated by the length of the cascade.
     """
-    return _normalize_temporal_input(
+    return normalize_temporal_input(
         at if at is not None else datetime.now(timezone.utc)
     )
 
