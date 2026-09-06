@@ -122,6 +122,33 @@ def test_type_detector_extended() -> None:
     assert detected_unknown == "unknown"
 
 
+@pytest.mark.parametrize("suffix", [".jsonl", ".ndjson"])
+def test_type_detector_supports_line_delimited_json(suffix: str) -> None:
+    """Line-delimited JSON is a common interchange format for bulk data."""
+
+    detector = FileTypeDetector()
+
+    assert detector.detect_type(f"resources{suffix}") in {"jsonl", "ndjson"}
+    assert detector.is_supported(suffix.lstrip("."))
+
+
+def test_ingest_ndjson_file_preserves_content(tmp_path: Path) -> None:
+    """FHIR Bulk/NDJSON resources can be ingested as a supported file."""
+
+    path = tmp_path / "Patient.000.ndjson"
+    path.write_text(
+        '{"resourceType":"Patient","id":"synthetic-1"}\n'
+        '{"resourceType":"Patient","id":"synthetic-2"}\n',
+        encoding="utf-8",
+    )
+
+    result = FileIngestor().ingest_file(path)
+
+    assert result.file_type == "ndjson"
+    assert result.metadata["is_supported"] is True
+    assert result.text.count('"resourceType":"Patient"') == 2
+
+
 # --- CloudStorageIngestor Tests ---
 @patch("boto3.client")
 def test_cloud_storage_s3(mock_boto: MagicMock) -> None:

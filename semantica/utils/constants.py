@@ -54,6 +54,8 @@ SUPPORTED_DOCUMENT_FORMATS = [
     "html",
     "xml",
     "json",
+    "jsonl",
+    "ndjson",
     "csv",
     "xlsx",
     "pptx",
