@@ -299,6 +299,44 @@ class PineconeSearch:
         )
 
 
+def _pinecone_listed_ids(response: Any) -> List[str]:
+    """Extract vector IDs from a list_paginated() response.
+
+    Accepts record objects, bare id strings and dicts, since what listing
+    returns has changed across pinecone SDK major versions.
+    """
+    records = getattr(response, "vectors", None)
+    if records is None and isinstance(response, dict):
+        records = response.get("vectors")
+
+    ids: List[str] = []
+    for record in records or []:
+        if isinstance(record, str):
+            ids.append(record)
+        elif isinstance(record, dict):
+            if record.get("id") is not None:
+                ids.append(record["id"])
+        else:
+            record_id = getattr(record, "id", None)
+            if record_id is not None:
+                ids.append(record_id)
+    return ids
+
+
+def _pinecone_next_token(response: Any) -> Optional[str]:
+    """Return the continuation token, or None when the listing is exhausted."""
+    pagination = getattr(response, "pagination", None)
+    if pagination is None and isinstance(response, dict):
+        pagination = response.get("pagination")
+    if pagination is None:
+        return None
+
+    token = getattr(pagination, "next", None)
+    if token is None and isinstance(pagination, dict):
+        token = pagination.get("next")
+    return token or None
+
+
 class PineconeStore:
     """
     Pinecone store for vector storage and similarity search.
@@ -336,7 +374,7 @@ class PineconeStore:
         # Check Pinecone availability
         if not PINECONE_AVAILABLE:
             self.logger.warning(
-                "Pinecone not available. Install with: pip install pinecone-client"
+                "Pinecone not available. Install with: pip install pinecone>=3.0.0 or pip install semantica[vectorstore-pinecone]"
             )
 
     def connect(self, **kwargs) -> bool:
@@ -351,7 +389,7 @@ class PineconeStore:
         """
         if not PINECONE_AVAILABLE:
             raise ProcessingError(
-                "Pinecone is not available. Install it with: pip install pinecone-client"
+                "Pinecone is not available. Install it with: pip install pinecone>=3.0.0 or pip install semantica[vectorstore-pinecone]"
             )
 
         api_key = kwargs.get("api_key") or self.api_key
@@ -734,6 +772,91 @@ class PineconeStore:
         except Exception as e:
             self.logger.warning(f"Failed to filter Pinecone vectors by metadata: {e}")
             return []
+
+    def iter_all(self, batch_size: int = 500, namespace: str = ""):
+        """
+        Iterate over every stored vector by listing IDs then fetching them.
+
+        Paginates with an opaque continuation token, which is why this exists
+        instead of scan_vectors(offset, limit): the token for page N cannot be
+        constructed without walking there.
+
+        Needs two calls per page, unlike the other backends, because listing
+        returns IDs only. Both calls are namespace scoped and must agree, and
+        listing covers one namespace rather than the whole index.
+
+        Args:
+            batch_size: IDs to request per list_paginated() call
+            namespace: Namespace to enumerate (default: the default namespace)
+
+        Yields:
+            Result dicts with 'id', 'metadata', and 'vector', in listing order
+
+        Raises:
+            ProcessingError: If the index is not initialized, if the installed
+                SDK does not expose list_paginated(), or if the listing stops
+                advancing.
+        """
+        if self.index is None or not PINECONE_AVAILABLE:
+            raise ProcessingError(
+                "Index not initialized. Call create_index() or get_index() first."
+            )
+
+        # list_paginated() rather than list(): list() is an auto-paging
+        # iterator in current SDKs but reads as plain id lists in older
+        # examples. Threading the token explicitly is version-agnostic.
+        list_paginated = getattr(self.index.index, "list_paginated", None)
+        if not callable(list_paginated):
+            raise ProcessingError(
+                "This pinecone SDK version does not expose Index.list_paginated(), "
+                "which full enumeration requires."
+            )
+
+        token = None
+        while True:
+            kwargs: Dict[str, Any] = {"limit": batch_size, "namespace": namespace}
+            if token is not None:
+                kwargs["pagination_token"] = token
+
+            response = list_paginated(**kwargs)
+            vector_ids = _pinecone_listed_ids(response)
+
+            # A page listing zero ids is not necessarily exhaustion: Pinecone's
+            # contract is that a scan ends only when there's no pagination
+            # token, and a page can legitimately come back empty while
+            # pagination.next is still set (sparse/filtered namespaces,
+            # eventual-consistency windows on serverless indexes). Skip the
+            # fetch (nothing to hydrate) but still fall through to the token
+            # check below instead of returning early, or a gap like that
+            # silently truncates the scan with no error.
+            if vector_ids:
+                fetched = self.index.fetch_vectors(vector_ids, namespace=namespace)
+                vectors = fetched.get("vectors") or {}
+
+                for vector_id in vector_ids:
+                    entry = vectors.get(vector_id)
+                    if entry is None:
+                        # fetch() omits ids it cannot find: deleted since listing.
+                        continue
+                    values = entry.get("values")
+                    yield {
+                        "id": vector_id,
+                        "metadata": entry.get("metadata") or {},
+                        "vector": np.array(values) if values is not None else None,
+                    }
+
+            next_token = _pinecone_next_token(response)
+            if not next_token:
+                return
+            if next_token == token:
+                # Distinct from exhaustion above: a partial scan here would be
+                # indistinguishable from a complete one.
+                raise ProcessingError(
+                    "Pinecone returned the same pagination token twice, so the "
+                    "listing is not advancing. Refusing to return a truncated "
+                    "scan."
+                )
+            token = next_token
 
     def fetch_vectors(
         self, vector_ids: List[str], namespace: str = "", **options

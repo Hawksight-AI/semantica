@@ -75,10 +75,10 @@ kg = builder.build({"entities": entities, "relationships": relationships})
 ## Temporal Knowledge Graphs (v0.4.0+)
 
 <Info>
-  Full temporal reference including `BiTemporalFact`, `TemporalReasoningEngine`, Allen interval algebra, and `TemporalNormalizer` is covered in the dedicated [Temporal Intelligence](temporal) page. This section documents the KG-layer temporal API.
+  Full temporal reference including `BiTemporalFact`, `TemporalReasoningEngine`, Allen interval algebra, and `TemporalNormalizer` is covered in the dedicated [Temporal Intelligence](/reference/temporal) page. This section documents the KG-layer temporal API.
 </Info>
 
-The temporal stack — see the [Temporal Intelligence](temporal) page for the full reference.
+The temporal stack — see the [Temporal Intelligence](/reference/temporal) page for the full reference.
 
 ### Building a Temporal Graph
 
@@ -264,7 +264,7 @@ versioner.verify_checksum(past_kg)
 ```
 
 <Tip>
-  See the [Temporal Intelligence](temporal) reference for the full class API, domain examples (personnel changes, policy evolution, financial timelines), and configuration options.
+  See the [Temporal Intelligence](/reference/temporal) reference for the full class API, domain examples (personnel changes, policy evolution, financial timelines), and configuration options.
 </Tip>
 
 
@@ -475,10 +475,10 @@ kg:
     default_validity: infinite
 ```
 
-- [Graph Store](graph_store) — Persist graphs in Neo4j, FalkorDB, or Apache AGE.
-- [Semantic Extract](semantic_extract) — Source of entities and relationships fed to GraphBuilder.
+- [Graph Store](/reference/graph_store) — Persist graphs in Neo4j, FalkorDB, or Apache AGE.
+- [Semantic Extract](/reference/semantic_extract) — Source of entities and relationships fed to GraphBuilder.
 - [Visualization](visualization) — Visualize knowledge graphs interactively.
-- [Conflicts](conflicts) — Conflict detection and resolution.
+- [Conflicts](/reference/conflicts) — Conflict detection and resolution.
 
 ### Cookbooks
 

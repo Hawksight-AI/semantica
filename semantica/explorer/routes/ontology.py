@@ -35,6 +35,10 @@ router = APIRouter(prefix="/api/ontology", tags=["ontology"])
 _MAX_FETCH_BYTES = 20 * 1024 * 1024  # 20 MB
 _MAX_ANALYSIS_NODES = 5_000   # cap for health/suggest/shacl node scans to avoid OOM
 _MAX_ENTITIES_PER_SIDE = 500  # per-ontology cap for the O(n²) pairwise suggestion loop
+_GRAPH_TOO_LARGE_DETAIL = (
+    "Ontology editor graph exceeds the maximum size "
+    f"({_MAX_ANALYSIS_NODES} nodes or edges)."
+)
 
 
 class GraphTruncationError(Exception):
@@ -72,6 +76,20 @@ _ONTOLOGY_TYPES = frozenset({
 }) | _SCHEME_TYPES
 
 _SEARCHABLE_TYPES = _CLASS_TYPES | _PROPERTY_TYPES | _INDIVIDUAL_TYPES | _CONCEPT_TYPES | _SCHEME_TYPES
+_SCHEMA_NODE_TYPES = _CLASS_TYPES | _PROPERTY_TYPES | _CONCEPT_TYPES | _ONTOLOGY_TYPES
+_STRUCTURE_EDGE_TYPES = frozenset({
+    "rdf:type",
+    "rdfs:subClassOf",
+    "rdfs:domain",
+    "rdfs:range",
+    "owl:disjointWith",
+    "owl:equivalentClass",
+    "owl:equivalentProperty",
+    "owl:inverseOf",
+    "skos:broader",
+    "skos:narrower",
+    "skos:related",
+})
 
 _URI_PREFIX_MAP = {
     "http://www.w3.org/2002/07/owl#": "owl:",
@@ -232,6 +250,12 @@ class EntityDetailResponse(BaseModel):
     range: List[str] = Field(default_factory=list)
     instance_count: int = 0
     properties: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OntologyGraphResponse(BaseModel):
+    uri: str
+    nodes: List[Dict[str, Any]] = Field(default_factory=list)
+    edges: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class SKOSScheme(BaseModel):
@@ -664,6 +688,7 @@ def _convert_ontology_to_graph(ontology_dict: Dict[str, Any]) -> Tuple[List[Dict
                 "rdfs:label": cls.get("label", cls.get("name", "")),
                 "rdfs:comment": cls.get("description", ""),
                 "uri": cls_uri,
+                "scheme_uri": ontology_uri,
             },
         }
         nodes.append(node)
@@ -680,14 +705,21 @@ def _convert_ontology_to_graph(ontology_dict: Dict[str, Any]) -> Tuple[List[Dict
     # Add property nodes and edges
     for prop in ontology_dict.get("properties", []):
         prop_uri = prop.get("uri", f"temp:prop:{uuid.uuid4().hex[:12]}")
+        property_type = {
+            "object": "owl:ObjectProperty",
+            "data": "owl:DatatypeProperty",
+            "datatype": "owl:DatatypeProperty",
+            "annotation": "owl:AnnotationProperty",
+        }.get(str(prop.get("type", "object")).lower(), "owl:ObjectProperty")
         node = {
             "id": prop_uri,
-            "type": f"owl:{prop.get('type', 'Object').title()}Property",
+            "type": property_type,
             "content": prop.get("name", prop.get("label", "")),
             "properties": {
                 "rdfs:label": prop.get("label", prop.get("name", "")),
                 "rdfs:comment": prop.get("description", ""),
                 "uri": prop_uri,
+                "scheme_uri": ontology_uri,
             },
         }
         nodes.append(node)
@@ -748,14 +780,38 @@ def _node_source_ontology(node: Dict[str, Any]) -> Optional[str]:
     )
 
 
-def _node_belongs_to_ontology(node: Dict[str, Any], ontology_uri: str) -> bool:
+def _node_belongs_to_ontology(
+    node: Dict[str, Any],
+    ontology_uri: str,
+    known_ontology_uris: Optional[set[str]] = None,
+) -> bool:
     nid = node.get("id", "")
     if nid == ontology_uri:
         return True
-    if _node_source_ontology(node) == ontology_uri:
-        return True
+    owner = _node_source_ontology(node)
+    if owner:
+        return owner == ontology_uri
+    if known_ontology_uris:
+        namespace_owners = [
+            candidate
+            for candidate in known_ontology_uris
+            if nid == candidate
+            or nid.startswith(
+                (candidate.rstrip("#/") + "#", candidate.rstrip("#/") + "/")
+            )
+        ]
+        if namespace_owners and max(namespace_owners, key=len) != ontology_uri:
+            return False
     stem = ontology_uri.rstrip("#/")
-    return nid.startswith((stem + "#", stem + "/"))
+    if not nid.startswith((stem + "#", stem + "/")):
+        return False
+    # Prefix ownership only extends to names minted directly in the
+    # ontology's namespace (<stem>#Term or <stem>/Term). Any further
+    # delimiter marks a nested vocabulary (<stem>/child#Term,
+    # <stem>/child/Term), which must not be absorbed into the parent
+    # until it is registered or carries an explicit owner.
+    local_name = nid[len(stem) + 1 :]
+    return "#" not in local_name and "/" not in local_name
 
 
 def _is_ontology_entity(node: Dict[str, Any]) -> bool:
@@ -1221,7 +1277,8 @@ def _parse_rdf_sync(content: bytes, fmt: str) -> tuple:
                     metadata.setdefault("description", str(obj))
             break
 
-    if "uri" not in metadata:
+    synthetic_uri = "uri" not in metadata
+    if synthetic_uri:
         metadata["uri"] = f"urn:semantica:onto:{uuid.uuid4().hex[:8]}"
     metadata.setdefault("name", metadata["uri"].rsplit("/", 1)[-1].rsplit("#", 1)[-1] or "Unnamed")
     metadata["triple_count"] = len(g)
@@ -1266,6 +1323,20 @@ def _parse_rdf_sync(content: bytes, fmt: str) -> tuple:
             "target": str(obj),
             "type": _uri_to_prefix(str(pred)),
             "weight": 1.0,
+        })
+
+    if synthetic_uri:
+        # No owl:Ontology / skos:ConceptScheme declaration exists, so the
+        # synthetic registry URI shares no namespace with any node. Ownership
+        # must be recorded explicitly, and the editor needs a matching graph
+        # node, or the registered ontology resolves to an empty core and 404s.
+        for node in nodes:
+            node["properties"].setdefault("scheme_uri", metadata["uri"])
+        nodes.append({
+            "id": metadata["uri"],
+            "type": "owl:Ontology",
+            "content": metadata["name"],
+            "properties": {"rdfs:label": metadata["name"], "uri": metadata["uri"]},
         })
 
     return nodes, edges, metadata
@@ -1766,6 +1837,116 @@ async def search_entities(
             break
 
     return results
+
+
+def _known_ontology_uris(
+    session: GraphSession, registry: Dict[str, OntologyEntry]
+) -> set[str]:
+    known = set(registry)
+    for node_type in _ONTOLOGY_TYPES:
+        for node in session.iter_nodes(node_type=node_type):
+            node_id = str(node.get("id", ""))
+            if node_id:
+                known.add(node_id)
+    return known
+
+
+def _collect_core_nodes(
+    session: GraphSession, uri: str, known_ontology_uris: set[str]
+) -> Dict[str, Dict[str, Any]]:
+    """Stream schema nodes, keeping only the ones this ontology owns.
+
+    Filtering as each node arrives makes _MAX_ANALYSIS_NODES bound the work and
+    not merely the response: foreign nodes are discarded instead of materialized,
+    and the scan stops once the owned ones pass the cap. The ownership filter has
+    to stay ahead of that check — thousands of *other* ontologies' nodes must
+    never make this one too large to open. Requesting pages instead would bound
+    nothing: paginate_nodes normalizes the whole matching set on every call.
+    """
+    core_nodes_by_id: Dict[str, Dict[str, Any]] = {}
+    for node_type in _SCHEMA_NODE_TYPES:
+        for node in session.iter_nodes(node_type=node_type):
+            node_id = str(node.get("id", ""))
+            if not node_id or not _node_belongs_to_ontology(
+                node, uri, known_ontology_uris
+            ):
+                continue
+            core_nodes_by_id[node_id] = node
+            if len(core_nodes_by_id) > _MAX_ANALYSIS_NODES:
+                raise GraphTruncationError(_GRAPH_TOO_LARGE_DETAIL)
+    return core_nodes_by_id
+
+
+def _select_structure_edges(
+    session: GraphSession, core_node_ids: set[str]
+) -> List[Dict[str, Any]]:
+    """Stream structural edges, keeping only those leaving a core node.
+
+    The requested ontology may reference outward (e.g. rdfs:range to an external
+    vocabulary), but an unrelated ontology's property pointing at a core class
+    must not leak inward.
+    """
+    selected_edges: List[Dict[str, Any]] = []
+    for edge_type in _STRUCTURE_EDGE_TYPES:
+        for edge in session.iter_edges(edge_type=edge_type):
+            if str(edge.get("source", "")) not in core_node_ids:
+                continue
+            selected_edges.append(edge)
+            if len(selected_edges) > _MAX_ANALYSIS_NODES:
+                raise GraphTruncationError(_GRAPH_TOO_LARGE_DETAIL)
+    return selected_edges
+
+
+@router.get("/graph", response_model=OntologyGraphResponse)
+async def get_ontology_graph(
+    request: Request,
+    uri: str = Query(..., min_length=1),
+    session: GraphSession = Depends(get_session),
+):
+    """Return the editable schema subgraph for one registered ontology."""
+    known_ontology_uris = await asyncio.to_thread(
+        _known_ontology_uris, session, _get_registry(request)
+    )
+    if uri not in known_ontology_uris:
+        raise HTTPException(status_code=404, detail="Ontology not found in registry.")
+
+    try:
+        core_nodes_by_id = await asyncio.to_thread(
+            _collect_core_nodes, session, uri, known_ontology_uris
+        )
+        if not core_nodes_by_id:
+            raise HTTPException(status_code=404, detail="Ontology graph not found.")
+        core_node_ids = set(core_nodes_by_id)
+        selected_edges = await asyncio.to_thread(
+            _select_structure_edges, session, core_node_ids
+        )
+    except GraphTruncationError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+    # Invariant: the helpers raise the moment their accumulation passes
+    # _MAX_ANALYSIS_NODES, so core_nodes_by_id and selected_edges are both
+    # within the cap here; a post-filter re-check would be unreachable.
+    external_node_ids = {
+        node_id
+        for edge in selected_edges
+        for node_id in (str(edge.get("source", "")), str(edge.get("target", "")))
+    } - core_node_ids
+    external_nodes = await asyncio.gather(
+        *(asyncio.to_thread(session.get_node, node_id) for node_id in external_node_ids)
+    )
+
+    selected_nodes = list(core_nodes_by_id.values())
+    selected_nodes.extend(node for node in external_nodes if node is not None)
+    selected_nodes.sort(key=lambda node: str(node.get("id", "")))
+    selected_edges.sort(
+        key=lambda edge: (
+            str(edge.get("source", "")),
+            str(edge.get("type", "")),
+            str(edge.get("target", "")),
+            str(edge.get("id", "")),
+        )
+    )
+    return OntologyGraphResponse(uri=uri, nodes=selected_nodes, edges=selected_edges)
 
 
 @router.get("/entity/{entity_uri:path}", response_model=EntityDetailResponse)
@@ -2723,7 +2904,8 @@ async def validate_shacl(
             status="error",
             message=(
                 f"SHACL Turtle size ({len(_shacl_bytes)} bytes) "
-                f"exceeds maximum allowed size ({_MAX_SHACL_TURTLE_BYTES} bytes)."
+                f"exceeds maximum allowed size ({_MAX_SHACL_TURTLE_BYTES} bytes); "
+                f"set SEMANTICA_MAX_SHACL_TURTLE_BYTES to raise the limit."
             ),
             violations=[],
         )
@@ -2740,7 +2922,8 @@ async def validate_shacl(
                 status="error",
                 message=(
                     f"SHACL graph triple count ({len(g)}) "
-                    f"exceeds maximum allowed limit ({_MAX_SHACL_TRIPLES})."
+                    f"exceeds maximum allowed limit ({_MAX_SHACL_TRIPLES}); "
+                    f"set SEMANTICA_MAX_SHACL_TRIPLES to raise the limit."
                 ),
                 violations=[],
             )
@@ -2791,7 +2974,8 @@ async def validate_shacl(
             conforms=False,
             status="error",
             message=(
-                f"SHACL validation timed out after {_MAX_SHACL_TIMEOUT_SECONDS} seconds."
+                f"SHACL validation timed out after {_MAX_SHACL_TIMEOUT_SECONDS} seconds; "
+                f"set SEMANTICA_MAX_SHACL_TIMEOUT to raise the timeout."
             ),
             violations=[],
         )

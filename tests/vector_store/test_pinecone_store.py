@@ -249,6 +249,191 @@ class TestPineconeIndex(unittest.TestCase):
         mock_index.query.assert_called_once()
 
 
+class TestPineconeIterAll(unittest.TestCase):
+    """PineconeStore.iter_all() list-then-fetch enumeration."""
+
+    def _page(self, ids, next_token):
+        """Stand-in for a list_paginated() response."""
+        response = MagicMock()
+        response.vectors = [MagicMock(id=vector_id) for vector_id in ids]
+        response.pagination = MagicMock(next=next_token)
+        return response
+
+    def _store(self, pages, fetch_results):
+        store = PineconeStore()
+        wrapper = MagicMock()
+        raw_index = MagicMock()
+        raw_index.list_paginated.side_effect = list(pages)
+        wrapper.index = raw_index
+        wrapper.fetch_vectors.side_effect = list(fetch_results)
+        store.index = wrapper
+        return store, wrapper, raw_index
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_threads_pagination_token_across_pages(self):
+        store, _, raw_index = self._store(
+            [self._page(["a", "b"], "token-1"), self._page(["c"], None)],
+            [
+                {"vectors": {"a": {"values": [0.1], "metadata": {}},
+                             "b": {"values": [0.2], "metadata": {}}}},
+                {"vectors": {"c": {"values": [0.3], "metadata": {}}}},
+            ],
+        )
+
+        result = list(store.iter_all(batch_size=2))
+
+        self.assertEqual([item["id"] for item in result], ["a", "b", "c"])
+        calls = raw_index.list_paginated.call_args_list
+        self.assertNotIn("pagination_token", calls[0][1])
+        self.assertEqual(calls[1][1]["pagination_token"], "token-1")
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_hydrates_listed_ids_with_a_fetch(self):
+        """Listing returns ids only, so each page needs a fetch()."""
+        store, wrapper, _ = self._store(
+            [self._page(["a"], None)],
+            [{"vectors": {"a": {"values": [0.1, 0.2], "metadata": {"tag": "x"}}}}],
+        )
+
+        item = list(store.iter_all())[0]
+
+        self.assertEqual(item["id"], "a")
+        self.assertEqual(item["metadata"], {"tag": "x"})
+        np.testing.assert_allclose(item["vector"], np.array([0.1, 0.2]))
+        wrapper.fetch_vectors.assert_called_once_with(["a"], namespace="")
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_list_and_fetch_use_the_same_namespace(self):
+        store, wrapper, raw_index = self._store(
+            [self._page(["a"], None)],
+            [{"vectors": {"a": {"values": [0.1], "metadata": {}}}}],
+        )
+
+        list(store.iter_all(namespace="prod"))
+
+        self.assertEqual(raw_index.list_paginated.call_args[1]["namespace"], "prod")
+        wrapper.fetch_vectors.assert_called_once_with(["a"], namespace="prod")
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_skips_ids_deleted_between_list_and_fetch(self):
+        """fetch() omits ids it cannot find rather than returning blanks."""
+        store, _, _ = self._store(
+            [self._page(["a", "gone"], None)],
+            [{"vectors": {"a": {"values": [0.1], "metadata": {}}}}],
+        )
+
+        result = list(store.iter_all())
+
+        self.assertEqual([item["id"] for item in result], ["a"])
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_raises_when_pagination_token_repeats(self):
+        """A stalled token must not loop forever, nor quietly return a partial
+        scan that reads as a complete one."""
+        store, _, raw_index = self._store(
+            [self._page(["a"], "same"), self._page(["b"], "same")],
+            [
+                {"vectors": {"a": {"values": [0.1], "metadata": {}}}},
+                {"vectors": {"b": {"values": [0.2], "metadata": {}}}},
+            ],
+        )
+
+        with self.assertRaises(ProcessingError):
+            list(store.iter_all())
+
+        self.assertEqual(raw_index.list_paginated.call_count, 2)
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_empty_listing_yields_nothing_without_fetching(self):
+        store, wrapper, _ = self._store([self._page([], None)], [])
+
+        self.assertEqual(list(store.iter_all()), [])
+        wrapper.fetch_vectors.assert_not_called()
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_continues_past_an_empty_page_with_a_live_token(self):
+        """An empty page is not necessarily the end: Pinecone can legitimately
+        list zero ids for a page while pagination.next is still set (sparse
+        or filtered namespaces, eventual-consistency windows on serverless
+        indexes). Only the absence of a next token means exhaustion."""
+        store, wrapper, raw_index = self._store(
+            [
+                self._page(["a"], "token-1"),
+                self._page([], "token-2"),  # empty page, but the token still advances
+                self._page(["b"], None),
+            ],
+            [
+                {"vectors": {"a": {"values": [0.1], "metadata": {}}}},
+                {"vectors": {"b": {"values": [0.2], "metadata": {}}}},
+            ],
+        )
+
+        result = list(store.iter_all(batch_size=1))
+
+        self.assertEqual([item["id"] for item in result], ["a", "b"])
+        self.assertEqual(raw_index.list_paginated.call_count, 3)
+        # Nothing to hydrate on the empty page, so only two fetches happen.
+        self.assertEqual(wrapper.fetch_vectors.call_count, 2)
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_accepts_plain_string_ids_from_listing(self):
+        """SDK generations differ on what listing yields."""
+        store, _, _ = self._store(
+            [self._page([], None)],
+            [{"vectors": {"a": {"values": [0.1], "metadata": {}}}}],
+        )
+        response = MagicMock()
+        response.vectors = ["a"]
+        response.pagination = MagicMock(next=None)
+        store.index.index.list_paginated.side_effect = [response]
+
+        self.assertEqual([item["id"] for item in store.iter_all()], ["a"])
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_handles_missing_values_and_metadata(self):
+        store, _, _ = self._store(
+            [self._page(["a"], None)],
+            [{"vectors": {"a": {"values": None, "metadata": None}}}],
+        )
+
+        item = list(store.iter_all())[0]
+
+        self.assertIsNone(item["vector"])
+        self.assertEqual(item["metadata"], {})
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_raises_when_list_paginated_unavailable(self):
+        store = PineconeStore()
+        wrapper = MagicMock()
+        wrapper.index = MagicMock(spec=["query", "fetch"])
+        store.index = wrapper
+
+        with self.assertRaises(ProcessingError):
+            list(store.iter_all())
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_raises_when_index_not_initialized(self):
+        """Must fail loudly: an empty scan reads the same as an empty source."""
+        with self.assertRaises(ProcessingError):
+            list(PineconeStore().iter_all())
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', False)
+    def test_raises_when_pinecone_unavailable(self):
+        store = PineconeStore()
+        store.index = MagicMock()
+
+        with self.assertRaises(ProcessingError):
+            list(store.iter_all())
+
+    @patch('semantica.vector_store.pinecone_store.PINECONE_AVAILABLE', True)
+    def test_propagates_listing_errors(self):
+        store, _, raw_index = self._store([], [])
+        raw_index.list_paginated.side_effect = RuntimeError("connection reset")
+
+        with self.assertRaises(RuntimeError):
+            list(store.iter_all())
+
+
 if __name__ == '__main__':
     print("DEBUG: Starting unittest.main()")
     unittest.main()

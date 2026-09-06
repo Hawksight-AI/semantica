@@ -65,9 +65,11 @@ import os
 import re
 import stat
 import tempfile
+import threading
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -78,6 +80,12 @@ from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
 from ..utils.types import EntityDict, RelationshipDict
 from ._markdown_filesystem import find_filesystem_link
+from .markdown import (
+    MarkdownIdentityError,
+    MarkdownResourceNotFoundError,
+    MarkdownRevisionConflictError,
+    markdown_document_revision,
+)
 
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
@@ -158,6 +166,17 @@ class MemoryItem:
         )
 
 
+def _with_memory_lock(method):
+    """Serialize AgentMemory state mutations and Markdown revision checks."""
+
+    @wraps(method)
+    def locked(self, *args, **kwargs):
+        with self._memory_lock:
+            return method(self, *args, **kwargs)
+
+    return locked
+
+
 class AgentMemory:
     """
     Agent memory manager with RAG integration and Hierarchical Memory.
@@ -197,6 +216,7 @@ class AgentMemory:
         self.logger = get_logger("agent_memory")
         self.config = config or {}
         self.config.update(kwargs)
+        self._memory_lock = threading.RLock()
 
         self.vector_store = self.config.get("vector_store")
         self.knowledge_graph = self.config.get("knowledge_graph")
@@ -249,6 +269,7 @@ class AgentMemory:
 
         self.logger.info(f"Saved agent memory to {path}")
 
+    @_with_memory_lock
     def load(self, path: str) -> None:
         """
         Load memory state from disk.
@@ -298,6 +319,7 @@ class AgentMemory:
 
         self.logger.info(f"Loaded agent memory from {path}")
 
+    @_with_memory_lock
     def store(
         self,
         content: str,
@@ -574,6 +596,7 @@ class AgentMemory:
             "relationships": memory_item.relationships,
         }
 
+    @_with_memory_lock
     def delete_memory(self, memory_id: str, *, skip_vector: bool = False) -> bool:
         """
         Delete memory item.
@@ -588,16 +611,15 @@ class AgentMemory:
             return False
 
         # Remove from vector store unless a caller is staging an atomic local update.
-        if not skip_vector:
-            if self.vector_store:
-                try:
-                    vector_ids = list(self._vector_ids.get(memory_id, [])) or [
-                        memory_id
-                    ]
-                    self._delete_vector_ids(vector_ids)
-                except Exception as e:
-                    self.logger.warning(f"Failed to delete from vector store: {e}")
-            self._vector_ids.pop(memory_id, None)
+        if not skip_vector and self.vector_store:
+            try:
+                vector_ids = list(self._vector_ids.get(memory_id, [])) or [memory_id]
+                self._delete_vector_ids(vector_ids)
+            except Exception as e:
+                self.logger.warning(f"Failed to delete from vector store: {e}")
+        # Bookkeeping runs unconditionally: a skip_vector delete still removes the
+        # item, so leaving its tracked ids behind would orphan them permanently.
+        self._vector_ids.pop(memory_id, None)
 
         memory_item = self.memory_items[memory_id]
 
@@ -625,6 +647,28 @@ class AgentMemory:
 
         self.logger.debug(f"Deleted memory item: {memory_id}")
         return True
+
+    @_with_memory_lock
+    def vector_ids_for(self, memory_id: str) -> List[str]:
+        """Return the vector-store ids owned by a memory item.
+
+        Read-only view of the ids ``delete_memory()`` would remove for this
+        item, so a caller that needs to *report* on vector removal can delete
+        them itself rather than relying on ``delete_memory()``'s best-effort
+        cascade, which logs a vector-store failure and still returns ``True``.
+
+        Mirrors the fallback in ``delete_memory``: an item stored without
+        tracked vector ids is keyed in the vector store by its own memory id.
+
+        Args:
+            memory_id: Memory identifier.
+
+        Returns:
+            The item's vector ids, or ``[]`` if the item is unknown.
+        """
+        if memory_id not in self.memory_items:
+            return []
+        return list(self._vector_ids.get(memory_id, [])) or [memory_id]
 
     def clear_memory(self, **filters) -> int:
         """
@@ -1116,6 +1160,7 @@ class AgentMemory:
         """
         return self.get_memory(memory_id)
 
+    @_with_memory_lock
     def update(
         self,
         memory_id: str,
@@ -1396,6 +1441,13 @@ class AgentMemory:
 
         return results
 
+    @_with_memory_lock
+    def list_snapshot(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Return one memory page and its total from the same locked state."""
+        return self.list(limit=limit, offset=offset), len(self.memory_items)
+
     def get_by_conversation(
         self, conversation_id: str, limit: int = 100
     ) -> List[Dict[str, Any]]:
@@ -1567,12 +1619,16 @@ class AgentMemory:
                     memory_ids.append(memory_id)
         return memory_ids
 
-    def batch_delete(self, memory_ids: List[str]) -> int:
+    def batch_delete(self, memory_ids: List[str], *, skip_vector: bool = False) -> int:
         """
         Batch delete.
 
         Args:
             memory_ids: List of memory IDs to delete
+            skip_vector: If True, skip each item's own vector-store cascade
+                (see ``delete_memory``). A caller that is already erasing these
+                ids' vectors itself passes this to avoid a redundant,
+                best-effort delete against the vector store.
 
         Returns:
             Number of memories deleted
@@ -1582,7 +1638,7 @@ class AgentMemory:
         """
         deleted = 0
         for memory_id in memory_ids:
-            if self.delete_memory(memory_id):
+            if self.delete_memory(memory_id, skip_vector=skip_vector):
                 deleted += 1
         return deleted
 
@@ -1606,6 +1662,88 @@ class AgentMemory:
             if memory_id and self.update(memory_id, **update_fields):
                 updated += 1
         return updated
+
+    @_with_memory_lock
+    def export_item_markdown(self, memory_id: str) -> str:
+        """Return one existing memory item as canonical Markdown.
+
+        Args:
+            memory_id: Stable identifier of the memory item to export.
+
+        Returns:
+            Canonical Markdown containing the memory frontmatter and body.
+
+        Raises:
+            MarkdownResourceNotFoundError: If ``memory_id`` does not exist.
+        """
+        memory = self.get(memory_id)
+        if memory is None:
+            raise MarkdownResourceNotFoundError(
+                f"AgentMemory item {memory_id!r} was not found."
+            )
+        return self._memory_to_markdown(memory)
+
+    @_with_memory_lock
+    def apply_item_markdown(
+        self,
+        memory_id: str,
+        document: str,
+        *,
+        expected_revision: Optional[str] = None,
+    ) -> bool:
+        """Validate and atomically replace one existing memory item.
+
+        Args:
+            memory_id: Stable identifier of the memory item to update.
+            document: Canonical Markdown containing the replacement item.
+            expected_revision: Optional revision returned by
+                :meth:`export_item_markdown`. A mismatch rejects stale edits.
+
+        Returns:
+            ``True`` when the item changed, otherwise ``False``.
+
+        Raises:
+            ValueError: If the Markdown or frontmatter is invalid.
+            MarkdownIdentityError: If the frontmatter changes the memory ID.
+            MarkdownResourceNotFoundError: If ``memory_id`` does not exist.
+            MarkdownRevisionConflictError: If ``expected_revision`` is stale.
+            RuntimeError: If the validated item cannot be persisted.
+        """
+        memory = self._markdown_to_memory_dict(document, source=f"memory {memory_id!r}")
+        document_id = memory["memory_id"]
+        if document_id != memory_id:
+            raise MarkdownIdentityError(
+                f"Frontmatter id {document_id!r} does not match resource id "
+                f"{memory_id!r}."
+            )
+        if not self.exists(memory_id):
+            raise MarkdownResourceNotFoundError(
+                f"AgentMemory item {memory_id!r} was not found."
+            )
+        if expected_revision is not None:
+            # _memory_lock is an RLock; this re-entrant call into
+            # export_item_markdown (also @_with_memory_lock) is intentional
+            # and safe because RLock allows the same thread to re-acquire.
+            current_revision = markdown_document_revision(
+                self.export_item_markdown(memory_id)
+            )
+            if current_revision != expected_revision:
+                raise MarkdownRevisionConflictError(current_revision)
+        if self._markdown_record_matches(memory_id, memory):
+            return False
+
+        success = self._replace_memory_item(
+            memory_id,
+            memory["content"],
+            metadata=memory["metadata"],
+            entities=memory["entities"],
+            relationships=memory["relationships"],
+            timestamp=memory["timestamp"],
+            skip_graph=True,
+        )
+        if not success:
+            raise RuntimeError(f"AgentMemory item {memory_id!r} could not be replaced.")
+        return True
 
     # Export/Import
     def export(
@@ -1655,6 +1793,7 @@ class AgentMemory:
             return self._export_markdown(memories, destination=destination)
         return export_data
 
+    @_with_memory_lock
     def import_data(
         self, data: Union[str, Path, Dict[str, Any]], format: str = "json"
     ) -> int:

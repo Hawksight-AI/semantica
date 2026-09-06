@@ -1,9 +1,9 @@
 ---
-title: "GraphRAG — Graph-Augmented Retrieval"
+title: "GraphRAG: Graph-Augmented Retrieval"
 description: "Go beyond vector search: retrieve facts, trace reasoning paths, and ground LLM responses in your knowledge graph."
 ---
 
-GraphRAG combines vector similarity with knowledge graph traversal so retrieval finds structurally connected facts, not just text that sounds related. When a `ContextGraph` is attached to `AgentContext`, every retrieval call automatically blends semantic search with multi-hop graph expansion — and `query_with_reasoning()` returns an auditable reasoning path alongside the LLM answer.
+GraphRAG combines vector similarity with knowledge graph traversal so retrieval finds structurally connected facts, not just text that sounds related. When a `ContextGraph` is attached to `AgentContext`, every retrieval call automatically blends semantic search with multi-hop graph expansion, and `query_with_reasoning()` returns an auditable reasoning path alongside the LLM answer.
 
 ## What Is GraphRAG?
 
@@ -11,7 +11,7 @@ GraphRAG (Graph-Augmented Retrieval-Augmented Generation) enhances traditional R
 
 **GraphRAG vs. traditional vector-only RAG:** Vector RAG finds documents similar to your query text. GraphRAG finds documents similar to your query AND documents connected to those through entity relationships, even if they don't mention your query terms directly.
 
-**The role of graph traversal:** Starting from entities found in vector-similar documents, GraphRAG expands outward through relationship edges to discover related facts. This reveals connections that pure text similarity would miss — like finding that a threat actor targets healthcare by following the path: Actor → Tool → Victim Organization → Industry Sector.
+**The role of graph traversal:** Starting from entities found in vector-similar documents, GraphRAG expands outward through relationship edges to discover related facts. This reveals connections that pure text similarity would miss, like finding that a threat actor targets healthcare by following the path: Actor → Tool → Victim Organization → Industry Sector.
 
 ## Why Use GraphRAG?
 
@@ -96,7 +96,7 @@ context = AgentContext(
 )
 ```
 
-Now ingest your documents. `store()` with `extract_entities=True` runs the full extraction pipeline internally — Named Entity Recognition (NER), relation extraction, and entity linking — and populates both the vector index and the graph simultaneously:
+Now ingest your documents. `store()` with `extract_entities=True` runs the full extraction pipeline internally (Named Entity Recognition, relation extraction, and entity linking) and populates both the vector index and the graph simultaneously:
 
 ```python
 intel_documents = [
@@ -132,16 +132,17 @@ stats = context.store(
 print("Graph built: {} nodes, {} edges".format(
     stats["graph_nodes"], stats["graph_edges"]
 ))
-# Graph built: 18 nodes, 14 edges
-# Nodes: APT29, HAMMERTOSS, NATO, LifeCare, AS59796, CISA Sector 6, ...
-# Edges: deployed, observed_on, classified_as, targets, operates_in, ...
 ```
 
-The graph now contains a connected subgraph linking APT29 to healthcare infrastructure across four document boundaries — something that would be invisible to a pure vector search.
+`store()` returns a dict with `stored_count`, `memory_ids`, `graph_nodes`, and
+`graph_edges`. The extracted nodes (APT29, HAMMERTOSS, LifeCare, AS59796, …) and
+edges (`deployed`, `observed_on`, `classified_as`, …) now span all four documents.
+
+The graph now contains a connected subgraph linking APT29 to healthcare infrastructure across four document boundaries, something that would be invisible to a pure vector search.
 
 ## Retrieving the relevant subgraph
 
-With the graph populated, a plain `retrieve()` call already does more than vector search. When `use_graph=True`, the retriever seeds the graph traversal from the top-k vector matches and expands outward by following edges, collecting connected facts within `max_hops`:
+With the graph populated, a plain `retrieve()` call already does more than vector search. When `use_graph=True`, the retriever seeds the graph traversal from the top-k vector matches and expands outward by following edges. Expansion depth is set once, by `max_expansion_hops` on the `AgentContext` constructor:
 
 ```python
 results = context.retrieve(
@@ -149,7 +150,6 @@ results = context.retrieve(
     use_graph=True,
     max_results=10,
     expand_graph=True,
-    max_hops=3,
 )
 
 for r in results:
@@ -169,16 +169,24 @@ Notice the top results: while pure vector search might rank connected facts lowe
 When you know specifically which entity you want to anchor the traversal to, pass `anchor_node`:
 
 ```python
-# Anchor on APT29 explicitly — proximity scores are calculated from this node
+# Anchor on APT29 explicitly: proximity scores are calculated from this node
 apt29_intel = context.retrieve(
     "C2 infrastructure beaconing patterns",
     use_graph=True,
     anchor_node="APT29",
     proximity_weight=0.7,   # strongly favour nodes close to APT29
-    max_hops=3,
+    max_hops=3,             # with an anchor, this bounds the proximity radius
     max_results=8,
 )
 ```
+
+<Note>
+  `max_hops` on `retrieve()` only takes effect when `anchor_node` is set: it
+  bounds the proximity radius used for scoring and drops results farther than
+  `max_hops` from the anchor. Without an `anchor_node` it is ignored. It does
+  **not** change how far graph expansion reaches: that is fixed by
+  `max_expansion_hops` on the constructor.
+</Note>
 
 ## Getting a grounded LLM answer with a reasoning path
 
@@ -187,7 +195,7 @@ apt29_intel = context.retrieve(
 ```python
 from semantica.llms import LiteLLM
 
-llm = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm = LiteLLM(model="anthropic/claude-sonnet-5")
 
 result = context.query_with_reasoning(
     "What are APT29's known TTPs against healthcare infrastructure, "
@@ -197,7 +205,7 @@ result = context.query_with_reasoning(
     max_hops=3,
 )
 
-# The LLM answer — grounded in graph-retrieved context, not training memory
+# The LLM answer, grounded in graph-retrieved context, not training memory
 print(result["response"])
 
 # The multi-hop trace: APT29 → deployed → HAMMERTOSS → observed_on → LifeCare → ...
@@ -213,7 +221,7 @@ for src in result["sources"]:
     print("  [{:.3f}] {}".format(src["score"], src["content"][:80]))
 ```
 
-The `reasoning_path` field is what separates GraphRAG from a black-box LLM call. When an analyst asks "how do you know APT29 targeted healthcare?", you can show them the exact traversal the system made across your own documents — not a claim the model generated from training data.
+The `reasoning_path` field is what separates GraphRAG from a black-box LLM call. When an analyst asks "how do you know APT29 targeted healthcare?", you can show them the exact traversal the system made across your own documents, not a claim the model generated from training data.
 
 The full return structure from `query_with_reasoning()`:
 
@@ -232,11 +240,11 @@ The full return structure from `query_with_reasoning()`:
 
 <Tabs>
 
-<Tab title="Defense — CTI/Threat">
+<Tab title="Defense: CTI/Threat">
 
 Multi-INT intelligence fusion: OSINT threat feeds, NVD CVE data, and HUMINT summaries ingested into a single graph, then queried with multi-hop reasoning to trace C2 infrastructure chains and attribute campaigns to specific actors.
 
-In classified environments the graph can be partitioned by data handling caveat — each `AgentContext` operates over the subset of documents cleared for the querying user. The `reasoning_path` output doubles as a sanitisable audit trail for downgraded reporting.
+In classified environments the graph can be partitioned by data handling caveat: each `AgentContext` operates over the subset of documents cleared for the querying user. The `reasoning_path` output doubles as a sanitisable audit trail for downgraded reporting.
 
 ```python
 from semantica.context import AgentContext, ContextGraph
@@ -273,7 +281,7 @@ context.store(
     link_entities=True,
 )
 
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 result = context.query_with_reasoning(
     "Trace the C2 infrastructure chain for APT29 operations targeting "
     "ITAR-controlled contractors in 2025. Include IP ranges, ASNs, and TTPs.",
@@ -300,11 +308,11 @@ proximate = context.retrieve(
 
 </Tab>
 
-<Tab title="Security — SOC/Incident">
+<Tab title="Security: SOC/Incident">
 
 Security operations: real-time alert triage against a graph containing hosts, CVEs, user accounts, runbooks, and historical incidents. GraphRAG retrieves the relevant runbook and similar past incidents in a single call, reducing mean-time-to-respond.
 
-The `decision_tracking=True` flag records every triage query as an auditable decision, with the full context that was provided to the LLM — essential for post-incident review and SOC metrics.
+The `decision_tracking=True` flag records every triage query as an auditable decision, with the full context that was provided to the LLM. That's essential for post-incident review and SOC metrics.
 
 ```python
 from semantica.context import AgentContext, ContextGraph
@@ -343,7 +351,7 @@ Parent: wmiprvse.exe
 Sigma match: T1053.005 Scheduled Task/Job
 """
 
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 triage = soc_context.query_with_reasoning(
     "Triage this SIEM alert and identify the correct response runbook:\n{}".format(alert_text),
     llm_provider=llm,
@@ -369,7 +377,7 @@ for inc in similar:
 
 </Tab>
 
-<Tab title="Life Science — Clinical/Pharma">
+<Tab title="Life Science: Clinical/Pharma">
 
 Clinical decision support: FDA drug labels, clinical guidelines, and trial summaries ingested into a graph where drug-enzyme-metabolite-interaction chains become traversable paths. A three-hop query (drug → enzyme → metabolite → contraindication) surfaces interaction risks that no single document would make explicit.
 
@@ -417,7 +425,7 @@ Patient: 68F, AF, CKD stage 3b (eGFR 32). On warfarin (INR target 2.0–3.0).
 Presenting for elective hip replacement. Concurrent: amiodarone 200mg, atorvastatin 40mg.
 """
 
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 answer = clinical_context.query_with_reasoning(
     "What is the evidence-based warfarin bridging protocol for this patient "
     "given CKD and amiodarone interaction risk?\n\n{}".format(patient_context),
@@ -443,7 +451,7 @@ contra_chain = clinical_context.retrieve(
 
 </Tab>
 
-<Tab title="Banking — Risk/Compliance">
+<Tab title="Banking: Risk/Compliance">
 
 Regulatory compliance: Basel III (CRE20), BCBS 239, SR 11-7, and EBA IRRBB guidelines ingested as a graph where regulation articles cross-reference each other as edges. Multi-hop queries traverse those cross-references automatically, so a question about commercial real estate RWA pulls the relevant CRE20 paragraphs and the BCBS 239 data quality requirements that govern their calculation in a single call.
 
@@ -466,12 +474,17 @@ compliance_context = AgentContext(
     retention_days=2555,   # 7-year regulatory retention
 )
 
-# In production these come from ingest_file() — shown as strings here for brevity
-basel_cre20_text  = "CRE20.32: For income-producing real estate where repayment depends on "
-                    "property cash flows, RWA = exposure × risk weight, where risk weight "
-                    "is determined by LTV bucket per Table CRE20.3..."
-bcbs239_text      = "Principle 3: Risk data should be accurate and have a single authoritative source. "
-                    "Where data is aggregated across systems, reconciliation must be documented..."
+# In production the text comes from a parsed file, e.g. FileIngestor().ingest_file(path).text;
+# inline strings here for brevity
+basel_cre20_text = (
+    "CRE20.32: For income-producing real estate where repayment depends on "
+    "property cash flows, RWA = exposure × risk weight, where risk weight "
+    "is determined by LTV bucket per Table CRE20.3..."
+)
+bcbs239_text = (
+    "Principle 3: Risk data should be accurate and have a single authoritative source. "
+    "Where data is aggregated across systems, reconciliation must be documented..."
+)
 
 compliance_context.store(
     [
@@ -482,7 +495,7 @@ compliance_context.store(
     extract_relationships=True,
 )
 
-llm    = LiteLLM(model="anthropic/claude-sonnet-4-20250514")
+llm    = LiteLLM(model="anthropic/claude-sonnet-5")
 answer = compliance_context.query_with_reasoning(
     "Under Basel III CRE20, what are the RWA calculation requirements for "
     "commercial real estate exposures with LTV > 80%? "
@@ -496,7 +509,7 @@ print(answer["response"])
 print("Regulatory sources cited: {}".format(answer["num_sources"]))
 print("Confidence: {:.1%}".format(answer["confidence"]))
 
-# The reasoning path is the audit log — show it to the regulator
+# The reasoning path is the audit log: show it to the regulator
 print("\n--- Reasoning Path (audit log) ---")
 print(answer["reasoning_path"])
 ```
@@ -524,18 +537,18 @@ The `hybrid_alpha` parameter set in the `AgentContext` constructor establishes a
 When targeting a specific `anchor_node`, you can apply `proximity_weight` in `retrieve()` to dynamically blend structural distance from the anchor into the final score:
 
 ```python
-# Anchor node provided — let vector semantics lead, graph proximity only slightly boosts
+# Anchor node provided: let vector semantics lead, graph proximity only slightly boosts
 results = context.retrieve(
     query, use_graph=True, anchor_node="APT29", proximity_weight=0.2
 )
 
-# Known-entity tracing — topology drives the retrieval
+# Known-entity tracing: topology drives the retrieval
 results = context.retrieve(
     query, use_graph=True, anchor_node="APT29", proximity_weight=0.8
 )
 ```
 
-Each additional hop in `max_hops` exponentially increases the subgraph size. Practical defaults by domain:
+Each additional expansion hop exponentially increases the subgraph size. Practical defaults by domain:
 
 ```text
 General Q&A             max_expansion_hops=2  (95% of useful facts within 2 hops)
@@ -544,7 +557,7 @@ Drug interactions       max_expansion_hops=3  (drug → enzyme → metabolite �
 Regulatory cross-ref    max_expansion_hops=2  (rule → article → article)
 ```
 
-Set globally in the constructor; override per call with the `max_hops` argument to `retrieve()`.
+Expansion depth is a constructor setting only (`max_expansion_hops`); there is no per-call override on `retrieve()`. `query_with_reasoning()` does take a per-call `max_hops` argument.
 
 ## How GraphRAG works internally
 
@@ -576,9 +589,9 @@ The vector search and graph traversal run independently, then their scores are f
 
 ## Related Guides
 
-- [Semantic Extraction](semantic-extraction) — build the graph from raw unstructured text
-- [Agent Memory](agent-memory) — store, retrieve, and persist agent memories
-- [Context Graphs](context-graphs) — build and traverse the knowledge graph directly
-- [Reasoning](reasoning) — derive new facts and run inference rules over the graph
-- [Decision Intelligence](decision-intelligence) — causal chains, policy enforcement, decision tracking
-- [LLM Integrations](llm-integrations) — connect Groq, OpenAI, Anthropic, HuggingFace, and 100+ more
+- [Semantic Extraction](/guides/semantic-extraction): build the graph from raw unstructured text
+- [Agent Memory](/guides/agent-memory): store, retrieve, and persist agent memories
+- [Context Graphs](/guides/context-graphs): build and traverse the knowledge graph directly
+- [Reasoning](/guides/reasoning): derive new facts and run inference rules over the graph
+- [Decision Intelligence](/guides/decision-intelligence): causal chains, policy enforcement, decision tracking
+- [LLM Integrations](/guides/llm-integrations): connect Groq, OpenAI, Anthropic, HuggingFace, and 100+ more

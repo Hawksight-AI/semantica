@@ -1402,7 +1402,7 @@ def split_embedding_semantic(
 
 def split_hierarchical(
     text: str,
-    levels: List[str] = ["section", "paragraph", "sentence"],
+    levels: Optional[List[str]] = None,
     chunk_sizes: Optional[List[int]] = None,
     **kwargs,
 ) -> List[Chunk]:
@@ -1420,6 +1420,8 @@ def split_hierarchical(
     """
     if chunk_sizes is None:
         chunk_sizes = [2000, 1000, 500]
+    if levels is None:
+        levels = ["section", "paragraph", "sentence"]
 
     # Start with largest level
     if "section" in levels:

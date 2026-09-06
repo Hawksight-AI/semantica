@@ -351,6 +351,6 @@ for record in history:
 </AccordionGroup>
 
 - [Provenance](provenance) — W3C PROV-O lineage tracking.
-- [Knowledge Graph](kg) — The graph being versioned.
+- [Knowledge Graph](/reference/kg) — The graph being versioned.
 - [Export](export) — Export versioned snapshots.
-- [Conflicts](conflicts) — Detect conflicts introduced between versions.
+- [Conflicts](/reference/conflicts) — Detect conflicts introduced between versions.

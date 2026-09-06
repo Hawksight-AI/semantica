@@ -951,8 +951,8 @@ print(f"Compliance graph: {graph.stats()['node_count']} nodes, "
 ## Related Guides
 
 - [Pipeline](pipeline) — chain ingest steps with `PipelineBuilder` for automated, retryable, parallelised workflows
-- [Context Graphs](context-graphs) — storing and querying the entities you ingest as a typed property graph
-- [Semantic Extraction](semantic-extraction) — NER, relation extraction, and triplet extraction from ingested text
+- [Context Graphs](/guides/context-graphs) — storing and querying the entities you ingest as a typed property graph
+- [Semantic Extraction](/guides/semantic-extraction) — NER, relation extraction, and triplet extraction from ingested text
 - [Provenance](provenance) — tracking the origin document, confidence score, and ingestion timestamp for every extracted entity
 - [Databricks Integration](../integrations/databricks) — Unity Catalog setup, PAT/OAuth M2M authentication, and lineage introspection
 - [Snowflake Integration](../integrations/snowflake) — warehouse setup and password/key-pair/OAuth authentication

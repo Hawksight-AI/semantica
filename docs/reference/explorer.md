@@ -403,7 +403,7 @@ Semantic neighborhood requires node embeddings stored in node properties (keys `
 **Session state lost after restart**
 Session state is in-memory only. Use `POST /api/export` to save a JSON snapshot before shutting down.
 
-- [Context](context) — Build and save the ContextGraph that Explorer loads.
+- [Context](/reference/context) — Build and save the ContextGraph that Explorer loads.
 - [Ontology](ontology) — Programmatic ontology management and SHACL generation.
 - [Visualization](visualization) — Programmatic graph rendering without the Explorer server.
 - [Export](export) — Export to RDF, Parquet, and other formats without launching a server.

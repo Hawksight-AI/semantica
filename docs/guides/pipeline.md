@@ -127,7 +127,7 @@ engine = ExecutionEngine(max_workers=4, retry_on_failure=True)
 result = engine.execute_pipeline(pipeline)
 
 print(f"Success:  {result.success}")
-print(f"Output:   {result.output}")   # {"node_count": 312, "edge_count": 847}
+print(f"Output:   {result.output}")   # the final step's return value, e.g. {"node_count": ..., "edge_count": ...}
 print(f"Duration: {result.metrics['execution_time']:.2f}s")
 print(f"Steps completed: {result.metrics['steps_executed']}")
 ```
@@ -197,7 +197,9 @@ engine = ExecutionEngine(
     max_workers      = 4,
     retry_on_failure = True,
 )
-# The engine uses handler.get_retry_policy(step.step_type) when a step fails
+# ExecutionEngine builds its own FailureHandler; replace it with the configured one
+engine.failure_handler = handler
+# The engine now calls engine.failure_handler.get_retry_policy(step.step_type) on failure
 ```
 
 `handler.classify_error()` distinguishes `ValidationError` (low severity, usually don't retry), `ProcessingError` (high severity), and timeout/connection errors (medium severity, always retry). You can inspect the classification:
@@ -717,6 +719,6 @@ print(f"Compliance delta update: {result.output}")
 ## Related Guides
 
 - [Ingest](ingest) — all source types for the ingest step: PDFs, APIs, databases, RSS feeds, STIX directories, and streams
-- [Semantic Extraction](semantic-extraction) — NER, relation extraction, triplet extraction, and event detection for the extract step
-- [Context Graphs](context-graphs) — building and querying the `ContextGraph` that the store step populates
+- [Semantic Extraction](/guides/semantic-extraction) — NER, relation extraction, triplet extraction, and event detection for the extract step
+- [Context Graphs](/guides/context-graphs) — building and querying the `ContextGraph` that the store step populates
 - [Provenance](provenance) — tracking the origin document, confidence score, and pipeline run ID for every extracted entity

@@ -69,6 +69,19 @@ def _json_output(result) -> Any:
     return json.loads(result.output.strip())
 
 
+def _flatten(output: str) -> str:
+    """Undo Rich panel wrapping for substring assertions on error text.
+
+    Rich wraps long messages across multiple bordered lines (each with its
+    own leading/trailing "│"), so a naive whitespace join still leaves those
+    border characters between words that were split across lines. Strip the
+    box-drawing characters first, then collapse whitespace.
+    """
+    for ch in "┌┐└┘│─":
+        output = output.replace(ch, " ")
+    return " ".join(output.split())
+
+
 # ─── Global flags ─────────────────────────────────────────────────────────────
 
 
@@ -335,6 +348,79 @@ class TestIngest:
         assert data["files"] == [{"path": "README.md"}]
         assert captured["sources"] == "README.md"
         assert captured["kwargs"]["method"] == "file"
+
+    def test_configured_graph_backend_does_not_report_false_success(
+        self, runner, monkeypatch
+    ):
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+
+        result = runner.invoke(cli_module.main, ["ingest", "README.md"])
+        output = _flatten(result.output)
+
+        assert result.exit_code != 0
+        assert "does not write to graph stores" in output
+        assert "Ingested:" not in output
+
+    def test_configured_graph_backend_error_does_not_recommend_broken_kg_build(
+        self, runner, monkeypatch
+    ):
+        # kg build also does not persist to a configured graph store
+        # (tracked separately as #1352), so the error must not send users to
+        # a command that will silently no-op the same way.
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+
+        result = runner.invoke(cli_module.main, ["ingest", "README.md"])
+        output = _flatten(result.output)
+
+        assert result.exit_code != 0
+        assert "kg build" not in output
+
+    def test_output_flag_writes_real_content_and_bypasses_graph_error(
+        self, runner, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("GRAPH_STORE_DEFAULT_BACKEND", "neo4j")
+        monkeypatch.setattr(
+            "semantica.ingest.methods.ingest_file",
+            lambda sources, **kwargs: [{"path": sources}],
+        )
+        out_path = tmp_path / "out.json"
+
+        result = runner.invoke(
+            cli_module.main, ["ingest", "README.md", "--output", str(out_path)]
+        )
+
+        _ok(result, substr="Wrote")
+        written = json.loads(out_path.read_text(encoding="utf-8"))
+        assert written == {"files": [{"path": "README.md"}]}
+
+    def test_store_and_output_are_not_forwarded_to_ingest_backend(
+        self, runner, monkeypatch, tmp_path
+    ):
+        captured = {}
+
+        def fake_ingest_file(sources, **kwargs):
+            captured["kwargs"] = kwargs
+            return [{"path": sources}]
+
+        monkeypatch.setattr("semantica.ingest.methods.ingest_file", fake_ingest_file)
+        out_path = tmp_path / "out.json"
+
+        result = runner.invoke(
+            cli_module.main,
+            ["ingest", "README.md", "--store", "neo4j", "--output", str(out_path)],
+        )
+
+        _ok(result)
+        assert "store" not in captured["kwargs"]
+        assert "output" not in captured["kwargs"]
 
     def test_import_error_is_clean(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "__import__", _import_side_effect, raising=False)
@@ -769,6 +855,156 @@ class TestReason:
         )):
             result = runner.invoke(cli_module.main, ["reason", "run"])
         assert result.exit_code != 0
+        assert "Traceback" not in result.output
+
+    def test_run_infers_from_graph_store_facts(self, runner, monkeypatch, tmp_path):
+        # reason run used to call Reasoner.run(), which does not exist
+        # (#1354); it must feed graph store facts + --rules into
+        # Reasoner.infer_facts().
+        pytest.importorskip("numpy", reason="semantica.reasoning needs numpy")
+        rules_file = tmp_path / "rules.yaml"
+        rules_file.write_text(
+            '- IF Person(?x) THEN Human(?x)\n'
+            '- IF MANAGES(?x, ?y) THEN Manager(?x)\n'
+            '- IF Employee(?x) THEN Staff(?x)\n',
+            encoding="utf-8")
+
+        class _FakeStore:
+            # Same dict schema as the real backends: nodes carry
+            # labels/properties, relationships carry start_node_id/end_node_id.
+            def get_nodes(self, limit=None):
+                return [{"id": 1, "labels": ["Person"],
+                         "properties": {"name": "Alice"}},
+                        {"id": 2, "labels": ["Person", "Employee"],
+                         "properties": {"name": "Bob"}}]
+
+            def get_relationships(self, limit=None):
+                return [{"id": 9, "type": "MANAGES",
+                         "start_node_id": 1, "end_node_id": 2}]
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", lambda ctx: _FakeStore())
+        result = runner.invoke(
+            cli_module.main,
+            ["--json", "reason", "run", "--rules", str(rules_file)],
+        )
+        _ok(result)
+        data = json.loads(result.output.strip())
+        # Person(Alice), Person(Bob), Employee(Bob), MANAGES(Alice, Bob)
+        assert data["facts"] == 4
+        assert "Human(Alice)" in data["inferred_facts"]
+        # Relationship endpoints resolve node ids to names.
+        assert "Manager(Alice)" in data["inferred_facts"]
+        # Secondary labels also become facts.
+        assert "Staff(Bob)" in data["inferred_facts"]
+        assert data["inferred_count"] == len(data["inferred_facts"])
+
+    def test_run_rejects_unwired_engine(self, runner):
+        result = runner.invoke(cli_module.main,
+                               ["reason", "run", "--engine", "sparql"])
+        assert result.exit_code != 0
+        assert "not wired" in result.output
+        assert "reason query" in result.output
+        assert "Traceback" not in result.output
+
+    def test_load_rule_definitions_formats(self, tmp_path):
+        yaml_list = tmp_path / "list.yaml"
+        yaml_list.write_text('- IF A(?x) THEN B(?x)\n- IF B(?x) THEN C(?x)\n',
+                             encoding="utf-8")
+        assert cli_module._load_rule_definitions(str(yaml_list)) == [
+            "IF A(?x) THEN B(?x)", "IF B(?x) THEN C(?x)"]
+
+        yaml_map = tmp_path / "map.yaml"
+        yaml_map.write_text('rules:\n  - IF A(?x) THEN B(?x)\n', encoding="utf-8")
+        assert cli_module._load_rule_definitions(str(yaml_map)) == [
+            "IF A(?x) THEN B(?x)"]
+
+        plain = tmp_path / "rules.dl"
+        plain.write_text('# comment\nIF A(?x) THEN B(?x)\n\n', encoding="utf-8")
+        assert cli_module._load_rule_definitions(str(plain)) == [
+            "IF A(?x) THEN B(?x)"]
+
+    def test_run_empty_graph_returns_zero_facts(self, runner, monkeypatch):
+        """reason run with an empty graph store should not crash and report 0 facts."""
+        pytest.importorskip("numpy", reason="semantica.reasoning needs numpy")
+
+        class _EmptyStore:
+            def get_nodes(self, limit=None): return []
+            def get_relationships(self, limit=None): return []
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", lambda ctx: _EmptyStore())
+        result = runner.invoke(cli_module.main, ["--json", "reason", "run"])
+        _ok(result)
+        data = json.loads(result.output.strip())
+        assert data["facts"] == 0
+        assert data["inferred_count"] == 0
+        assert data["inferred_facts"] == []
+
+    def test_run_graph_store_error_surfaces_cleanly(self, runner, monkeypatch):
+        """A graph-store connectivity error must surface as a clean error, not a Traceback."""
+
+        def _bad_store(ctx):
+            raise RuntimeError("connection refused")
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", _bad_store)
+        result = runner.invoke(cli_module.main, ["reason", "run"])
+        assert result.exit_code != 0
+        assert "Traceback" not in result.output
+        assert "connection refused" in result.output
+
+    def test_run_no_rules_uses_empty_ruleset(self, runner, monkeypatch):
+        """reason run without --rules should still succeed (zero rules -> zero inferences)."""
+        pytest.importorskip("numpy", reason="semantica.reasoning needs numpy")
+
+        class _FakeStore:
+            def get_nodes(self, limit=None):
+                return [{"id": 1, "labels": ["Person"], "properties": {"name": "Alice"}}]
+
+            def get_relationships(self, limit=None):
+                return []
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", lambda ctx: _FakeStore())
+        result = runner.invoke(cli_module.main, ["--json", "reason", "run"])
+        _ok(result)
+        data = json.loads(result.output.strip())
+        assert data["facts"] == 1
+        assert data["inferred_count"] == 0
+
+    def test_load_rule_definitions_yaml_mapping_without_rules_key_raises(self, tmp_path):
+        """A YAML mapping with no 'rules' key must raise ClickException, not silently
+        pass the raw YAML lines as rules."""
+        bad = tmp_path / "bad.yaml"
+        bad.write_text("some_key: some_value\nother_key: other_value\n", encoding="utf-8")
+        import click as _click
+        with pytest.raises(_click.ClickException, match="no 'rules' key"):
+            cli_module._load_rule_definitions(str(bad))
+
+    def test_load_rule_definitions_empty_file_returns_empty_list(self, tmp_path):
+        empty = tmp_path / "empty.yaml"
+        empty.write_text("", encoding="utf-8")
+        assert cli_module._load_rule_definitions(str(empty)) == []
+
+    def test_load_rule_definitions_yaml_rules_null_falls_to_plaintext(self, tmp_path):
+        """rules: null is valid YAML with the key present; the null value is
+        not a list, so the function falls through to plain-text parsing and
+        returns the literal line (one no-op rule).  This documents the edge
+        case rather than asserting a specific useful behaviour."""
+        f = tmp_path / "null_rules.yaml"
+        f.write_text("rules: null\n", encoding="utf-8")
+        result = cli_module._load_rule_definitions(str(f))
+        # Plain-text fallback: the non-comment, non-blank line becomes a rule.
+        assert result == ["rules: null"]
+
+    def test_run_rejects_deductive_engine(self, runner, monkeypatch):
+        """Engines other than rete/forward-chain must be rejected with a helpful message."""
+
+        class _EmptyStore:
+            def get_nodes(self, limit=None): return []
+            def get_relationships(self, limit=None): return []
+
+        monkeypatch.setattr(cli_module, "_get_graph_store", lambda ctx: _EmptyStore())
+        result = runner.invoke(cli_module.main, ["reason", "run", "--engine", "deductive"])
+        assert result.exit_code != 0
+        assert "not wired" in result.output
         assert "Traceback" not in result.output
 
     def test_explain_requires_conclusion(self, runner):
@@ -1350,6 +1586,65 @@ class TestStore:
         result = runner.invoke(cli_module.main, ["store", "connect", "--backend", "neo4j"])
         _ok(result)
 
+    def test_connect_dispatches_through_graph_store(self, runner, monkeypatch):
+        # store connect used to call get_graph_store_method(backend) — the
+        # method registry, which needs (task, method_name) — so it raised a
+        # TypeError before any connection attempt (#1354).
+        calls = {}
+
+        class _FakeGraphStore:
+            def __init__(self, backend=None, **cfg):
+                calls["backend"] = backend
+                calls["cfg"] = cfg
+
+            def connect(self):
+                calls["connected"] = True
+                return True
+
+        import semantica.graph_store as gs_mod
+        monkeypatch.setattr(gs_mod, "GraphStore", _FakeGraphStore)
+        result = runner.invoke(cli_module.main, [
+            "store", "connect", "--backend", "neo4j",
+            "--uri", "bolt://example:7687", "--json"])
+        _ok(result)
+        data = _json_output(result)
+        assert data == {"backend": "neo4j", "connected": True}
+        assert calls["backend"] == "neo4j"
+        assert calls["cfg"].get("uri") == "bolt://example:7687"
+        assert calls.get("connected") is True
+
+    def test_connect_invalid_backend_reports_error_not_dispatch_error(self, runner):
+        """An unknown backend name must produce a meaningful backend error, not a
+        Python TypeError from the old get_graph_store_method() dispatch (#1354)."""
+        result = runner.invoke(cli_module.main,
+                               ["store", "connect", "--backend", "does-not-exist"])
+        # Exit 0 because store_connect always catches and reports errors gracefully.
+        _ok(result)
+        # The output must mention the backend, not a Python internal error.
+        assert "does-not-exist" in result.output
+        assert "TypeError" not in result.output
+        assert "Traceback" not in result.output
+
+    def test_connect_backend_error_surfaces_in_json(self, runner, monkeypatch):
+        """A connect() failure must appear in JSON output as connected=False with an error field."""
+
+        class _FailingStore:
+            def __init__(self, backend=None, **cfg):
+                pass
+
+            def connect(self):
+                raise RuntimeError("auth failed")
+
+        import semantica.graph_store as gs_mod
+        monkeypatch.setattr(gs_mod, "GraphStore", _FailingStore)
+        result = runner.invoke(cli_module.main, [
+            "store", "connect", "--backend", "neo4j", "--json"])
+        _ok(result)
+        data = _json_output(result)
+        assert data["connected"] is False
+        assert "auth failed" in data.get("error", "")
+        assert data["backend"] == "neo4j"
+
     def test_migrate_dry_run(self, runner):
         result = runner.invoke(cli_module.main, ["store", "migrate",
                                       "--from", "faiss", "--to", "qdrant", "--dry-run"])
@@ -1797,7 +2092,7 @@ class TestMCP:
 
     def test_list_tools_with_mock_shows_known_tools(self, runner, monkeypatch):
         fake_tools = _fake_module(__all__=["extract_entities", "query_graph"])
-        monkeypatch.setitem(__import__("sys").modules, "mcp.tools", fake_tools)
+        monkeypatch.setitem(__import__("sys").modules, "semantica_mcp.mcp.tools", fake_tools)
         result = runner.invoke(cli_module.main, ["mcp", "list-tools"])
         _ok(result)
         assert "extract_entities" in result.output
@@ -2069,6 +2364,160 @@ class TestDoctorEmbeddingHintsAndEnv:
         st = checks["Embeddings (sentence-transformers)"]
         assert st["status"] == "fail"
         assert "hash fallback" in st["note"], "padded/caps env value must enable deep mode"
+
+
+class TestDoctorTableLayout:
+    """#1428 + Qodo review: doctor table must keep Check labels and Hint text
+    readable at a normal 80-column terminal.
+
+    These tests render the *human-readable* (non-JSON) doctor table into a
+    captured 80-column Rich console so they cover the actual column-width
+    arithmetic, not just the JSON data.
+
+    Two regressions are protected:
+
+    A. #1428 — Hint (and Note) columns must not collapse into unreadable
+       single-character fragments or be silently truncated with a layout '…'.
+       overflow="fold" on both columns ensures content wraps across lines while
+       remaining fully present.
+
+    B. Qodo — Long Check labels such as "Embeddings (sentence-transformers)"
+       must not be truncated/ellipsized.  Assigning ratio=1 to the Check column
+       (as the original PR did) caused Rich to squeeze it below its min_width
+       at narrow terminals, so the fix removes ratio from the fixed-size columns.
+    """
+
+    def _render_doctor_at_80(self, runner, monkeypatch):
+        """Return the plain-text (ANSI-stripped) doctor table rendered at 80 cols."""
+        import io
+        import re
+        from rich.console import Console
+
+        # Unset LLM-provider env vars so the warn rows (with hints) are always present.
+        for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+
+        buf = io.StringIO()
+        narrow_console = Console(
+            file=buf, width=80, highlight=False, force_terminal=True, no_color=True
+        )
+        monkeypatch.setattr(cli_module, "console", narrow_console)
+
+        result = runner.invoke(cli_module.main, ["doctor"])
+        assert result.exit_code == 0, f"doctor exited non-zero: {result.output!r}"
+
+        return re.sub(r"\x1b\[[0-9;]*m", "", buf.getvalue())
+
+    def _hint_column_parts(self, output: str) -> "list[str]":
+        """Extract non-blank Hint-column segments from each rendered line.
+
+        Locates the Hint column start from the header row and slices that
+        suffix from every subsequent line, so the test is insensitive to the
+        exact widths of the other columns.
+        """
+        lines = output.splitlines()
+        # Line 0 is blank (console.print() blank line before table).
+        hdr = next((l for l in lines if "Hint" in l and "Check" in l), None)
+        assert hdr is not None, "Could not find table header in doctor output"
+        hint_start = hdr.index("Hint")
+
+        parts = []
+        for line in lines:
+            if len(line) > hint_start:
+                seg = line[hint_start:].rstrip()
+                if seg and seg != "Hint" and not set(seg).issubset({"─", " "}):
+                    parts.append(seg)
+        return parts
+
+    # ── B: Qodo regression ────────────────────────────────────────────────────
+
+    def test_long_check_label_not_truncated_at_80_cols(self, runner, monkeypatch):
+        """'Embeddings (sentence-transformers)' must appear verbatim at 80 cols.
+
+        Before the fix, ratio=1 on the Check column let Rich squeeze it below
+        its min_width, turning the label into 'Embedd…' or similar.
+        """
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        assert "Embeddings (sentence-transformers)" in output, (
+            "Check label 'Embeddings (sentence-transformers)' was truncated in "
+            "the 80-column doctor table — the ratio= constraint on the Check "
+            "column must be removed so min_width=34 is always honoured."
+        )
+
+    def test_all_check_labels_not_truncated_at_80_cols(self, runner, monkeypatch):
+        """Every standard Check label must appear verbatim at 80 cols."""
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        for label in (
+            "Python",
+            "semantica",
+            "rich",
+            "Graph store",
+            "Vector store",
+            "Embeddings (sentence-transformers)",
+            "Embeddings (fastembed)",
+            "OpenAI",
+            "Anthropic",
+            "Groq",
+            "Config file",
+            "Log directory",
+        ):
+            assert label in output, (
+                f"Check label {label!r} was truncated or missing in the "
+                "80-column doctor table."
+            )
+
+    # ── A: #1428 regression ───────────────────────────────────────────────────
+
+    def test_hint_content_fully_present_at_80_cols(self, runner, monkeypatch):
+        """The LLM-provider hints must be fully present (folded, not ellipsized).
+
+        With overflow='fold' the full hint text wraps across lines; no
+        characters are discarded.  Joining the Hint-column segments (stripping
+        whitespace) must reconstruct each complete hint string.
+        """
+        import re
+
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        parts = self._hint_column_parts(output)
+        hint_joined = re.sub(r"\s+", "", "".join(parts))
+
+        # Each LLM-provider hint must be fully recoverable from the folded lines.
+        for expected in (
+            "exportOPENAI_API_KEY=\u2026",       # export OPENAI_API_KEY=…
+            "exportANTHROPIC_API_KEY=\u2026",    # export ANTHROPIC_API_KEY=…
+            "exportGROQ_API_KEY=\u2026",         # export GROQ_API_KEY=…
+        ):
+            assert expected in hint_joined, (
+                f"Hint content {expected!r} is missing from the 80-column "
+                "doctor table — overflow='fold' must be set on the Hint column "
+                "so no content is silently discarded."
+            )
+
+    def test_hint_column_has_no_single_char_fragments_at_80_cols(
+        self, runner, monkeypatch
+    ):
+        """No Hint-column line must be a single alphabetic character.
+
+        The original #1428 bug produced outputs like:
+            export
+            O
+            P
+            E
+            N
+            A
+            I
+            ...
+        because Rich allocated the Hint column only 1–2 characters of content
+        width.  overflow='fold' on a properly-wide column eliminates this.
+        """
+        output = self._render_doctor_at_80(runner, monkeypatch)
+        parts = self._hint_column_parts(output)
+        single_char_alpha = [p for p in parts if len(p.strip()) == 1 and p.strip().isalpha()]
+        assert not single_char_alpha, (
+            f"Hint column contains single-character lines {single_char_alpha!r} "
+            "at 80 columns — the Hint column is too narrow; check min_width and "
+            "ratio settings."
+        )
 
 
 class TestEmbedGenerateOutput:

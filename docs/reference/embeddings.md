@@ -1,6 +1,6 @@
 ---
 title: "Embeddings Module"
-description: "Text and graph embedding generation: FastEmbed, Sentence-Transformers, OpenAI, BGE: with pooling strategies and provider-agnostic API."
+description: "Text and graph embedding generation (FastEmbed, Sentence-Transformers, OpenAI, BGE) with pooling strategies and a provider-agnostic API."
 icon: "vector-square"
 ---
 
@@ -41,12 +41,12 @@ Semantica uses embeddings for:
 
 ## What You Get
 
-- **EmbeddingGenerator** — Main entry point: provider-agnostic, handles batching automatically across all backends.
-- **TextEmbedder** — Text-specific with automatic batching and progress tracking. Default method is FastEmbed.
-- **GraphEmbeddingManager** — Node and edge embeddings for graph databases: Neo4j, NetworkX, FalkorDB.
-- **VectorEmbeddingManager** — Prepare, normalize, and format embeddings for FAISS, Weaviate, Qdrant, and Milvus.
-- **Provider Stores** — `OpenAIStore`, `BGEStore`, `FastEmbedStore`, and `ProviderStoreFactory`.
-- **Pooling Strategies** — Mean, Max, CLS, Attention, and Hierarchical: control token-to-vector aggregation.
+- **EmbeddingGenerator**: provider-agnostic main entry point that handles batching automatically across all backends.
+- **TextEmbedder**: text-specific embedder with automatic batching and progress tracking. Default method is FastEmbed.
+- **GraphEmbeddingManager**: node and edge embeddings for graph databases (Neo4j, NetworkX, FalkorDB).
+- **VectorEmbeddingManager**: prepare, normalize, and format embeddings for FAISS, Weaviate, Qdrant, and Milvus.
+- **Provider Stores**: `OpenAIStore`, `BGEStore`, `FastEmbedStore`, and `ProviderStoreFactory`.
+- **Pooling Strategies**: Mean, Max, CLS, Attention, and Hierarchical control token-to-vector aggregation.
 
 ## Provider Setup
 
@@ -71,7 +71,7 @@ Semantica uses embeddings for:
     </Check>
 
     <Warning>
-      **FastEmbed ignores the `device` parameter.** FastEmbed uses ONNX Runtime and manages its own execution providers: passing `device="cuda"` has no effect. Switch to `method="sentence_transformers"` if you need explicit GPU control.
+      **FastEmbed ignores the `device` parameter.** FastEmbed uses ONNX Runtime and manages its own execution providers; passing `device="cuda"` has no effect. Switch to `method="sentence_transformers"` if you need explicit GPU control.
     </Warning>
   </Tab>
   <Tab title="Sentence-Transformers">
@@ -153,7 +153,7 @@ providers = check_available_providers()
 
 ## Getting Started
 
-`EmbeddingGenerator` is the fastest path to embeddings: the default method is FastEmbed (ONNX, no GPU needed):
+`EmbeddingGenerator` is the fastest path to embeddings. The default method is FastEmbed (ONNX, no GPU needed):
 
 ```python
 from semantica.embeddings import EmbeddingGenerator
@@ -173,7 +173,7 @@ print(f"Similarity: {score:.3f}")
 ```
 
 <Tip>
-  **Always use the same model for indexing and querying.** Vectors from different models are not comparable: they live in different vector spaces. Switching models requires re-embedding your entire corpus.
+  **Always use the same model for indexing and querying.** Vectors from different models are not comparable; they live in different vector spaces. Switching models requires re-embedding your entire corpus.
 </Tip>
 
 To switch provider after construction:
@@ -258,7 +258,7 @@ generator.set_text_model("sentence_transformers", "BAAI/bge-large-en-v1.5")
     similarity = generator.compare_embeddings(embeddings[0], embeddings[1])
     ```
 
-    **Best for:** CPU-only production, lowest latency without GPU. Default: works out of the box.
+    **Best for:** CPU-only production and lowest latency without GPU. The default works out of the box.
   </Tab>
   <Tab title="Sentence-Transformers">
     ```python
@@ -390,7 +390,7 @@ store = ProviderStoreFactory.create(provider="bge", model_name="BAAI/bge-large-e
 
 ## Pooling Strategies
 
-Pooling aggregates a set of embeddings into a single vector: useful when you have multiple chunk embeddings to combine:
+Pooling aggregates a set of embeddings into a single vector. Useful when you have multiple chunk embeddings to combine:
 
 <Tabs>
   <Tab title="MeanPooling (default)">
@@ -401,7 +401,7 @@ Pooling aggregates a set of embeddings into a single vector: useful when you hav
     pooled = pooler.pool(token_embeddings)   # shape: (hidden_dim,)
     ```
 
-    **Best for:** retrieval, semantic search, and clustering: averages all contributions.
+    **Best for:** retrieval, semantic search, and clustering. Averages all contributions.
   </Tab>
   <Tab title="MaxPooling">
     ```python
@@ -411,7 +411,7 @@ Pooling aggregates a set of embeddings into a single vector: useful when you hav
     pooled = pooler.pool(token_embeddings)
     ```
 
-    **Best for:** capturing the presence of any feature: takes the max activation per dimension.
+    **Best for:** capturing the presence of any feature. Takes the max activation per dimension.
   </Tab>
   <Tab title="CLSPooling">
     ```python
@@ -432,7 +432,7 @@ Pooling aggregates a set of embeddings into a single vector: useful when you hav
     pooled = pooler.pool(token_embeddings, chunk_size=10)
     ```
 
-    **Best for:** long documents: chunk-level mean pooling, then global mean pooling across chunks.
+    **Best for:** long documents (chunk-level mean pooling, then global mean pooling across chunks).
   </Tab>
   <Tab title="Strategy Comparison">
 
@@ -619,7 +619,7 @@ providers = check_available_providers()
 # → {"sentence_transformers": True, "fastembed": True, "openai": False}
 ```
 
-- [Vector Store](vector_store) — Store and search the generated embeddings.
-- [Split](split) — Chunk text before embedding for better retrieval quality.
-- [KG Module](kg) — Distance Intelligence uses graph embeddings for semantic neighbourhoods.
-- [Deduplication](deduplication) — Semantic deduplication uses embedding distance for entity resolution.
+- [Vector Store](/reference/vector_store): store and search the generated embeddings.
+- [Split](/reference/split): chunk text before embedding for better retrieval quality.
+- [KG Module](/reference/kg): Distance Intelligence uses graph embeddings for semantic neighbourhoods.
+- [Deduplication](/reference/deduplication): semantic deduplication uses embedding distance for entity resolution.

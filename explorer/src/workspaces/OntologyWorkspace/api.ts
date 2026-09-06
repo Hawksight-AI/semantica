@@ -9,6 +9,32 @@ import type {
   ShaclValidationResponse,
 } from "./types";
 
+export type OntologyGraphNode = {
+  id: string;
+  type: string;
+  content?: string;
+  properties?: Record<string, unknown>;
+};
+
+export type OntologyGraphEdge = {
+  id?: string;
+  source: string;
+  target: string;
+  type: string;
+  weight?: number;
+  properties?: Record<string, unknown>;
+};
+
+export type OntologyGraphResponse = {
+  uri: string;
+  nodes: OntologyGraphNode[];
+  edges: OntologyGraphEdge[];
+};
+
+export type OntologyEntityOwner = {
+  source_ontology?: string;
+};
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let detail = `Request failed with status ${response.status}`;
@@ -29,6 +55,18 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 export async function loadOntologyRegistry(): Promise<OntologyEntry[]> {
   return parseResponse<OntologyEntry[]>(await fetch("/api/ontology/registry"));
+}
+
+export async function loadOntologyGraph(uri: string, signal?: AbortSignal): Promise<OntologyGraphResponse> {
+  return parseResponse<OntologyGraphResponse>(
+    await fetch(`/api/ontology/graph?uri=${encodeURIComponent(uri)}`, { signal }),
+  );
+}
+
+export async function loadOntologyEntityOwner(uri: string): Promise<string | undefined> {
+  const response = await fetch(`/api/ontology/entity/${encodeURIComponent(uri)}`);
+  if (!response.ok) return undefined;
+  return (await response.json() as OntologyEntityOwner).source_ontology;
 }
 
 export async function loadAlignments(uri?: string): Promise<OntologyAlignment[]> {
