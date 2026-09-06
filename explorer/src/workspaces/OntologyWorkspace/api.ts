@@ -12,6 +12,9 @@ import type {
 export type OntologyGraphNode = {
   id: string;
   type: string;
+  // Required: /graph always classifies. Optional here would make a producer
+  // that forgets read as a graph of read-only nodes rather than a type error.
+  entity_type: string;
   content?: string;
   properties?: Record<string, unknown>;
 };

@@ -1946,7 +1946,15 @@ async def get_ontology_graph(
             str(edge.get("id", "")),
         )
     )
-    return OntologyGraphResponse(uri=uri, nodes=selected_nodes, edges=selected_edges)
+    # Annotate copies: session node dicts may be cached and shared with other callers.
+    return OntologyGraphResponse(
+        uri=uri,
+        nodes=[
+            {**node, "entity_type": _classify_node_type(node.get("type", ""))}
+            for node in selected_nodes
+        ],
+        edges=selected_edges,
+    )
 
 
 @router.get("/entity/{entity_uri:path}", response_model=EntityDetailResponse)
