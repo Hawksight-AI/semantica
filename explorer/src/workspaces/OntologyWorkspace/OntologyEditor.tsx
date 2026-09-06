@@ -33,6 +33,7 @@ import {
   ONTOLOGY_MINIMAP_THEME,
 } from "./ontologyEditorModel";
 import type { EditorEntityType, RegistryEntry } from "./ontologyEditorModel";
+import { clearEntitySelection, readOntologyUrlState, writeEntitySelection } from "./ontologyUrlState";
 
 type OntologyNodeData = {
   label?: string;
@@ -137,11 +138,7 @@ interface DraftDiff {
 }
 
 function requestedEntityUri(): string {
-  try {
-    return new URLSearchParams(window.location.search).get("ontologyEntity") || "";
-  } catch {
-    return "";
-  }
+  return readOntologyUrlState().entityUri || "";
 }
 
 function nodeLabel(node: OntologyGraphNode): string {
@@ -377,14 +374,7 @@ export function OntologyEditor() {
 
   const selectNode = useCallback((node: OntologyNode) => {
     setSelectedElement(node);
-    try {
-      const params = new URLSearchParams(window.location.search);
-      params.set("ontologyTab", "editor");
-      params.set("ontologyEntity", node.id);
-      window.history.replaceState(null, "", `?${params.toString()}`);
-    } catch {
-      // URL state is optional; the editor selection still works without it.
-    }
+    writeEntitySelection(node.id);
   }, []);
 
   const saveDraft = useCallback(async () => {
@@ -554,15 +544,7 @@ export function OntologyEditor() {
           onChange={(event) => {
             setOntologyUri(event.target.value);
             setSelectedElement(null);
-            try {
-              // Drop the previous ontology's entity from the URL, or a reload
-              // would resolve the stale ID and jump back to that ontology.
-              const params = new URLSearchParams(window.location.search);
-              params.delete("ontologyEntity");
-              window.history.replaceState(null, "", `?${params.toString()}`);
-            } catch {
-              // URL state is optional; switching ontologies still works.
-            }
+            clearEntitySelection();
           }}
           style={selectStyle}
         >
