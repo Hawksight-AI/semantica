@@ -23,7 +23,7 @@ License: MIT
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import time
 
 
@@ -89,7 +89,29 @@ class GraphBuilder:
         self.track_history = track_history
         self.version_snapshots = version_snapshots
         self.graph_store = graph_store
-        self.config = kwargs  # Store additional config for extractors
+        # The orchestrator builds with GraphBuilder(config=self.config.get("kg", {})).
+        # That lands as a nested "config" keyword, so fold it into the option
+        # mapping once here: every option ({entity_resolution,
+        # conflict_detection, unknown_relation_endpoint, ...}) is then read the
+        # same way whether it was given top-level or via the orchestrator path.
+        kwargs = dict(kwargs)
+        _nested = kwargs.pop("config", None)
+        if isinstance(_nested, dict):
+            for _key, _value in _nested.items():
+                kwargs.setdefault(_key, _value)
+        self.config = kwargs
+        # unknown_relation_endpoint lives in the per-module build config
+        # (semantica/kg/config.py); fall back to it so the option has a single
+        # documented home. Popped out of kwargs so it is not forwarded to
+        # extractors as an unused **config key.
+        from .config import kg_config
+
+        self.unknown_relation_endpoint = kwargs.pop(
+            "unknown_relation_endpoint",
+            kg_config.get_method_config("build").get(
+                "unknown_relation_endpoint", "include"
+            ),
+        )
         # Extractors are reused across texts: NERExtractor loads its spaCy model
         # eagerly in __init__, so constructing one per text would reload the
         # model on every source in a multi-document build.
@@ -102,6 +124,8 @@ class GraphBuilder:
             "extracted_relations": 0,
             "extracted_triplets": 0,
         }
+        # Counts relationships dropped by the reject policy per build() call.
+        self._rejected_relationships: int = 0
 
         # Initialize logging
         from ..utils.logging import get_logger
@@ -159,9 +183,81 @@ class GraphBuilder:
             }
             all_entities.append(entity_dict)
         elif hasattr(item, "subject") and hasattr(item, "predicate") and hasattr(item, "object"):
-            # It's likely a Relation object
+            # It's likely a Relation or Triplet object
             subj = item.subject
             obj = item.object
+            # Relation extraction synthesizes an UNKNOWN Entity for an endpoint
+            # that is absent from the NER entity list (metadata synthetic=True).
+            # Triplet extraction does the same, but its endpoints are strings, so
+            # the extractor records the absent endpoint texts instead. Only the
+            # id/text survives in the relationship today, so the synthetic object
+            # never reaches the entity collection and graph validation reports
+            # DANGLING_EDGE. Promote those endpoint entities into the graph here.
+            item_metadata = getattr(item, "metadata", None) or {}
+            # Triplet LLM path tags endpoint texts it could not match to an entity.
+            triplet_synthetic = [
+                text
+                for text in item_metadata.get("synthetic_endpoints", [])
+                if isinstance(text, str)
+            ]
+            synthetic_endpoints = []
+            for endpoint in (subj, obj):
+                if (
+                    not isinstance(endpoint, str)
+                    and isinstance(getattr(endpoint, "metadata", None), dict)
+                    and endpoint.metadata.get("synthetic")
+                ):
+                    synthetic_endpoints.append(endpoint)
+                elif isinstance(endpoint, str) and endpoint in triplet_synthetic:
+                    synthetic_endpoints.append(endpoint)
+            if synthetic_endpoints:
+                endpoint_policy = self.unknown_relation_endpoint
+                if endpoint_policy == "reject":
+                    self.logger.warning(
+                        "Dropping relationship %r->%r (%s): endpoint is synthetic and "
+                        "unknown_relation_endpoint='reject'",
+                        subj,
+                        obj,
+                        item.predicate,
+                    )
+                    self._rejected_relationships += 1
+                    return
+                # The promoted set is rebuilt only for relationships that actually
+                # carry a synthetic endpoint. Ordinary relationships (the common
+                # case) must not pay an O(all_entities) scan per item, which made
+                # build() quadratic on dense relation inputs.
+                existing_ids: Set[Any] = set()
+                for _ent in all_entities:
+                    if not isinstance(_ent, dict):
+                        continue
+                    for _key in ("id", "entity_id"):
+                        _cid = _ent.get(_key)
+                        if _cid is None:
+                            continue
+                        try:
+                            existing_ids.add(_cid)
+                        except TypeError:
+                            # Invalid/unhashable IDs are left for graph validation.
+                            continue
+                for endpoint in synthetic_endpoints:
+                    if isinstance(endpoint, str):
+                        endpoint_id = endpoint
+                        endpoint_text = endpoint
+                    else:
+                        endpoint_id = endpoint.id if hasattr(endpoint, "id") else endpoint.text
+                        endpoint_text = endpoint.text
+                    if endpoint_id in existing_ids:
+                        continue
+                    all_entities.append(
+                        {
+                            "id": endpoint_id,
+                            "name": endpoint_text,
+                            "type": "UNKNOWN",
+                            "confidence": 0.8,
+                            "metadata": {"synthetic": True},
+                        }
+                    )
+                    existing_ids.add(endpoint_id)
             subj_id = getattr(subj, "id", getattr(subj, "text", str(subj))) if not isinstance(subj, str) else subj
             obj_id = getattr(obj, "id", getattr(obj, "text", str(obj))) if not isinstance(obj, str) else obj
             rel_dict = {
@@ -543,6 +639,8 @@ class GraphBuilder:
             "extracted_relations": 0,
             "extracted_triplets": 0
         }
+        # Reset per-run rejection counter.
+        self._rejected_relationships = 0
         
         tracking_id = self.progress_tracker.start_tracking(
             module="kg",
@@ -782,6 +880,39 @@ class GraphBuilder:
                 if has_merged_entities:
                     self._remap_relationship_endpoints(resolved_entities, all_relationships)
 
+            # When a synthetic endpoint is promoted before the real entity arrives
+            # (e.g. relation data precedes NER entity data for the same text),
+            # the same id can appear once as synthetic and once as real. Prefer
+            # the real entity so the graph does not carry a duplicated,
+            # lower-confidence duplicate.
+            _real_ids: Set[Any] = set()
+            for _entity in resolved_entities:
+                if (
+                    isinstance(_entity, dict)
+                    and not (_entity.get("metadata") or {}).get("synthetic")
+                ):
+                    for _cid in (_entity.get("id"), _entity.get("entity_id")):
+                        if _cid is None:
+                            continue
+                        try:
+                            _real_ids.add(_cid)
+                        except TypeError:
+                            # Invalid/unhashable IDs are left for graph validation
+                            # to report rather than failing graph construction here.
+                            continue
+            if _real_ids:
+                filtered = []
+                for _entity in resolved_entities:
+                    if (
+                        isinstance(_entity, dict)
+                        and (_entity.get("metadata") or {}).get("synthetic")
+                    ):
+                        _eid = _entity.get("id")
+                        if _eid in _real_ids:
+                            continue
+                    filtered.append(_entity)
+                resolved_entities = filtered
+
             if input_relationships_count > 0 and len(all_relationships) == 0:
                 warning_msg = (
                     f"All relationships were dropped during graph building: "
@@ -801,6 +932,7 @@ class GraphBuilder:
                     "temporal_enabled": self.enable_temporal,
                     "timestamp": self._get_timestamp(),
                     "entity_resolution_applied": resolver_to_use is not None,
+                    "rejected_relationships": self._rejected_relationships,
                 },
             }
             structure_time = time.time() - structure_start

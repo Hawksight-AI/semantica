@@ -2316,7 +2316,7 @@ def extract_triplets_rules(
 
 
 def extract_triplets_huggingface(
-    text: str, model: str, device: Optional[str] = None, **kwargs
+    text: str, model: str, device: Optional[str] = None, entities: Optional[List[Entity]] = None, **kwargs
 ) -> List[Triplet]:
     """HuggingFace triplet extraction."""
     loader = HuggingFaceModelLoader(device=device)
@@ -2348,16 +2348,30 @@ def extract_triplets_huggingface(
                 tail = match.group("tail").strip()
                 
                 if head and relation and tail:
+                    # Head/tail are raw decoded strings from the model. Tag any
+                    # that match no known entity so the GraphBuilder promotes
+                    # them instead of leaving a dangling edge (#1463).
+                    # TripletExtractor dispatches with entities=..., so this is
+                    # the real NER list here, not a dead comparison.
+                    hf_entities = entities or []
+                    synthetic_endpoints = [
+                        endpoint_text
+                        for endpoint_text in (head, tail)
+                        if not match_entity(endpoint_text, hf_entities)
+                    ]
+                    hf_metadata = {
+                        "model": model,
+                        "extraction_method": "huggingface_rebel",
+                    }
+                    if synthetic_endpoints:
+                        hf_metadata["synthetic_endpoints"] = synthetic_endpoints
                     triplets.append(
                         Triplet(
                             subject=head,
                             predicate=relation,
                             object=tail,
                             confidence=0.9, # Model generation doesn't provide per-triplet confidence
-                            metadata={
-                                "model": model,
-                                "extraction_method": "huggingface_rebel"
-                            }
+                            metadata=hf_metadata
                         )
                     )
 
@@ -2517,16 +2531,27 @@ Text to extract from:
         # Convert back to internal Triplet format
         triplets = []
         for t_out in result_obj.triplets:
+            # An LLM triple may reference an endpoint that does not match any
+            # entity extracted by NER. Record those endpoints so the GraphBuilder
+            # can promote them as synthetic entities instead of leaving a
+            # dangling edge (see issue #1463).
+            synthetic_endpoints = []
+            for endpoint_text in (t_out.subject, t_out.object):
+                if not match_entity(endpoint_text, entities or []):
+                    synthetic_endpoints.append(endpoint_text)
+            metadata = {
+                "provider": provider,
+                "model": model,
+                "extraction_method": "llm_typed",
+            }
+            if synthetic_endpoints:
+                metadata["synthetic_endpoints"] = synthetic_endpoints
             triplets.append(Triplet(
                 subject=t_out.subject,
                 predicate=t_out.predicate,
                 object=t_out.object,
                 confidence=t_out.confidence,
-                metadata={
-                    "provider": provider, 
-                    "model": model, 
-                    "extraction_method": "llm_typed"
-                }
+                metadata=metadata,
             ))
         
         logger.info(f"Successfully extracted {len(triplets)} triplets using {provider}/{model} (typed)")
