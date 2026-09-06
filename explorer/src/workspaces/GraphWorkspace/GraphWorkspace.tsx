@@ -28,7 +28,7 @@ import { useLoadGraph, useReloadGraph } from "./useLoadGraph";
 import { GraphLoadingOverlay } from "./GraphLoadingOverlay";
 import { createGraphLoadProgress, getGraphLoadTitle } from "./graphLoading";
 import { GRAPH_THEME, withAlpha } from "./graphTheme";
-import type { GraphEntityShapeVariant } from "./graphTheme";
+import { buildGraphColorLegend, type GraphColorLegendItem } from "./graphColorLegend";
 import { buildHeatmapRenderSnapshot, buildStructuralDistanceSnapshot, checkGroupedViewAvailability, getDistanceBandColor, resolveDisplayGraph, resolveDisplayStateSnapshot, resolveGroupedDisplayNodeId, resolveGroupedDisplayStateSnapshot, summarizeDistanceBuckets } from "./graphSceneState";
 import {
   type GraphPlugin,
@@ -169,14 +169,7 @@ const loadNeighborhoodPanelPlugin = () => import("./plugins/neighborhoodPanelPlu
 const loadTemporalOverlayPlugin = () => import("./plugins/temporalOverlayPlugin").then((module) => module.temporalOverlayPlugin);
 const EMPTY_PATH: string[] = [];
 const COMPACT_TOOLBAR_CLUSTER_IDS = new Set(["camera", "utility"]);
-const ENTITY_VISUAL_KEY: Array<{ shape: GraphEntityShapeVariant; label: string }> = [
-  { shape: "biomolecule", label: "Biomolecule" },
-  { shape: "condition", label: "Condition" },
-  { shape: "compound", label: "Compound" },
-  { shape: "process", label: "Process" },
-  { shape: "community", label: "Community" },
-  { shape: "entity", label: "Other" },
-];
+
 const DEBUG_GRAPH_WORKSPACE = import.meta.env.DEV;
 
 function debugGraphWorkspace(message: string, payload?: Record<string, unknown>) {
@@ -459,15 +452,21 @@ function SearchCommandBar({
   );
 }
 
-function EntityVisualKey() {
+function SemanticColorLegend({ items }: { items: GraphColorLegendItem[] }) {
+  if (!items.length) return null;
   return (
-    <div className="explore-entity-key" aria-label="Node visual key">
-      {ENTITY_VISUAL_KEY.map((item) => (
-        <div key={item.shape} className="explore-entity-key-item">
-          <span className="explore-entity-key-mark" data-shape={item.shape} />
-          <span>{item.label}</span>
-        </div>
-      ))}
+    <div className="explore-color-legend" role="group" aria-label="Node colors">
+      <span className="explore-color-legend-label" title="Base semantic colors; selection, zoom, and distance effects can change node appearance.">
+        Node colors
+      </span>
+      <ul className="explore-color-legend-items">
+        {items.map((item) => (
+          <li key={item.id} className="explore-color-legend-item" title={`${item.group}: ${item.count.toLocaleString()} nodes`}>
+            <span className="explore-color-legend-mark" style={{ backgroundColor: item.color }} aria-hidden="true" />
+            <span className="explore-color-legend-name">{item.group}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -906,55 +905,46 @@ const HUD_CSS = `
   .explore-tool-button[data-compact="true"] .explore-tool-button-label {
     display: none;
   }
-  .explore-entity-key {
+  .explore-color-legend {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 12px;
     padding: 2px 1px 0;
     color: ${GRAPH_THEME.ui.text.subtle};
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
+    font-size: 11px;
+    font-weight: 600;
   }
-  .explore-entity-key-item {
+  .explore-color-legend-label {
+    flex-shrink: 0;
+    color: ${GRAPH_THEME.ui.text.muted};
+  }
+  .explore-color-legend-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    min-width: 0;
+    max-height: 76px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .explore-color-legend-item {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    white-space: nowrap;
+    min-width: 0;
+    max-width: 100%;
   }
-  .explore-entity-key-mark {
-    width: 13px;
-    height: 13px;
-    display: inline-block;
-    border: 1px solid rgba(194, 214, 218, 0.42);
-    background: rgba(73, 154, 150, 0.58);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+  .explore-color-legend-name {
+    overflow-wrap: anywhere;
   }
-  .explore-entity-key-mark[data-shape="entity"] {
-    border-radius: 999px;
-  }
-  .explore-entity-key-mark[data-shape="biomolecule"] {
-    clip-path: polygon(50% 7%, 86% 28%, 86% 72%, 50% 93%, 14% 72%, 14% 28%);
-  }
-  .explore-entity-key-mark[data-shape="condition"] {
-    border-radius: 5px;
-    transform: rotate(45deg) scale(0.88);
-  }
-  .explore-entity-key-mark[data-shape="compound"] {
-    width: 20px;
-    border-radius: 999px;
-  }
-  .explore-entity-key-mark[data-shape="process"] {
-    border-radius: 4px;
-    clip-path: polygon(0 0, 86% 0, 100% 16%, 100% 100%, 0 100%);
-  }
-  .explore-entity-key-mark[data-shape="community"] {
-    width: 15px;
-    height: 15px;
-    border-radius: 999px;
-    background: rgba(96, 190, 180, 0.16);
-    border-color: rgba(229, 213, 175, 0.54);
+  .explore-color-legend-mark {
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.16);
   }
   .explore-search-results {
     display: flex;
@@ -2280,6 +2270,11 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken, onDirt
     structuralSelectedNodeId,
     viewMode,
   ]);
+  const colorLegendItems = useMemo(() => {
+    // Store mutations can preserve graph identity while changing its attributes.
+    void graphVersion;
+    return buildGraphColorLegend(displayResult.graph);
+  }, [displayResult.graph, graphVersion]);
   const displayState = useMemo(
     () => (
       viewMode === "grouped"
@@ -3122,7 +3117,7 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken, onDirt
                     ))}
                   </div>
                 </div>
-                <EntityVisualKey />
+                {!showDistanceStatus ? <SemanticColorLegend items={colorLegendItems} /> : null}
               </div>
 
               {egoModeEnabled && (

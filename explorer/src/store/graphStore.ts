@@ -26,6 +26,8 @@ export interface NodeAttributes {
   size: number;
   color: string;
   baseColor?: string;
+  /** Original semantic color when a display clone bakes interaction styling into baseColor. */
+  semanticBaseColor?: string;
   mutedColor?: string;
   glowColor?: string;
   baseSize?: number;

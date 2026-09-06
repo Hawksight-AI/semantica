@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 
+import { buildGraphColorLegend } from "../graphColorLegend";
 import type { GraphPlugin } from "./types";
 
 const LEGEND_PANEL_ID = "legend-panel";
@@ -25,19 +26,7 @@ export const legendPlugin: GraphPlugin = {
       return null;
     }
 
-    const groups = new Map<string, { count: number; color: string }>();
-    context.graph.forEachNode((_nodeId, attrs) => {
-      const semanticGroup = String(attrs.semanticGroup || attrs.nodeType || "entity");
-      const color = String(attrs.baseColor || context.theme.palette.semantic[0]);
-      const current = groups.get(semanticGroup);
-      groups.set(semanticGroup, {
-        count: (current?.count ?? 0) + 1,
-        color,
-      });
-    });
-
-    const items = [...groups.entries()]
-      .map(([group, data]) => ({ group, ...data }))
+    const items = buildGraphColorLegend(context.graph, context.theme)
       .sort((left, right) => right.count - left.count)
       .slice(0, MAX_GROUPS);
 
@@ -55,7 +44,7 @@ export const legendPlugin: GraphPlugin = {
           {items.length ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {items.map((item) => (
-                <div key={item.group} style={legendRowStyle}>
+                <div key={item.id} style={legendRowStyle}>
                   <span
                     style={{
                       ...swatchStyle,
