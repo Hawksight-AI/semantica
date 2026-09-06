@@ -236,11 +236,11 @@ class TestNERConfigurations(unittest.TestCase):
         mock_spacy.load.return_value = mock_nlp
         
         with patch('semantica.semantic_extract.methods.SPACY_AVAILABLE', True):
-            # Init extractor with list of methods
-            extractor = NERExtractor(method=["llm", "ml"], ensemble_voting=True)
+            # Explicit union retains complementary single-method entities.
+            extractor = NERExtractor(method=["llm", "ml"], merge_strategy="union")
             entities = extractor.extract_entities(self.text)
             
-            # Since ensemble_voting=True (implied merge), we expect unique entities
+            # Union keeps unique entities from every successful method.
             # Apple Inc (from both) + Steve Jobs (from ML)
             
             texts = [e.text for e in entities]
