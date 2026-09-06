@@ -132,6 +132,53 @@ kg1 = builder.build(initial_sources)
 kg2 = builder.build(additional_sources)
 ```
 
+### Unknown relation endpoints
+
+When a relationship endpoint names an entity that is absent from the extracted
+entity set (for example an LLM/HuggingFace extraction that synthesizes an
+endpoint), `GraphBuilder` promotes a synthetic `UNKNOWN` entity so the edge is
+not left dangling. This is the default (`"include"`). To drop such
+relationships instead, set `unknown_relation_endpoint="reject"`:
+
+```python
+builder = GraphBuilder(
+    unknown_relation_endpoint="reject",
+)
+kg = builder.build(sources)  # edges with unknown endpoints are dropped
+```
+
+Rejected relationships are observable at two levels:
+
+- A **`WARNING`-level log** is emitted for every dropped edge, including the
+  source/target and predicate, so it is visible without debug logging enabled.
+- `graph["metadata"]["rejected_relationships"]` holds the count of edges
+  dropped in that build call, giving callers a machine-readable signal:
+
+```python
+kg = builder.build(sources)
+if kg["metadata"]["rejected_relationships"]:
+    print(f"{kg['metadata']['rejected_relationships']} edge(s) were rejected "
+          f"because of unknown endpoints.")
+```
+
+The option can also be set process-wide via the module's build configuration,
+which is the documented home for it:
+
+```python
+from semantica.kg.config import kg_config
+
+kg_config.set_method_config("build", unknown_relation_endpoint="reject")
+# All subsequent GraphBuilder instances use "reject" as the default.
+```
+
+In a YAML/JSON/TOML config file, place it under the `kg_methods.build` key:
+
+```yaml
+kg_methods:
+  build:
+    unknown_relation_endpoint: reject
+```
+
 ## Graph Algorithms
 
 The knowledge graph module provides advanced algorithms for node embeddings, similarity calculations, path finding, link prediction, centrality measures, and community detection.

@@ -37,7 +37,7 @@ Key Features:
         * LLM-based: Large language model extraction
     - Fallback chain support: Try methods in order until one succeeds
     - Robust Fallbacks: Prevents empty results via ML -> Pattern -> Last Resort chain
-    - Ensemble voting: Combine results from multiple methods
+    - Explicit merge strategies: fallback, union, and consensus
     - Post-processing: Entity boundary validation
     - Multiple entity type support (PERSON, ORG, GPE, DATE, etc.)
     - Confidence scoring and filtering
@@ -62,15 +62,20 @@ Example Usage:
     >>> extractor = NERExtractor(method="huggingface", huggingface_model="dslim/bert-base-NER")
     >>> entities = extractor.extract_entities("Apple Inc. was founded in 1976.")
     >>> 
-    >>> # Using fallback chain
-    >>> extractor = NERExtractor(method=["llm", "ml", "pattern"], ensemble_voting=True)
+    >>> # Require agreement between multiple extraction methods
+    >>> extractor = NERExtractor(
+    ...     method=["llm", "ml"], merge_strategy="consensus", min_votes=2
+    ... )
     >>> entities = extractor.extract_entities("Apple Inc. was founded in 1976.")
 
 Author: Semantica Contributors
 License: MIT
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+import math
+import re
+import warnings
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from ..utils.exceptions import ProcessingError
 from ..utils.helpers import safe_import
@@ -83,6 +88,31 @@ spacy, SPACY_AVAILABLE = safe_import("spacy")
 
 class NERExtractor:
     """Named Entity Recognition extractor."""
+
+    _VALID_MERGE_STRATEGIES = {"fallback", "union", "consensus"}
+    _MERGE_OPTION_KEYS = (
+        "merge_strategy",
+        "min_votes",
+        "min_agreement",
+        "method_weights",
+        "eligible_methods",
+    )
+    _MIN_SPAN_IOU = 0.5
+    _LABEL_ALIASES = {
+        "PER": "PERSON",
+        "PERSON": "PERSON",
+        "ORGANIZATION": "ORG",
+        "ORG": "ORG",
+        "LOCATION": "GPE",
+        "LOC": "GPE",
+        "GPE": "GPE",
+        "TIME": "DATE",
+        "DATE": "DATE",
+        "CURRENCY": "MONEY",
+        "MONEY": "MONEY",
+        "PERCENTAGE": "PERCENT",
+        "PERCENT": "PERCENT",
+    }
 
     def __init__(
         self, 
@@ -115,9 +145,16 @@ class NERExtractor:
                     third-party servers (Qwen, LLaMA gateways, etc.) that do
                     not implement the full function-calling protocol still
                     return correctly structured results.
-                - device: Device for HuggingFace models ("cuda" or "cpu")
-                - min_confidence: Minimum confidence threshold
-                - ensemble_voting: Enable ensemble voting (default: False)
+                 - device: Device for HuggingFace models ("cuda" or "cpu")
+                 - min_confidence: Minimum confidence threshold
+                - merge_strategy: "fallback" (default), "union", or "consensus"
+                - min_votes: Required supporting methods for consensus (default: 2)
+                - min_agreement: Optional minimum support ratio for consensus
+                - method_weights: Optional method weights for exact-span
+                  cross-label tie-breaking
+                - eligible_methods: Optional subset of configured methods to count
+                  as consensus voters
+                - ensemble_voting: Deprecated alias for merge_strategy="union"
                 - post_process: Enable post-processing (default: False)
         """
         self.logger = get_logger("ner_extractor")
@@ -133,6 +170,15 @@ class NERExtractor:
         self.language = config.get("language", "en")
         self.min_confidence = config.get("min_confidence", 0.5)
         self.ensemble_voting = config.get("ensemble_voting", False)
+        self.merge_strategy = self._resolve_merge_strategy(config)
+        self.min_votes = self._validate_min_votes(config.get("min_votes", 2))
+        self.min_agreement = self._validate_min_agreement(
+            config.get("min_agreement")
+        )
+        self.method_weights = self._validate_method_weights(
+            config.get("method_weights")
+        )
+        self.eligible_methods = config.get("eligible_methods")
         self.post_process = config.get("post_process", False)
         self.progress_tracker = get_progress_tracker()
         # Ensure progress tracker is enabled
@@ -163,6 +209,240 @@ class NERExtractor:
                     self.model_name,
                     exc_info=True,
                 )
+
+    def _resolve_merge_strategy(self, config: Dict[str, Any]) -> str:
+        """Resolve the explicit merge strategy and the deprecated legacy flag."""
+        configured_strategy = config.get("merge_strategy")
+        if configured_strategy is None:
+            if self.ensemble_voting:
+                warnings.warn(
+                    "ensemble_voting is deprecated because it historically "
+                    "performed a union, not voting. Use merge_strategy='union' "
+                    "or merge_strategy='consensus' explicitly.",
+                    DeprecationWarning,
+                    stacklevel=3,
+                )
+                return "union"
+            return "fallback"
+
+        strategy = self._validate_merge_strategy(configured_strategy)
+        if self.ensemble_voting:
+            warnings.warn(
+                "ensemble_voting is deprecated and ignored when merge_strategy "
+                "is provided.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+        return strategy
+
+    @classmethod
+    def _validate_merge_strategy(cls, strategy: Any) -> str:
+        """Return a normalized merge strategy or raise a useful configuration error."""
+        if not isinstance(strategy, str):
+            raise ValueError(
+                "merge_strategy must be one of: fallback, union, consensus"
+            )
+
+        normalized = strategy.lower()
+        if normalized not in cls._VALID_MERGE_STRATEGIES:
+            raise ValueError(
+                "merge_strategy must be one of: fallback, union, consensus"
+            )
+        return normalized
+
+    @staticmethod
+    def _validate_min_votes(min_votes: Any) -> int:
+        """Validate the number of method votes required for consensus."""
+        if isinstance(min_votes, bool) or not isinstance(min_votes, int):
+            raise ValueError("min_votes must be a positive integer")
+        if min_votes < 1:
+            raise ValueError("min_votes must be a positive integer")
+        return min_votes
+
+    @staticmethod
+    def _validate_min_agreement(min_agreement: Any) -> Optional[float]:
+        """Validate an optional consensus support ratio."""
+        if min_agreement is None:
+            return None
+
+        try:
+            normalized = float(min_agreement)
+        except (TypeError, ValueError):
+            raise ValueError("min_agreement must be a number between 0 and 1")
+
+        if not math.isfinite(normalized) or not 0.0 <= normalized <= 1.0:
+            raise ValueError("min_agreement must be a number between 0 and 1")
+        return normalized
+
+    @classmethod
+    def _validate_method_weights(cls, method_weights: Any) -> Dict[str, float]:
+        """Validate optional positive method weights used for deterministic ties."""
+        if method_weights is None:
+            return {}
+        if not isinstance(method_weights, dict):
+            raise ValueError("method_weights must be a mapping of method names to weights")
+
+        normalized = {}
+        for method_name, weight in method_weights.items():
+            if not isinstance(method_name, str):
+                raise ValueError("method_weights keys must be method names")
+            try:
+                numeric_weight = float(weight)
+            except (TypeError, ValueError):
+                raise ValueError("method_weights values must be positive numbers")
+            if not math.isfinite(numeric_weight) or numeric_weight <= 0:
+                raise ValueError("method_weights values must be positive numbers")
+            identity = cls._method_identity(method_name)
+            existing_weight = normalized.get(identity)
+            if existing_weight is not None and existing_weight != numeric_weight:
+                raise ValueError(
+                    "method_weights assigns conflicting values to aliases for "
+                    f"backend '{identity}'"
+                )
+            normalized[identity] = numeric_weight
+        return normalized
+
+    @staticmethod
+    def _method_identity(method_name: str) -> str:
+        """Normalize aliases that share one extraction backend for vote counting."""
+        normalized = method_name.lower()
+        return "ml" if normalized in {"ml", "spacy"} else method_name
+
+    def _resolve_eligible_methods(
+        self,
+        methods: Sequence[str],
+        configured_methods: Any = None,
+    ) -> List[str]:
+        """Resolve the configured method names that are eligible consensus voters."""
+        available = []
+        seen = set()
+        for method_name in methods:
+            identity = self._method_identity(method_name)
+            if identity not in seen:
+                available.append((identity, method_name))
+                seen.add(identity)
+
+        configured = (
+            self.eligible_methods
+            if configured_methods is None
+            else configured_methods
+        )
+        if configured is None:
+            return [method_name for _, method_name in available]
+        if isinstance(configured, str):
+            configured = [configured]
+
+        try:
+            configured = list(configured)
+        except TypeError:
+            raise ValueError("eligible_methods must be a sequence of method names")
+
+        requested_identities = set()
+        for method_name in configured:
+            if not isinstance(method_name, str):
+                raise ValueError("eligible_methods must be a sequence of method names")
+            requested_identities.add(self._method_identity(method_name))
+
+        available_identities = {identity for identity, _ in available}
+        unknown_methods = [
+            method_name
+            for method_name in configured
+            if self._method_identity(method_name) not in available_identities
+        ]
+        if unknown_methods:
+            raise ValueError(
+                "eligible_methods contains methods not configured for extraction: "
+                + ", ".join(unknown_methods)
+            )
+
+        return [
+            method_name
+            for identity, method_name in available
+            if identity in requested_identities
+        ]
+
+    def _align_entities_to_text(
+        self, entities: List[Entity], text: str
+    ) -> List[Entity]:
+        """Resolve missing offsets before span-based methods are merged.
+
+        Some providers, notably typed LLM extraction, can return text and
+        labels without offsets. For a single method that is harmless, but a
+        span-based merge needs document locations. Missing spans are therefore
+        aligned by a deterministic, per-label text search. Valid provider
+        offsets are preserved; candidates that cannot be aligned are excluded
+        because union and consensus cannot safely merge them.
+        """
+        next_offsets = {}
+        occupied_offsets = {}
+        aligned = []
+
+        for entity in entities:
+            needle = entity.text
+            if not isinstance(needle, str) or not needle:
+                continue
+
+            key = (needle.casefold(), self._canonical_label(entity.label))
+            start_char = entity.start_char
+            end_char = entity.end_char
+            has_valid_span = (
+                isinstance(start_char, int)
+                and isinstance(end_char, int)
+                and 0 <= start_char < end_char <= len(text)
+                and text[start_char:end_char].casefold() == needle.casefold()
+            )
+            if has_valid_span:
+                aligned.append(entity)
+                next_offsets[key] = max(next_offsets.get(key, 0), end_char)
+                occupied_offsets.setdefault(key, set()).add((start_char, end_char))
+                continue
+
+            prior_offset = next_offsets.get(key, 0)
+            hinted_start = start_char if isinstance(start_char, int) else 0
+            search_start = max(prior_offset, min(max(hinted_start, 0), len(text)))
+            occupied = occupied_offsets.setdefault(key, set())
+            match = None
+            match_offset = 0
+            left_boundary = (
+                r"(?<!\w)" if needle[0].isalnum() or needle[0] == "_" else ""
+            )
+            right_boundary = (
+                r"(?!\w)" if needle[-1].isalnum() or needle[-1] == "_" else ""
+            )
+            pattern = re.compile(
+                left_boundary + re.escape(needle) + right_boundary,
+                re.IGNORECASE,
+            )
+            for segment, offset in ((text[search_start:], search_start), (text, 0)):
+                for candidate in pattern.finditer(segment):
+                    candidate_start = offset + candidate.start()
+                    candidate_end = offset + candidate.end()
+                    if (candidate_start, candidate_end) not in occupied:
+                        match = candidate
+                        match_offset = offset
+                        break
+                if match is not None:
+                    break
+
+            if match is None:
+                continue
+
+            resolved_start = match_offset + match.start()
+            resolved_end = match_offset + match.end()
+            aligned.append(
+                Entity(
+                    text=entity.text,
+                    label=entity.label,
+                    start_char=resolved_start,
+                    end_char=resolved_end,
+                    confidence=entity.confidence,
+                    metadata=dict(entity.metadata or {}),
+                )
+            )
+            next_offsets[key] = resolved_end
+            occupied.add((resolved_start, resolved_end))
+
+        return aligned
 
     def extract(self, text: Union[str, List[Dict[str, Any]], List[str]], pipeline_id: Optional[str] = None, **kwargs) -> Union[List[Entity], List[List[Entity]]]:
         """
@@ -347,11 +627,39 @@ class NERExtractor:
                 )
                 return []
 
-            # Use method from options if provided, otherwise use instance method
-            methods = options.get("method", self.method)
-            if isinstance(methods, str):
-                methods = [methods]
-            methods = self._filter_unusable_methods(methods)
+            # Use method from options if provided, otherwise use instance method.
+            # Keep the requested list separate from the executable list: in
+            # consensus mode, a configured method with no result is still an
+            # eligible non-supporting vote.
+            requested_methods = options.get("method", self.method)
+            if isinstance(requested_methods, str):
+                requested_methods = [requested_methods]
+
+            merge_strategy = self._validate_merge_strategy(
+                options.get("merge_strategy", self.merge_strategy)
+            )
+            if merge_strategy == "consensus":
+                eligible_methods = self._resolve_eligible_methods(
+                    requested_methods,
+                    options.get("eligible_methods", self.eligible_methods),
+                )
+            else:
+                # eligible_methods is a consensus-only setting. Union should
+                # retain every configured method's complementary output.
+                eligible_methods = self._resolve_eligible_methods(
+                    requested_methods, requested_methods
+                )
+            methods = self._filter_unusable_methods(requested_methods)
+
+            min_votes = self._validate_min_votes(
+                options.get("min_votes", self.min_votes)
+            )
+            min_agreement = self._validate_min_agreement(
+                options.get("min_agreement", self.min_agreement)
+            )
+            method_weights = self._validate_method_weights(
+                options.get("method_weights", self.method_weights)
+            )
 
             min_confidence = options.get("min_confidence", self.min_confidence)
             entity_types = options.get("entity_types", self.entity_types)
@@ -361,7 +669,9 @@ class NERExtractor:
             if entity_types:
                 all_options["entity_types"] = entity_types
 
-            # Try each method in order (fallback chain)
+            # Try each method in order. Fallback returns the first non-empty
+            # result; union and consensus keep empty method results so their
+            # denominators retain configured method provenance.
             all_entities = []
             for method_name in methods:
                 try:
@@ -373,6 +683,8 @@ class NERExtractor:
 
                     # Prepare method-specific options
                     method_options = all_options.copy()
+                    for merge_option in self._MERGE_OPTION_KEYS:
+                        method_options.pop(merge_option, None)
                     if method_name == "huggingface":
                         # Prioritize runtime options over config/defaults
                         method_options["model"] = (
@@ -400,6 +712,8 @@ class NERExtractor:
                                 method_options["api_key"] = api_key
 
                     entities = method_func(text, **method_options)
+                    if merge_strategy != "fallback":
+                        entities = self._align_entities_to_text(entities, text)
 
                     # Apply weighted scoring if entity_types are provided
                     if entity_types:
@@ -418,15 +732,14 @@ class NERExtractor:
                     # Filter by confidence
                     filtered = [e for e in entities if e.confidence >= min_confidence]
                     
-                    if filtered:
-                        all_entities.append((method_name, filtered))
-
-                        # If not using ensemble, return first successful result
-                        if not self.ensemble_voting:
+                    if merge_strategy == "fallback":
+                        if filtered:
                             # Ensure default metadata
                             for e in filtered:
-                                if e.metadata is None: e.metadata = {}
-                                if "batch_index" not in e.metadata: e.metadata["batch_index"] = 0
+                                if e.metadata is None:
+                                    e.metadata = {}
+                                if "batch_index" not in e.metadata:
+                                    e.metadata["batch_index"] = 0
 
                             self.progress_tracker.stop_tracking(
                                 tracking_id,
@@ -434,6 +747,8 @@ class NERExtractor:
                                 message=f"Extracted {len(filtered)} entities using {method_name}",
                             )
                             return filtered
+                    else:
+                        all_entities.append((method_name, filtered))
 
                 except Exception as e:
                     self.logger.warning(
@@ -441,15 +756,23 @@ class NERExtractor:
                     )
                     continue
 
-            # Ensemble voting if enabled
-            if self.ensemble_voting and len(all_entities) > 1:
+            if merge_strategy == "consensus":
                 entities = self._vote_entities(
-                    [entities for _, entities in all_entities]
+                    all_entities,
+                    eligible_methods=eligible_methods,
+                    min_votes=min_votes,
+                    min_agreement=min_agreement,
+                    method_weights=method_weights,
                 )
-            elif all_entities:
-                entities = all_entities[0][1]  # Use first successful method
+            elif merge_strategy == "union":
+                entities = self._union_entities(
+                    all_entities,
+                    eligible_methods=eligible_methods,
+                    method_weights=method_weights,
+                )
             else:
-                # Fallback to pattern-based extraction if all models fail
+                # Only the explicit fallback strategy may introduce its own
+                # pattern candidates after every configured method fails.
                 entities = self._extract_fallback(text)
 
             # Post-processing if enabled
@@ -488,30 +811,466 @@ class NERExtractor:
         return filtered
 
     def _vote_entities(
-        self, results: List[List[Entity]], threshold: float = 0.5
+        self,
+        results: Sequence[Union[List[Entity], Tuple[str, List[Entity]]]],
+        threshold: Optional[float] = None,
+        *,
+        eligible_methods: Optional[Sequence[str]] = None,
+        min_votes: Optional[int] = None,
+        min_agreement: Optional[float] = None,
+        method_weights: Optional[Dict[str, float]] = None,
     ) -> List[Entity]:
-        """Vote on entities across methods."""
-        entity_counts = {}
-        total_methods = len(results)
+        """Merge method results using span-aligned cross-method consensus.
 
-        for entities in results:
+        ``results`` accepts the historical ``List[List[Entity]]`` shape as
+        well as ``(method_name, entities)`` pairs. The latter retains method
+        provenance, while anonymous historical inputs receive stable generated
+        names. ``threshold`` remains a compatibility alias for
+        ``min_agreement``; confidence is never used as a substitute for votes.
+        """
+        resolved_min_votes = self._validate_min_votes(
+            self.min_votes if min_votes is None else min_votes
+        )
+        if min_agreement is None:
+            min_agreement = threshold if threshold is not None else self.min_agreement
+        resolved_min_agreement = self._validate_min_agreement(min_agreement)
+        resolved_method_weights = self._validate_method_weights(
+            self.method_weights if method_weights is None else method_weights
+        )
+
+        return self._merge_method_results(
+            results,
+            merge_strategy="consensus",
+            eligible_methods=eligible_methods,
+            min_votes=resolved_min_votes,
+            min_agreement=resolved_min_agreement,
+            method_weights=resolved_method_weights,
+        )
+
+    def _union_entities(
+        self,
+        results: Sequence[Union[List[Entity], Tuple[str, List[Entity]]]],
+        *,
+        eligible_methods: Optional[Sequence[str]] = None,
+        method_weights: Optional[Dict[str, float]] = None,
+    ) -> List[Entity]:
+        """Merge all method results while retaining single-method candidates."""
+        resolved_method_weights = self._validate_method_weights(
+            self.method_weights if method_weights is None else method_weights
+        )
+        return self._merge_method_results(
+            results,
+            merge_strategy="union",
+            eligible_methods=eligible_methods,
+            min_votes=1,
+            min_agreement=None,
+            method_weights=resolved_method_weights,
+        )
+
+    def _merge_method_results(
+        self,
+        results: Sequence[Union[List[Entity], Tuple[str, List[Entity]]]],
+        *,
+        merge_strategy: str,
+        eligible_methods: Optional[Sequence[str]],
+        min_votes: int,
+        min_agreement: Optional[float],
+        method_weights: Dict[str, float],
+    ) -> List[Entity]:
+        """Align overlapping mentions and merge them with a named strategy."""
+        method_results = self._normalize_method_results(results)
+        eligible_methods = self._normalize_eligible_method_names(
+            eligible_methods, method_results
+        )
+        if not eligible_methods:
+            return []
+
+        eligible_identities = {
+            self._method_identity(method_name) for method_name in eligible_methods
+        }
+        clusters = self._cluster_entities(method_results, eligible_identities)
+        merged = []
+
+        for cluster in clusters:
+            entity = self._build_merged_entity(
+                cluster,
+                eligible_methods=eligible_methods,
+                merge_strategy=merge_strategy,
+                min_votes=min_votes,
+                min_agreement=min_agreement,
+            )
+            if entity is None:
+                continue
+
+            merged.append(entity)
+
+        if merge_strategy == "consensus":
+            merged = self._resolve_consensus_label_conflicts(
+                merged, method_weights
+            )
+
+        return sorted(
+            merged,
+            key=lambda entity: (
+                entity.start_char,
+                entity.end_char,
+                entity.label,
+                entity.text.casefold(),
+            ),
+        )
+
+    def _normalize_method_results(
+        self,
+        results: Sequence[Union[List[Entity], Tuple[str, List[Entity]]]],
+    ) -> List[Tuple[str, List[Entity]]]:
+        """Coalesce alias methods so one backend cannot cast two votes."""
+        normalized = {}
+        for index, result in enumerate(results):
+            if (
+                isinstance(result, tuple)
+                and len(result) == 2
+                and isinstance(result[0], str)
+            ):
+                method_name, entities = result
+            else:
+                method_name, entities = f"method_{index + 1}", result
+
+            identity = self._method_identity(method_name)
+            if identity not in normalized:
+                normalized[identity] = {"name": method_name, "entities": []}
+            if entities:
+                normalized[identity]["entities"].extend(entities)
+
+        return [
+            (data["name"], data["entities"])
+            for data in normalized.values()
+        ]
+
+    def _normalize_eligible_method_names(
+        self,
+        eligible_methods: Optional[Sequence[str]],
+        method_results: Sequence[Tuple[str, List[Entity]]],
+    ) -> List[str]:
+        """Keep configured failed methods in the consensus denominator."""
+        if eligible_methods is None:
+            eligible_methods = [method_name for method_name, _ in method_results]
+
+        known_names = {
+            self._method_identity(method_name): method_name
+            for method_name, _ in method_results
+        }
+        normalized = []
+        seen = set()
+        for method_name in eligible_methods:
+            identity = self._method_identity(method_name)
+            if identity in seen:
+                continue
+            normalized.append(known_names.get(identity, method_name))
+            seen.add(identity)
+        return normalized
+
+    def _cluster_entities(
+        self,
+        method_results: Sequence[Tuple[str, List[Entity]]],
+        eligible_identities: set,
+    ) -> List[List[Tuple[str, Entity]]]:
+        """Align same-label mentions with deterministic one-to-one matching.
+
+        Each method is matched to existing candidates as a batch, ordered by
+        descending span IoU. This prevents an early, weaker boundary variant
+        from consuming a method's only vote before its exact match is seen.
+        Different labels stay separate here and are reconciled only after
+        each label's independent support has been counted.
+        """
+        clusters_by_label = {}
+        ordered_results = sorted(
+            method_results,
+            key=lambda result: (
+                self._method_identity(result[0]),
+                result[0],
+            ),
+        )
+
+        for method_name, entities in ordered_results:
+            method_identity = self._method_identity(method_name)
+            if method_identity not in eligible_identities:
+                continue
+
+            unique_entities = {}
             for entity in entities:
-                key = (entity.text.lower(), entity.label)
-                if key not in entity_counts:
-                    entity_counts[key] = {"entity": entity, "score": 0.0, "count": 0}
-                entity_counts[key]["score"] += entity.confidence
-                entity_counts[key]["count"] += 1
+                label = self._canonical_label(entity.label)
+                key = (label, entity.start_char, entity.end_char)
+                existing = unique_entities.get(key)
+                if existing is None or self._entity_order_key(
+                    entity
+                ) < self._entity_order_key(existing):
+                    unique_entities[key] = entity
 
-        # Return entities that meet threshold
-        voted = []
-        for key, data in entity_counts.items():
-            avg_score = data["score"] / data["count"]
-            if avg_score >= threshold:
-                entity = data["entity"]
-                entity.confidence = avg_score
-                voted.append(entity)
+            entities_by_label = {}
+            for entity in unique_entities.values():
+                label = self._canonical_label(entity.label)
+                entities_by_label.setdefault(label, []).append(entity)
 
-        return voted
+            for label in sorted(entities_by_label):
+                candidates = sorted(
+                    entities_by_label[label], key=self._entity_order_key
+                )
+                label_clusters = clusters_by_label.setdefault(label, [])
+                edges = []
+                for candidate_index, candidate in enumerate(candidates):
+                    for cluster_index, cluster in enumerate(label_clusters):
+                        if any(
+                            self._method_identity(cluster_method) == method_identity
+                            for cluster_method, _ in cluster
+                        ):
+                            continue
+                        # A cluster represents one consensus mention, so a
+                        # candidate must overlap *every* vote already in it.
+                        # Using a best-pair score here would let A~B and B~C
+                        # turn into a false A/B/C consensus when A !~ C.
+                        scores = [
+                            self._span_iou(candidate, clustered_entity)
+                            for _, clustered_entity in cluster
+                        ]
+                        score = min(scores)
+                        if score >= self._MIN_SPAN_IOU:
+                            edges.append((score, candidate_index, cluster_index))
+
+                matched_candidates = set()
+                matched_clusters = set()
+                for _, candidate_index, cluster_index in sorted(
+                    edges,
+                    key=lambda item: (
+                        -item[0],
+                        self._entity_order_key(candidates[item[1]]),
+                        item[2],
+                    ),
+                ):
+                    if (
+                        candidate_index in matched_candidates
+                        or cluster_index in matched_clusters
+                    ):
+                        continue
+                    label_clusters[cluster_index].append(
+                        (method_name, candidates[candidate_index])
+                    )
+                    matched_candidates.add(candidate_index)
+                    matched_clusters.add(cluster_index)
+
+                for candidate_index, candidate in enumerate(candidates):
+                    if candidate_index not in matched_candidates:
+                        label_clusters.append([(method_name, candidate)])
+
+        return [
+            cluster
+            for label in sorted(clusters_by_label)
+            for cluster in clusters_by_label[label]
+        ]
+
+    def _resolve_consensus_label_conflicts(
+        self,
+        entities: Sequence[Entity],
+        method_weights: Dict[str, float],
+    ) -> List[Entity]:
+        """Choose one deterministic label when candidates share one span.
+
+        Cross-label candidates only conflict when their final document spans
+        are identical. Nested entities at different spans remain distinct.
+        """
+        resolved = {}
+
+        def conflict_order_key(entity: Entity) -> Tuple[Any, ...]:
+            metadata = entity.metadata or {}
+            support_weight = sum(
+                self._method_weight(method_name, method_weights)
+                for method_name in metadata.get("supporting_methods", [])
+            )
+            confidence = self._numeric_confidence(entity.confidence)
+            confidence_key = -confidence if confidence is not None else float("inf")
+            return (
+                -support_weight,
+                -metadata.get("vote_count", 0),
+                confidence_key,
+                entity.label,
+                entity.text.casefold(),
+            )
+
+        for entity in entities:
+            key = (entity.start_char, entity.end_char)
+            existing = resolved.get(key)
+            if existing is None or conflict_order_key(entity) < conflict_order_key(
+                existing
+            ):
+                resolved[key] = entity
+
+        return list(resolved.values())
+
+    @staticmethod
+    def _span_iou(first: Entity, second: Entity) -> float:
+        """Return overlap-over-union for two document spans."""
+        intersection = max(
+            0,
+            min(first.end_char, second.end_char)
+            - max(first.start_char, second.start_char),
+        )
+        if not intersection:
+            return 0.0
+        union = max(first.end_char, second.end_char) - min(
+            first.start_char, second.start_char
+        )
+        return intersection / union if union else 0.0
+
+    @classmethod
+    def _canonical_label(cls, label: str) -> str:
+        """Normalize common NER aliases and BIO prefixes before label voting."""
+        normalized = str(label).strip().upper()
+        if "-" in normalized:
+            prefix, remainder = normalized.split("-", 1)
+            if prefix in {"B", "I", "L", "U", "E", "S"}:
+                normalized = remainder
+        return cls._LABEL_ALIASES.get(normalized, normalized)
+
+    @staticmethod
+    def _numeric_confidence(confidence: Any) -> Optional[float]:
+        """Convert a usable confidence score without treating missing scores as zero."""
+        if confidence is None:
+            return None
+        try:
+            normalized = float(confidence)
+        except (TypeError, ValueError):
+            return None
+        return normalized if math.isfinite(normalized) else None
+
+    @classmethod
+    def _entity_order_key(cls, entity: Entity) -> Tuple[Any, ...]:
+        """Provide a deterministic winner for boundary and confidence variants."""
+        confidence = cls._numeric_confidence(entity.confidence)
+        confidence_key = -confidence if confidence is not None else float("inf")
+        return (
+            confidence_key,
+            -(entity.end_char - entity.start_char),
+            entity.start_char,
+            entity.end_char,
+            entity.text.casefold(),
+            entity.label.casefold(),
+        )
+
+    def _method_weight(
+        self,
+        method_name: str,
+        method_weights: Dict[str, float],
+    ) -> float:
+        """Read a weight using the canonical backend name."""
+        identity = self._method_identity(method_name)
+        return method_weights.get(identity, 1.0)
+
+    def _build_merged_entity(
+        self,
+        cluster: Sequence[Tuple[str, Entity]],
+        *,
+        eligible_methods: Sequence[str],
+        merge_strategy: str,
+        min_votes: int,
+        min_agreement: Optional[float],
+    ) -> Optional[Entity]:
+        """Resolve one same-label, offset-aligned candidate."""
+        selected_by_method = {}
+        for method_name, entity in cluster:
+            identity = self._method_identity(method_name)
+            existing = selected_by_method.get(identity)
+            if existing is None or (
+                self._entity_order_key(entity)
+                < self._entity_order_key(existing[1])
+            ):
+                selected_by_method[identity] = (method_name, entity)
+
+        eligible_records = []
+        seen = set()
+        for method_name in eligible_methods:
+            identity = self._method_identity(method_name)
+            if identity not in seen:
+                eligible_records.append((identity, method_name))
+                seen.add(identity)
+        if not eligible_records:
+            return None
+
+        if not selected_by_method:
+            return None
+
+        supporting_entries = [
+            (identity, method_name, entity)
+            for identity, (method_name, entity) in selected_by_method.items()
+        ]
+        vote_count = len(supporting_entries)
+        agreement = vote_count / len(eligible_records)
+        if merge_strategy == "consensus" and (
+            vote_count < min_votes
+            or (min_agreement is not None and agreement < min_agreement)
+        ):
+            return None
+
+        representative = min(
+            (entity for _, _, entity in supporting_entries), key=self._entity_order_key
+        )
+        canonical_label = self._canonical_label(representative.label)
+
+        supporting_by_identity = {
+            identity: (method_name, entity)
+            for identity, method_name, entity in supporting_entries
+        }
+        supporting_methods = [
+            method_name
+            for identity, method_name in eligible_records
+            if identity in supporting_by_identity
+        ]
+        method_scores = {
+            method_name: (
+                self._numeric_confidence(supporting_by_identity[identity][1].confidence)
+                if identity in supporting_by_identity
+                else None
+            )
+            for identity, method_name in eligible_records
+        }
+
+        confidence_scores = []
+        for identity, method_name in eligible_records:
+            if identity not in supporting_by_identity:
+                continue
+            score = self._numeric_confidence(
+                supporting_by_identity[identity][1].confidence
+            )
+            if score is not None:
+                confidence_scores.append(score)
+
+        if confidence_scores:
+            confidence = sum(confidence_scores) / len(confidence_scores)
+        else:
+            confidence = representative.confidence
+
+        metadata = dict(representative.metadata or {})
+        metadata.update(
+            {
+                "merge_strategy": merge_strategy,
+                "supporting_methods": supporting_methods,
+                "vote_count": len(supporting_methods),
+                "eligible_method_count": len(eligible_records),
+                "agreement": agreement,
+                "method_scores": method_scores,
+            }
+        )
+
+        return Entity(
+            text=representative.text,
+            label=(
+                canonical_label
+                if merge_strategy == "consensus"
+                else representative.label
+            ),
+            start_char=representative.start_char,
+            end_char=representative.end_char,
+            confidence=confidence,
+            metadata=metadata,
+        )
 
     def _post_process_entities(self, entities: List[Entity], text: str) -> List[Entity]:
         """Post-process entities for refinement."""
