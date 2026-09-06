@@ -118,7 +118,14 @@ from .providers import HuggingFaceModelLoader, create_provider
 from .registry import method_registry
 from .cache import ExtractionCache
 from .config import config
-from .types import Entity, Relation, Triplet
+from .types import (
+    CONFIDENCE_SOURCE_KEY,
+    CONFIDENCE_SOURCE_MODEL,
+    CONFIDENCE_SOURCE_UNAVAILABLE,
+    Entity,
+    Relation,
+    Triplet,
+)
 
 try:
     from .schemas import (
@@ -599,27 +606,31 @@ def filter_entities_for_text(
 
 
 def calculate_weighted_confidence(
-    item_type: str, 
-    original_confidence: float, 
+    item_type: str,
+    original_confidence: Optional[float],
     valid_types: Optional[List[str]] = None,
     item_text: Optional[str] = None,
     weight_method: float = 0.5,
     weight_similarity: float = 0.5
-) -> float:
+) -> Optional[float]:
     """
     Calculate weighted confidence score using both Label and Content similarity.
     Final Score = (weight_method * original_confidence) + (weight_similarity * max(label_sim, content_sim))
-    
+
     Args:
         item_type: The extracted type/label/predicate (e.g., "PERSON", "founded_by")
-        original_confidence: The confidence score from the extraction method (0.0-1.0)
+        original_confidence: The confidence score from the extraction method
+            (0.0-1.0), or None if the method provided no score
         valid_types: List of valid/preferred types provided by user
         item_text: The actual text content extracted (e.g., "Steve Jobs", "acquired")
         weight_method: Weight for the original method confidence (default 0.5)
         weight_similarity: Weight for the similarity score (default 0.5)
-        
+
     Returns:
-        float: Weighted confidence score (0.0-1.0)
+        float or None: Weighted confidence score (0.0-1.0). When
+        original_confidence is None, returns the similarity score alone —
+        or None (still unknown) if valid_types is empty or the similarity
+        weight is disabled (<= 0).
     """
     if not valid_types:
         return original_confidence
@@ -640,11 +651,18 @@ def calculate_weighted_confidence(
     if total_weight <= 0:
         return original_confidence
         
+    if original_confidence is None:
+        if weight_similarity <= 0:
+            # Similarity disabled and no measured confidence: still unknown
+            return None
+        # No measured confidence to blend; rely on similarity alone
+        return max(0.0, min(1.0, best_similarity))
+
     w_m = weight_method / total_weight
     w_s = weight_similarity / total_weight
-    
+
     final_score = (w_m * original_confidence) + (w_s * best_similarity)
-    
+
     return max(0.0, min(1.0, final_score))
 
 
@@ -789,7 +807,9 @@ def extract_entities_ml(
     entities = []
 
     for ent in doc.ents:
-        confidence = 1.0
+        # Standard spaCy spans expose no per-entity probability. Report the
+        # absence explicitly (None) instead of fabricating certainty (1.0).
+        confidence = None
         if hasattr(ent, "confidence"):
             confidence = ent.confidence
         elif hasattr(ent, "score"):
@@ -806,6 +826,11 @@ def extract_entities_ml(
                     "extraction_method": "ml",
                     "model": model,
                     "lemma": ent.lemma_ if hasattr(ent, "lemma_") else ent.text,
+                    CONFIDENCE_SOURCE_KEY: (
+                        CONFIDENCE_SOURCE_MODEL
+                        if confidence is not None
+                        else CONFIDENCE_SOURCE_UNAVAILABLE
+                    ),
                 },
             )
         )

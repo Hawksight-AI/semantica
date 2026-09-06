@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`Entity.confidence` is now `Optional[float]` defaulting to `None`, so "no measurement" is no longer encoded as a perfect score** (closes #1282) by @taoche
+  - **Breaking at the type level for a public dataclass.** `semantica.semantic_extract.types.Entity.confidence` was `float = 1.0`; it is now `Optional[float] = None`. The spaCy NER adapter fabricated `1.0` whenever a span exposed no per-entity probability — the normal case for standard spaCy models — so every `ml`-extracted entity claimed perfect confidence, indistinguishable from a backend that genuinely reported 1.0
+  - **`extract()` callers are unaffected.** The pipeline scores unknown confidences (heuristic, labeled) *before* filtering, so every entity `extract()` emits still carries a numeric confidence, now with provenance under `metadata[CONFIDENCE_SOURCE_KEY]` (`model` / `heuristic` / `type_similarity` / `unavailable`, constants owned by `types.py`). Measured scores are never overwritten
+  - **Callers that construct `Entity` themselves and bypass `extract()` can now see `None` downstream.** `kg/graph_builder.py` copies the field into its graph entity dicts, so `GraphBuilder(...).build([Entity(...)], extract=False)` yields `confidence: None` where it previously yielded `1.0`, and any numeric comparison or sort on that value raises `TypeError`. Nothing in `semantica/` compares it numerically, so this is not a break in-tree
+  - `EntityConfidenceScorer` recalculates only when `confidence is None`, instead of treating `== 1.0` as a "recalculate" sentinel — the old test destroyed genuine backend scores of exactly 1.0 rather than merely mislabeling missing ones
+  - Ensemble voting averages only measured scores; `calculate_weighted_confidence()` falls back to similarity-only scoring when no measured confidence exists, and stays `None` when the caller explicitly disables similarity weighting
+  - The standalone filter APIs route unknown values through one policy helper, `meets_confidence_threshold()`: unknown passes, since absence of evidence is not low confidence. This matches the previous behavior, so no entity is newly dropped
+  - `ExtractionValidator` reports unscored entities under a separate `unscored` metric and treats unknown as neutral rather than zero
+  - `Relation`, `Triplet` and the separate `utils.types.Entity` are untouched; the LLM, HuggingFace, pattern and regex paths always set explicit float scores and are unchanged
+  - Docs: `semantica/semantic_extract/semantic_extract_usage.md` and `cookbook/introduction/05_Entity_Extraction.ipynb` (renders unavailable confidence as `N/A`)
+
 ## [0.6.8] - 2026-09-05
 
 ### Added
