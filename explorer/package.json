@@ -38,7 +38,7 @@
     "vis-timeline": "^8.5.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.6",
+    "@babel/core": "^8.0.1",
     "@eslint/js": "^9.39.4",
     "@testing-library/react": "^16.3.3",
     "@types/babel__core": "^7.20.5",
